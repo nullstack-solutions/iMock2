@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🔧 WireMock API Test Examples</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .title {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border-left: 4px solid #3498db;
+            background: #f8f9fa;
+        }
+        .code-block {
+            background: #2c3e50;
+            color: #ecf0f1;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            overflow-x: auto;
+            margin: 10px 0;
+        }
+        .button {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+        }
+        .button:hover {
+            background: #2980b9;
+        }
+        .result {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .info { background: #d1ecf1; color: #0c5460; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="title">🔧 WireMock API Test Examples</h1>
+        <p>Правильные примеры использования исправленных WireMock Admin API endpoints</p>
+        
+        <div class="test-section">
+            <h3>⚙️ Настройка сервера</h3>
+            <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 15px;">
+                <input type="text" id="api-url-input" placeholder="http://localhost:8080 или http://mock.alefbet.lphub.net" 
+                       style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                <button class="button" onclick="setApiBase()" style="background: #3498db;">🔧 Установить URL</button>
+            </div>
+            <div id="url-result"></div>
+            <p><strong>Текущий API:</strong> <span id="current-api">${API_BASE}</span></p>
+        </div>
+        
+        <div class="test-section">
+            <h3>📊 Request Count API (POST метод)</h3>
+            <p><strong>Проблема:</strong> Endpoint требует JSON тело с критериями поиска</p>
+            
+            <h4>❌ Неправильно (вызывает ошибку 422):</h4>
+            <div class="code-block" id="request-count-wrong">
+POST ${API_BASE}/requests/count
+Content-Length: 0
+
+// Пустое тело - вызывает ошибку "No content to map"
+            </div>
+            
+            <h4>✅ Правильно:</h4>
+            <div class="code-block" id="request-count-correct">
+POST ${API_BASE}/requests/count
+Content-Type: application/json
+
+{
+  "method": "GET",
+  "url": "/api/test"
+}
+
+// Или для подсчета всех запросов:
+{}
+            </div>
+            
+            <button class="button" onclick="testRequestCount()">🧪 Тест Request Count</button>
+            <div id="count-result"></div>
+        </div>
+        
+        <div class="test-section">
+            <h3>🔍 Request Find API (POST метод)</h3>
+            <div class="code-block" id="request-find-example">
+POST ${API_BASE}/requests/find
+Content-Type: application/json
+
+{
+  "method": "POST",
+  "urlPath": "/api/users",
+  "headers": {
+    "Content-Type": {
+      "equalTo": "application/json"
+    }
+  }
+}
+            </div>
+            
+            <button class="button" onclick="testRequestFind()">🧪 Тест Request Find</button>
+            <div id="find-result"></div>
+        </div>
+        
+        <div class="test-section">
+            <h3>🎯 Near Misses API (POST метод)</h3>
+            <div class="code-block" id="near-misses-example">
+POST ${API_BASE}/near-misses/request
+Content-Type: application/json
+
+{
+  "url": "/api/test",
+  "method": "GET",
+  "headers": {
+    "Accept": "application/json"
+  }
+}
+            </div>
+            
+            <button class="button" onclick="testNearMisses()">🧪 Тест Near Misses</button>
+            <div id="near-misses-result"></div>
+        </div>
+        
+        <div class="test-section">
+            <h3>🎙️ Recording API</h3>
+            
+            <h4>Статус записи (GET):</h4>
+            <div class="code-block" id="recording-status-example">
+GET ${API_BASE}/recordings/status
+            </div>
+            
+            <h4>Начать запись (POST):</h4>
+            <div class="code-block" id="recording-start-example">
+POST ${API_BASE}/recordings/start
+Content-Type: application/json
+
+{
+  "targetBaseUrl": "http://example.com",
+  "filters": {
+    "urlPathPatterns": [".*"],
+    "method": "ANY",
+    "headers": {}
+  },
+  "captureHeaders": {},
+  "requestBodyPattern": {},
+  "persist": true,
+  "repeatsAsScenarios": false,
+  "transformers": ["response-template"]
+}
+            </div>
+            
+            <button class="button" onclick="testRecordingStatus()">🧪 Статус записи</button>
+            <button class="button" onclick="testRecordingStart()">🧪 Начать запись</button>
+            <button class="button" onclick="testRecordingStop()">🧪 Остановить запись</button>
+            <div id="recording-result"></div>
+        </div>
+        
+        <div class="test-section">
+            <h3>📋 Unmatched Requests</h3>
+            <div class="code-block" id="unmatched-requests-example">
+GET ${API_BASE}/requests/unmatched
+            </div>
+            
+            <button class="button" onclick="testUnmatchedRequests()">🧪 Тест Unmatched Requests</button>
+            <div id="unmatched-result"></div>
+        </div>
+        
+        <div class="test-section">
+            <h3>🆕 WireMock 3.13.x Features</h3>
+            
+            <h4>Unmatched Mappings:</h4>
+            <div class="code-block" id="unmatched-mappings-example">
+GET ${API_BASE}/mappings/unmatched
+DELETE ${API_BASE}/mappings/unmatched
+            </div>
+            
+            <h4>Find by Metadata:</h4>
+            <div class="code-block" id="find-by-metadata-example">
+POST ${API_BASE}/mappings/find-by-metadata
+Content-Type: application/json
+
+{
+    "matchesJsonPath": {
+      "expression": "$.singleItem",
+      "contains": "test"
+    }
+}
+            </div>
+            
+            <button class="button" onclick="testUnmatchedMappings()">🧪 Unmatched Mappings</button>
+            <button class="button" onclick="testFindByMetadata()">🧪 Find by Metadata</button>
+            <div id="new-features-result"></div>
+        </div>
+        
+        <button class="button" onclick="runAllTests()" style="background: #27ae60; font-size: 16px; padding: 15px 30px;">🚀 Запустить все тесты</button>
+        
+        <div id="all-results"></div>
+    </div>
+
+    <script>
+        let API_BASE = 'http://localhost:8080/__admin'; // Основной сервер
+        
+        // Функция для изменения API базового URL
+        function setApiBase() {
+            const input = document.getElementById('api-url-input');
+            if (input.value.trim()) {
+                API_BASE = input.value.trim().replace(/\/$/, '') + '/__admin';
+                showResult('url-result', `✅ API URL установлен: ${API_BASE}`, 'success');
+                
+                // Обновляем отображение текущего API
+                const currentApiSpan = document.getElementById('current-api');
+                if (currentApiSpan) {
+                    currentApiSpan.textContent = API_BASE;
+                }
+                
+                // Обновляем все код блоки с примерами
+                updateCodeBlocks();
+            }
+        }
+        
+        // Функция для обновления код блоков с актуальными URL
+        function updateCodeBlocks() {
+            // Request Count примеры
+            updateCodeBlock('request-count-wrong', `POST ${API_BASE}/requests/count\nContent-Length: 0\n\n// Пустое тело - вызывает ошибку "No content to map"`);
+            updateCodeBlock('request-count-correct', `POST ${API_BASE}/requests/count\nContent-Type: application/json\n\n{\n  "method": "GET\",\n  "url": "/api/test"\n}\n\n// Или для подсчета всех запросов:\n{}`);
+            
+            // Request Find пример
+            updateCodeBlock('request-find-example', `POST ${API_BASE}/requests/find\nContent-Type: application/json\n\n{\n  "method": "POST\",\n  "urlPath": "/api/users\",\n  "headers": {\n    "Content-Type": {\n      "equalTo": "application/json"\n    }\n  }\n}`);
+            
+            // Near Misses пример
+            updateCodeBlock('near-misses-example', `POST ${API_BASE}/near-misses/request\nContent-Type: application/json\n\n{\n  "url": "/api/test\",\n  "method": "GET\",\n  "headers": {\n    "Accept": "application/json"\n  }\n}`);
+            
+            // Recording примеры
+            updateCodeBlock('recording-status-example', `GET ${API_BASE}/recordings/status`);
+            updateCodeBlock('recording-start-example', `POST ${API_BASE}/recordings/start\nContent-Type: application/json\n\n{\n  "targetBaseUrl": "http://example.com\",\n  "filters": {\n    "urlPathPatterns": [".*"],\n    "method": "ANY\",\n    "headers": {}\n  },\n  "captureHeaders": {},\n  "requestBodyPattern": {},\n  "persist": true,\n  "repeatsAsScenarios": false,\n  "transformers": ["response-template"]\n}`);
+            
+            // Unmatched Requests пример
+            updateCodeBlock('unmatched-requests-example', `GET ${API_BASE}/requests/unmatched`);
+            
+            // New Features примеры
+            updateCodeBlock('unmatched-mappings-example', `GET ${API_BASE}/mappings/unmatched\nDELETE ${API_BASE}/mappings/unmatched`);
+            updateCodeBlock('find-by-metadata-example', `POST ${API_BASE}/mappings/find-by-metadata\nContent-Type: application/json\n\n{\n    "matchesJsonPath": {\n      "expression": "$.singleItem\",\n      "contains": "test"\n    }\n}`);
+        }
+        
+        // Вспомогательная функция для обновления код блока
+        function updateCodeBlock(elementId, content) {
+            const element = document.getElementById(elementId);
+            if (element) {
+                element.textContent = content;
+            }
+        }
+        
+        function showResult(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            element.innerHTML = `<div class="result ${type}">${message}</div>`;
+        }
+        
+        async function apiCall(endpoint, options = {}) {
+            const url = `${API_BASE}${endpoint}`;
+            const defaultOptions = {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            };
+            
+            const finalOptions = { ...defaultOptions, ...options };
+            
+            try {
+                const response = await fetch(url, finalOptions);
+                const data = response.ok ? await response.json() : await response.text();
+                
+                return {
+                    success: response.ok,
+                    status: response.status,
+                    data: data
+                };
+            } catch (error) {
+                return {
+                    success: false,
+                    status: 0,
+                    error: error.message
+                };
+            }
+        }
+        
+        async function testRequestCount() {
+            showResult('count-result', '🔄 Тестирование Request Count...', 'info');
+            
+            // Тест с пустым объектом (подсчет всех запросов)
+            const result1 = await apiCall('/requests/count', {
+                method: 'POST',
+                body: JSON.stringify({})
+            });
+            
+            if (result1.success) {
+                showResult('count-result', `✅ Request Count (все): ${result1.data.count} запросов`, 'success');
+            } else {
+                showResult('count-result', `❌ Request Count ошибка: HTTP ${result1.status}`, 'error');
+                return;
+            }
+            
+            // Тест с фильтром
+            const result2 = await apiCall('/requests/count', {
+                method: 'POST',
+                body: JSON.stringify({
+                    method: 'GET',
+                    url: '/api/test'
+                })
+            });
+            
+            if (result2.success) {
+                showResult('count-result', 
+                    `✅ Request Count успешно!<br>
+                    📊 Все запросы: ${result1.data.count}<br>
+                    🔍 GET /api/test: ${result2.data.count}`, 'success');
+            } else {
+                showResult('count-result', `❌ Request Count с фильтром: HTTP ${result2.status}`, 'error');
+            }
+        }
+        
+        async function testRequestFind() {
+            showResult('find-result', '🔄 Тестирование Request Find...', 'info');
+            
+            const result = await apiCall('/requests/find', {
+                method: 'POST',
+                body: JSON.stringify({
+                    method: 'ANY'
+                })
+            });
+            
+            if (result.success) {
+                const count = result.data.requests ? result.data.requests.length : 0;
+                showResult('find-result', `✅ Request Find: найдено ${count} запросов`, 'success');
+            } else {
+                showResult('find-result', `❌ Request Find ошибка: HTTP ${result.status}`, 'error');
+            }
+        }
+        
+        async function testNearMisses() {
+            showResult('near-misses-result', '🔄 Тестирование Near Misses...', 'info');
+            
+            const result = await apiCall('/near-misses/request', {
+                method: 'POST',
+                body: JSON.stringify({
+                    url: '/api/test',
+                    method: 'GET'
+                })
+            });
+            
+            if (result.success) {
+                const count = result.data.nearMisses ? result.data.nearMisses.length : 0;
+                showResult('near-misses-result', `✅ Near Misses: найдено ${count} близких совпадений`, 'success');
+            } else {
+                showResult('near-misses-result', `❌ Near Misses ошибка: HTTP ${result.status}`, 'error');
+            }
+        }
+        
+        async function testRecordingStatus() {
+            showResult('recording-result', '🔄 Проверка статуса записи...', 'info');
+            
+            const result = await apiCall('/recordings/status');
+            
+            if (result.success) {
+                showResult('recording-result', `✅ Recording Status: ${result.data.status}`, 'success');
+            } else {
+                showResult('recording-result', `❌ Recording Status ошибка: HTTP ${result.status}`, 'error');
+            }
+        }
+        
+        async function testRecordingStart() {
+            showResult('recording-result', '🔄 Начинаем запись...', 'info');
+            
+            const config = {
+                targetBaseUrl: 'http://example.com',
+                filters: {
+                    urlPathPatterns: ['.*'],
+                    method: 'ANY'
+                },
+                persist: true
+            };
+            
+            const result = await apiCall('/recordings/start', {
+                method: 'POST',
+                body: JSON.stringify(config)
+            });
+            
+            if (result.success) {
+                showResult('recording-result', `✅ Recording Start: запись начата`, 'success');
+            } else {
+                showResult('recording-result', `❌ Recording Start ошибка: HTTP ${result.status}`, 'error');
+            }
+        }
+        
+        async function testRecordingStop() {
+            showResult('recording-result', '🔄 Останавливаем запись...', 'info');
+            
+            const result = await apiCall('/recordings/stop', {
+                method: 'POST'
+            });
+            
+            if (result.success) {
+                const count = result.data.mappings ? result.data.mappings.length : 0;
+                showResult('recording-result', `✅ Recording Stop: записано ${count} маппингов`, 'success');
+            } else {
+                showResult('recording-result', `❌ Recording Stop ошибка: HTTP ${result.status}`, 'error');
+            }
+        }
+        
+        async function testUnmatchedRequests() {
+            showResult('unmatched-result', '🔄 Тестирование Unmatched Requests...', 'info');
+            
+            const result = await apiCall('/requests/unmatched');
+            
+            if (result.success) {
+                const count = result.data.requests ? result.data.requests.length : 0;
+                showResult('unmatched-result', `✅ Unmatched Requests: найдено ${count} несопоставленных запросов`, 'success');
+            } else {
+                showResult('unmatched-result', `❌ Unmatched Requests ошибка: HTTP ${result.status}`, 'error');
+            }
+        }
+        
+        async function testUnmatchedMappings() {
+            showResult('new-features-result', '🔄 Тестирование Unmatched Mappings...', 'info');
+            
+            const result = await apiCall('/mappings/unmatched');
+            
+            if (result.success) {
+                const count = result.data.mappings ? result.data.mappings.length : 0;
+                showResult('new-features-result', `✅ Unmatched Mappings: найдено ${count} неиспользуемых маппингов`, 'success');
+            } else {
+                showResult('new-features-result', `❌ Unmatched Mappings ошибка: HTTP ${result.status}<br>
+                    ℹ️ Возможно, эта функция недоступна в вашей версии WireMock`, 'error');
+            }
+        }
+        
+        async function testFindByMetadata() {
+            showResult('new-features-result', '🔄 Тестирование Find by Metadata...', 'info');
+            
+            // Используем тот же формат, что работает в Postman
+            const result = await apiCall('/mappings/find-by-metadata', {
+                method: 'POST',
+                body: JSON.stringify({
+                    "matchesJsonPath": {
+                        "expression": "$.singleItem",
+                        "contains": "test"
+                    }
+                })
+            });
+            
+            if (result.success) {
+                const count = result.data.mappings ? result.data.mappings.length : 0;
+                showResult('new-features-result', `✅ Find by Metadata: найдено ${count} маппингов`, 'success');
+                
+                // Дополнительно покажем детали ответа
+                console.log('Find by Metadata response:', result.data);
+            } else {
+                showResult('new-features-result', `❌ Find by Metadata ошибка: HTTP ${result.status}`, 'error');
+                
+                // Покажем детали ошибки для отладки
+                console.error('Find by Metadata error:', result);
+            }
+        }
+        
+        async function runAllTests() {
+            const resultsDiv = document.getElementById('all-results');
+            resultsDiv.innerHTML = '<h3>🚀 Выполняются все тесты...</h3>';
+            
+            const tests = [
+                { name: 'Request Count', func: testRequestCount },
+                { name: 'Request Find', func: testRequestFind },
+                { name: 'Near Misses', func: testNearMisses },
+                { name: 'Recording Status', func: testRecordingStatus },
+                { name: 'Unmatched Requests', func: testUnmatchedRequests },
+                { name: 'Unmatched Mappings', func: testUnmatchedMappings }
+            ];
+            
+            let passed = 0;
+            let failed = 0;
+            
+            for (const test of tests) {
+                try {
+                    await test.func();
+                    passed++;
+                    resultsDiv.innerHTML += `<div class="result success">✅ ${test.name}: PASS</div>`;
+                } catch (error) {
+                    failed++;
+                    resultsDiv.innerHTML += `<div class="result error">❌ ${test.name}: FAIL - ${error.message}</div>`;
+                }
+                
+                // Небольшая задержка между тестами
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+            
+            const total = passed + failed;
+            const coverage = Math.round((passed / total) * 100);
+            
+            resultsDiv.innerHTML += `
+                <div class="result info">
+                    <h4>📊 Итоговые результаты:</h4>
+                    ✅ Пройдено: ${passed}<br>
+                    ❌ Не пройдено: ${failed}<br>
+                    📈 Покрытие API: ${coverage}%
+                </div>
+            `;
+            
+            if (coverage >= 80) {
+                resultsDiv.innerHTML += '<div class="result success">🎉 Отличное покрытие WireMock API!</div>';
+            } else if (coverage >= 60) {
+                resultsDiv.innerHTML += '<div class="result info">👍 Хорошее покрытие API, есть место для улучшений</div>';
+            } else {
+                resultsDiv.innerHTML += '<div class="result error">⚠️ Низкое покрытие API. Проверьте версию WireMock и конфигурацию</div>';
+            }
+        }
+        
+        // Инициализация
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('🔧 WireMock API Test Examples загружены');
+            console.log(`🌐 API Base URL: ${API_BASE}`);
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Final Test</title>
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; }
+        button { padding: 10px 15px; margin: 5px; cursor: pointer; }
+        .success { color: green; }
+        .error { color: red; }
+        .info { color: blue; }
+        pre { background: #f5f5f5; padding: 10px; overflow-x: auto; }
+        input, select { padding: 5px; margin: 5px; }
+    </style>
+</head>
+<body>
+    <h1>Final Test</h1>
+    
+    <div class="test-section">
+        <h2>Connection Settings</h2>
+        <label>Host: <input type="text" id="hostInput" value="localhost" /></label>
+        <label>Port: <input type="text" id="portInput" value="8080" /></label>
+        <button onclick="setBaseUrl()">Set Base URL</button>
+    </div>
+    
+    <div class="test-section">
+        <h2>Authorization Header</h2>
+        <input type="text" id="authInput" placeholder="Enter Authorization header value" style="width: 300px;">
+        <button onclick="setAuthHeader()">Set Header</button>
+        <button onclick="clearAuthHeader()">Clear Header</button>
+        <button onclick="testDebugAuth()">Debug Auth</button>
+    </div>
+    
+    <div class="test-section">
+        <h2>Uptime Test</h2>
+        <button onclick="testUptimeStart()">Start Uptime</button>
+        <button onclick="testUptimeStop()">Stop Uptime</button>
+        <button onclick="showUptimeVars()">Show Uptime Vars</button>
+    </div>
+    
+    <div class="test-section">
+        <h2>API Tests</h2>
+        <button onclick="testHealthCheck()">Health Check</button>
+        <button onclick="testApiCall()">Test API Call</button>
+    </div>
+    
+    <div class="test-section">
+        <h2>Connection Status Test</h2>
+        <button onclick="testConnectionSuccess()">Simulate Connection Success</button>
+        <button onclick="testConnectionError()">Simulate Connection Error</button>
+        <button onclick="testHealthError()">Simulate Health Error</button>
+    </div>
+    
+    <div class="test-section">
+        <h2>Output</h2>
+        <pre id="output"></pre>
+    </div>
+    
+    <script>
+        // Initialize global variables
+        window.wiremockBaseUrl = '';
+        window.authHeader = '';
+        window.startTime = null;
+        window.uptimeInterval = null;
+        window.healthCheckInterval = null;
+        
+        // Mock SELECTORS object
+        const SELECTORS = {
+            CONNECTION: {
+                STATUS_DOT: 'status-dot',
+                STATUS_TEXT: 'status-text',
+                SETUP: 'connection-setup',
+                HOST: 'wiremock-host',
+                PORT: 'wiremock-port'
+            },
+            BUTTONS: {
+                ADD_MAPPING: 'add-mapping-btn'
+            },
+            UI: {
+                STATS: 'stats',
+                SEARCH_FILTERS: 'search-filters',
+                UPTIME: 'uptime'
+            },
+            HEALTH: {
+                INDICATOR: 'health-indicator'
+            }
+        };
+        
+        function logOutput(message, type = 'info') {
+            const output = document.getElementById('output');
+            const colorClass = type === 'success' ? 'success' : type === 'error' ? 'error' : 'info';
+            output.innerHTML += `<div class="${colorClass}">${message}</div>`;
+            output.scrollTop = output.scrollHeight;
+        }
+        
+        function setBaseUrl() {
+            const host = document.getElementById('hostInput').value || 'localhost';
+            const port = document.getElementById('portInput').value || '8080';
+            window.wiremockBaseUrl = `http://${host}:${port}/__admin`;
+            logOutput(`✅ Base URL set to: ${window.wiremockBaseUrl}`, 'success');
+        }
+        
+        function setAuthHeader() {
+            const authValue = document.getElementById('authInput').value;
+            window.authHeader = authValue;
+            logOutput(`✅ Authorization header set to: ${authValue}`, 'success');
+        }
+        
+        function clearAuthHeader() {
+            window.authHeader = '';
+            document.getElementById('authInput').value = '';
+            logOutput('🧹 Authorization header cleared', 'success');
+        }
+        
+        function testDebugAuth() {
+            logOutput('🔍 Debug Auth Header:', 'info');
+            logOutput(`  window.authHeader: ${window.authHeader || 'None'}`, 'info');
+            logOutput(`  typeof: ${typeof window.authHeader}`, 'info');
+        }
+        
+        // Simplified uptime functions for testing
+        function updateUptime() {
+            if (!window.startTime) return;
+            
+            const uptime = Date.now() - window.startTime;
+            const seconds = Math.floor(uptime / 1000) % 60;
+            const minutes = Math.floor(uptime / (1000 * 60)) % 60;
+            const hours = Math.floor(uptime / (1000 * 60 * 60));
+            
+            logOutput(`⏱️ Uptime: ${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`, 'info');
+        }
+        
+        function testUptimeStart() {
+            window.startTime = Date.now();
+            if (window.uptimeInterval) clearInterval(window.uptimeInterval);
+            window.uptimeInterval = setInterval(updateUptime, 1000);
+            logOutput('✅ Uptime started', 'success');
+        }
+        
+        function testUptimeStop() {
+            if (window.uptimeInterval) {
+                clearInterval(window.uptimeInterval);
+                window.uptimeInterval = null;
+            }
+            window.startTime = null;
+            logOutput('⏹️ Uptime stopped', 'success');
+        }
+        
+        function showUptimeVars() {
+            logOutput('🔍 Uptime Variables:', 'info');
+            logOutput(`  window.startTime: ${window.startTime}`, 'info');
+            logOutput(`  window.uptimeInterval: ${window.uptimeInterval ? 'Active' : 'None'}`, 'info');
+        }
+        
+        // Simplified API client for testing
+        async function apiFetch(endpoint, options = {}) {
+            if (!window.wiremockBaseUrl) {
+                throw new Error('Base URL not set');
+            }
+            
+            const fullUrl = `${window.wiremockBaseUrl}${endpoint}`;
+            
+            // Include Authorization header if set
+            const headers = {
+                'Content-Type': 'application/json',
+                ...(window.authHeader && { 'Authorization': window.authHeader }),
+                ...options.headers
+            };
+            
+            logOutput(`🔗 API Request to ${fullUrl}`, 'info');
+            logOutput(`  Headers: ${JSON.stringify(headers, null, 2)}`, 'info');
+            
+            const response = await fetch(fullUrl, {
+                ...options,
+                headers: headers
+            });
+            
+            logOutput(`🔗 API Response: ${response.status} ${response.statusText}`, 'info');
+            return response;
+        }
+        
+        async function testHealthCheck() {
+            try {
+                const response = await apiFetch('/health');
+                const data = await response.json();
+                logOutput(`✅ Health check successful: ${JSON.stringify(data, null, 2)}`, 'success');
+            } catch (error) {
+                logOutput(`❌ Health check failed: ${error.message}`, 'error');
+            }
+        }
+        
+        async function testApiCall() {
+            try {
+                const response = await apiFetch('/mappings');
+                logOutput(`✅ API call successful: ${response.status} ${response.statusText}`, 'success');
+            } catch (error) {
+                logOutput(`❌ API call failed: ${error.message}`, 'error');
+            }
+        }
+        
+        // Mock connection functions
+        function testConnectionSuccess() {
+            // Simulate successful connection
+            const statusDot = document.getElementById(SELECTORS.CONNECTION.STATUS_DOT);
+            const statusText = document.getElementById(SELECTORS.CONNECTION.STATUS_TEXT);
+            const setupDiv = document.getElementById(SELECTORS.CONNECTION.SETUP);
+            const addButton = document.getElementById(SELECTORS.BUTTONS.ADD_MAPPING);
+            
+            if (statusDot) statusDot.className = 'status-dot connected';
+            if (statusText) statusText.textContent = 'Connected';
+            if (setupDiv) setupDiv.style.display = 'none';
+            if (addButton) addButton.disabled = false;
+            
+            logOutput('✅ Connection status set to Connected', 'success');
+        }
+        
+        function testConnectionError() {
+            // Simulate connection error
+            const statusDot = document.getElementById(SELECTORS.CONNECTION.STATUS_DOT);
+            const statusText = document.getElementById(SELECTORS.CONNECTION.STATUS_TEXT);
+            const setupDiv = document.getElementById(SELECTORS.CONNECTION.SETUP);
+            const addButton = document.getElementById(SELECTORS.BUTTONS.ADD_MAPPING);
+            
+            if (statusDot) statusDot.className = 'status-dot disconnected';
+            if (statusText) statusText.textContent = 'Disconnected';
+            if (setupDiv) setupDiv.style.display = 'block';
+            if (addButton) addButton.disabled = true;
+            
+            logOutput('❌ Connection status set to Disconnected', 'error');
+        }
+        
+        function testHealthError() {
+            // Simulate health error (stopUptime)
+            if (window.uptimeInterval) {
+                clearInterval(window.uptimeInterval);
+                window.uptimeInterval = null;
+            }
+            if (window.healthCheckInterval) {
+                clearInterval(window.healthCheckInterval);
+                window.healthCheckInterval = null;
+            }
+            window.startTime = null;
+            
+            const uptimeElement = document.getElementById(SELECTORS.UI.UPTIME);
+            if (uptimeElement) {
+                uptimeElement.textContent = '0s';
+            }
+            
+            // Reset connection status
+            const statusDot = document.getElementById(SELECTORS.CONNECTION.STATUS_DOT);
+            const statusText = document.getElementById(SELECTORS.CONNECTION.STATUS_TEXT);
+            const setupDiv = document.getElementById(SELECTORS.CONNECTION.SETUP);
+            const addButton = document.getElementById(SELECTORS.BUTTONS.ADD_MAPPING);
+            
+            if (statusDot) statusDot.className = 'status-dot disconnected';
+            if (statusText) statusText.textContent = 'Disconnected';
+            if (setupDiv) setupDiv.style.display = 'block';
+            if (addButton) addButton.disabled = true;
+            
+            logOutput('⏹️ Health error simulated - uptime stopped and connection reset', 'error');
+        }
+        
+        // Initialize
+        logOutput('🧪 Final Test Page Loaded', 'success');
+        logOutput('📝 Test connection status changes and uptime functionality', 'info');
+    </script>
+</body>
+</html>

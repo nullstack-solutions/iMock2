@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Final Integration Test</title>
+    <meta charset="UTF-8">
+    <style>
+        :root {
+            --primary-500: #6366f1;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --error: #ef4444;
+            --info: #3b82f6;
+            --bg-primary: #ffffff;
+            --bg-secondary: #f8fafc;
+            --text-primary: #0f172a;
+            --text-inverse: #ffffff;
+            --border-primary: #e2e8f0;
+            --space-2: 0.5rem;
+            --space-3: 0.75rem;
+            --space-4: 1rem;
+            --space-6: 1.5rem;
+            --radius-md: 0.5rem;
+            --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+        
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; 
+            margin: 0; 
+            padding: 20px; 
+            background: var(--bg-secondary);
+        }
+        
+        .test-section { 
+            margin: 20px 0; 
+            padding: 15px; 
+            border: 1px solid var(--border-primary); 
+            border-radius: var(--radius-md);
+            background: var(--bg-primary);
+            box-shadow: var(--shadow-md);
+        }
+        
+        button { 
+            padding: 10px 15px; 
+            margin: 5px; 
+            cursor: pointer; 
+            border: 1px solid var(--border-primary);
+            border-radius: var(--radius-md);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+        }
+        
+        .success { color: var(--success); }
+        .error { color: var(--error); }
+        .warning { color: var(--warning); }
+        .info { color: var(--info); }
+        
+        pre { 
+            background: #f5f5f5; 
+            padding: 10px; 
+            overflow-x: auto; 
+            border-radius: var(--radius-md);
+        }
+        
+        input, select { 
+            padding: 5px; 
+            margin: 5px; 
+            border: 1px solid var(--border-primary);
+            border-radius: var(--radius-md);
+        }
+        
+        /* Connection status elements */
+        .status {
+            display: flex;
+            align-items: center;
+            gap: var(--space-4);
+        }
+        
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: var(--space-2);
+            font-size: var(--font-size-sm);
+            font-weight: 500;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--error);
+        }
+        
+        .status-dot.connected {
+            background: var(--success);
+        }
+        
+        #uptime {
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+        
+        #health-indicator {
+            font-size: var(--font-size-sm);
+            color: var(--text-secondary);
+        }
+        
+        #connection-setup {
+            margin-top: 10px;
+            padding: 10px;
+            border: 1px solid var(--border-primary);
+            border-radius: var(--radius-md);
+        }
+        
+        /* ===== TOAST NOTIFICATIONS ===== */
+        #toast-container {
+            position: fixed;
+            top: 50%;
+            right: 20px;
+            transform: translateY(-50%);
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            pointer-events: none;
+        }
+
+        .toast {
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-weight: 500;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            opacity: 0;
+            transform: translateX(100%);
+            transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+            pointer-events: auto;
+            min-width: 280px;
+            max-width: 400px;
+            word-wrap: break-word;
+        }
+
+        .toast.show {
+            opacity: 1;
+            transform: translateX(0);
+        }
+
+        .toast-info {
+            background: var(--info);
+            color: white;
+            border-left: 4px solid #2563eb;
+        }
+
+        .toast-success {
+            background: var(--success);
+            color: white;
+            border-left: 4px solid #059669;
+        }
+
+        .toast-warning {
+            background: var(--warning);
+            color: white;
+            border-left: 4px solid #d97706;
+        }
+
+        .toast-error {
+            background: var(--error);
+            color: white;
+            border-left: 4px solid #dc2626;
+        }
+    </style>
+</head>
+<body>
+    <h1>Final Integration Test</h1>
+    
+    <div class="test-section">
+        <h2>Connection Status UI</h2>
+        <div class="status">
+            <div class="status-indicator">
+                <div id="status-dot" class="status-dot"></div>
+                <span id="status-text">Disconnected</span>
+            </div>
+            <div id="uptime">0s</div>
+            <div id="health-indicator"></div>
+        </div>
+        
+        <div id="connection-setup">
+            <label>Host: <input type="text" id="wiremock-host" value="localhost" /></label>
+            <label>Port: <input type="text" id="wiremock-port" value="8080" /></label>
+            <button id="connect-btn">Connect</button>
+        </div>
+        
+        <button id="add-mapping-btn" disabled>Add Mapping</button>
+    </div>
+    
+    <div class="test-section">
+        <h2>Authorization Header</h2>
+        <input type="text" id="auth-header" placeholder="Enter Authorization header value" style="width: 300px;">
+        <button onclick="setAuthHeader()">Set Header</button>
+        <button onclick="clearAuthHeader()">Clear Header</button>
+        <button onclick="testDebugAuth()">Debug Auth</button>
+    </div>
+    
+    <div class="test-section">
+        <h2>Uptime Test</h2>
+        <button onclick="testUptimeStart()">Start Uptime</button>
+        <button onclick="testUptimeStop()">Stop Uptime</button>
+        <button onclick="showUptimeVars()">Show Uptime Vars</button>
+    </div>
+    
+    <div class="test-section">
+        <h2>API Tests</h2>
+        <button onclick="testHealthCheck()">Health Check</button>
+        <button onclick="testApiCall()">Test API Call</button>
+    </div>
+    
+    <div class="test-section">
+        <h2>Connection Status Test</h2>
+        <button onclick="testConnectionSuccess()">Simulate Connection Success</button>
+        <button onclick="testConnectionError()">Simulate Connection Error</button>
+        <button onclick="testHealthError()">Simulate Health Error</button>
+    </div>
+    
+    <div class="test-section">
+        <h2>Toast Notifications Test</h2>
+        <button onclick="showInfoToast()">Show Info Toast</button>
+        <button onclick="showSuccessToast()">Show Success Toast</button>
+        <button onclick="showWarningToast()">Show Warning Toast</button>
+        <button onclick="showErrorToast()">Show Error Toast</button>
+    </div>
+    
+    <div class="test-section">
+        <h2>Output</h2>
+        <pre id="output"></pre>
+    </div>
+    
+    <div id="toast-container"></div>
+    
+    <script>
+        // Initialize global variables
+        window.wiremockBaseUrl = '';
+        window.authHeader = '';
+        window.startTime = null;
+        window.uptimeInterval = null;
+        window.healthCheckInterval = null;
+        
+        // Mock SELECTORS object
+        const SELECTORS = {
+            CONNECTION: {
+                STATUS_DOT: 'status-dot',
+                STATUS_TEXT: 'status-text',
+                SETUP: 'connection-setup',
+                HOST: 'wiremock-host',
+                PORT: 'wiremock-port'
+            },
+            BUTTONS: {
+                ADD_MAPPING: 'add-mapping-btn',
+                CONNECT: 'connect-btn'
+            },
+            UI: {
+                STATS: 'stats',
+                SEARCH_FILTERS: 'search-filters',
+                UPTIME: 'uptime'
+            },
+            HEALTH: {
+                INDICATOR: 'health-indicator'
+            }
+        };
+        
+        function logOutput(message, type = 'info') {
+            const output = document.getElementById('output');
+            const colorClass = type === 'success' ? 'success' : type === 'error' ? 'error' : type === 'warning' ? 'warning' : 'info';
+            output.innerHTML += `<div class="${colorClass}">${message}</div>`;
+            output.scrollTop = output.scrollHeight;
+        }
+        
+        // Connection functions
+        function connectToWireMock() {
+            const host = document.getElementById(SELECTORS.CONNECTION.HOST).value || 'localhost';
+            const port = document.getElementById(SELECTORS.CONNECTION.PORT).value || '8080';
+            window.wiremockBaseUrl = `http://${host}:${port}/__admin`;
+            
+            logOutput(`🔌 Connecting to WireMock at ${window.wiremockBaseUrl}`, 'info');
+            
+            // Simulate connection success
+            setTimeout(() => {
+                testConnectionSuccess();
+                logOutput('✅ Connected to WireMock successfully', 'success');
+                
+                // Start uptime
+                testUptimeStart();
+                
+                // Start health monitoring
+                startHealthMonitoring();
+            }, 1000);
+        }
+        
+        function startHealthMonitoring() {
+            if (window.healthCheckInterval) clearInterval(window.healthCheckInterval);
+            
+            window.healthCheckInterval = setInterval(() => {
+                // Simulate health check
+                const isHealthy = Math.random() > 0.2; // 80% chance of being healthy
+                
+                if (isHealthy) {
+                    const responseTime = Math.floor(Math.random() * 50) + 10; // 10-60ms
+                    logOutput(`💚 Health check OK (${responseTime}ms)`, 'info');
+                } else {
+                    logOutput('💔 Health check failed', 'error');
+                    testHealthError();
+                    clearInterval(window.healthCheckInterval);
+                    NotificationManager.error('WireMock health check failed, uptime stopped');
+                }
+            }, 5000); // Check every 5 seconds
+            
+            logOutput('🔍 Health monitoring started', 'info');
+        }
+        
+        function setAuthHeader() {
+            const authValue = document.getElementById('auth-header').value;
+            window.authHeader = authValue;
+            logOutput(`✅ Authorization header set to: ${authValue}`, 'success');
+        }
+        
+        function clearAuthHeader() {
+            window.authHeader = '';
+            document.getElementById('auth-header').value = '';
+            logOutput('🧹 Authorization header cleared', 'success');
+        }
+        
+        function testDebugAuth() {
+            logOutput('🔍 Debug Auth Header:', 'info');
+            logOutput(`  window.authHeader: ${window.authHeader || 'None'}`, 'info');
+            logOutput(`  typeof: ${typeof window.authHeader}`, 'info');
+        }
+        
+        // Uptime functions
+        function updateUptime() {
+            if (!window.startTime) return;
+            
+            const uptime = Date.now() - window.startTime;
+            const seconds = Math.floor(uptime / 1000) % 60;
+            const minutes = Math.floor(uptime / (1000 * 60)) % 60;
+            const hours = Math.floor(uptime / (1000 * 60 * 60));
+            
+            const uptimeElement = document.getElementById(SELECTORS.UI.UPTIME);
+            if (uptimeElement) {
+                uptimeElement.textContent = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            }
+        }
+        
+        function testUptimeStart() {
+            window.startTime = Date.now();
+            if (window.uptimeInterval) clearInterval(window.uptimeInterval);
+            window.uptimeInterval = setInterval(updateUptime, 1000);
+            logOutput('✅ Uptime started', 'success');
+        }
+        
+        function testUptimeStop() {
+            if (window.uptimeInterval) {
+                clearInterval(window.uptimeInterval);
+                window.uptimeInterval = null;
+            }
+            window.startTime = null;
+            
+            const uptimeElement = document.getElementById(SELECTORS.UI.UPTIME);
+            if (uptimeElement) {
+                uptimeElement.textContent = '0s';
+            }
+            
+            logOutput('⏹️ Uptime stopped', 'success');
+        }
+        
+        function showUptimeVars() {
+            logOutput('🔍 Uptime Variables:', 'info');
+            logOutput(`  window.startTime: ${window.startTime}`, 'info');
+            logOutput(`  window.uptimeInterval: ${window.uptimeInterval ? 'Active' : 'None'}`, 'info');
+        }
+        
+        // API client
+        async function apiFetch(endpoint, options = {}) {
+            if (!window.wiremockBaseUrl) {
+                throw new Error('Base URL not set');
+            }
+            
+            const fullUrl = `${window.wiremockBaseUrl}${endpoint}`;
+            
+            // Include Authorization header if set
+            const headers = {
+                'Content-Type': 'application/json',
+                ...(window.authHeader && { 'Authorization': window.authHeader }),
+                ...options.headers
+            };
+            
+            logOutput(`🔗 API Request to ${fullUrl}`, 'info');
+            logOutput(`  Headers: ${JSON.stringify(headers, null, 2)}`, 'info');
+            
+            // Simulate API response
+            return new Promise((resolve) => {
+                setTimeout(() => {
+                    const response = {
+                        status: 200,
+                        statusText: 'OK',
+                        json: () => Promise.resolve({ message: 'API response' })
+                    };
+                    logOutput(`🔗 API Response: ${response.status} ${response.statusText}`, 'info');
+                    resolve(response);
+                }, 300);
+            });
+        }
+        
+        async function testHealthCheck() {
+            try {
+                const response = await apiFetch('/health');
+                const data = await response.json();
+                logOutput(`✅ Health check successful: ${JSON.stringify(data, null, 2)}`, 'success');
+            } catch (error) {
+                logOutput(`❌ Health check failed: ${error.message}`, 'error');
+            }
+        }
+        
+        async function testApiCall() {
+            try {
+                const response = await apiFetch('/mappings');
+                logOutput(`✅ API call successful: ${response.status} ${response.statusText}`, 'success');
+            } catch (error) {
+                logOutput(`❌ API call failed: ${error.message}`, 'error');
+            }
+        }
+        
+        // Connection status functions
+        function testConnectionSuccess() {
+            // Simulate successful connection
+            const statusDot = document.getElementById(SELECTORS.CONNECTION.STATUS_DOT);
+            const statusText = document.getElementById(SELECTORS.CONNECTION.STATUS_TEXT);
+            const setupDiv = document.getElementById(SELECTORS.CONNECTION.SETUP);
+            const addButton = document.getElementById(SELECTORS.BUTTONS.ADD_MAPPING);
+            
+            if (statusDot) statusDot.className = 'status-dot connected';
+            if (statusText) statusText.textContent = 'Connected';
+            if (setupDiv) setupDiv.style.display = 'none';
+            if (addButton) addButton.disabled = false;
+            
+            logOutput('✅ Connection status set to Connected', 'success');
+        }
+        
+        function testConnectionError() {
+            // Simulate connection error
+            const statusDot = document.getElementById(SELECTORS.CONNECTION.STATUS_DOT);
+            const statusText = document.getElementById(SELECTORS.CONNECTION.STATUS_TEXT);
+            const setupDiv = document.getElementById(SELECTORS.CONNECTION.SETUP);
+            const addButton = document.getElementById(SELECTORS.BUTTONS.ADD_MAPPING);
+            
+            if (statusDot) statusDot.className = 'status-dot';
+            if (statusText) statusText.textContent = 'Disconnected';
+            if (setupDiv) setupDiv.style.display = 'block';
+            if (addButton) addButton.disabled = true;
+            
+            logOutput('❌ Connection status set to Disconnected', 'error');
+        }
+        
+        function testHealthError() {
+            // Simulate health error (stopUptime)
+            if (window.uptimeInterval) {
+                clearInterval(window.uptimeInterval);
+                window.uptimeInterval = null;
+            }
+            if (window.healthCheckInterval) {
+                clearInterval(window.healthCheckInterval);
+                window.healthCheckInterval = null;
+            }
+            window.startTime = null;
+            
+            const uptimeElement = document.getElementById(SELECTORS.UI.UPTIME);
+            if (uptimeElement) {
+                uptimeElement.textContent = '0s';
+            }
+            
+            // Reset connection status
+            const statusDot = document.getElementById(SELECTORS.CONNECTION.STATUS_DOT);
+            const statusText = document.getElementById(SELECTORS.CONNECTION.STATUS_TEXT);
+            const setupDiv = document.getElementById(SELECTORS.CONNECTION.SETUP);
+            const addButton = document.getElementById(SELECTORS.BUTTONS.ADD_MAPPING);
+            
+            if (statusDot) statusDot.className = 'status-dot';
+            if (statusText) statusText.textContent = 'Disconnected';
+            if (setupDiv) setupDiv.style.display = 'block';
+            if (addButton) addButton.disabled = true;
+            
+            logOutput('⏹️ Health error simulated - uptime stopped and connection reset', 'error');
+        }
+        
+        // Toast notification system
+        window.NotificationManager = {
+            queue: [],
+            isShowing: false,
+            toastContainer: null,
+            
+            TYPES: {
+                INFO: 'info',
+                SUCCESS: 'success', 
+                ERROR: 'error',
+                WARNING: 'warning'
+            },
+            
+            init() {
+                if (!this.toastContainer) {
+                    this.toastContainer = document.getElementById('toast-container');
+                }
+            },
+            
+            show(message, type = this.TYPES.INFO, duration = 3000) {
+                this.init();
+                this.queue.push({ message, type, duration });
+                this.processQueue();
+            },
+            
+            processQueue() {
+                if (this.isShowing || this.queue.length === 0) return;
+                
+                const { message, type, duration } = this.queue.shift();
+                this.isShowing = true;
+                
+                this.displayNotification(message, type);
+                
+                setTimeout(() => {
+                    this.hideNotification();
+                    this.isShowing = false;
+                    this.processQueue();
+                }, duration);
+            },
+            
+            displayNotification(message, type) {
+                const toast = document.createElement('div');
+                toast.className = `toast toast-${type}`;
+                toast.textContent = message;
+                
+                this.toastContainer.appendChild(toast);
+                
+                setTimeout(() => {
+                    toast.classList.add('show');
+                }, 10);
+                
+                this.currentToast = toast;
+            },
+            
+            hideNotification() {
+                if (this.currentToast) {
+                    this.currentToast.classList.remove('show');
+                    
+                    setTimeout(() => {
+                        if (this.currentToast && this.currentToast.parentNode) {
+                            this.currentToast.parentNode.removeChild(this.currentToast);
+                            this.currentToast = null;
+                        }
+                    }, 300);
+                }
+            },
+            
+            success(msg) { this.show(msg, this.TYPES.SUCCESS); },
+            error(msg) { this.show(msg, this.TYPES.ERROR); },
+            info(msg) { this.show(msg, this.TYPES.INFO); },
+            warning(msg) { this.show(msg, this.TYPES.WARNING); }
+        };
+        
+        // Toast test functions
+        function showInfoToast() {
+            NotificationManager.info('This is an info message');
+            logOutput('ℹ️ Info toast shown', 'info');
+        }
+        
+        function showSuccessToast() {
+            NotificationManager.success('This is a success message');
+            logOutput('✅ Success toast shown', 'success');
+        }
+        
+        function showWarningToast() {
+            NotificationManager.warning('This is a warning message');
+            logOutput('⚠️ Warning toast shown', 'warning');
+        }
+        
+        function showErrorToast() {
+            NotificationManager.error('This is an error message');
+            logOutput('❌ Error toast shown', 'error');
+        }
+        
+        // Event listeners
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById(SELECTORS.BUTTONS.CONNECT).addEventListener('click', connectToWireMock);
+            
+            logOutput('🧪 Final Integration Test Page Loaded', 'success');
+            logOutput('📝 Test all features: connection status, uptime, auth header, and toast notifications', 'info');
+        });
+    </script>
+</body>
+</html>
