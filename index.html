@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WireMock UI - Enhanced Client</title>
+    
+    <!-- CSS files in logical loading order -->
+    <link rel="stylesheet" href="styles/animations.css">
+    <link rel="stylesheet" href="styles/components.css">
+    <link rel="stylesheet" href="styles/modals.css">
+    <link rel="stylesheet" href="styles/main.css">
+</head>
+<body data-theme="light">
+    <div class="header">
+        <div class="logo">
+            🔧 WireMock UI
+            <span class="version">v3.9.1</span>
+        </div>
+        <div class="status">
+            <div class="status-indicator">
+                <div class="status-dot" id="status-dot"></div>
+                <span id="status-text">Disconnected</span>
+                <span id="health-indicator" style="display: none; margin-left: 10px; font-size: 0.9em;"></span>
+            </div>
+            <button class="theme-toggle" onclick="toggleTheme()">
+                <span id="theme-icon">🌙</span>
+            </button>
+        </div>
+    </div>
+    
+    <div class="container">
+        <div class="sidebar">
+            <div class="nav-item active" onclick="showPage('mappings', this)">
+                <span class="nav-icon">📋</span> Mappings
+            </div>
+            <div class="nav-item" onclick="showPage('requests', this)">
+                <span class="nav-icon">📥</span> Request Log
+            </div>
+            <div class="nav-item" onclick="showPage('scenarios', this)">
+                <span class="nav-icon">🎭</span> Scenarios
+            </div>
+            <div class="nav-item" onclick="showPage('import-export', this)">
+                <span class="nav-icon">📦</span> Import/Export
+            </div>
+            <div class="nav-item" onclick="showPage('recording', this)">
+                <span class="nav-icon">🎙️</span> Recording
+            </div>
+            <div class="nav-item" onclick="showPage('settings', this)">
+                <span class="nav-icon">⚙️</span> Settings
+            </div>
+        </div>
+        
+        <div class="main-content">
+            <!-- MAPPINGS PAGE -->
+            <div id="mappings-page">
+                <div class="page-header">
+                    <h1 class="page-title">API Mappings</h1>
+                    <div style="display: flex; gap: var(--space-3);">
+                        <button class="btn btn-secondary" onclick="refreshMappings()">🔄 Refresh</button>
+                        <button class="btn btn-primary" onclick="showModal('add-mapping-modal')" id="add-mapping-btn" disabled>+ Add Mapping</button>
+                    </div>
+                </div>
+                
+                <div class="card" id="connection-setup">
+                    <div class="card-header">
+                        <h3 class="card-title">Connect to WireMock Server</h3>
+                    </div>
+                    <p style="margin-bottom: var(--space-6); color: var(--text-secondary);">Enter your WireMock server details to get started:</p>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Host</label>
+                            <input type="text" class="form-input" id="wiremock-host" value="localhost">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Port</label>
+                            <input type="number" class="form-input" id="wiremock-port" value="8080">
+                        </div>
+                        <div class="form-group" style="display: flex; gap: var(--space-2); align-items: end;">
+                            <button class="btn btn-success" onclick="connectToWireMock()">Connect</button>
+                            <button class="btn btn-secondary" onclick="loadMockData()">Demo Mode</button>
+                            <button class="btn btn-warning" onclick="checkHealth()">Health Check</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="stats" id="stats" style="display: none;">
+                    <div class="stat-card">
+                        <div class="stat-number" id="mappings-count">0</div>
+                        <div class="stat-label">Mappings</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" id="requests-count">0</div>
+                        <div class="stat-label">Requests</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" id="scenarios-count">0</div>
+                        <div class="stat-label">Scenarios</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" id="uptime">0s</div>
+                        <div class="stat-label">Uptime</div>
+                    </div>
+                </div>
+                
+                <div class="search-filters" id="search-filters" style="display: none;">
+                    <div class="filter-grid">
+                        <div class="form-group">
+                            <label class="form-label">Method</label>
+                            <select class="form-select" id="filter-method" onchange="applyFilters()">
+                                <option value="">All Methods</option>
+                                <option value="GET">GET</option>
+                                <option value="POST">POST</option>
+                                <option value="PUT">PUT</option>
+                                <option value="DELETE">DELETE</option>
+                                <option value="PATCH">PATCH</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Search URL</label>
+                            <input type="text" class="form-input" id="filter-url" placeholder="Enter URL pattern" oninput="applyFilters()">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Status</label>
+                            <select class="form-select" id="filter-status" onchange="applyFilters()">
+                                <option value="">All Statuses</option>
+                                <option value="200">200 OK</option>
+                                <option value="201">201 Created</option>
+                                <option value="400">400 Bad Request</option>
+                                <option value="404">404 Not Found</option>
+                                <option value="500">500 Internal Error</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <button class="btn btn-secondary" onclick="clearMappingFilters()">Clear Filters</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="mappings-loading" class="loading hidden">Loading mappings...</div>
+                <div id="mappings-list-container">
+                    <div id="mappings-empty" class="empty-state hidden">
+                        <h3>No mappings found</h3>
+                        <p>Connect to WireMock server or use Demo Mode to see mappings.</p>
+                    </div>
+                    <div class="cards-container" id="mappings-list" style="display: none;">
+                        <!-- Mapping items will be dynamically inserted here -->
+                    </div>
+                </div>
+            </div>
+            
+            <!-- REQUESTS PAGE -->
+            <div id="requests-page" class="hidden">
+                <div class="page-header">
+                    <h1 class="page-title">Request Log</h1>
+                    <div style="display: flex; gap: var(--space-2);">
+                        <button class="btn btn-secondary" onclick="refreshRequests()">🔄 Refresh</button>
+                        <button class="btn btn-danger" onclick="clearRequests()">🗑️ Clear Log</button>
+                        <button class="btn btn-secondary" onclick="clearRequestFilters()">🧹 Clear Filters</button>
+                    </div>
+                </div>
+                
+                <div class="search-filters">
+                    <!-- First row: Basic filters -->
+                    <div class="filter-grid">
+                        <div class="form-group">
+                            <label class="form-label">Method</label>
+                            <select class="form-select" id="req-filter-method" onchange="applyRequestFilters()">
+                                <option value="">All Methods</option>
+                                <option value="GET">GET</option>
+                                <option value="POST">POST</option>
+                                <option value="PUT">PUT</option>
+                                <option value="DELETE">DELETE</option>
+                                <option value="PATCH">PATCH</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Status</label>
+                            <select class="form-select" id="req-filter-status" onchange="applyRequestFilters()">
+                                <option value="">All Statuses</option>
+                                <option value="matched">✅ Matched</option>
+                                <option value="unmatched">❌ Unmatched</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">URL Pattern</label>
+                            <input type="text" class="form-input" id="req-filter-url" placeholder="e.g., /api/*" oninput="applyRequestFilters()">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Quick Filter</label>
+                            <select class="form-select" id="req-filter-quick" onchange="applyQuickFilter()">
+                                <option value="">Select time range</option>
+                                <option value="5m">Last 5 minutes</option>
+                                <option value="15m">Last 15 minutes</option>
+                                <option value="30m">Last 30 minutes</option>
+                                <option value="1h">Last 1 hour</option>
+                                <option value="3h">Last 3 hours</option>
+                                <option value="6h">Last 6 hours</option>
+                                <option value="12h">Last 12 hours</option>
+                                <option value="1d">Last 1 day</option>
+                                <option value="3d">Last 3 days</option>
+                                <option value="7d">Last 7 days</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <!-- Second row: Time Range -->
+                    <div class="filter-grid" style="margin-top: var(--space-3);">
+                        <div class="form-group">
+                            <label class="form-label">Custom Time Range</label>
+                            <div style="display: flex; gap: var(--space-2);">
+                                <input type="datetime-local" class="form-input" id="req-filter-from" onchange="clearQuickFilter(); applyRequestFilters()" style="flex: 1;" placeholder="From">
+                                <input type="datetime-local" class="form-input" id="req-filter-to" onchange="clearQuickFilter(); applyRequestFilters()" style="flex: 1;" placeholder="To">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="requests-loading" class="loading hidden">Loading requests...</div>
+                <div id="requests-list-container">
+                    <div id="requests-empty" class="empty-state hidden">
+                        <h3>No requests logged</h3>
+                        <p>Make some API calls to see them here.</p>
+                    </div>
+                    <div class="cards-container" id="requests-list" style="display: none;">
+                        <!-- Request items will be dynamically inserted here -->
+                    </div>
+                </div>
+            </div>
+            
+            <!-- SCENARIOS PAGE -->
+            <div id="scenarios-page" class="hidden">
+                <div class="page-header">
+                    <h1 class="page-title">Scenario Management</h1>
+                    <div style="display: flex; gap: var(--space-2);">
+                        <button class="btn btn-secondary" onclick="refreshScenarios()">🔄 Refresh</button>
+                        <button class="btn btn-danger" onclick="resetAllScenarios()">🔄 Reset All</button>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">Scenario State Control</h3>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Scenario</label>
+                            <select class="form-select" id="scenario-select">
+                                <option value="">Select Scenario</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Set State</label>
+                            <input type="text" class="form-input" id="scenario-state" placeholder="Enter state name">
+                        </div>
+                        <div class="form-group" style="display: flex; align-items: end;">
+                            <button class="btn btn-primary" onclick="setScenarioState()">Update State</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="scenarios-loading" class="loading hidden">Loading scenarios...</div>
+                <div id="scenarios-list-container">
+                    <div id="scenarios-empty" class="empty-state hidden">
+                        <h3>No scenarios found</h3>
+                        <p>Create mappings with scenarios to manage state here.</p>
+                    </div>
+                    <div class="cards-container" id="scenarios-list" style="display: none;">
+                        <!-- Scenario items will be dynamically inserted here -->
+                    </div>
+                </div>
+            </div>
+            
+            <!-- IMPORT/EXPORT PAGE -->
+            <div id="import-export-page" class="hidden">
+                <div class="page-header">
+                    <h1 class="page-title">Import/Export</h1>
+                </div>
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-6);">
+                    <!-- Export Section -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">📤 Export Data</h3>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Export Format</label>
+                            <select class="form-select" id="export-format">
+                                <option value="json">JSON</option>
+                                <option value="yaml">YAML</option>
+                            </select>
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: var(--space-3);">
+                            <button class="btn btn-primary" onclick="exportMappings()">📤 Export All Mappings</button>
+                            <button class="btn btn-secondary" onclick="exportRequests()">📤 Export Request Log</button>
+                        </div>
+                        <div id="export-result" style="margin-top: var(--space-4);"></div>
+                    </div>
+                    
+                    <!-- Import Section -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">📥 Import Data</h3>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Import File</label>
+                            <div class="file-input-container">
+                                <input type="file" class="file-input" id="import-file" accept=".json,.yaml,.yml" onchange="updateFileDisplay()">
+                                <label for="import-file" class="btn btn-secondary" style="width: 100%; justify-content: center;">📁 Choose File</label>
+                                <div class="file-display" style="margin-top: var(--space-2); padding: var(--space-3); background: var(--bg-secondary); border-radius: var(--radius-md); text-align: center; color: var(--text-secondary);" id="file-display">
+                                    <span class="file-placeholder">No file selected</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-group" id="import-actions" style="display: none;">
+                            <div style="display: flex; flex-direction: column; gap: var(--space-3);">
+                                <button class="btn btn-primary" onclick="importMappings()">📥 Add to Existing</button>
+                                <button class="btn btn-danger" onclick="importAndReplace()">🔄 Replace All</button>
+                            </div>
+                        </div>
+                        <div id="import-result" style="margin-top: var(--space-4);"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- RECORDING PAGE -->
+            <div id="recording-page" class="hidden">
+                <div class="page-header">
+                    <h1 class="page-title">Recording</h1>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">🎙️ Record API Calls</h3>
+                    </div>
+                    <p style="margin-bottom: var(--space-4); color: var(--text-secondary);">Configure recording settings to capture real API calls and generate mappings automatically.</p>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Target URL</label>
+                            <input type="text" class="form-input" id="record-target-url" placeholder="https://api.example.com">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Recording Mode</label>
+                            <select class="form-select" id="record-mode">
+                                <option value="record">Record</option>
+                                <option value="snapshot">Snapshot</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div style="display: flex; gap: var(--space-3); margin-top: var(--space-4);">
+                        <button class="btn btn-success" onclick="startRecording()">▶️ Start Recording</button>
+                        <button class="btn btn-danger" onclick="stopRecording()">⏹️ Stop Recording</button>
+                        <button class="btn btn-secondary" onclick="clearRecordings()">🗑️ Clear Recordings</button>
+                    </div>
+                    
+                    <div id="recording-status" style="margin-top: var(--space-4);"></div>
+                </div>
+                
+                <div id="recordings-list" style="margin-top: var(--space-6);">
+                    <!-- Recorded mappings will appear here -->
+                </div>
+            </div>
+            
+            <!-- SETTINGS PAGE -->
+            <div id="settings-page" class="hidden">
+                <div class="page-header">
+                    <h1 class="page-title">Settings</h1>
+                </div>
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-6);">
+                    <!-- General Settings -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">⚙️ General Settings</h3>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Theme</label>
+                            <select class="form-select" id="theme-select" onchange="changeTheme()">
+                                <option value="light">Light</option>
+                                <option value="dark">Dark</option>
+                                <option value="auto">Auto</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Auto-refresh Interval (seconds)</label>
+                            <input type="number" class="form-input" id="refresh-interval" value="30" min="5" max="300">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">
+                                <input type="checkbox" id="auto-refresh-enabled" checked> Enable Auto-refresh
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <!-- Connection Settings -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">🔗 Connection Settings</h3>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Default Host</label>
+                            <input type="text" class="form-input" id="default-host" value="localhost">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Default Port</label>
+                            <input type="number" class="form-input" id="default-port" value="8080">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Request Timeout (ms)</label>
+                            <input type="number" class="form-input" id="request-timeout" value="5000" min="1000" max="30000">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Authorization Header</label>
+                            <input type="text" class="form-input" id="auth-header" placeholder="Bearer token123 or Basic dXNlcjpwYXNz">
+                            <small class="form-help">Optional. Will be added to all WireMock API requests</small>
+                        </div>
+                    </div>
+                </div>
+                
+                <div style="margin-top: var(--space-6); text-align: center;">
+                    <button class="btn btn-primary" onclick="saveSettings()">💾 Save Settings</button>
+                    <button class="btn btn-secondary" onclick="resetSettings()">🔄 Reset to Defaults</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL FOR ADDING/EDITING MAPPINGS -->
+    <div id="add-mapping-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="btn btn-primary" onclick="saveMapping()">Save Mapping</button>
+                <h3 id="modal-title">Add New Mapping</h3>
+                <button class="modal-close" onclick="hideModal('add-mapping-modal')">&times;</button>
+            </div>
+            <form id="mapping-form">
+                <input type="hidden" id="mapping-id">
+                
+                <div class="form-group">
+                    <label class="form-label">Mapping Name</label>
+                    <input type="text" class="form-input" id="mapping-name" placeholder="Enter mapping name">
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Method</label>
+                        <select class="form-select" id="method">
+                            <option value="GET">GET</option>
+                            <option value="POST">POST</option>
+                            <option value="PUT">PUT</option>
+                            <option value="DELETE">DELETE</option>
+                            <option value="PATCH">PATCH</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">URL Pattern</label>
+                        <input type="text" class="form-input" id="url-pattern" placeholder="/api/users" required>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Response Status</label>
+                    <input type="number" class="form-input" id="response-status" value="200" min="100" max="599">
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Response Body</label>
+                    <textarea class="form-textarea" id="response-body" rows="6" placeholder='{ "message": "Hello World" }'></textarea>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL FOR EDITING MAPPINGS -->
+    <div id="edit-mapping-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="btn btn-primary" onclick="updateMapping()">Update Mapping</button>
+                <h3 id="edit-modal-title">Edit Mapping</h3>
+                <button class="modal-close" onclick="hideModal('edit-mapping-modal')">&times;</button>
+            </div>
+            
+            <!-- Editor Mode Switcher -->
+            <div class="editor-mode-switcher">
+                <button type="button" class="mode-btn active" data-editor-mode="form">📝 Form</button>
+                <button type="button" class="mode-btn" data-editor-mode="json">📄 JSON</button>
+                <div class="editor-status">
+                    <span id="editor-mode-indicator">Mode: Form</span>
+                    <span id="editor-dirty-indicator" class="dirty-indicator" style="display: none;">●</span>
+                </div>
+            </div>
+            
+            <!-- Form Editor Container -->
+            <div id="form-editor-container">
+            <form id="edit-mapping-form">
+                <input type="hidden" id="edit-mapping-id">
+                
+                <div class="form-group">
+                    <label class="form-label">Mapping Name</label>
+                    <input type="text" class="form-input" id="edit-mapping-name" placeholder="Enter mapping name">
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Method</label>
+                        <select class="form-select" id="edit-method">
+                            <option value="GET">GET</option>
+                            <option value="POST">POST</option>
+                            <option value="PUT">PUT</option>
+                            <option value="DELETE">DELETE</option>
+                            <option value="PATCH">PATCH</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">URL Pattern</label>
+                        <input type="text" class="form-input" id="edit-url-pattern" placeholder="/api/users" required>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Response Status</label>
+                    <input type="number" class="form-input" id="edit-response-status" value="200" min="100" max="599">
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Response Delay (ms)</label>
+                    <input type="number" class="form-input" id="edit-response-delay" placeholder="Delay in milliseconds">
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Request Headers (JSON)</label>
+                    <textarea class="form-textarea" id="edit-request-headers" rows="3" placeholder='{ "Content-Type": "application/json" }'></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Request Body</label>
+                    <textarea class="form-textarea" id="edit-request-body" rows="3" placeholder='{ "name": "example" }'></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Response Headers (JSON)</label>
+                    <textarea class="form-textarea" id="edit-response-headers" rows="3" placeholder='{ "Content-Type": "application/json" }'></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Response Body</label>
+                    <textarea class="form-textarea" id="edit-response-body" rows="6" placeholder='{ "message": "Hello World" }'></textarea>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Priority</label>
+                        <input type="number" class="form-input" id="edit-mapping-priority" placeholder="Priority">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Scenario Name</label>
+                        <input type="text" class="form-input" id="edit-mapping-scenario" placeholder="Scenario name">
+                    </div>
+                </div>
+            </form>
+            </div>
+            
+            <!-- JSON Editor Container -->
+            <div id="json-editor-container" style="display: none;">
+                <div class="json-editor-wrapper">
+                    <div class="json-editor-toolbar">
+                        <button type="button" class="btn btn-sm" data-action="validate-json">✓ Validate</button>
+                        <button type="button" class="btn btn-sm" data-action="format-json">🎨 Format</button>
+                        <button type="button" class="btn btn-sm" data-action="minify-json">📦 Minify</button>
+                    </div>
+                    <textarea id="json-editor" class="json-editor" rows="20" placeholder="{
+  \"name\": \"My Mapping\",
+  \"request\": {
+    \"method\": \"GET\",
+    \"urlPattern\": \"/api/example\"
+  },
+  \"response\": {
+    \"status\": 200,
+    \"jsonBody\": {
+      \"message\": \"Hello World\"
+    }
+  }
+}"></textarea>
+                    <div id="json-validation-result" class="json-validation"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL FOR REQUEST DETAILS -->
+    <div id="request-details-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Request Details</h3>
+                <button class="modal-close" onclick="hideModal('request-details-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="request-details-content">
+                    <!-- Request details will be populated here -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="hideModal('request-details-modal')">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL FOR MAPPING DETAILS -->
+    <div id="mapping-details-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Mapping Details</h3>
+                <button class="modal-close" onclick="hideModal('mapping-details-modal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="mapping-details-content">
+                    <!-- Mapping details will be populated here -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="hideModal('mapping-details-modal')">Close</button>
+            </div>
+        </div>
+    </div>
+
+<!-- JavaScript modules in loading order -->
+<script src="js/core.js"></script>
+<script src="js/managers.js"></script>
+<script src="js/features.js"></script>
+<script src="js/editor.js"></script>
+<script src="js/main.js"></script>
+
+</body>
+</html>

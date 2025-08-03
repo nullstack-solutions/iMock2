@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🧪 Smoke Test - WireMock UI</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 20px;
+            background: #f5f5f5;
+        }
+        .test-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .test-title {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+        }
+        .test-case {
+            margin: 15px 0;
+            padding: 10px;
+            border-left: 4px solid #3498db;
+            background: #f8f9fa;
+        }
+        .test-status {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        .pass { background: #d4edda; color: #155724; }
+        .fail { background: #f8d7da; color: #721c24; }
+        .pending { background: #fff3cd; color: #856404; }
+        .test-button {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .test-button:hover {
+            background: #2980b9;
+        }
+        .results {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            background: #e9ecef;
+        }
+        .iframe-container {
+            width: 100%;
+            height: 600px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-top: 15px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 Smoke Test - WireMock UI Refactoring</h1>
+    
+    <div class="test-container">
+        <h2 class="test-title">📋 Тестовый план</h2>
+        <div class="test-case">
+            <strong>🎯 Цель:</strong> Проверить корректность работы UI после рефакторинга
+        </div>
+        <div class="test-case">
+            <strong>🔧 Что тестируем:</strong>
+            <ul>
+                <li>Константы селекторов и endpoints</li>
+                <li>NotificationManager с очередью уведомлений</li>
+                <li>TabManager для унифицированного управления вкладками</li>
+                <li>Сохранение состояния фильтров</li>
+                <li>Переключение между вкладками</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="test-container">
+        <h2 class="test-title">🚀 Автоматические тесты</h2>
+        
+        <div class="test-case">
+            <strong>Test 1: Константы селекторов</strong>
+            <span id="test1-status" class="test-status pending">PENDING</span>
+            <br><small>Проверяем что все селекторы определены в SELECTORS объекте</small>
+        </div>
+        
+        <div class="test-case">
+            <strong>Test 2: Константы endpoints</strong>
+            <span id="test2-status" class="test-status pending">PENDING</span>
+            <br><small>Проверяем что все endpoints определены в ENDPOINTS объекте</small>
+        </div>
+        
+        <div class="test-case">
+            <strong>Test 3: NotificationManager</strong>
+            <span id="test3-status" class="test-status pending">PENDING</span>
+            <br><small>Проверяем что NotificationManager корректно инициализирован</small>
+        </div>
+        
+        <div class="test-case">
+            <strong>Test 4: TabManager</strong>
+            <span id="test4-status" class="test-status pending">PENDING</span>
+            <br><small>Проверяем что TabManager корректно инициализирован</small>
+        </div>
+        
+        <div class="test-case">
+            <strong>Test 5: Константы селекторов - полнота</strong>
+            <span id="test5-status" class="test-status pending">PENDING</span>
+            <br><small>Проверяем наличие всех ключевых селекторов</small>
+        </div>
+        
+        <div class="test-case">
+            <strong>Test 6: NotificationManager - методы и очередь</strong>
+            <span id="test6-status" class="test-status pending">PENDING</span>
+            <br><small>Проверяем наличие очереди и всех методов</small>
+        </div>
+        
+        <div class="test-case">
+            <strong>Test 7: TabManager - конфигурация вкладок</strong>
+            <span id="test7-status" class="test-status pending">PENDING</span>
+            <br><small>Проверяем конфигурацию для mappings, requests, scenarios</small>
+        </div>
+        
+        <div class="test-case">
+            <strong>Test 8: Глобальные функции</strong>
+            <span id="test8-status" class="test-status pending">PENDING</span>
+            <br><small>Проверяем наличие ключевых глобальных функций</small>
+        </div>
+        
+        <div class="test-case">
+            <strong>Test 9: DOM элементы - основные</strong>
+            <span id="test9-status" class="test-status pending">PENDING</span>
+            <br><small>Проверяем наличие ключевых DOM элементов</small>
+        </div>
+        
+        <div class="test-case">
+            <strong>Test 10: Функции очистки фильтров</strong>
+            <span id="test10-status" class="test-status pending">PENDING</span>
+            <br><small>Проверяем наличие функций clearMappingFilters и clearRequestFilters</small>
+        </div>
+        
+        <div class="test-case">
+            <strong>Test 11: Функция фильтрации маппингов</strong>
+            <span id="test11-status" class="test-status pending">PENDING</span>
+            <br><small>Проверяем наличие функции applyFilters для фильтрации маппингов</small>
+        </div>
+        
+        <div class="test-case">
+            <strong>Test 12: Функция очистки фильтров маппингов</strong>
+            <span id="test12-status" class="test-status pending">PENDING</span>
+            <br><small>Проверяем наличие функции clearMappingFilters</small>
+        </div>
+        
+        <div class="test-case">
+            <strong>Test 13: Архитектура фильтрации с раздельными хранилищами</strong>
+            <span id="test13-status" class="test-status pending">PENDING</span>
+            <br><small>Проверяем наличие originalMappings и allMappings для корректной фильтрации</small>
+        </div>
+        
+        <div class="test-case">
+            <strong>Test 14: Сортировка маппингов</strong>
+            <span id="test14-status" class="test-status pending">PENDING</span>
+            <br><small>Проверяем сортировку по priority, методу и URL в fetchAndRenderMappings</small>
+        </div>
+        
+        <div class="test-case">
+            <strong>Test 15: Структура данных запросов WireMock 3.9.1</strong>
+            <span id="test15-status" class="test-status pending">PENDING</span>
+            <br><small>Проверяем корректность парсинга структуры данных запросов WireMock 3.9.1</small>
+        </div>
+        
+        <div class="test-case">
+            <strong>Test 16: Функция фильтрации запросов</strong>
+            <span id="test16-status" class="test-status pending">PENDING</span>
+            <br><small>Проверяем корректность функции applyRequestFilters для фильтрации запросов</small>
+        </div>
+        
+        <div class="test-case">
+            <strong>Test 17: WireMock 3.9.1+ API Endpoints</strong>
+            <span id="test17-status" class="test-status pending">PENDING</span>
+            <br><small>Проверяем наличие исправленных endpoints для recordings, near-misses, requests/count</small>
+        </div>
+        
+        <div class="test-case">
+            <strong>Test 18: Новые функции WireMock 3.13.x</strong>
+            <span id="test18-status" class="test-status pending">PENDING</span>
+            <br><small>Проверяем функции для unmatched mappings и поиска по метаданным</small>
+        </div>
+        
+        <div class="test-case">
+            <strong>Test 19: Recording API Functions</strong>
+            <span id="test19-status" class="test-status pending">PENDING</span>
+            <br><small>Проверяем функции startRecording, stopRecording, getRecordingStatus</small>
+        </div>
+        
+        <div class="test-case">
+            <strong>Test 20: Near Misses API Functions</strong>
+            <span id="test20-status" class="test-status pending">PENDING</span>
+            <br><small>Проверяем функции поиска близких совпадений</small>
+        </div>
+        
+        <button class="test-button" onclick="runAutomaticTests()">🔄 Запустить автотесты</button>
+        
+        <div id="test-results" class="results" style="display: none;">
+            <h3>📊 Результаты тестов:</h3>
+            <div id="test-output"></div>
+        </div>
+    </div>
+
+    <div class="test-container">
+        <h2 class="test-title">👤 Ручные тесты</h2>
+        
+        <div class="test-case">
+            <strong>Manual Test 1: Подключение к WireMock</strong>
+            <br><small>1. Откройте UI ниже</small>
+            <br><small>2. Введите host:port WireMock сервера</small>
+            <br><small>3. Нажмите "Подключиться"</small>
+            <br><small>4. Проверьте что появилось уведомление о подключении</small>
+        </div>
+        
+        <div class="test-case">
+            <strong>Manual Test 2: Фильтры маппингов</strong>
+            <br><small>1. Перейдите на вкладку "Маппинги"</small>
+            <br><small>2. Установите фильтр по методу (GET/POST)</small>
+            <br><small>3. Переключитесь на другую вкладку и вернитесь</small>
+            <br><small>4. Проверьте что фильтр сохранился</small>
+        </div>
+        
+        <div class="test-case">
+            <strong>Manual Test 3: Очистка фильтров</strong>
+            <br><small>1. Установите несколько фильтров</small>
+            <br><small>2. Нажмите "Очистить фильтры"</small>
+            <br><small>3. Проверьте что все фильтры сброшены</small>
+        </div>
+        
+        <div class="test-case">
+            <strong>Manual Test 4: Уведомления</strong>
+            <br><small>1. Выполните несколько действий подряд</small>
+            <br><small>2. Проверьте что уведомления не перекрываются</small>
+            <br><small>3. Проверьте что уведомления исчезают через время</small>
+        </div>
+    </div>
+
+    <div class="test-container">
+        <h2 class="test-title">🖥️ WireMock UI для тестирования</h2>
+        <iframe src="index.html" class="iframe-container"></iframe>
+    </div>
+
+    <script>
+        function setTestStatus(testId, status, message = '') {
+            const statusEl = document.getElementById(`${testId}-status`);
+            statusEl.className = `test-status ${status}`;
+            statusEl.textContent = status.toUpperCase();
+            if (message) {
+                statusEl.title = message;
+            }
+        }
+
+        async function runAutomaticTests() {
+            const resultsDiv = document.getElementById('test-results');
+            const outputDiv = document.getElementById('test-output');
+            resultsDiv.style.display = 'block';
+            outputDiv.innerHTML = '<p>🔄 Запуск тестов...</p>';
+
+            const results = [];
+
+            // Test 1: Константы селекторов
+            try {
+                const iframe = document.querySelector('iframe');
+                await new Promise(resolve => {
+                    if (iframe.contentDocument.readyState === 'complete') {
+                        resolve();
+                    } else {
+                        iframe.onload = resolve;
+                    }
+                });
+
+                const iframeWindow = iframe.contentWindow;
+                const SELECTORS = iframeWindow.SELECTORS;
+                
+                if (SELECTORS && typeof SELECTORS === 'object') {
+                    const requiredKeys = ['PAGES', 'LISTS', 'MAPPING_FILTERS', 'BUTTONS'];
+                    const hasAllKeys = requiredKeys.every(key => SELECTORS[key]);
+                    
+                    if (hasAllKeys) {
+                        setTestStatus('test1', 'pass', 'Все константы селекторов найдены');
+                        results.push('✅ Test 1: PASS - Константы селекторов корректны');
+                    } else {
+                        setTestStatus('test1', 'fail', 'Отсутствуют некоторые константы');
+                        results.push('❌ Test 1: FAIL - Отсутствуют константы селекторов');
+                    }
+                } else {
+                    setTestStatus('test1', 'fail', 'SELECTORS объект не найден');
+                    results.push('❌ Test 1: FAIL - SELECTORS объект не найден');
+                }
+            } catch (e) {
+                setTestStatus('test1', 'fail', e.message);
+                results.push(`❌ Test 1: FAIL - ${e.message}`);
+            }
+
+            // Test 2: Константы endpoints
+            try {
+                const iframe = document.querySelector('iframe');
+                const iframeWindow = iframe.contentWindow;
+                const ENDPOINTS = iframeWindow.ENDPOINTS;
+                
+                if (ENDPOINTS && typeof ENDPOINTS === 'object') {
+                    const requiredEndpoints = ['MAPPINGS', 'REQUESTS', 'SCENARIOS'];
+                    const hasAllEndpoints = requiredEndpoints.every(key => ENDPOINTS[key]);
+                    
+                    if (hasAllEndpoints) {
+                        setTestStatus('test2', 'pass', 'Все константы endpoints найдены');
+                        results.push('✅ Test 2: PASS - Константы endpoints корректны');
+                    } else {
+                        setTestStatus('test2', 'fail', 'Отсутствуют некоторые endpoints');
+                        results.push('❌ Test 2: FAIL - Отсутствуют константы endpoints');
+                    }
+                } else {
+                    setTestStatus('test2', 'fail', 'ENDPOINTS объект не найден');
+                    results.push('❌ Test 2: FAIL - ENDPOINTS объект не найден');
+                }
+            } catch (e) {
+                setTestStatus('test2', 'fail', e.message);
+                results.push(`❌ Test 2: FAIL - ${e.message}`);
+            }
+
+            // Test 3: NotificationManager
+            try {
+                const iframe = document.querySelector('iframe');
+                const iframeWindow = iframe.contentWindow;
+                const NotificationManager = iframeWindow.NotificationManager;
+                
+                if (NotificationManager && typeof NotificationManager === 'object') {
+                    const requiredMethods = ['success', 'error', 'info', 'warning'];
+                    const hasAllMethods = requiredMethods.every(method => 
+                        typeof NotificationManager[method] === 'function'
+                    );
+                    
+                    if (hasAllMethods) {
+                        setTestStatus('test3', 'pass', 'NotificationManager корректен');
+                        results.push('✅ Test 3: PASS - NotificationManager инициализирован');
+                    } else {
+                        setTestStatus('test3', 'fail', 'Отсутствуют методы NotificationManager');
+                        results.push('❌ Test 3: FAIL - Отсутствуют методы NotificationManager');
+                    }
+                } else {
+                    setTestStatus('test3', 'fail', 'NotificationManager не найден');
+                    results.push('❌ Test 3: FAIL - NotificationManager не найден');
+                }
+            } catch (e) {
+                setTestStatus('test3', 'fail', e.message);
+                results.push(`❌ Test 3: FAIL - ${e.message}`);
+            }
+
+            // Test 4: TabManager
+            try {
+                const iframe = document.querySelector('iframe');
+                const iframeWindow = iframe.contentWindow;
+                const TabManager = iframeWindow.TabManager;
+                
+                if (TabManager && typeof TabManager === 'object') {
+                    const requiredMethods = ['refresh', 'clearFilters'];
+                    const hasAllMethods = requiredMethods.every(method => 
+                        typeof TabManager[method] === 'function'
+                    );
+                    
+                    if (hasAllMethods && TabManager.configs) {
+                        setTestStatus('test4', 'pass', 'TabManager корректен');
+                        results.push('✅ Test 4: PASS - TabManager инициализирован');
+                    } else {
+                        setTestStatus('test4', 'fail', 'Отсутствуют методы или конфиг TabManager');
+                        results.push('❌ Test 4: FAIL - Отсутствуют методы TabManager');
+                    }
+                } else {
+                    setTestStatus('test4', 'fail', 'TabManager не найден');
+                    results.push('❌ Test 4: FAIL - TabManager не найден');
+                }
+            } catch (e) {
+                setTestStatus('test4', 'fail', e.message);
+                results.push(`❌ Test 4: FAIL - ${e.message}`);
+            }
+
+            // Test 5: Константы селекторов - полнота
+            try {
+                const iframe = document.querySelector('iframe');
+                const iframeWindow = iframe.contentWindow;
+                const SELECTORS = iframeWindow.SELECTORS;
+                
+                if (SELECTORS && typeof SELECTORS === 'object') {
+                    const allRequiredKeys = ['PAGES', 'REQUEST_FILTERS', 'MAPPING_FILTERS', 'LISTS', 'LOADING', 'EMPTY', 'CONNECTION', 'MODAL', 'FORM_FIELDS', 'BUTTONS'];
+                    const hasAllKeys = allRequiredKeys.every(key => SELECTORS[key]);
+                    
+                    if (hasAllKeys) {
+                        setTestStatus('test5', 'pass', 'Все ключевые селекторы найдены');
+                        results.push('✅ Test 5: PASS - Полная структура селекторов');
+                    } else {
+                        const missingKeys = allRequiredKeys.filter(key => !SELECTORS[key]);
+                        setTestStatus('test5', 'fail', `Отсутствуют: ${missingKeys.join(', ')}`);
+                        results.push('❌ Test 5: FAIL - Неполная структура селекторов');
+                    }
+                } else {
+                    setTestStatus('test5', 'fail', 'SELECTORS объект не найден');
+                    results.push('❌ Test 5: FAIL - SELECTORS объект не найден');
+                }
+            } catch (e) {
+                setTestStatus('test5', 'fail', e.message);
+                results.push(`❌ Test 5: FAIL - ${e.message}`);
+            }
+
+            // Test 6: NotificationManager - методы и очередь
+            try {
+                const iframe = document.querySelector('iframe');
+                const iframeWindow = iframe.contentWindow;
+                const NotificationManager = iframeWindow.NotificationManager;
+                
+                if (NotificationManager && typeof NotificationManager === 'object') {
+                    const requiredMethods = ['success', 'error', 'info', 'warning', 'show', 'processQueue'];
+                    const hasAllMethods = requiredMethods.every(method => 
+                        typeof NotificationManager[method] === 'function'
+                    );
+                    const hasQueue = Array.isArray(NotificationManager.queue);
+                    const hasTypes = NotificationManager.TYPES && typeof NotificationManager.TYPES === 'object';
+                    
+                    if (hasAllMethods && hasQueue && hasTypes) {
+                        setTestStatus('test6', 'pass', 'NotificationManager полностью функционален');
+                        results.push('✅ Test 6: PASS - NotificationManager с очередью и типами');
+                    } else {
+                        setTestStatus('test6', 'fail', 'Отсутствуют методы, очередь или типы');
+                        results.push('❌ Test 6: FAIL - Неполный NotificationManager');
+                    }
+                } else {
+                    setTestStatus('test6', 'fail', 'NotificationManager не найден');
+                    results.push('❌ Test 6: FAIL - NotificationManager не найден');
+                }
+            } catch (e) {
+                setTestStatus('test6', 'fail', e.message);
+                results.push(`❌ Test 6: FAIL - ${e.message}`);
+            }
+
+            // Test 7: TabManager - конфигурация вкладок
+            try {
+                const iframe = document.querySelector('iframe');
+                const iframeWindow = iframe.contentWindow;
+                const TabManager = iframeWindow.TabManager;
+                
+                if (TabManager && TabManager.configs) {
+                    const requiredTabs = ['mappings', 'requests', 'scenarios'];
+                    const hasAllTabs = requiredTabs.every(tab => TabManager.configs[tab]);
+                    
+                    if (hasAllTabs) {
+                        // Проверяем что у каждой вкладки есть необходимые свойства
+                        const tabsValid = requiredTabs.every(tab => {
+                            const config = TabManager.configs[tab];
+                            return config.name && config.loadFunction;
+                        });
+                        
+                        if (tabsValid) {
+                            setTestStatus('test7', 'pass', 'Все вкладки сконфигурированы');
+                            results.push('✅ Test 7: PASS - Конфигурация вкладок корректна');
+                        } else {
+                            setTestStatus('test7', 'fail', 'Неполная конфигурация вкладок');
+                            results.push('❌ Test 7: FAIL - Неполная конфигурация вкладок');
+                        }
+                    } else {
+                        setTestStatus('test7', 'fail', 'Отсутствуют некоторые вкладки');
+                        results.push('❌ Test 7: FAIL - Отсутствуют вкладки');
+                    }
+                } else {
+                    setTestStatus('test7', 'fail', 'TabManager.configs не найден');
+                    results.push('❌ Test 7: FAIL - TabManager.configs не найден');
+                }
+            } catch (e) {
+                setTestStatus('test7', 'fail', e.message);
+                results.push(`❌ Test 7: FAIL - ${e.message}`);
+            }
+
+            // Test 8: Глобальные функции
+            try {
+                const iframe = document.querySelector('iframe');
+                const iframeWindow = iframe.contentWindow;
+                
+                const requiredFunctions = ['connectToWireMock', 'refreshRequests', 'refreshScenarios', 'deleteMapping', 'importMappings', 'exportMappings'];
+                const existingFunctions = requiredFunctions.filter(func => 
+                    typeof iframeWindow[func] === 'function'
+                );
+                
+                if (existingFunctions.length >= 4) { // Минимум 4 из 6 функций
+                    setTestStatus('test8', 'pass', `Найдено ${existingFunctions.length}/${requiredFunctions.length} функций`);
+                    results.push('✅ Test 8: PASS - Ключевые глобальные функции найдены');
+                } else {
+                    setTestStatus('test8', 'fail', `Найдено только ${existingFunctions.length}/${requiredFunctions.length} функций`);
+                    results.push('❌ Test 8: FAIL - Недостаточно глобальных функций');
+                }
+            } catch (e) {
+                setTestStatus('test8', 'fail', e.message);
+                results.push(`❌ Test 8: FAIL - ${e.message}`);
+            }
+
+            // Test 9: DOM элементы - основные
+            try {
+                const iframe = document.querySelector('iframe');
+                const iframeDocument = iframe.contentDocument;
+                
+                const requiredElements = ['mappings-list', 'requests-list', 'scenarios-list', 'wiremock-host', 'wiremock-port'];
+                const existingElements = requiredElements.filter(id => 
+                    iframeDocument.getElementById(id) !== null
+                );
+                
+                if (existingElements.length >= 5) { // Минимум 5 из 6 элементов
+                    setTestStatus('test9', 'pass', `Найдено ${existingElements.length}/${requiredElements.length} элементов`);
+                    results.push('✅ Test 9: PASS - Основные DOM элементы найдены');
+                } else {
+                    setTestStatus('test9', 'fail', `Найдено только ${existingElements.length}/${requiredElements.length} элементов`);
+                    results.push('❌ Test 9: FAIL - Недостаточно DOM элементов');
+                }
+            } catch (e) {
+                setTestStatus('test9', 'fail', e.message);
+                results.push(`❌ Test 9: FAIL - ${e.message}`);
+            }
+
+            // Test 10: Функции очистки фильтров
+            try {
+                const iframe = document.querySelector('iframe');
+                const iframeWindow = iframe.contentWindow;
+                
+                const clearMappingFilters = typeof iframeWindow.clearMappingFilters === 'function';
+                const clearRequestFilters = typeof iframeWindow.clearRequestFilters === 'function';
+                
+                if (clearMappingFilters && clearRequestFilters) {
+                    setTestStatus('test10', 'pass', 'Обе функции очистки найдены');
+                    results.push('✅ Test 10: PASS - Функции очистки фильтров найдены');
+                } else {
+                    const missing = [];
+                    if (!clearMappingFilters) missing.push('clearMappingFilters');
+                    if (!clearRequestFilters) missing.push('clearRequestFilters');
+                    setTestStatus('test10', 'fail', `Отсутствуют: ${missing.join(', ')}`);
+                    results.push('❌ Test 10: FAIL - Отсутствуют функции очистки');
+                }
+            } catch (e) {
+                setTestStatus('test10', 'fail', e.message);
+                results.push(`❌ Test 10: FAIL - ${e.message}`);
+            }
+
+            // Старые тесты для анимаций убраны - теперь используем только тесты для фильтрации
+
+            // Test 11: Функция фильтрации маппингов
+            try {
+                const iframe = document.querySelector('iframe');
+                const iframeWindow = iframe.contentWindow;
+                const applyFilters = iframeWindow.applyFilters;
+                
+                if (applyFilters && typeof applyFilters === 'function') {
+                    setTestStatus('test11', 'pass', 'Функция applyFilters найдена');
+                    results.push('✅ Test 11: PASS - Функция applyFilters существует');
+                } else {
+                    setTestStatus('test11', 'fail', 'Функция applyFilters не найдена');
+                    results.push('❌ Test 11: FAIL - Функция applyFilters отсутствует');
+                }
+            } catch (e) {
+                setTestStatus('test11', 'fail', e.message);
+                results.push(`❌ Test 11: FAIL - ${e.message}`);
+            }
+
+            // Test 12: Функция очистки фильтров маппингов
+            try {
+                const iframe = document.querySelector('iframe');
+                const iframeWindow = iframe.contentWindow;
+                const clearMappingFilters = iframeWindow.clearMappingFilters;
+                
+                if (clearMappingFilters && typeof clearMappingFilters === 'function') {
+                    setTestStatus('test12', 'pass', 'Функция clearMappingFilters найдена');
+                    results.push('✅ Test 12: PASS - Функция clearMappingFilters существует');
+                } else {
+                    setTestStatus('test12', 'fail', 'Функция clearMappingFilters не найдена');
+                    results.push('❌ Test 12: FAIL - Функция clearMappingFilters отсутствует');
+                }
+            } catch (e) {
+                setTestStatus('test12', 'fail', e.message);
+                results.push(`❌ Test 12: FAIL - ${e.message}`);
+            }
+
+            // Test 13: Хранилище originalMappings
+            try {
+                const iframe = document.querySelector('iframe');
+                const iframeWindow = iframe.contentWindow;
+                
+                // Проверяем что есть переменная originalMappings
+                const hasOriginalMappings = 'originalMappings' in iframeWindow;
+                const hasAllMappings = 'allMappings' in iframeWindow;
+                
+                if (hasOriginalMappings && hasAllMappings) {
+                    setTestStatus('test13', 'pass', 'Хранилища originalMappings и allMappings найдены');
+                    results.push('✅ Test 13: PASS - Архитектура фильтрации с раздельными хранилищами');
+                } else {
+                    const missing = [];
+                    if (!hasOriginalMappings) missing.push('originalMappings');
+                    if (!hasAllMappings) missing.push('allMappings');
+                    setTestStatus('test13', 'fail', `Отсутствуют: ${missing.join(', ')}`);
+                    results.push('❌ Test 13: FAIL - Отсутствуют хранилища данных');
+                }
+            } catch (e) {
+                setTestStatus('test13', 'fail', e.message);
+                results.push(`❌ Test 13: FAIL - ${e.message}`);
+            }
+
+            // Test 14: Функция сортировки маппингов
+            try {
+                const iframe = document.querySelector('iframe');
+                const iframeWindow = iframe.contentWindow;
+                const fetchAndRenderMappings = iframeWindow.fetchAndRenderMappings;
+                
+                if (fetchAndRenderMappings && typeof fetchAndRenderMappings === 'function') {
+                    // Проверяем что в коде функции есть сортировка по priority, методу и URL
+                    const funcString = fetchAndRenderMappings.toString();
+                    const hasPrioritySort = funcString.includes('priority') && funcString.includes('sort');
+                    const hasMethodSort = funcString.includes('methodOrder') || funcString.includes('GET') && funcString.includes('POST');
+                    const hasUrlSort = funcString.includes('url') && funcString.includes('localeCompare');
+                    
+                    if (hasPrioritySort && hasMethodSort && hasUrlSort) {
+                        setTestStatus('test14', 'pass', 'Сортировка по priority, методу и URL найдена');
+                        results.push('✅ Test 14: PASS - Сортировка маппингов корректна');
+                    } else {
+                        const missing = [];
+                        if (!hasPrioritySort) missing.push('priority');
+                        if (!hasMethodSort) missing.push('method');
+                        if (!hasUrlSort) missing.push('URL');
+                        setTestStatus('test14', 'fail', `Отсутствует сортировка по: ${missing.join(', ')}`);
+                        results.push('❌ Test 14: FAIL - Неполная сортировка маппингов');
+                    }
+                } else {
+                    setTestStatus('test14', 'fail', 'Функция fetchAndRenderMappings не найдена');
+                    results.push('❌ Test 14: FAIL - Функция fetchAndRenderMappings отсутствует');
+                }
+            } catch (e) {
+                setTestStatus('test14', 'fail', e.message);
+                results.push(`❌ Test 14: FAIL - ${e.message}`);
+            }
+
+            // Test 15: Структура данных запросов WireMock 3.9.1
+            try {
+                const iframe = document.querySelector('iframe');
+                const iframeWindow = iframe.contentWindow;
+                
+                // Проверяем наличие функции renderRequestCard
+                const renderRequestCard = iframeWindow.renderRequestCard;
+                
+                if (renderRequestCard && typeof renderRequestCard === 'function') {
+                    // Создаем тестовый объект запроса, соответствующий структуре WireMock 3.9.1
+                    const testRequest = {
+                        id: 'test-request-id-123',
+                        wasMatched: true,
+                        request: {
+                            method: 'GET',
+                            url: '/api/test',
+                            loggedDate: new Date().toISOString(),
+                            clientIp: '127.0.0.1'
+                        },
+                        responseDefinition: {
+                            status: 200,
+                            jsonBody: { message: 'success' }
+                        }
+                    };
+                    
+                    // Пытаемся отрендерить карточку запроса
+                    const rendered = renderRequestCard(testRequest);
+                    
+                    // Проверяем, что результат содержит ожидаемые элементы
+                    const hasMethod = rendered.includes('GET');
+                    const hasUrl = rendered.includes('/api/test');
+                    const hasStatus = rendered.includes('200');
+                    const hasMatchedBadge = rendered.includes('✓ Matched');
+                    
+                    if (hasMethod && hasUrl && hasStatus && hasMatchedBadge) {
+                        setTestStatus('test15', 'pass', 'Структура данных запросов корректна');
+                        results.push('✅ Test 15: PASS - Структура данных запросов WireMock 3.9.1 корректна');
+                    } else {
+                        const missing = [];
+                        if (!hasMethod) missing.push('method');
+                        if (!hasUrl) missing.push('url');
+                        if (!hasStatus) missing.push('status');
+                        if (!hasMatchedBadge) missing.push('matched badge');
+                        setTestStatus('test15', 'fail', `Отсутствуют элементы: ${missing.join(', ')}`);
+                        results.push('❌ Test 15: FAIL - Некорректная структура данных запросов');
+                    }
+                } else {
+                    setTestStatus('test15', 'fail', 'Функция renderRequestCard не найдена');
+                    results.push('❌ Test 15: FAIL - Функция renderRequestCard отсутствует');
+                }
+            } catch (e) {
+                setTestStatus('test15', 'fail', e.message);
+                results.push(`❌ Test 15: FAIL - ${e.message}`);
+            }
+
+            // Test 16: Функция фильтрации запросов
+            try {
+                const iframe = document.querySelector('iframe');
+                const iframeWindow = iframe.contentWindow;
+                
+                // Проверяем наличие FilterManager и его методов
+                const FilterManager = iframeWindow.FilterManager;
+                
+                if (FilterManager && typeof FilterManager === 'object') {
+                    const hasApplyRequestFilters = typeof FilterManager.applyRequestFilters === 'function';
+                    const hasMatchUrlPattern = typeof FilterManager.matchUrlPattern === 'function';
+                    
+                    if (hasApplyRequestFilters && hasMatchUrlPattern) {
+                        // Проверяем функцию matchUrlPattern
+                        const testCases = [
+                            { url: '/api/users/123', pattern: '/api/users/*', expected: true },
+                            { url: '/api/users/123', pattern: '/api/products/*', expected: false },
+                            { url: '/api/test', pattern: '/api/test', expected: true },
+                            { url: '/api/test', pattern: '/api/testing', expected: false }
+                        ];
+                        
+                        let allTestsPassed = true;
+                        for (const testCase of testCases) {
+                            const result = FilterManager.matchUrlPattern(testCase.url, testCase.pattern);
+                            if (result !== testCase.expected) {
+                                allTestsPassed = false;
+                                break;
+                            }
+                        }
+                        
+                        if (allTestsPassed) {
+                            setTestStatus('test16', 'pass', 'Функция фильтрации запросов корректна');
+                            results.push('✅ Test 16: PASS - Функция фильтрации запросов корректна');
+                        } else {
+                            setTestStatus('test16', 'fail', 'Функция matchUrlPattern работает некорректно');
+                            results.push('❌ Test 16: FAIL - Некорректная работа функции matchUrlPattern');
+                        }
+                    } else {
+                        const missing = [];
+                        if (!hasApplyRequestFilters) missing.push('applyRequestFilters');
+                        if (!hasMatchUrlPattern) missing.push('matchUrlPattern');
+                        setTestStatus('test16', 'fail', `Отсутствуют методы: ${missing.join(', ')}`);
+                        results.push('❌ Test 16: FAIL - Отсутствуют методы FilterManager');
+                    }
+                } else {
+                    setTestStatus('test16', 'fail', 'FilterManager не найден');
+                    results.push('❌ Test 16: FAIL - FilterManager не найден');
+                }
+            } catch (e) {
+                setTestStatus('test16', 'fail', e.message);
+                results.push(`❌ Test 16: FAIL - ${e.message}`);
+            }
+
+            // Test 17: WireMock 3.9.1+ API Endpoints
+            try {
+                const iframe = document.querySelector('iframe');
+                const iframeWindow = iframe.contentWindow;
+                
+                const requiredEndpoints = [
+                    'RECORDINGS_START', 'RECORDINGS_STOP', 'RECORDINGS_STATUS',
+                    'NEAR_MISSES_REQUEST', 'NEAR_MISSES_PATTERN',
+                    'REQUESTS_COUNT', 'REQUESTS_FIND', 'REQUESTS_UNMATCHED'
+                ];
+                
+                const ENDPOINTS = iframeWindow.ENDPOINTS;
+                if (ENDPOINTS) {
+                    const existingEndpoints = requiredEndpoints.filter(endpoint => 
+                        ENDPOINTS[endpoint] !== undefined
+                    );
+                    
+                    if (existingEndpoints.length >= 7) { // Минимум 7 из 8 endpoints
+                        setTestStatus('test17', 'pass', `Найдено ${existingEndpoints.length}/${requiredEndpoints.length} endpoints`);
+                        results.push('✅ Test 17: PASS - WireMock 3.9.1+ API endpoints найдены');
+                    } else {
+                        setTestStatus('test17', 'fail', `Найдено только ${existingEndpoints.length}/${requiredEndpoints.length} endpoints`);
+                        results.push('❌ Test 17: FAIL - Недостаточно API endpoints');
+                    }
+                } else {
+                    setTestStatus('test17', 'fail', 'ENDPOINTS объект не найден');
+                    results.push('❌ Test 17: FAIL - ENDPOINTS объект не найден');
+                }
+            } catch (e) {
+                setTestStatus('test17', 'fail', e.message);
+                results.push(`❌ Test 17: FAIL - ${e.message}`);
+            }
+
+            // Test 18: Новые функции WireMock 3.13.x
+            try {
+                const iframe = document.querySelector('iframe');
+                const iframeWindow = iframe.contentWindow;
+                
+                const newFunctions = [
+                    'getUnmatchedMappings', 'removeUnmatchedMappings', 
+                    'findMappingsByMetadata', 'getUnmatchedRequests'
+                ];
+                
+                const existingFunctions = newFunctions.filter(func => 
+                    typeof iframeWindow[func] === 'function'
+                );
+                
+                if (existingFunctions.length >= 3) { // Минимум 3 из 4 функций
+                    setTestStatus('test18', 'pass', `Найдено ${existingFunctions.length}/${newFunctions.length} новых функций`);
+                    results.push('✅ Test 18: PASS - Новые функции WireMock 3.13.x найдены');
+                } else {
+                    setTestStatus('test18', 'fail', `Найдено только ${existingFunctions.length}/${newFunctions.length} функций`);
+                    results.push('❌ Test 18: FAIL - Недостаточно новых функций');
+                }
+            } catch (e) {
+                setTestStatus('test18', 'fail', e.message);
+                results.push(`❌ Test 18: FAIL - ${e.message}`);
+            }
+
+            // Test 19: Recording API Functions
+            try {
+                const iframe = document.querySelector('iframe');
+                const iframeWindow = iframe.contentWindow;
+                
+                const recordingFunctions = [
+                    'startRecording', 'stopRecording', 'getRecordingStatus', 'takeRecordingSnapshot'
+                ];
+                
+                const existingFunctions = recordingFunctions.filter(func => 
+                    typeof iframeWindow[func] === 'function'
+                );
+                
+                if (existingFunctions.length >= 3) { // Минимум 3 из 4 функций
+                    setTestStatus('test19', 'pass', `Найдено ${existingFunctions.length}/${recordingFunctions.length} recording функций`);
+                    results.push('✅ Test 19: PASS - Recording API функции найдены');
+                } else {
+                    setTestStatus('test19', 'fail', `Найдено только ${existingFunctions.length}/${recordingFunctions.length} функций`);
+                    results.push('❌ Test 19: FAIL - Недостаточно recording функций');
+                }
+            } catch (e) {
+                setTestStatus('test19', 'fail', e.message);
+                results.push(`❌ Test 19: FAIL - ${e.message}`);
+            }
+
+            // Test 20: Near Misses API Functions
+            try {
+                const iframe = document.querySelector('iframe');
+                const iframeWindow = iframe.contentWindow;
+                
+                const nearMissesFunctions = [
+                    'findNearMissesForRequest', 'findNearMissesForPattern', 
+                    'getNearMissesForUnmatched', 'getRequestCount', 'findRequests'
+                ];
+                
+                const existingFunctions = nearMissesFunctions.filter(func => 
+                    typeof iframeWindow[func] === 'function'
+                );
+                
+                if (existingFunctions.length >= 4) { // Минимум 4 из 5 функций
+                    setTestStatus('test20', 'pass', `Найдено ${existingFunctions.length}/${nearMissesFunctions.length} near misses функций`);
+                    results.push('✅ Test 20: PASS - Near Misses API функции найдены');
+                } else {
+                    setTestStatus('test20', 'fail', `Найдено только ${existingFunctions.length}/${nearMissesFunctions.length} функций`);
+                    results.push('❌ Test 20: FAIL - Недостаточно near misses функций');
+                }
+            } catch (e) {
+                setTestStatus('test20', 'fail', e.message);
+                results.push(`❌ Test 20: FAIL - ${e.message}`);
+            }
+
+            // Показываем результаты
+            outputDiv.innerHTML = results.map(result => `<p>${result}</p>`).join('');
+            
+            const passCount = results.filter(r => r.includes('PASS')).length;
+            const totalCount = results.length;
+            
+            outputDiv.innerHTML += `<hr><p><strong>📊 Итого: ${passCount}/${totalCount} тестов пройдено</strong></p>`;
+            
+            if (passCount === totalCount) {
+                outputDiv.innerHTML += '<p style="color: green;">🎉 Все автоматические тесты пройдены успешно!</p>';
+            } else {
+                outputDiv.innerHTML += '<p style="color: red;">⚠️ Некоторые тесты не пройдены. Проверьте код.</p>';
+            }
+        }
+    </script>
+</body>
+</html>

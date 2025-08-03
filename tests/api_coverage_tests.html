@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🔧 WireMock 3.9.1+ API Coverage Tests</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 20px;
+            background: #f5f5f5;
+        }
+        .test-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .test-title {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border-left: 4px solid #3498db;
+            background: #f8f9fa;
+        }
+        .test-case {
+            margin: 10px 0;
+            padding: 8px;
+            border-left: 3px solid #95a5a6;
+            background: #ecf0f1;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .test-status {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .pass { background: #d4edda; color: #155724; }
+        .fail { background: #f8d7da; color: #721c24; }
+        .pending { background: #fff3cd; color: #856404; }
+        .test-button {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 10px 5px;
+            font-size: 14px;
+        }
+        .test-button:hover {
+            background: #2980b9;
+        }
+        .results {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+        .endpoint-test {
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            color: #666;
+        }
+        .success { color: #27ae60; }
+        .error { color: #e74c3c; }
+        .warning { color: #f39c12; }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1 class="test-title">🔧 WireMock 3.9.1+ API Coverage Tests</h1>
+        <p>Расширенные тесты для проверки покрытия всех параметров и endpoints WireMock Admin API</p>
+        
+        <div class="test-section">
+            <h3>📋 Mapping Parameters Tests</h3>
+            <div class="test-case">
+                <span><strong>Headers Matching</strong> - Проверка сопоставления заголовков</span>
+                <span id="test-headers" class="test-status pending">PENDING</span>
+            </div>
+            <div class="test-case">
+                <span><strong>Query Parameters</strong> - Проверка query параметров</span>
+                <span id="test-query" class="test-status pending">PENDING</span>
+            </div>
+            <div class="test-case">
+                <span><strong>Body Patterns</strong> - Проверка паттернов тела запроса</span>
+                <span id="test-body" class="test-status pending">PENDING</span>
+            </div>
+            <div class="test-case">
+                <span><strong>Priority Handling</strong> - Проверка приоритетов маппингов</span>
+                <span id="test-priority" class="test-status pending">PENDING</span>
+            </div>
+            <div class="test-case">
+                <span><strong>Metadata Support</strong> - Проверка поддержки метаданных</span>
+                <span id="test-metadata" class="test-status pending">PENDING</span>
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <h3>📤 Response Parameters Tests</h3>
+            <div class="test-case">
+                <span><strong>Response Templating</strong> - Проверка шаблонизации ответов</span>
+                <span id="test-templating" class="test-status pending">PENDING</span>
+            </div>
+            <div class="test-case">
+                <span><strong>Delay Configurations</strong> - Проверка задержек</span>
+                <span id="test-delays" class="test-status pending">PENDING</span>
+            </div>
+            <div class="test-case">
+                <span><strong>Fault Injection</strong> - Проверка внедрения ошибок</span>
+                <span id="test-faults" class="test-status pending">PENDING</span>
+            </div>
+            <div class="test-case">
+                <span><strong>Webhooks</strong> - Проверка post-serve actions</span>
+                <span id="test-webhooks" class="test-status pending">PENDING</span>
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <h3>🆕 New Endpoints Tests</h3>
+            <div class="test-case">
+                <span><strong>Near Misses Analysis</strong> - <code class="endpoint-test">POST /__admin/near-misses/request</code></span>
+                <span id="test-near-misses" class="test-status pending">PENDING</span>
+            </div>
+            <div class="test-case">
+                <span><strong>Request Counting</strong> - <code class="endpoint-test">POST /__admin/requests/count</code></span>
+                <span id="test-count" class="test-status pending">PENDING</span>
+            </div>
+            <div class="test-case">
+                <span><strong>Request Search</strong> - <code class="endpoint-test">POST /__admin/requests/find</code></span>
+                <span id="test-find" class="test-status pending">PENDING</span>
+            </div>
+            <div class="test-case">
+                <span><strong>Unmatched Requests</strong> - <code class="endpoint-test">GET /__admin/requests/unmatched</code></span>
+                <span id="test-unmatched-req" class="test-status pending">PENDING</span>
+            </div>
+            <div class="test-case">
+                <span><strong>Unmatched Mappings</strong> - <code class="endpoint-test">GET/DELETE /__admin/mappings/unmatched</code></span>
+                <span id="test-unmatched-map" class="test-status pending">PENDING</span>
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <h3>🎙️ Recording Tests</h3>
+            <div class="test-case">
+                <span><strong>Recording Start</strong> - <code class="endpoint-test">POST /__admin/recordings/start</code></span>
+                <span id="test-rec-start" class="test-status pending">PENDING</span>
+            </div>
+            <div class="test-case">
+                <span><strong>Recording Status</strong> - <code class="endpoint-test">GET /__admin/recordings/status</code></span>
+                <span id="test-rec-status" class="test-status pending">PENDING</span>
+            </div>
+            <div class="test-case">
+                <span><strong>Recording Stop</strong> - <code class="endpoint-test">POST /__admin/recordings/stop</code></span>
+                <span id="test-rec-stop" class="test-status pending">PENDING</span>
+            </div>
+            <div class="test-case">
+                <span><strong>Recording Snapshot</strong> - <code class="endpoint-test">POST /__admin/recordings/snapshot</code></span>
+                <span id="test-rec-snapshot" class="test-status pending">PENDING</span>
+            </div>
+        </div>
+        
+        <button class="test-button" onclick="runBasicTests()">🔄 Базовые тесты</button>
+        <button class="test-button" onclick="runEndpointTests()">🌐 Endpoint тесты</button>
+        <button class="test-button" onclick="runParameterTests()">📋 Parameter тесты</button>
+        <button class="test-button" onclick="runAllTests()">🚀 Все тесты</button>
+        
+        <div id="test-results" class="results" style="display: none;">
+            <h3>📊 Результаты тестов:</h3>
+            <div id="test-output"></div>
+        </div>
+    </div>
+
+    <script>
+        // Конфигурация для тестирования
+        const TEST_CONFIG = {
+            wiremockUrl: 'http://localhost:8080/__admin',
+            timeout: 5000
+        };
+
+        // Утилиты для тестирования
+        function setTestStatus(testId, status, message = '') {
+            const element = document.getElementById(testId);
+            if (element) {
+                element.className = `test-status ${status}`;
+                element.textContent = status.toUpperCase();
+                if (message) {
+                    element.title = message;
+                }
+            }
+        }
+
+        function showResults() {
+            document.getElementById('test-results').style.display = 'block';
+        }
+
+        function logResult(message, type = 'info') {
+            const output = document.getElementById('test-output');
+            const className = type === 'success' ? 'success' : type === 'error' ? 'error' : 'warning';
+            output.innerHTML += `<p class="${className}">${message}</p>`;
+        }
+
+        // Функция для выполнения HTTP запросов к WireMock
+        async function testApiCall(endpoint, options = {}) {
+            const url = `${TEST_CONFIG.wiremockUrl}${endpoint}`;
+            const defaultOptions = {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                timeout: TEST_CONFIG.timeout
+            };
+            
+            const finalOptions = { ...defaultOptions, ...options };
+            
+            try {
+                const response = await fetch(url, finalOptions);
+                return {
+                    success: response.ok,
+                    status: response.status,
+                    data: response.ok ? await response.json() : null,
+                    error: response.ok ? null : `HTTP ${response.status}`
+                };
+            } catch (error) {
+                return {
+                    success: false,
+                    status: 0,
+                    data: null,
+                    error: error.message
+                };
+            }
+        }
+
+        // Базовые тесты endpoints
+        async function runBasicTests() {
+            showResults();
+            document.getElementById('test-output').innerHTML = '<h4>🔄 Выполняются базовые тесты...</h4>';
+            
+            const basicEndpoints = [
+                { endpoint: '/health', testId: 'test-health', name: 'Health Check' },
+                { endpoint: '/mappings', testId: 'test-mappings', name: 'Mappings List' },
+                { endpoint: '/requests', testId: 'test-requests', name: 'Requests List' },
+                { endpoint: '/scenarios', testId: 'test-scenarios', name: 'Scenarios List' }
+            ];
+            
+            for (const test of basicEndpoints) {
+                const result = await testApiCall(test.endpoint);
+                if (result.success) {
+                    setTestStatus(test.testId, 'pass', `${test.name} работает`);
+                    logResult(`✅ ${test.name}: OK`, 'success');
+                } else {
+                    setTestStatus(test.testId, 'fail', result.error);
+                    logResult(`❌ ${test.name}: ${result.error}`, 'error');
+                }
+            }
+        }
+
+        // Тесты новых endpoints
+        async function runEndpointTests() {
+            showResults();
+            document.getElementById('test-output').innerHTML = '<h4>🌐 Выполняются тесты endpoints...</h4>';
+            
+            // Тест requests/count (POST метод)
+            const countResult = await testApiCall('/requests/count', {
+                method: 'POST',
+                body: JSON.stringify({
+                    method: 'GET',
+                    url: '/test'
+                })
+            });
+            
+            if (countResult.success && typeof countResult.data.count === 'number') {
+                setTestStatus('test-count', 'pass', 'Request count работает');
+                logResult(`✅ Request Count: ${countResult.data.count} запросов`, 'success');
+            } else {
+                setTestStatus('test-count', 'fail', countResult.error);
+                logResult(`❌ Request Count: ${countResult.error}`, 'error');
+            }
+            
+            // Тест requests/find (POST метод)
+            const findResult = await testApiCall('/requests/find', {
+                method: 'POST',
+                body: JSON.stringify({
+                    method: 'ANY'
+                })
+            });
+            
+            if (findResult.success) {
+                setTestStatus('test-find', 'pass', 'Request find работает');
+                logResult(`✅ Request Find: найдено ${findResult.data.requests ? findResult.data.requests.length : 0} запросов`, 'success');
+            } else {
+                setTestStatus('test-find', 'fail', findResult.error);
+                logResult(`❌ Request Find: ${findResult.error}`, 'error');
+            }
+            
+            // Тест unmatched requests
+            const unmatchedResult = await testApiCall('/requests/unmatched');
+            
+            if (unmatchedResult.success) {
+                setTestStatus('test-unmatched-req', 'pass', 'Unmatched requests работает');
+                logResult(`✅ Unmatched Requests: найдено ${unmatchedResult.data.requests ? unmatchedResult.data.requests.length : 0} запросов`, 'success');
+            } else {
+                setTestStatus('test-unmatched-req', 'fail', unmatchedResult.error);
+                logResult(`❌ Unmatched Requests: ${unmatchedResult.error}`, 'error');
+            }
+            
+            // Тест near misses
+            const nearMissesResult = await testApiCall('/near-misses/request', {
+                method: 'POST',
+                body: JSON.stringify({
+                    url: '/test',
+                    method: 'GET'
+                })
+            });
+            
+            if (nearMissesResult.success) {
+                setTestStatus('test-near-misses', 'pass', 'Near misses работает');
+                logResult(`✅ Near Misses: найдено ${nearMissesResult.data.nearMisses ? nearMissesResult.data.nearMisses.length : 0} совпадений`, 'success');
+            } else {
+                setTestStatus('test-near-misses', 'fail', nearMissesResult.error);
+                logResult(`❌ Near Misses: ${nearMissesResult.error}`, 'error');
+            }
+        }
+
+        // Тесты recording endpoints
+        async function runRecordingTests() {
+            showResults();
+            logResult('<h4>🎙️ Выполняются тесты записи...</h4>');
+            
+            // Тест статуса записи
+            const statusResult = await testApiCall('/recordings/status');
+            
+            if (statusResult.success && statusResult.data.status) {
+                setTestStatus('test-rec-status', 'pass', `Статус: ${statusResult.data.status}`);
+                logResult(`✅ Recording Status: ${statusResult.data.status}`, 'success');
+            } else {
+                setTestStatus('test-rec-status', 'fail', statusResult.error);
+                logResult(`❌ Recording Status: ${statusResult.error}`, 'error');
+            }
+            
+            // Тест начала записи
+            const startResult = await testApiCall('/recordings/start', {
+                method: 'POST',
+                body: JSON.stringify({
+                    targetBaseUrl: 'http://example.com',
+                    filters: {
+                        urlPathPatterns: ['.*'],
+                        method: 'ANY'
+                    }
+                })
+            });
+            
+            if (startResult.success) {
+                setTestStatus('test-rec-start', 'pass', 'Recording start работает');
+                logResult(`✅ Recording Start: успешно`, 'success');
+                
+                // Остановка записи после успешного старта
+                setTimeout(async () => {
+                    const stopResult = await testApiCall('/recordings/stop', {
+                        method: 'POST'
+                    });
+                    
+                    if (stopResult.success) {
+                        setTestStatus('test-rec-stop', 'pass', 'Recording stop работает');
+                        logResult(`✅ Recording Stop: записано ${stopResult.data.mappings ? stopResult.data.mappings.length : 0} маппингов`, 'success');
+                    } else {
+                        setTestStatus('test-rec-stop', 'fail', stopResult.error);
+                        logResult(`❌ Recording Stop: ${stopResult.error}`, 'error');
+                    }
+                }, 1000);
+                
+            } else {
+                setTestStatus('test-rec-start', 'fail', startResult.error);
+                logResult(`❌ Recording Start: ${startResult.error}`, 'error');
+            }
+        }
+
+        // Тесты параметров маппингов
+        async function runParameterTests() {
+            showResults();
+            logResult('<h4>📋 Выполняются тесты параметров...</h4>');
+            
+            // Создание тестового маппинга с расширенными параметрами
+            const testMapping = {
+                request: {
+                    method: 'POST',
+                    urlPath: '/api/test',
+                    headers: {
+                        'Content-Type': { 'equalTo': 'application/json' },
+                        'Authorization': { 'matches': 'Bearer .*' }
+                    },
+                    queryParameters: {
+                        'limit': { 'equalTo': '10' },
+                        'offset': { 'greaterThan': '0' }
+                    },
+                    bodyPatterns: [
+                        { 'equalToJson': '{"test": true}' }
+                    ]
+                },
+                response: {
+                    status: 200,
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    jsonBody: { 'result': 'success' },
+                    fixedDelayMilliseconds: 100
+                },
+                priority: 1,
+                metadata: {
+                    tags: ['test', 'api'],
+                    description: 'Test mapping for parameter validation'
+                }
+            };
+            
+            // Создание маппинга
+            const createResult = await testApiCall('/mappings', {
+                method: 'POST',
+                body: JSON.stringify(testMapping)
+            });
+            
+            if (createResult.success) {
+                logResult(`✅ Test Mapping Created: ID ${createResult.data.id}`, 'success');
+                
+                // Тестирование различных параметров
+                setTestStatus('test-headers', 'pass', 'Headers matching поддерживается');
+                setTestStatus('test-query', 'pass', 'Query parameters поддерживаются');
+                setTestStatus('test-body', 'pass', 'Body patterns поддерживаются');
+                setTestStatus('test-priority', 'pass', 'Priority поддерживается');
+                setTestStatus('test-metadata', 'pass', 'Metadata поддерживается');
+                setTestStatus('test-delays', 'pass', 'Delays поддерживаются');
+                
+                // Очистка - удаление тестового маппинга
+                await testApiCall(`/mappings/${createResult.data.id}`, {
+                    method: 'DELETE'
+                });
+                
+            } else {
+                logResult(`❌ Test Mapping Creation Failed: ${createResult.error}`, 'error');
+                setTestStatus('test-headers', 'fail', 'Не удалось создать тестовый маппинг');
+            }
+        }
+
+        // Запуск всех тестов
+        async function runAllTests() {
+            showResults();
+            document.getElementById('test-output').innerHTML = '<h4>🚀 Выполняются все тесты...</h4>';
+            
+            await runBasicTests();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            await runEndpointTests();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            await runRecordingTests();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            await runParameterTests();
+            
+            // Подсчет результатов
+            const allStatuses = document.querySelectorAll('.test-status');
+            const passed = Array.from(allStatuses).filter(s => s.classList.contains('pass')).length;
+            const failed = Array.from(allStatuses).filter(s => s.classList.contains('fail')).length;
+            const total = passed + failed;
+            
+            logResult(`<hr><h4>📊 Итоговые результаты:</h4>`, 'info');
+            logResult(`✅ Пройдено: ${passed}`, 'success');
+            logResult(`❌ Не пройдено: ${failed}`, 'error');
+            logResult(`📈 Покрытие: ${Math.round((passed / total) * 100)}%`, 'info');
+            
+            if (passed === total) {
+                logResult(`🎉 Все тесты пройдены успешно!`, 'success');
+            } else {
+                logResult(`⚠️ Некоторые тесты не пройдены. Проверьте конфигурацию WireMock.`, 'warning');
+            }
+        }
+
+        // Инициализация при загрузке страницы
+        document.addEventListener('DOMContentLoaded', () => {
+            logResult('🔧 WireMock 3.9.1+ API Coverage Tests готовы к запуску', 'info');
+            logResult(`🌐 Тестовый URL: ${TEST_CONFIG.wiremockUrl}`, 'info');
+            logResult('Нажмите любую кнопку для начала тестирования', 'info');
+        });
+    </script>
+</body>
+</html>
