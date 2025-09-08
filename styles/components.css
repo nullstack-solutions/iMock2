@@ -543,6 +543,7 @@
     text-transform: uppercase;
     letter-spacing: 0.5px;
     font-size: var(--font-size-xs);
+    border-radius: var(--radius-md); /* Добавлено скругление */
 }
 
 .method-get, .get { 
@@ -566,52 +567,86 @@
 
 .status-badge {
     color: white;
-    min-width: 50px;
+    min-width: 38px;
     justify-content: center;
     font-weight: 700;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
     border: 1px solid rgba(255, 255, 255, 0.3);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
     padding: var(--space-1) var(--space-2);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-md); /* Добавлено скругление */
     font-size: var(--font-size-xs);
     margin: 0 var(--space-2);
 }
 
-.status-2xx { background: #22c55e; }
+.status-2xx { background: #10b981; } /* Улучшенный цвет */
 .status-3xx { background: #f59e0b; }
 .status-4xx { background: #ef4444; }
-.status-5xx { background: #7c3aed; }
+.status-5xx { background: #8b5cf6; } /* Улучшенный цвет */
 
 /* Specific status codes */
 .status-200, .status-201 { 
-    background: #d4edda; 
-    color: #155724; 
-    border: 1px solid #c3e6cb;
+    background: #10b981; /* Улучшенный цвет */
+    color: white; 
+    border: 1px solid rgba(255, 255, 255, 0.2);
 }
 .status-400 { 
-    background: #fff3cd; 
-    color: #856404; 
-    border: 1px solid #ffeaa7;
+    background: #f59e0b; /* Улучшенный цвет */
+    color: white; 
+    border: 1px solid rgba(255, 255, 255, 0.2);
 }
 .status-404 { 
-    background: #dc3545; 
+    background: #ef4444; /* Улучшенный цвет */
     color: white; 
-    border: 2px solid #ffffff; 
-    box-shadow: 0 0 4px rgba(255, 255, 255, 0.5); 
+    border: 1px solid rgba(255, 255, 255, 0.2);
 }
 .status-500 { 
-    background: #f8d7da; 
-    color: #721c24; 
-    border: 1px solid #f5c6cb;
+    background: #8b5cf6; /* Улучшенный цвет */
+    color: white; 
+    border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-/* Additional status classes for better coverage */
-.status-success { background: #22c55e; }
-.status-redirect { background: #f59e0b; }
-.status-client-error { background: #ef4444; }
-.status-server-error { background: #7c3aed; }
-.status-unknown { background: #6b7280; }
+/* Status classes returned by getStatusClass function */
+.success { 
+    background: #10b981;
+    color: white;
+    min-width: 38px;
+    height: 20px;
+    line-height: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+}
+.redirect { 
+    background: #f59e0b;
+    color: white;
+    min-width: 38px;
+    height: 20px;
+    line-height: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+}
+.client-error { 
+    background: #ef4444;
+    color: white;
+    min-width: 38px;
+    height: 20px;
+    line-height: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+}
+.server-error { 
+    background: #8b5cf6;
+    color: white;
+    min-width: 38px;
+    height: 20px;
+    line-height: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+}
+.unknown { 
+    background: #6b7280;
+    color: white;
+    min-width: 38px;
+    height: 20px;
+    line-height: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+}
 
 /* Dark theme adjustments for status badges */
 [data-theme="dark"] .status-200, 
@@ -703,12 +738,12 @@
     text-align: center;
     box-shadow: var(--shadow-sm);
     border: 1px solid var(--border-primary);
-    transition: transform var(--transition-fast);
+    transition: none;
 }
 
 .stat-card:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow-md);
+    transform: none;
+    box-shadow: var(--shadow-sm);
 }
 
 .stat-number {
@@ -826,7 +861,9 @@
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     opacity: 0;
     transform: translateX(100%);
-    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+    will-change: opacity, transform;
+    transform: translateX(100%) translateZ(0);
     pointer-events: auto;
     min-width: 280px;
     max-width: 400px;

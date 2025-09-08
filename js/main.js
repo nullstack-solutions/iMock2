@@ -95,6 +95,24 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
     
+    window.refreshMappings = async () => {
+        try {
+            if (typeof fetchAndRenderMappings === 'function') {
+                const saved = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
+                const useCache = !!saved.cacheEnabled;
+                await fetchAndRenderMappings(null, { useCache });
+                NotificationManager.success('Маппинги обновлены');
+            } else {
+                console.warn('fetchAndRenderMappings function not available');
+                NotificationManager.info('Функция обновления маппингов недоступна');
+            }
+        } catch (e) {
+            console.error('Error refreshing mappings:', e);
+            NotificationManager.error(`Ошибка обновления маппингов: ${e.message}`);
+        }
+    };
+
+    
     // Clear recordings function
     window.clearRecordings = async () => {
         try {
@@ -123,34 +141,35 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
     
-    // Health Check
+    // Force rebuild cache mapping and render from cache
+    window.forceRefreshCache = async () => {
+        try {
+            console.log('🧩 [CACHE] Manual rebuild triggered');
+            if (typeof window.refreshImockCache === 'function') {
+                await window.refreshImockCache();
+            } else {
+                console.warn('refreshImockCache function not available');
+            }
+            if (typeof fetchAndRenderMappings === 'function') {
+                await fetchAndRenderMappings(null, { useCache: true });
+            }
+            NotificationManager.success('Кэш маппинга пересобран');
+        } catch (e) {
+            console.error('Error rebuilding cache:', e);
+            NotificationManager.error(`Ошибка пересборки кэша: ${e.message}`);
+        }
+    };
+
+    // Health Check (delegates to features.js single source)
     window.checkHealth = async () => {
         try {
-            const healthIndicator = document.getElementById(SELECTORS.HEALTH.INDICATOR);
-            if (healthIndicator) {
-                healthIndicator.textContent = 'Checking...';
-                healthIndicator.className = 'health-indicator checking';
+            if (typeof window.checkHealthAndStartUptime === 'function') {
+                await window.checkHealthAndStartUptime();
             }
-            
-            const response = await apiFetch(ENDPOINTS.HEALTH);
-            const isHealthy = response.status === 'UP' || response.healthy !== false;
-            
-            if (healthIndicator) {
-                healthIndicator.textContent = isHealthy ? 'Healthy' : 'Unhealthy';
-                healthIndicator.className = `health-indicator ${isHealthy ? 'healthy' : 'unhealthy'}`;
-            }
-            
-            const message = `WireMock status: ${isHealthy ? 'Healthy' : 'Unhealthy'}`;
-            if (isHealthy) {
-                NotificationManager.success(message);
-            } else {
-                NotificationManager.error(message);
-            }
+            NotificationManager.success('Health OK');
         } catch (e) {
-            const healthIndicator = document.getElementById(SELECTORS.HEALTH.INDICATOR);
-            if (healthIndicator) {
-                healthIndicator.textContent = 'Error';
-                healthIndicator.className = 'health-indicator error';
+            if (typeof window.applyHealthUI === 'function') {
+                window.applyHealthUI(null, null);
             }
             NotificationManager.error(`Health check failed: ${e.message}`);
         }
@@ -354,6 +373,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const autoRefreshElement = document.getElementById(SELECTORS.SETTINGS.AUTO_REFRESH) || document.getElementById('refresh-interval');
         const themeElement = document.getElementById(SELECTORS.SETTINGS.THEME) || document.getElementById('theme-select');
         const authHeaderElement = document.getElementById(SELECTORS.SETTINGS.AUTH_HEADER);
+        const cacheEnabledElement = document.getElementById(SELECTORS.SETTINGS.CACHE_ENABLED);
         
         const host = hostElement?.value || 'localhost';
         const port = portElement?.value || '8080';
@@ -362,12 +382,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const theme = themeElement?.value || 'light';
         const authHeader = authHeaderElement?.value?.trim() || '';
         
-        const settingsData = { host, port, timeout, autoRefresh, theme, authHeader };
+        const cacheEnabled = !!cacheEnabledElement?.checked;
+        const settingsData = { host, port, timeout, autoRefresh, theme, authHeader, cacheEnabled };
         localStorage.setItem('wiremock-settings', JSON.stringify(settingsData));
         
         // Update global variables immediately
-        wiremockBaseUrl = `http://${host}:${port}/__admin`;
-        requestTimeout = parseInt(timeout);
+        window.wiremockBaseUrl = (typeof window.normalizeWiremockBaseUrl === 'function')
+            ? window.normalizeWiremockBaseUrl(host, port)
+            : `http://${host}:${port}/__admin`;
+        window.requestTimeout = parseInt(timeout);
         window.authHeader = authHeader; // Update global auth header
         
         // Apply theme immediately
@@ -387,16 +410,19 @@ document.addEventListener('DOMContentLoaded', () => {
         
         NotificationManager.success('✅ Настройки успешно сохранены в браузере!');
         
-        // Визуальная обратная связь
-        const saveBtn = event.target;
-        const originalText = saveBtn.textContent;
-        saveBtn.textContent = '✅ Сохранено!';
-        saveBtn.style.background = '#27ae60';
-        
-        setTimeout(() => {
-            saveBtn.textContent = originalText;
-            saveBtn.style.background = '';
-        }, 2000);
+        // Визуальная обратная связь (без обязательного event)
+        const evt = window.event;
+        if (evt && evt.target) {
+            const saveBtn = evt.target;
+            const originalText = saveBtn.textContent;
+            saveBtn.textContent = '✅ Сохранено!';
+            saveBtn.style.background = '#27ae60';
+            
+            setTimeout(() => {
+                saveBtn.textContent = originalText;
+                saveBtn.style.background = '';
+            }, 2000);
+        }
     };
     
     // Reset settings function
@@ -412,6 +438,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const autoRefreshElement = document.getElementById(SELECTORS.SETTINGS.AUTO_REFRESH) || document.getElementById('refresh-interval');
             const themeElement = document.getElementById(SELECTORS.SETTINGS.THEME) || document.getElementById('theme-select');
             const authHeaderElement = document.getElementById(SELECTORS.SETTINGS.AUTH_HEADER);
+            const cacheEnabledElement = document.getElementById(SELECTORS.SETTINGS.CACHE_ENABLED);
             
             if (hostElement) hostElement.value = 'localhost';
             if (portElement) portElement.value = '8080';
@@ -419,10 +446,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (autoRefreshElement) autoRefreshElement.value = '30';
             if (themeElement) themeElement.value = 'light';
             if (authHeaderElement) authHeaderElement.value = '';
+            if (cacheEnabledElement) cacheEnabledElement.checked = false;
             
             // Reset global variables
-            wiremockBaseUrl = 'http://localhost:8080/__admin';
-            requestTimeout = 5000;
+            window.wiremockBaseUrl = (typeof window.normalizeWiremockBaseUrl === 'function')
+                ? window.normalizeWiremockBaseUrl('localhost', '8080')
+                : 'http://localhost:8080/__admin';
+            window.requestTimeout = 5000;
             window.authHeader = ''; // Reset auth header
             
             // Reset theme
@@ -436,26 +466,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
     
-    // Refresh mappings function
-    window.refreshMappings = async () => {
-        try {
-            if (typeof fetchAndRenderMappings === 'function') {
-                await fetchAndRenderMappings();
-                NotificationManager.success('Маппинги обновлены');
-            } else {
-                console.warn('fetchAndRenderMappings function not available');
-                NotificationManager.info('Функция обновления маппингов недоступна');
-            }
-        } catch (e) {
-            console.error('Error refreshing mappings:', e);
-            NotificationManager.error(`Ошибка обновления маппингов: ${e.message}`);
-        }
-    };
-    
     window.loadSettings = () => {
         const saved = localStorage.getItem('wiremock-settings');
         if (saved) {
-            const { host, port, timeout, autoRefresh, theme, authHeader } = JSON.parse(saved);
+            const { host, port, timeout, autoRefresh, theme, authHeader, cacheEnabled } = JSON.parse(saved);
             
             // Load all form elements (settings page and main page)
             const hostElement = document.getElementById(SELECTORS.SETTINGS.HOST) || document.getElementById('default-host');
@@ -464,6 +478,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const autoRefreshElement = document.getElementById(SELECTORS.SETTINGS.AUTO_REFRESH) || document.getElementById('refresh-interval');
             const themeElement = document.getElementById(SELECTORS.SETTINGS.THEME) || document.getElementById('theme-select');
             const authHeaderElement = document.getElementById(SELECTORS.SETTINGS.AUTH_HEADER);
+            const cacheEnabledElement = document.getElementById(SELECTORS.SETTINGS.CACHE_ENABLED);
             
             // Main page connection form elements
             const mainHostElement = document.getElementById('wiremock-host');
@@ -476,13 +491,16 @@ document.addEventListener('DOMContentLoaded', () => {
             if (autoRefreshElement) autoRefreshElement.value = autoRefresh || '0';
             if (themeElement) themeElement.value = theme || 'light';
             if (authHeaderElement) authHeaderElement.value = authHeader || '';
+            if (cacheEnabledElement) cacheEnabledElement.checked = !!cacheEnabled;
             
             // Set main page connection form values
             if (mainHostElement) mainHostElement.value = host || 'localhost';
             if (mainPortElement) mainPortElement.value = port || '8080';
             
             // Apply settings to global variables
-            window.wiremockBaseUrl = `http://${host || 'localhost'}:${port || '8080'}/__admin`;
+            window.wiremockBaseUrl = (typeof window.normalizeWiremockBaseUrl === 'function')
+                ? window.normalizeWiremockBaseUrl(host || 'localhost', port || '8080')
+                : `http://${host || 'localhost'}:${port || '8080'}/__admin`;
             window.requestTimeout = parseInt(timeout || '5000');
             window.authHeader = authHeader || ''; // Load auth header
             
@@ -505,33 +523,45 @@ document.addEventListener('DOMContentLoaded', () => {
                 timeout: timeout || '5000',
                 autoRefresh: autoRefresh || '0',
                 theme: selectedTheme,
-                wiremockBaseUrl
+                wiremockBaseUrl,
+                cacheEnabled: !!cacheEnabled
             });
         } else {
             // Default settings
-            wiremockBaseUrl = 'http://localhost:8080/__admin';
-            requestTimeout = 5000;
+            window.wiremockBaseUrl = (typeof window.normalizeWiremockBaseUrl === 'function')
+                ? window.normalizeWiremockBaseUrl('localhost', '8080')
+                : 'http://localhost:8080/__admin';
+            window.requestTimeout = 5000;
             document.body.setAttribute('data-theme', 'light');
             console.log('🔧 Using default settings - no saved settings found');
         }
     };
     
     window.setupAutoRefresh = () => {
-        const interval = parseInt(document.getElementById(SELECTORS.SETTINGS.AUTO_REFRESH)?.value || '0');
-        
+        const inputEl = document.getElementById(SELECTORS.SETTINGS.AUTO_REFRESH) || document.getElementById('refresh-interval');
+        const enabledEl = document.getElementById('auto-refresh-enabled');
+        let interval = parseInt(inputEl?.value || '0', 10);
+        // Respect checkbox if present
+        if (enabledEl && !enabledEl.checked) interval = 0;
+
         if (autoRefreshInterval) {
             clearInterval(autoRefreshInterval);
         }
-        
+
         if (interval > 0) {
             autoRefreshInterval = setInterval(() => {
                 const currentPage = document.querySelector('.nav-item.active')?.textContent.trim();
+                const saved = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
+                const useCache = !!saved.cacheEnabled;
                 if (currentPage?.includes('Mappings')) {
-                    fetchAndRenderMappings();
+                    fetchAndRenderMappings && fetchAndRenderMappings(null, { useCache });
                 } else if (currentPage?.includes('Request Log')) {
-                    fetchAndRenderRequests();
+                    fetchAndRenderRequests && fetchAndRenderRequests(null, { useCache });
                 }
             }, interval * 1000);
+            console.log('⏱️ Auto-refresh enabled:', { everySeconds: interval });
+        } else {
+            console.log('⏱️ Auto-refresh disabled');
         }
     };
     
@@ -568,7 +598,26 @@ document.addEventListener('DOMContentLoaded', () => {
     
     console.log('⚙️ Setting up auto-refresh...');
     document.getElementById(SELECTORS.SETTINGS.AUTO_REFRESH)?.addEventListener('change', setupAutoRefresh);
+    document.getElementById('refresh-interval')?.addEventListener('change', setupAutoRefresh);
+    document.getElementById('auto-refresh-enabled')?.addEventListener('change', setupAutoRefresh);
     setupAutoRefresh();
+    // Setup cache toggle listener to refetch mappings via cache service immediately
+    const cacheToggle = document.getElementById(SELECTORS.SETTINGS.CACHE_ENABLED);
+    if (cacheToggle) {
+        cacheToggle.addEventListener('change', async (e) => {
+            const enabled = !!e.target.checked;
+            // persist immediately
+            const currentSettings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
+            localStorage.setItem('wiremock-settings', JSON.stringify({ ...currentSettings, cacheEnabled: enabled }));
+            // refetch mappings accordingly
+            try {
+                await fetchAndRenderMappings(null, { useCache: enabled });
+                NotificationManager.info(`Кэш ${enabled ? 'включен' : 'выключен'} — список маппингов обновлён`);
+            } catch (err) {
+                console.warn('Cache toggle refetch failed:', err);
+            }
+        });
+    }
     
     console.log('🔗 Setting up live connection field sync...');
     // Add live sync for main page connection fields
@@ -581,7 +630,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const port = mainPortField?.value.trim() || '8080';
             
             // Update wiremockBaseUrl immediately
-            window.wiremockBaseUrl = `http://${host}:${port}/__admin`;
+            window.wiremockBaseUrl = (typeof window.normalizeWiremockBaseUrl === 'function')
+                ? window.normalizeWiremockBaseUrl(host, port)
+                : `http://${host}:${port}/__admin`;
             
             // Sync with settings page fields
             const settingsHostField = document.getElementById(SELECTORS.SETTINGS.HOST);
@@ -602,7 +653,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const host = mainHostField?.value.trim() || 'localhost';
             
             // Update wiremockBaseUrl immediately
-            window.wiremockBaseUrl = `http://${host}:${port}/__admin`;
+            window.wiremockBaseUrl = (typeof window.normalizeWiremockBaseUrl === 'function')
+                ? window.normalizeWiremockBaseUrl(host, port)
+                : `http://${host}:${port}/__admin`;
             
             // Sync with settings page fields
             const settingsPortField = document.getElementById(SELECTORS.SETTINGS.PORT);
@@ -627,7 +680,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const port = settingsPortField?.value.trim() || '8080';
             
             // Update wiremockBaseUrl immediately
-            window.wiremockBaseUrl = `http://${host}:${port}/__admin`;
+            window.wiremockBaseUrl = (typeof window.normalizeWiremockBaseUrl === 'function')
+                ? window.normalizeWiremockBaseUrl(host, port)
+                : `http://${host}:${port}/__admin`;
             
             // Sync with main page fields
             if (mainHostField) mainHostField.value = host;
@@ -642,7 +697,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const host = settingsHostField?.value.trim() || 'localhost';
             
             // Update wiremockBaseUrl immediately
-            window.wiremockBaseUrl = `http://${host}:${port}/__admin`;
+            window.wiremockBaseUrl = (typeof window.normalizeWiremockBaseUrl === 'function')
+                ? window.normalizeWiremockBaseUrl(host, port)
+                : `http://${host}:${port}/__admin`;
             
             // Sync with main page fields
             if (mainPortField) mainPortField.value = port;

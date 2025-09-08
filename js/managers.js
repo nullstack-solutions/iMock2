@@ -97,9 +97,12 @@ window.TabManager = {
             name: 'Маппинги',
             loadFunction: () => window.fetchAndRenderMappings && window.fetchAndRenderMappings(),
             clearFilters() {
-                document.getElementById(SELECTORS.MAPPING_FILTERS.METHOD).value = '';
-                document.getElementById(SELECTORS.MAPPING_FILTERS.URL).value = '';
-                document.getElementById(SELECTORS.MAPPING_FILTERS.STATUS).value = '';
+                const mf = document.getElementById(SELECTORS.MAPPING_FILTERS.METHOD);
+                const uf = document.getElementById(SELECTORS.MAPPING_FILTERS.URL);
+                const sf = document.getElementById(SELECTORS.MAPPING_FILTERS.STATUS);
+                if (mf) mf.value = '';
+                if (uf) uf.value = '';
+                if (sf) sf.value = '';
                 if (window.fetchAndRenderMappings) window.fetchAndRenderMappings();
             },
             filterSelectors: [
@@ -112,14 +115,24 @@ window.TabManager = {
             name: 'Запросы',
             loadFunction: () => window.fetchAndRenderRequests && window.fetchAndRenderRequests(),
             clearFilters() {
-                document.getElementById(SELECTORS.REQUEST_FILTERS.METHOD).value = '';
-                document.getElementById(SELECTORS.REQUEST_FILTERS.URL).value = '';
-                document.getElementById(SELECTORS.REQUEST_FILTERS.STATUS).value = '';
-                document.getElementById(SELECTORS.REQUEST_FILTERS.DATE_FROM).value = '';
-                document.getElementById(SELECTORS.REQUEST_FILTERS.DATE_TO).value = '';
-                document.getElementById(SELECTORS.REQUEST_FILTERS.TIME_FROM).value = '';
-                document.getElementById(SELECTORS.REQUEST_FILTERS.TIME_TO).value = '';
-                document.getElementById(SELECTORS.REQUEST_FILTERS.QUICK).value = '';
+                const rf = {
+                    method: document.getElementById(SELECTORS.REQUEST_FILTERS.METHOD),
+                    url: document.getElementById(SELECTORS.REQUEST_FILTERS.URL),
+                    status: document.getElementById(SELECTORS.REQUEST_FILTERS.STATUS),
+                    dateFrom: document.getElementById(SELECTORS.REQUEST_FILTERS.DATE_FROM),
+                    dateTo: document.getElementById(SELECTORS.REQUEST_FILTERS.DATE_TO),
+                    timeFrom: document.getElementById(SELECTORS.REQUEST_FILTERS.TIME_FROM),
+                    timeTo: document.getElementById(SELECTORS.REQUEST_FILTERS.TIME_TO),
+                    quick: document.getElementById(SELECTORS.REQUEST_FILTERS.QUICK)
+                };
+                if (rf.method) rf.method.value = '';
+                if (rf.url) rf.url.value = '';
+                if (rf.status) rf.status.value = '';
+                if (rf.dateFrom) rf.dateFrom.value = '';
+                if (rf.dateTo) rf.dateTo.value = '';
+                if (rf.timeFrom) rf.timeFrom.value = '';
+                if (rf.timeTo) rf.timeTo.value = '';
+                if (rf.quick) rf.quick.value = '';
                 if (window.fetchAndRenderRequests) window.fetchAndRenderRequests();
             },
             filterSelectors: [

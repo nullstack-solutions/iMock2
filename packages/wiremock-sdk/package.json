@@ -1,0 +1,12 @@
+{
+  "name": "wiremock-sdk",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "description": "Placeholder; will be overwritten by OpenAPI generator",
+  "keywords": ["wiremock", "sdk", "openapi"],
+  "license": "MIT"
+}
+

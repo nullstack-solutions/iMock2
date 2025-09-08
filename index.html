@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WireMock UI - Enhanced Client</title>
+    <title>iMock - Wiremock UI Client</title>
     
     <!-- CSS files in logical loading order -->
     <link rel="stylesheet" href="styles/animations.css">
@@ -14,8 +14,8 @@
 <body data-theme="light">
     <div class="header">
         <div class="logo">
-            🔧 WireMock UI
-            <span class="version">v3.9.1</span>
+            🍎 iMock
+            <span class="version">v2.1</span>
         </div>
         <div class="status">
             <div class="status-indicator">
@@ -56,8 +56,10 @@
             <div id="mappings-page">
                 <div class="page-header">
                     <h1 class="page-title">API Mappings</h1>
-                    <div style="display: flex; gap: var(--space-3);">
+                    <div style="display: flex; gap: var(--space-3); align-items: center;">
+                        <span id="data-source-indicator" class="badge badge-secondary" title="Current data source">Source: direct</span>
                         <button class="btn btn-secondary" onclick="refreshMappings()">🔄 Refresh</button>
+                        <button class="btn btn-secondary" onclick="forceRefreshCache()" title="Rebuild the service cache mapping and reload">⚡ Force Refresh Cache</button>
                         <button class="btn btn-primary" onclick="showModal('add-mapping-modal')" id="add-mapping-btn" disabled>+ Add Mapping</button>
                     </div>
                 </div>
@@ -117,8 +119,8 @@
                             </select>
                         </div>
                         <div class="form-group">
-                            <label class="form-label">Search URL</label>
-                            <input type="text" class="form-input" id="filter-url" placeholder="Enter URL pattern" oninput="applyFilters()">
+                            <label class="form-label">Search by URL or Name</label>
+                            <input type="text" class="form-input" id="filter-url" placeholder="Enter URL or Name" oninput="applyFilters()">
                         </div>
                         <div class="form-group">
                             <label class="form-label">Status</label>
@@ -153,7 +155,8 @@
             <div id="requests-page" class="hidden">
                 <div class="page-header">
                     <h1 class="page-title">Request Log</h1>
-                    <div style="display: flex; gap: var(--space-2);">
+                    <div style="display: flex; gap: var(--space-2); align-items: center;">
+                        <span id="requests-source-indicator" class="badge badge-secondary" title="Current data source">Requests: direct</span>
                         <button class="btn btn-secondary" onclick="refreshRequests()">🔄 Refresh</button>
                         <button class="btn btn-danger" onclick="clearRequests()">🗑️ Clear Log</button>
                         <button class="btn btn-secondary" onclick="clearRequestFilters()">🧹 Clear Filters</button>
@@ -416,6 +419,11 @@
                             <input type="text" class="form-input" id="auth-header" placeholder="Bearer token123 or Basic dXNlcjpwYXNz">
                             <small class="form-help">Optional. Will be added to all WireMock API requests</small>
                         </div>
+                        <div class="form-group">
+                            <label class="form-label">
+                                <input type="checkbox" id="cache-enabled"> Enable Cache Service (use /__cache/mappings)
+                            </label>
+                        </div>
                     </div>
                 </div>
                 
@@ -484,16 +492,15 @@
             
             <!-- Editor Mode Switcher -->
             <div class="editor-mode-switcher">
-                <button type="button" class="mode-btn active" data-editor-mode="form">📝 Form</button>
                 <button type="button" class="mode-btn" data-editor-mode="json">📄 JSON</button>
                 <div class="editor-status">
-                    <span id="editor-mode-indicator">Mode: Form</span>
+                    <span id="editor-mode-indicator">Mode: JSON</span>
                     <span id="editor-dirty-indicator" class="dirty-indicator" style="display: none;">●</span>
                 </div>
             </div>
             
-            <!-- Form Editor Container -->
-            <div id="form-editor-container">
+            <!-- Form Editor (Hidden by default) -->
+            <div id="form-editor-container" style="display: none;">
             <form id="edit-mapping-form">
                 <input type="hidden" id="edit-mapping-id">
                 
@@ -563,28 +570,25 @@
             </div>
             
             <!-- JSON Editor Container -->
-            <div id="json-editor-container" style="display: none;">
-                <div class="json-editor-wrapper">
-                    <div class="json-editor-toolbar">
-                        <button type="button" class="btn btn-sm" data-action="validate-json">✓ Validate</button>
-                        <button type="button" class="btn btn-sm" data-action="format-json">🎨 Format</button>
-                        <button type="button" class="btn btn-sm" data-action="minify-json">📦 Minify</button>
-                    </div>
-                    <textarea id="json-editor" class="json-editor" rows="20" placeholder="{
+            <div id="json-editor-container">
+                <div class="editor-toolbar">
+                    <button type="button" class="btn btn-sm" data-action="format-json">🎨 Format</button>
+                    <button type="button" class="btn btn-sm" data-action="minify-json">📦 Minify</button>
+                </div>
+                <textarea id="json-editor" class="json-editor" rows="50" placeholder="{
   \"name\": \"My Mapping\",
   \"request\": {
     \"method\": \"GET\",
-    \"urlPattern\": \"/api/example\"
+    \"url\": \"/api/example\"
   },
   \"response\": {
     \"status\": 200,
-    \"jsonBody\": {
-      \"message\": \"Hello World\"
+    \"body\": \"{\\\"message\\\":\\\"Hello World\\\"}\",
+    \"headers\": {
+      \"Content-Type\": \"application/json\"
     }
   }
 }"></textarea>
-                    <div id="json-validation-result" class="json-validation"></div>
-                </div>
             </div>
         </div>
     </div>

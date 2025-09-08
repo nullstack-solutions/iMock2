@@ -1,5 +1,4 @@
-<<<<<<< README.md
-# 🔧 WireMock UI 2.0 - Enhanced Client
+# 🍎 iMock 2.0 - Wiremock UI Client
 
 > Модульный веб-интерфейс для управления WireMock сервером
 

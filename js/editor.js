@@ -9,7 +9,7 @@ const EDITOR_MODES = {
 
 // Current editor state
 let editorState = {
-    mode: EDITOR_MODES.FORM,
+    mode: EDITOR_MODES.JSON, // Default to JSON mode
     originalMapping: null,
     currentMapping: null,
     isDirty: false
@@ -21,6 +21,14 @@ document.addEventListener('DOMContentLoaded', () => {
     setupMappingFormListeners();
     // Set up JSON editor mode handlers
     setupEditorModeHandlers();
+    
+    // Ensure JSON editor is visible and form is hidden on load
+    const formEditor = document.getElementById('form-editor-container');
+    const jsonEditor = document.getElementById('json-editor-container');
+    if (formEditor && jsonEditor) {
+        formEditor.style.display = 'none';
+        jsonEditor.style.display = 'block';
+    }
 });
 
 /**
@@ -44,9 +52,17 @@ function setupMappingFormListeners() {
  * Set up editor mode handlers
  */
 function setupEditorModeHandlers() {
+    // Show notification about form mode being temporarily disabled
+    showNotification('Form mode is temporarily disabled due to bugs. Using JSON mode only.', 'warning');
+    
     // Mode switcher buttons
     document.addEventListener('click', (e) => {
         if (e.target.matches('[data-editor-mode]')) {
+            // Prevent switching to form mode
+            if (e.target.dataset.editorMode === EDITOR_MODES.FORM) {
+                showNotification('Form mode is temporarily disabled due to bugs. Please use JSON mode.', 'warning');
+                return;
+            }
             const mode = e.target.dataset.editorMode;
             switchEditorMode(mode);
         }
@@ -123,6 +139,16 @@ async function saveMapping() {
     try {
         if (id) {
             // Update existing mapping
+            // Ensure metadata.edited timestamp
+            (function(){
+                try {
+                    const nowIso = new Date().toISOString();
+                    if (typeof mappingData === 'object' && mappingData) {
+                        mappingData.metadata = mappingData.metadata || {};
+                        mappingData.metadata.edited = nowIso;
+                    }
+                } catch (_) {}
+            })();
             await apiFetch(`/mappings/${id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
@@ -131,16 +157,49 @@ async function saveMapping() {
             NotificationManager.success('Маппинг обновлен!');
         } else {
             // Create new mapping
-            await apiFetch('/mappings', {
+            // Ensure metadata.created timestamp
+            (function(){
+                try {
+                    const nowIso = new Date().toISOString();
+                    if (typeof mappingData === 'object' && mappingData) {
+                        mappingData.metadata = mappingData.metadata || {};
+                        if (!mappingData.metadata.created) {
+                            mappingData.metadata.created = nowIso;
+                        }
+                    }
+                } catch (_) {}
+            })();
+            const created = await apiFetch('/mappings', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(mappingData)
             });
             NotificationManager.success('Маппинг создан!');
+
+            // Cache is maintained via service mapping; notify endpoint removed
+            // Optimistic UI: show the created mapping immediately
+            try {
+                const createdMapping = created?.mapping || created;
+                if (typeof window.applyOptimisticMappingUpdate === 'function' && createdMapping) {
+                    window.applyOptimisticMappingUpdate(createdMapping);
+                }
+            } catch (e) { console.warn('optimistic insert after create failed:', e); }
         }
         
         hideModal('add-mapping-modal');
-        await fetchAndRenderMappings();
+        // Optimistic update already rendered; rebuild cache then soft refresh
+        try {
+            const saved = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
+            const useCache = !!saved.cacheEnabled;
+            if (typeof window.refreshImockCache === 'function') {
+                try { await window.refreshImockCache(); } catch (e) { console.warn('refreshImockCache after create failed:', e); }
+            }
+            if (typeof window.backgroundRefreshMappings === 'function') {
+                window.backgroundRefreshMappings(useCache);
+            } else {
+                fetchAndRenderMappings();
+            }
+        } catch (e) { console.warn('post-create refresh failed:', e); }
         
         // Применяем фильтры после обновления мапингов
         const hasActiveFilters = document.getElementById(SELECTORS.MAPPING_FILTERS.METHOD)?.value ||
@@ -181,7 +240,17 @@ window.updateMapping = async () => {
         
         console.log('Sending mapping update:', mappingData);
         
-        await apiFetch(`/mappings/${id}`, {
+        // Ensure metadata.edited timestamp
+        (function(){
+            try {
+                const nowIso = new Date().toISOString();
+                if (typeof mappingData === 'object' && mappingData) {
+                    mappingData.metadata = mappingData.metadata || {};
+                    mappingData.metadata.edited = nowIso;
+                }
+            } catch (_) {}
+        })();
+        const updated = await apiFetch(`/mappings/${id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(mappingData)
@@ -189,6 +258,8 @@ window.updateMapping = async () => {
         
         console.log('Mapping updated successfully');
         NotificationManager.success('Маппинг обновлен!');
+
+        // Cache is maintained via service mapping; notify endpoint removed
         
         editorState.isDirty = false;
         updateDirtyIndicator();
@@ -196,8 +267,23 @@ window.updateMapping = async () => {
         console.log('Hiding modal...');
         hideModal('edit-mapping-modal');
         
-        console.log('Refreshing mappings list...');
-        await fetchAndRenderMappings();
+        console.log('Refreshing mappings list (background)...');
+        // Optimistic update for immediate UI
+        if (typeof window.applyOptimisticMappingUpdate === 'function') {
+            window.applyOptimisticMappingUpdate(mappingData);
+        }
+        try {
+            const saved = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
+            const useCache = !!saved.cacheEnabled;
+            if (typeof window.refreshImockCache === 'function') {
+                try { await window.refreshImockCache(); } catch (e) { console.warn('refreshImockCache after update failed:', e); }
+            }
+            if (typeof window.backgroundRefreshMappings === 'function') {
+                window.backgroundRefreshMappings(useCache);
+            } else {
+                fetchAndRenderMappings();
+            }
+        } catch (e) { console.warn('post-update refresh failed:', e); }
         
         // Применяем фильтры после обновления мапингов
         const hasActiveFilters = document.getElementById(SELECTORS.MAPPING_FILTERS.METHOD)?.value ||
@@ -356,38 +442,21 @@ function switchEditorMode(mode) {
     const previousMode = editorState.mode;
     
     try {
-        // Save current state before switching
-        if (previousMode === EDITOR_MODES.JSON) {
-            console.log('🟠 [MODE DEBUG] Saving from JSON mode');
-            saveFromJSONMode();
-        } else if (previousMode === EDITOR_MODES.FORM) {
-            console.log('🟠 [MODE DEBUG] Saving from FORM mode');
-            saveFromFormMode();
-        }
+        // Always load JSON mode
+        loadJSONMode();
         
-        console.log('🟠 [MODE DEBUG] Current mapping ID after save:', editorState.currentMapping?.id);
-        
-        editorState.mode = mode;
+        // Update UI
         updateEditorUI(mode);
         
-        // Load data for new mode
-        if (mode === EDITOR_MODES.JSON) {
-            console.log('🟠 [MODE DEBUG] Loading JSON mode with mapping ID:', editorState.currentMapping?.id);
-            loadJSONMode();
-        } else if (mode === EDITOR_MODES.FORM) {
-            console.log('🟠 [MODE DEBUG] Loading FORM mode with mapping ID:', editorState.currentMapping?.id);
-            loadFormMode();
-        }
-        
+        // Update mode indicator
         updateModeIndicator(mode);
-        console.log('🟠 [MODE DEBUG] Mode switch completed successfully');
+        
+        // Show notification about form mode being disabled
+        showNotification('Form mode is temporarily disabled. Using JSON mode only.', 'warning');
         
     } catch (error) {
-        console.error('🔴 [MODE DEBUG] Error switching editor mode:', error);
-        showNotification('Ошибка переключения режима: ' + error.message, 'error');
-        // Revert to previous mode
-        editorState.mode = previousMode;
-        updateModeIndicator(previousMode);
+        console.error('Error in editor mode:', error);
+        showNotification(`Error: ${error.message}`, 'error');
     }
 }
 
@@ -418,12 +487,14 @@ function updateEditorUI(mode) {
         if (btn.dataset.editorMode === mode) {
             btn.classList.add('active');
         }
+        // Disable form mode button
+        if (btn.dataset.editorMode === EDITOR_MODES.FORM) {
+            btn.disabled = true;
+            btn.title = 'Form mode is temporarily disabled due to bugs';
+        }
     });
 }
 
-/**
- * Save data from JSON mode
- */
 function saveFromJSONMode() {
     console.log('🟢 [SAVE DEBUG] saveFromJSONMode called');
     

@@ -117,7 +117,8 @@ window.SELECTORS = {
         TIMEOUT: 'settings-timeout',
         AUTO_REFRESH: 'auto-refresh',
         THEME: 'theme-select',
-        AUTH_HEADER: 'auth-header'
+        AUTH_HEADER: 'auth-header',
+        CACHE_ENABLED: 'cache-enabled'
     },
     
     // Импорт/Экспорт
@@ -202,6 +203,49 @@ window.allScenarios = [];
 window.isRecording = false;
 window.recordedCount = 0;
 
+// Нормализация базового URL WireMock (учет схемы и порта из ввода пользователя)
+// Примеры ввода и результата:
+//  - host: "mock.example.com", port: "8080" => "http://mock.example.com:8080/__admin"
+//  - host: "https://mock.example.com", port: "" => "https://mock.example.com:443/__admin"
+//  - host: "https://mock.example.com:8443", port: "" => "https://mock.example.com:8443/__admin"
+//  - host: "http://mock.example.com", port: "8000" => "http://mock.example.com:8000/__admin"
+window.normalizeWiremockBaseUrl = (hostInput, portInput) => {
+    let rawHost = (hostInput || '').trim();
+    let port = (portInput || '').trim();
+    let scheme = 'http';
+    let hostname = '';
+
+    if (!rawHost) rawHost = 'localhost';
+
+    try {
+        // Если протокол отсутствует, временно добавим http для корректного парсинга URL
+        const url = new URL(rawHost.includes('://') ? rawHost : `http://${rawHost}`);
+        scheme = url.protocol.replace(':', '') || 'http';
+        hostname = url.hostname;
+        // Если порт не задан отдельно, возьмем из URL (если есть)
+        if (!port && url.port) {
+            port = url.port;
+        }
+    } catch (e) {
+        // Фолбэк к простому разбору host:port
+        const m = rawHost.match(/^([^:/]+)(?::(\d+))?$/);
+        if (m) {
+            hostname = m[1];
+            if (!port && m[2]) port = m[2];
+        } else {
+            hostname = rawHost; // как есть
+        }
+    }
+
+    if (!hostname) hostname = 'localhost';
+    if (!port) {
+        // По умолчанию для https используем 443, иначе 8080 (чтобы сохранять поведение UI)
+        port = scheme === 'https' ? '443' : '8080';
+    }
+
+    return `${scheme}://${hostname}:${port}/__admin`;
+};
+
 // --- API-КЛИЕНТ С ТАЙМАУТОМ ---
 window.apiFetch = async (endpoint, options = {}) => {
     const controller = new AbortController();
@@ -281,6 +325,16 @@ window.apiFetch = async (endpoint, options = {}) => {
             dataPreview,
             timestamp: new Date().toISOString()
         });
+        
+        // Track last OK time only for health-related endpoints
+        try {
+            if (endpoint === (window.ENDPOINTS && window.ENDPOINTS.HEALTH) || endpoint === (window.ENDPOINTS && window.ENDPOINTS.MAPPINGS)) {
+                window.lastWiremockSuccess = Date.now();
+                if (typeof window.updateLastSuccessUI === 'function') {
+                    window.updateLastSuccessUI();
+                }
+            }
+        } catch (_) {}
         
         return responseData;
     } catch (error) {
@@ -398,6 +452,11 @@ window.toggleTheme = () => {
     
     // Save theme preference
     localStorage.setItem('theme', newTheme);
+    // Keep settings bundle in sync
+    try {
+        const current = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
+        localStorage.setItem('wiremock-settings', JSON.stringify({ ...current, theme: newTheme }));
+    } catch (_) {}
     
     showMessage(`Switched to ${newTheme} theme`, 'success');
 };
@@ -426,6 +485,11 @@ window.changeTheme = () => {
         
         // Save theme preference
         localStorage.setItem('theme', selectedTheme);
+        // Keep settings bundle in sync
+        try {
+            const current = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
+            localStorage.setItem('wiremock-settings', JSON.stringify({ ...current, theme: selectedTheme }));
+        } catch (_) {}
         
         showMessage(`Theme changed to ${selectedTheme}`, 'success');
     }

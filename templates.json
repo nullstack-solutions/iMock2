@@ -1,0 +1,37 @@
+{
+  "basic": {
+    "name": "Basic Mapping",
+    "request": { 
+      "method": "GET", 
+      "url": "/example" 
+    },
+    "response": { 
+      "status": 200, 
+      "body": "OK" 
+    }
+  },
+  "proxy": {
+    "name": "Proxy Mapping",
+    "request": { 
+      "method": "ANY", 
+      "urlPattern": ".*" 
+    },
+    "response": { 
+      "proxyBaseUrl": "http://example.com" 
+    }
+  },
+  "post": {
+    "name": "POST Mapping",
+    "request": { 
+      "method": "POST", 
+      "url": "/api/data" 
+    },
+    "response": { 
+      "status": 201, 
+      "jsonBody": {
+        "id": "{{randomValue}}",
+        "message": "Created successfully"
+      }
+    }
+  }
+}

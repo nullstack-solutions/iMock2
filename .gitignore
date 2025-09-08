@@ -1,0 +1,25 @@
+# Editors and OS
+.DS_Store
+.vscode/
+*.log
+
+# Local backups and temp
+.backup_*/
+*.tmp
+*.swp
+
+# Build artifacts
+dist/
+build/
+
+# Node/Yarn/NPM
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Generated SDK placeholder/builds
+packages/wiremock-sdk/*.tgz
+packages/wiremock-sdk/dist/
+packages/wiremock-sdk-extra/dist/
+

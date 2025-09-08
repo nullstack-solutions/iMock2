@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WireMock JSON Studio</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/monokai.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/default.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/fold/foldgutter.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/lint/lint.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/search/matchesonscrollbar.css" rel="stylesheet">
+    <link href="json-editor.css" rel="stylesheet">
+</head>
+<body data-theme="light">
+    <div class="app-container">
+        <header class="header">
+            <div style="display: flex; align-items: center; gap: 1rem;">
+                <div class="logo">WM</div>
+                <h1>WireMock JSON Studio</h1>
+            </div>
+            <div class="header-controls">
+                <button class="btn btn-icon" onclick="toggleTheme()" title="Toggle Theme">
+                    <span class="theme-icon">🌙</span>
+                </button>
+            </div>
+        </header>
+        <div class="toolbar">
+            <div class="toolbar-section">
+                <div class="btn-group" id="createEditControls">
+                    <button class="btn btn-secondary" onclick="newDocument()" title="New (Ctrl+N)">
+                        📄 New
+                    </button>
+                    <button class="btn btn-secondary" onclick="loadFile()" title="Load (Ctrl+O)">
+                        📂 Load
+                    </button>
+                    <button class="btn btn-primary" onclick="saveFile()" title="Save (Ctrl+S)">
+                        💾 Save
+                    </button>
+                </div>
+                <div class="btn-group" id="compareControls" style="display: none;">
+                    <button class="btn btn-secondary" onclick="loadCompareFile('left')" title="Load File (Left)">
+                        📂 Load Left
+                    </button>
+                    <button class="btn btn-secondary" onclick="loadCompareFile('right')" title="Load File (Right)">
+                        📂 Load Right
+                    </button>
+                    <button class="btn btn-secondary" onclick="clearComparePanel('left')" title="Clear Left">
+                        🗑️ Clear Left
+                    </button>
+                    <button class="btn btn-secondary" onclick="clearComparePanel('right')" title="Clear Right">
+                        🗑️ Clear Right
+                    </button>
+                </div>
+            </div>
+            <div class="toolbar-section">
+                <div class="btn-group">
+                    <button class="btn btn-secondary mode-tab active" data-mode="create" onclick="switchMode('create')">
+                        Create
+                    </button>
+                    <button class="btn btn-secondary mode-tab" data-mode="edit" onclick="switchMode('edit')">
+                        Edit
+                    </button>
+                    <button class="btn btn-secondary mode-tab" data-mode="compare" onclick="switchMode('compare')">
+                        Compare
+                    </button>
+                </div>
+            </div>
+            <div class="toolbar-section">
+                <div class="search-container">
+                    <input type="text" id="jsonPathInput" placeholder="Search text or JSONPath ($.path)..." onkeydown="if(event.key==='Enter') searchJSONPath()">
+                    <button class="btn btn-icon" onclick="searchJSONPath()" title="Search">
+                        🔍
+                    </button>
+                </div>
+            </div>
+        </div>
+        <main class="main-content">
+            <div class="drag-overlay" id="dragOverlay">
+                <div class="drag-text">
+                    📁 Drop JSON files here
+                </div>
+            </div>
+            <div class="editor-container" id="editorContainer">
+                <textarea id="jsonEditor"></textarea>
+            </div>
+            <div class="compare-container" id="compareContainer" style="display: none;">
+                <div class="compare-panel">
+                    <textarea id="compareEditorLeft"></textarea>
+                </div>
+                <div class="compare-panel">
+                    <textarea id="compareEditorRight"></textarea>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div class="modal" id="fullscreenModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Templates</h2>
+                <button class="btn btn-icon" onclick="closeModal()">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="template-grid" id="templateGrid">
+                    <!-- Templates will be loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="historyModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>History</h2>
+                <button class="btn btn-icon" onclick="closeHistoryModal()">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="history-list" id="historyList">
+                    <!-- History items will be loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Подключение скриптов -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/javascript/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/fold/foldcode.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/fold/foldgutter.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/fold/brace-fold.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/edit/matchbrackets.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/edit/closebrackets.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/lint/lint.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/lint/json-lint.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/search/search.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/search/searchcursor.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsonpath@1.1.1/jsonpath.min.js"></script>
+    <script src="json-editor.js"></script>
+</body>
+</html>
