@@ -1,3 +1,5 @@
+'use strict';
+
 // ===== CORE.JS - Базовая инфраструктура =====
 // Константы, API клиент, базовые UI функции
 
@@ -20,8 +22,7 @@ window.SELECTORS = {
         URL: 'req-filter-url',
         DATE_FROM: 'req-filter-from',
         DATE_TO: 'req-filter-to',
-        QUICK: 'req-filter-quick',
-        SINCE: 'req-filter-since'
+        QUICK: 'req-filter-quick'
     },
     
     // Фильтры Mappings
@@ -48,7 +49,9 @@ window.SELECTORS = {
     UI: {
         STATS: 'stats',
         SEARCH_FILTERS: 'search-filters',
-        UPTIME: 'uptime'
+        UPTIME: 'uptime',
+        DATA_SOURCE_INDICATOR: 'data-source-indicator',
+        REQUESTS_SOURCE_INDICATOR: 'requests-source-indicator'
     },
     
     // Загрузочные состояния
@@ -249,17 +252,25 @@ window.normalizeWiremockBaseUrl = (hostInput, portInput) => {
 // --- API-КЛИЕНТ С ТАЙМАУТОМ ---
 window.apiFetch = async (endpoint, options = {}) => {
     const controller = new AbortController();
-    const currentTimeout = window.requestTimeout || 5000; // fallback to 5 seconds
+
+    // Read timeout from settings instead of window variable
+    const timeoutSettings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
+    const currentTimeout = timeoutSettings.requestTimeout ? parseInt(timeoutSettings.requestTimeout) : 5000;
+    console.log(`⏱️ [API] Using request timeout: ${currentTimeout}ms (from settings: ${timeoutSettings.requestTimeout || 'default 5000'})`);
     const timeoutId = setTimeout(() => controller.abort(), currentTimeout);
-    
+
     // Always use the latest wiremockBaseUrl from window object
     const fullUrl = `${window.wiremockBaseUrl}${endpoint}`;
     const method = options.method || 'GET';
-    
+
     // Prepare headers with auth header if available
+    // Получать authHeader из настроек каждый раз
+    const authSettings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
+    const currentAuthHeader = authSettings.authHeader || window.authHeader || '';
+
     const headers = {
         'Content-Type': 'application/json',
-        ...(window.authHeader && { 'Authorization': window.authHeader }),
+        ...(currentAuthHeader && { 'Authorization': currentAuthHeader }),
         ...options.headers
     };
     
@@ -270,7 +281,7 @@ window.apiFetch = async (endpoint, options = {}) => {
         baseUrl: window.wiremockBaseUrl,
         endpoint,
         headers: headers,
-        authHeaderValue: window.authHeader,
+        authHeaderValue: currentAuthHeader,
         options: options.body ? { ...options, body: JSON.parse(options.body || '{}') } : options,
         timestamp: new Date().toISOString()
     });
@@ -391,23 +402,30 @@ window.showModal = (modalId) => {
     const formElement = document.getElementById(SELECTORS.MODAL.FORM);
     const idElement = document.getElementById(SELECTORS.MODAL.ID);
     const titleElement = document.getElementById(SELECTORS.MODAL.TITLE);
-    
+
     if (formElement) formElement.reset();
     if (idElement) idElement.value = '';
     if (titleElement) titleElement.textContent = 'Add New Mapping';
-    
-    // Безопасное отображение модального окна
-    const modalElement = document.getElementById(`${modalId}-modal`);
+
+    // Безопасное отображение модального окна - проверяем оба варианта
+    let modalElementId = modalId;
+    if (!modalId.endsWith('-modal')) {
+        modalElementId = `${modalId}-modal`;
+    }
+
+    const modalElement = document.getElementById(modalElementId);
     if (modalElement) {
         modalElement.style.display = 'flex';
     } else {
-        console.warn(`Modal element not found: ${modalId}-modal`);
-        // Попробуем найти элемент без суффикса -modal
-        const alternativeModal = document.getElementById(modalId);
-        if (alternativeModal) {
-            alternativeModal.style.display = 'flex';
-        } else {
-            console.warn(`Alternative modal element not found: ${modalId}`);
+        console.warn(`Modal element not found: ${modalElementId}`);
+        // Попробуем найти элемент без суффикса -modal если он был добавлен
+        if (modalId.endsWith('-modal')) {
+            const alternativeModal = document.getElementById(modalId.replace('-modal', ''));
+            if (alternativeModal) {
+                alternativeModal.style.display = 'flex';
+            } else {
+                console.warn(`Alternative modal element not found: ${modalId.replace('-modal', '')}`);
+            }
         }
     }
 };
@@ -499,7 +517,9 @@ window.changeTheme = () => {
 window.initializeTheme = () => {
     const savedTheme = localStorage.getItem('theme') || 'light';
     const body = document.body;
-    
+
+    if (!body) return; // Add DOM check
+
     if (savedTheme === 'auto') {
         const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
         const theme = prefersDark ? 'dark' : 'light';
@@ -507,20 +527,27 @@ window.initializeTheme = () => {
     } else {
         body.setAttribute('data-theme', savedTheme);
     }
-    
+
     // Update theme icon
     const themeIcon = document.getElementById('theme-icon');
     if (themeIcon) {
         const currentTheme = body.getAttribute('data-theme');
         themeIcon.textContent = currentTheme === 'dark' ? '☀️' : '🌙';
     }
-    
+
     // Update theme select if it exists
     const themeSelect = document.getElementById('theme-select');
     if (themeSelect) {
         themeSelect.value = savedTheme;
     }
 };
+
+// Initialize theme only after DOMContentLoaded
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeTheme);
+} else {
+    initializeTheme();
+}
 
 // --- MODAL FUNCTIONS ---
 window.showModal = (modalId) => {
@@ -588,6 +615,93 @@ window.debugAuthHeader = () => {
         'length': window.authHeader?.length,
         'localStorage': JSON.parse(localStorage.getItem('wiremock-settings') || '{}').authHeader
     });
+};
+
+// --- DOM ELEMENT CACHE FOR PERFORMANCE OPTIMIZATION ---
+window.elementCache = new Map();
+
+window.getElement = (id) => {
+    if (!window.elementCache.has(id)) {
+        const element = document.getElementById(id);
+        if (element) {
+            window.elementCache.set(id, element);
+        }
+        return element;
+    }
+    return window.elementCache.get(id);
+};
+
+window.clearElementCache = () => {
+    window.elementCache.clear();
+};
+
+window.invalidateElementCache = (id) => {
+    if (id) {
+        window.elementCache.delete(id);
+    } else {
+        // If no id provided, clear entire cache
+        window.elementCache.clear();
+    }
+};
+
+// Enhanced getElement with automatic cache invalidation on DOM changes
+window.getElement = (id, invalidateCache = false) => {
+    if (invalidateCache) {
+        window.invalidateElementCache(id);
+    }
+
+    if (!window.elementCache.has(id)) {
+        const element = document.getElementById(id);
+        if (element) {
+            window.elementCache.set(id, element);
+        }
+        return element;
+    }
+    return window.elementCache.get(id);
+};
+
+// --- ENHANCED ERROR MESSAGE UTILITY ---
+window.getUserFriendlyErrorMessage = (error, operation = 'operation') => {
+    const errorMessage = error.message || error.toString();
+
+    // Network/connection errors
+    if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError')) {
+        return `Connection failed. Please check if WireMock server is running and accessible.`;
+    }
+
+    if (errorMessage.includes('timeout') || errorMessage.includes('Timeout')) {
+        return `Request timed out. The server may be overloaded or unresponsive.`;
+    }
+
+    // HTTP status errors
+    if (errorMessage.includes('HTTP 404')) {
+        return `Resource not found. The requested item may have been deleted.`;
+    }
+
+    if (errorMessage.includes('HTTP 403')) {
+        return `Access denied. Please check your authentication settings.`;
+    }
+
+    if (errorMessage.includes('HTTP 500')) {
+        return `Server error. Please try again later or check server logs.`;
+    }
+
+    if (errorMessage.includes('HTTP 400')) {
+        return `Invalid request. Please check your input data.`;
+    }
+
+    // JSON parsing errors
+    if (errorMessage.includes('JSON') || errorMessage.includes('Unexpected token')) {
+        return `Data parsing error. The server returned invalid data.`;
+    }
+
+    // CORS errors
+    if (errorMessage.includes('CORS') || errorMessage.includes('Access-Control')) {
+        return `Cross-origin request blocked. Please check server CORS settings.`;
+    }
+
+    // Generic fallback with specific operation context
+    return `Failed to ${operation}: ${errorMessage}`;
 };
 
 console.log('✅ Core.js loaded - Constants, API client, basic UI functions');

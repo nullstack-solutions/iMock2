@@ -4,12 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WireMock JSON Studio</title>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/monokai.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/default.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/fold/foldgutter.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/lint/lint.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/search/matchesonscrollbar.css" rel="stylesheet">
     <link href="json-editor.css" rel="stylesheet">
 </head>
 <body data-theme="light">
@@ -21,56 +15,109 @@
             </div>
             <div class="header-controls">
                 <button class="btn btn-icon" onclick="toggleTheme()" title="Toggle Theme">
-                    <span class="theme-icon">🌙</span>
+                    <span class="theme-icon" aria-hidden="true">&#9790;</span>
                 </button>
             </div>
         </header>
         <div class="toolbar">
             <div class="toolbar-section">
-                <div class="btn-group" id="createEditControls">
+                <div class="btn-group" id="editorControls">
                     <button class="btn btn-secondary" onclick="newDocument()" title="New (Ctrl+N)">
-                        📄 New
+                        <span class="btn-icon-label" aria-hidden="true">&#x1F4C4;</span>
+                        <span>New</span>
                     </button>
                     <button class="btn btn-secondary" onclick="loadFile()" title="Load (Ctrl+O)">
-                        📂 Load
+                        <span class="btn-icon-label" aria-hidden="true">&#x1F4E5;</span>
+                        <span>Load</span>
                     </button>
                     <button class="btn btn-primary" onclick="saveFile()" title="Save (Ctrl+S)">
-                        💾 Save
+                        <span class="btn-icon-label" aria-hidden="true">&#x1F4BE;</span>
+                        <span>Save</span>
                     </button>
                 </div>
                 <div class="btn-group" id="compareControls" style="display: none;">
                     <button class="btn btn-secondary" onclick="loadCompareFile('left')" title="Load File (Left)">
-                        📂 Load Left
+                        <span class="btn-icon-label" aria-hidden="true">&#x2B05;</span>
+                        <span>Load Left</span>
                     </button>
                     <button class="btn btn-secondary" onclick="loadCompareFile('right')" title="Load File (Right)">
-                        📂 Load Right
+                        <span class="btn-icon-label" aria-hidden="true">&#x27A1;</span>
+                        <span>Load Right</span>
                     </button>
                     <button class="btn btn-secondary" onclick="clearComparePanel('left')" title="Clear Left">
-                        🗑️ Clear Left
+                        <span class="btn-icon-label" aria-hidden="true">&#x2716;</span>
+                        <span>Clear Left</span>
                     </button>
                     <button class="btn btn-secondary" onclick="clearComparePanel('right')" title="Clear Right">
-                        🗑️ Clear Right
+                        <span class="btn-icon-label" aria-hidden="true">&#x2716;</span>
+                        <span>Clear Right</span>
                     </button>
                 </div>
             </div>
             <div class="toolbar-section">
                 <div class="btn-group">
-                    <button class="btn btn-secondary mode-tab active" data-mode="create" onclick="switchMode('create')">
-                        Create
-                    </button>
-                    <button class="btn btn-secondary mode-tab" data-mode="edit" onclick="switchMode('edit')">
-                        Edit
+                    <button class="btn btn-secondary mode-tab active" data-mode="editor" onclick="switchMode('editor')">
+                        <span class="btn-icon-label" aria-hidden="true">&#x270E;</span>
+                        <span>Editor</span>
                     </button>
                     <button class="btn btn-secondary mode-tab" data-mode="compare" onclick="switchMode('compare')">
-                        Compare
+                        <span class="btn-icon-label" aria-hidden="true">&#x21C4;</span>
+                        <span>Compare</span>
                     </button>
                 </div>
             </div>
             <div class="toolbar-section">
                 <div class="search-container">
                     <input type="text" id="jsonPathInput" placeholder="Search text or JSONPath ($.path)..." onkeydown="if(event.key==='Enter') searchJSONPath()">
+                    <div class="search-toggles">
+                        <label class="toggle-label" title="Match case">
+                            <input type="checkbox" id="matchCaseToggle">
+                            <span>Aa</span>
+                        </label>
+                        <label class="toggle-label" title="Whole word">
+                            <input type="checkbox" id="wholeWordToggle">
+                            <span>W</span>
+                        </label>
+                        <label class="toggle-label" title="Keys only">
+                            <input type="checkbox" id="keysOnlyToggle">
+                            <span>K</span>
+                        </label>
+                        <label class="toggle-label" title="Values only">
+                            <input type="checkbox" id="valuesOnlyToggle">
+                            <span>V</span>
+                        </label>
+                    </div>
+                    <div class="search-actions">
+                        <button class="btn btn-icon btn-compact" onclick="formatJSON()" title="Format JSON">
+                            <span aria-hidden="true">&#123;&#125;</span>
+                        </button>
+                        <button class="btn btn-icon btn-compact" onclick="minifyJSON()" title="Minify JSON">
+                            <span aria-hidden="true">&#x2212;</span>
+                        </button>
+                        <button class="btn btn-icon btn-compact" onclick="validateJSON()" title="Validate JSON">
+                            <span aria-hidden="true">&#x2714;</span>
+                        </button>
+                        <button class="btn btn-icon btn-compact" onclick="openModal()" title="WireMock Templates">
+                            <span aria-hidden="true">&#x1F4C3;</span>
+                        </button>
+                        <button class="btn btn-icon btn-compact" onclick="openHistoryModal()" title="History">
+                            <span aria-hidden="true">&#x23F2;</span>
+                        </button>
+                        <button class="btn btn-icon btn-compact" onclick="exportAsYAML()" title="Export as YAML">
+                            <span aria-hidden="true">&#x1F4E4;</span>
+                        </button>
+                        <button class="btn btn-icon btn-compact" onclick="togglePerformanceMonitoring()" title="Performance Monitor">
+                            <span aria-hidden="true">📈</span>
+                        </button>
+                        <button class="btn btn-icon btn-compact" onclick="testOptimisticUpdate()" title="Test Optimistic Update">
+                            <span aria-hidden="true">🎯</span>
+                        </button>
+                        <button class="btn btn-icon btn-compact" onclick="testCacheRefresh()" title="Test Cache Refresh">
+                            <span aria-hidden="true">🔄</span>
+                        </button>
+                    </div>
                     <button class="btn btn-icon" onclick="searchJSONPath()" title="Search">
-                        🔍
+                        <span aria-hidden="true">&#x1F50D;</span>
                     </button>
                 </div>
             </div>
@@ -78,64 +125,1127 @@
         <main class="main-content">
             <div class="drag-overlay" id="dragOverlay">
                 <div class="drag-text">
-                    📁 Drop JSON files here
+                    Drop JSON files here
                 </div>
             </div>
             <div class="editor-container" id="editorContainer">
-                <textarea id="jsonEditor"></textarea>
+                <div id="jsonEditor" class="editor-surface"></div>
             </div>
             <div class="compare-container" id="compareContainer" style="display: none;">
                 <div class="compare-panel">
-                    <textarea id="compareEditorLeft"></textarea>
+                    <div id="compareEditorLeft" class="editor-surface"></div>
                 </div>
                 <div class="compare-panel">
-                    <textarea id="compareEditorRight"></textarea>
+                    <div id="compareEditorRight" class="editor-surface"></div>
                 </div>
             </div>
         </main>
     </div>
 
-    <div class="modal" id="fullscreenModal">
+    <!-- Templates Modal -->
+    <div class="modal" id="fullscreenModal" role="dialog" aria-modal="true" aria-labelledby="modal-title-templates" aria-hidden="true">
         <div class="modal-content">
             <div class="modal-header">
-                <h2>Templates</h2>
-                <button class="btn btn-icon" onclick="closeModal()">×</button>
+                <h2 id="modal-title-templates">WireMock Templates</h2>
+                <button class="btn btn-icon" onclick="closeModal()" aria-label="Close templates modal">&times;</button>
             </div>
             <div class="modal-body">
                 <div class="template-grid" id="templateGrid">
-                    <!-- Templates will be loaded here -->
-                </div>
+                <!-- Templates will be loaded here -->
+            </div>
             </div>
         </div>
     </div>
 
-    <div class="modal" id="historyModal">
+    <!-- History Modal -->
+    <div class="modal" id="historyModal" role="dialog" aria-modal="true" aria-labelledby="modal-title-history" aria-hidden="true">
         <div class="modal-content">
             <div class="modal-header">
-                <h2>History</h2>
-                <button class="btn btn-icon" onclick="closeHistoryModal()">×</button>
+                <h2 id="modal-title-history">History</h2>
+                <button class="btn btn-icon" onclick="closeHistoryModal()" aria-label="Close history modal">&times;</button>
             </div>
             <div class="modal-body">
                 <div class="history-list" id="historyList">
-                    <!-- History items will be loaded here -->
-                </div>
+                <!-- History items will be loaded here -->
+            </div>
             </div>
         </div>
     </div>
+    
+    <div id="loadingOverlay" class="loading-overlay" aria-hidden="true">
+        <div class="loading-spinner" role="status" aria-live="polite"></div>
+    </div>
+    
+    <!-- Performance Optimization Scripts -->
+    <script src="performance-optimizations.js"></script>
+    
+    <!-- Monaco Editor Loader (must be loaded first) -->
+    <script>
+        window.require = window.require || {};
+        window.require.paths = Object.assign({}, window.require.paths || {}, {
+            'vs': 'https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs'
+        });
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs/loader.js"></script>
+    
+    <!-- WireMock URL Initialization - перенесено в initializeFromURL -->
 
-    <!-- Подключение скриптов -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/javascript/javascript.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/fold/foldcode.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/fold/foldgutter.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/fold/brace-fold.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/edit/matchbrackets.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/edit/closebrackets.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/lint/lint.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/lint/json-lint.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/search/search.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/search/searchcursor.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/jsonpath@1.1.1/jsonpath.min.js"></script>
-    <script src="json-editor.js"></script>
+    <!-- WireMock Integration -->
+    <script src="../js/main.js"></script>
+    <script src="../js/core.js"></script>
+    <script src="../js/managers.js"></script>
+    <script src="../js/features.js"></script>
+
+    <!-- Monaco Enhanced (our main editor) -->
+    <script src="monaco-enhanced.js"></script>
+
+    <script>
+        /**
+         * Show notification
+         */
+        function showNotification(message, type = 'info') {
+            console.log(`[${type.toUpperCase()}] ${message}`);
+        }
+
+        /**
+         * Save to history (editor-specific implementation)
+         */
+        function saveToHistory(content, action) {
+            console.log(`[HISTORY] ${action}: ${content.substring(0, 100)}...`);
+            // In editor context, we don't need to save history
+            // This is just a stub to prevent errors
+        }
+
+        /**
+         * Apply optimistic mapping update to local cache if available
+         */
+        function applyOptimisticMappingUpdateLocally(mappingData) {
+            try {
+                console.log('🎯 [OPTIMISTIC] Applying optimistic update locally:', mappingData.id);
+
+                // Try to update local cache if available
+                if (typeof window.applyOptimisticMappingUpdate === 'function') {
+                    console.log('🎯 [OPTIMISTIC] Using local applyOptimisticMappingUpdate');
+
+                    // In editor context, we only update cache without rendering
+                    try {
+                        if (!mappingData) return;
+                        const m = mappingData.mapping || mappingData;
+                        if (!m || !m.id) return;
+                        if (!Array.isArray(window.allMappings)) window.allMappings = [];
+                        if (!Array.isArray(window.originalMappings)) window.originalMappings = [];
+
+                        // drop service cache mapping if ever present
+                        if (typeof isImockCacheMapping === 'function' && isImockCacheMapping(m)) return; // never render the service mapping
+
+                        // Обновляем или добавляем в allMappings
+                        const idx = window.allMappings.findIndex(x => (x.id || x.uuid) === (m.id || m.uuid));
+                        if (idx >= 0) {
+                            window.allMappings[idx] = m;
+                        } else {
+                            window.allMappings.unshift(m);
+                        }
+
+                        // Обновляем originalMappings тоже для консистентности
+                        const origIdx = window.originalMappings.findIndex(x => (x.id || x.uuid) === (m.id || m.uuid));
+                        if (origIdx >= 0) {
+                            window.originalMappings[origIdx] = m;
+                        } else {
+                            window.originalMappings.unshift(m);
+                        }
+
+                        console.log('🎯 [OPTIMISTIC] Cache updated successfully in editor context');
+                        console.log('🎯 [OPTIMISTIC] Updated mapping:', m.name || m.id);
+                        console.log('🎯 [OPTIMISTIC] allMappings size:', window.allMappings.length);
+                        return true;
+                    } catch (e) {
+                        console.warn('🎯 [OPTIMISTIC] Local cache update failed, trying main function:', e);
+                        // Fallback to main function
+                        window.applyOptimisticMappingUpdate(mappingData);
+                        console.log('🎯 [OPTIMISTIC] Local update applied successfully');
+                        return true;
+                    }
+                }
+
+                // Fallback: try to update via postMessage to parent
+                if (window.parent && window.parent !== window) {
+                    try {
+                        console.log('🎯 [OPTIMISTIC] Sending optimistic update via postMessage to parent');
+                        console.log('🎯 [OPTIMISTIC] Mapping data:', { id: mappingData.id, name: mappingData.name });
+                        window.parent.postMessage({
+                            type: 'imock-optimistic-mapping-update',
+                            mapping: mappingData,
+                            source: 'json-editor',
+                            timestamp: Date.now()
+                        }, '*');
+                        console.log('🎯 [OPTIMISTIC] PostMessage sent successfully');
+                        return true;
+                    } catch (e) {
+                        console.warn('🎯 [OPTIMISTIC] Parent postMessage failed:', e);
+                    }
+                }
+
+                // Fallback: try BroadcastChannel
+                if (typeof BroadcastChannel !== 'undefined') {
+                    try {
+                        console.log('🎯 [OPTIMISTIC] Sending optimistic update via BroadcastChannel');
+                        console.log('🎯 [OPTIMISTIC] BroadcastChannel mapping data:', { id: mappingData.id, name: mappingData.name });
+                        const channel = new BroadcastChannel('imock-optimistic-updates');
+                        channel.postMessage({
+                            type: 'optimistic-mapping-update',
+                            mapping: mappingData,
+                            source: 'json-editor',
+                            timestamp: Date.now()
+                        });
+                        channel.close();
+                        console.log('🎯 [OPTIMISTIC] BroadcastChannel message sent successfully');
+                        return true;
+                    } catch (e) {
+                        console.warn('🎯 [OPTIMISTIC] BroadcastChannel failed:', e);
+                    }
+                }
+
+                console.log('⚠️ No method available for optimistic update');
+                return false;
+            } catch (error) {
+                console.warn('Error applying optimistic update locally:', error);
+                return false;
+            }
+        }
+
+        /**
+         * Try to refresh cache in parent window or broadcast to all windows
+         */
+        function tryRefreshParentCache() {
+            try {
+                console.log('🔄 Attempting to refresh cache in parent/all windows...');
+
+                // Method 1: Direct call to parent window (popup scenario)
+                if (window.opener && typeof window.opener.refreshImockCache === 'function') {
+                    console.log('🔄 Refreshing cache via direct parent call...');
+                    window.opener.refreshImockCache().catch(error => {
+                        console.warn('Failed to refresh cache in parent window:', error);
+                    });
+                    return;
+                }
+
+                // Method 2: Try parent window via postMessage
+                if (window.parent && window.parent !== window) {
+                    try {
+                        console.log('🔄 Refreshing cache via parent postMessage...');
+                        window.parent.postMessage({
+                            type: 'imock-cache-refresh',
+                            source: 'json-editor',
+                            timestamp: Date.now()
+                        }, '*');
+                    } catch (e) {
+                        console.warn('Parent postMessage failed:', e);
+                    }
+                }
+
+                // Method 3: Broadcast to all windows via localStorage (cross-tab communication)
+                try {
+                    console.log('🔄 Refreshing cache via localStorage broadcast...');
+                    localStorage.setItem('imock-cache-refresh-trigger', Date.now().toString());
+                    // Clean up immediately to avoid spam
+                    setTimeout(() => {
+                        localStorage.removeItem('imock-cache-refresh-trigger');
+                    }, 100);
+                } catch (e) {
+                    console.warn('localStorage broadcast failed:', e);
+                }
+
+                // Method 4: Try BroadcastChannel API (modern browsers)
+                if (typeof BroadcastChannel !== 'undefined') {
+                    try {
+                        console.log('🔄 Refreshing cache via BroadcastChannel...');
+                        const channel = new BroadcastChannel('imock-cache-refresh');
+                        channel.postMessage({
+                            type: 'cache-refresh',
+                            source: 'json-editor',
+                            timestamp: Date.now()
+                        });
+                        channel.close();
+                    } catch (e) {
+                        console.warn('BroadcastChannel failed:', e);
+                    }
+                }
+
+                // Method 5: Try to find main window by iterating through window frames
+                try {
+                    if (window.top && window.top !== window) {
+                        const frames = window.top.frames;
+                        for (let i = 0; i < frames.length; i++) {
+                            try {
+                                const frame = frames[i];
+                                if (frame && typeof frame.refreshImockCache === 'function') {
+                                    console.log('🔄 Refreshing cache via frame iteration...');
+                                    frame.refreshImockCache().catch(e => console.warn('Frame refresh failed:', e));
+                                }
+                            } catch (e) {
+                                // Ignore cross-origin errors
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.warn('Frame iteration failed:', e);
+                }
+
+                console.log('🔄 Cache refresh attempts completed');
+            } catch (error) {
+                console.warn('Error trying to refresh parent cache:', error);
+            }
+        }
+
+        /**
+         * Download file (editor-specific implementation)
+         */
+        function downloadFile(content, filename, mimeType) {
+            try {
+                const blob = new Blob([content], { type: mimeType || 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                showNotification(`File downloaded: ${filename}`, 'success');
+            } catch (error) {
+                console.error('Download failed:', error);
+                showNotification('Download failed: ' + error.message, 'error');
+            }
+        }
+
+        /**
+         * Toggle theme
+         */
+        function toggleTheme() {
+            const body = document.body;
+            const currentTheme = body.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            body.setAttribute('data-theme', newTheme);
+            
+            const themeIcon = document.querySelector('.theme-icon');
+            if (themeIcon) {
+                themeIcon.textContent = newTheme === 'dark' ? '☀️' : '🌙';
+            }
+            
+            localStorage.setItem('theme', newTheme);
+            showNotification(`Switched to ${newTheme} theme`, 'success');
+        }
+
+        /**
+         * Switch mode between editor and compare
+         */
+        function switchMode(mode) {
+            const editorContainer = document.getElementById('editorContainer');
+            const compareContainer = document.getElementById('compareContainer');
+            const editorControls = document.getElementById('editorControls');
+            const compareControls = document.getElementById('compareControls');
+            const modeTabs = document.querySelectorAll('.mode-tab');
+            
+            modeTabs.forEach(tab => {
+                tab.classList.remove('active');
+                if (tab.dataset.mode === mode) {
+                    tab.classList.add('active');
+                }
+            });
+            
+            if (mode === 'compare') {
+                editorContainer.style.display = 'none';
+                compareContainer.style.display = 'flex';
+                editorControls.style.display = 'none';
+                compareControls.style.display = 'flex';
+            } else {
+                editorContainer.style.display = 'block';
+                compareContainer.style.display = 'none';
+                editorControls.style.display = 'flex';
+                compareControls.style.display = 'none';
+            }
+            
+            showNotification(`Switched to ${mode} mode`, 'success');
+        }
+
+        /**
+         * Search JSONPath
+         */
+        function searchJSONPath() {
+            const input = document.getElementById('jsonPathInput');
+            const query = input ? input.value.trim() : '';
+            
+            if (!query) {
+                showNotification('Please enter a search term', 'warning');
+                return;
+            }
+            
+            try {
+                if (window.monacoInitializer && typeof window.monacoInitializer.searchJSONPath === 'function') {
+                    window.monacoInitializer.searchJSONPath(query);
+                } else if (window.monacoInitializer && typeof window.monacoInitializer.search === 'function') {
+                    window.monacoInitializer.search(query);
+                } else {
+                    showNotification('Search function not available', 'error');
+                }
+            } catch (error) {
+                console.error('Search error:', error);
+                showNotification('Search error: ' + error.message, 'error');
+            }
+        }
+
+        /**
+         * Format JSON
+         */
+        function formatJSON() {
+            try {
+                        if (window.monacoInitializer && typeof window.monacoInitializer.formatJSON === 'function') {
+                            const currentContent = window.editor ? window.editor.getValue() : '';
+                            window.monacoInitializer.formatJSON();
+                            setTimeout(() => {
+                                if (window.editor) {
+                                    const newContent = window.editor.getValue();
+                                    if (newContent !== currentContent) {
+                                        saveToHistory(newContent, 'JSON Formatted');
+                                        showNotification('JSON formatted', 'success');
+                                    }
+                                }
+                            }, 100);
+                } else {
+                    showNotification('Format function not available', 'error');
+                }
+            } catch (error) {
+                console.error('Format error:', error);
+                showNotification('Format error: ' + error.message, 'error');
+            }
+        }
+
+        /**
+         * Minify JSON
+         */
+        function minifyJSON() {
+            try {
+                        if (window.monacoInitializer && typeof window.monacoInitializer.minifyJSON === 'function') {
+                            const currentContent = window.editor ? window.editor.getValue() : '';
+                            window.monacoInitializer.minifyJSON();
+                            setTimeout(() => {
+                                if (window.editor) {
+                                    const newContent = window.editor.getValue();
+                                    if (newContent !== currentContent) {
+                                        saveToHistory(newContent, 'JSON Minified');
+                                        showNotification('JSON minified', 'success');
+                                    }
+                                }
+                            }, 100);
+                } else {
+                    showNotification('Minify function not available', 'error');
+                }
+            } catch (error) {
+                console.error('Minify error:', error);
+                showNotification('Minify error: ' + error.message, 'error');
+            }
+        }
+
+        /**
+         * Validate JSON
+         */
+        function validateJSON() {
+            try {
+                if (window.monacoInitializer && typeof window.monacoInitializer.validateJSON === 'function') {
+                    window.monacoInitializer.validateJSON();
+                } else {
+                    showNotification('Validate function not available', 'error');
+                }
+            } catch (error) {
+                console.error('Validate error:', error);
+                showNotification('Validate error: ' + error.message, 'error');
+            }
+        }
+
+        /**
+         * Load compare file
+         */
+        function loadCompareFile(side) {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.json';
+            input.onchange = (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        try {
+                            const content = e.target.result;
+                            if (window.monacoInitializer && typeof window.monacoInitializer.loadCompareContent === 'function') {
+                                window.monacoInitializer.loadCompareContent(side, content);
+                            } else {
+                                showNotification('Compare function not available', 'error');
+                            }
+                        } catch (error) {
+                            showNotification('Error loading file: ' + error.message, 'error');
+                        }
+                    };
+                    reader.readAsText(file);
+                }
+            };
+            input.click();
+        }
+
+        /**
+         * Save file
+         */
+        async function saveFile() {
+            try {
+                if (window.monacoInitializer && typeof window.monacoInitializer.getMappingFromEditor === 'function') {
+                    // Захватываем состояние сразу
+                    const jsonData = window.monacoInitializer.getMappingFromEditor();
+                    const timestamp = Date.now();
+
+                    if (!jsonData) {
+                        showNotification('No valid JSON to save', 'warning');
+                        return;
+                    }
+
+                    // Блокируем редактор на время сохранения
+                    if (window.monacoInitializer && window.monacoInitializer.getActiveEditor) {
+                        const editor = window.monacoInitializer.getActiveEditor();
+                        if (editor) {
+                            editor.updateOptions({ readOnly: true });
+                        }
+                    }
+
+                    // Initialize metadata before saving
+                    if (!jsonData.metadata) {
+                        jsonData.metadata = {};
+                        console.log('📅 [METADATA] Initialized metadata object (JSON Editor)');
+                    }
+
+                    // Set created timestamp if not exists (first save)
+                    if (!jsonData.metadata.created) {
+                        jsonData.metadata.created = new Date().toISOString();
+                        console.log('📅 [METADATA] Set created timestamp:', jsonData.metadata.created);
+                    }
+
+                    // Always update edited timestamp and source
+                    jsonData.metadata.edited = new Date().toISOString();
+                    jsonData.metadata.source = 'editor';
+
+                    console.log('📅 [METADATA] Updated edited timestamp:', jsonData.metadata.edited);
+                    console.log('📅 [METADATA] Set source: editor');
+
+                    // Асинхронное сохранение с разблокировкой в finally
+                    const savePromise = (async () => {
+                        try {
+                            // Try WireMock integration first using direct apiFetch
+                            if (window.wiremockBaseUrl && window.apiFetch) {
+                                // Send to WireMock server
+                                const sendToWireMock = async () => {
+                                    const hasId = jsonData.id && jsonData.id.trim() !== '';
+
+                                    if (hasId) {
+                                        // If mapping has an ID, it's likely an existing mapping - try PUT first
+                                        console.log('Mapping has ID, trying PUT (update) first');
+                                        try {
+                                            const response = await window.apiFetch(`/mappings/${jsonData.id}`, {
+                                                method: 'PUT',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify(jsonData)
+                                            });
+
+                                            // Use server response for optimistic update - it contains authoritative data
+                                            const updatedMapping = response?.mapping || response;
+                                            showNotification('Mapping updated in WireMock successfully', 'success');
+                                            console.log('💾 [SAVE] Mapping updated successfully, using server response for optimistic updates:', updatedMapping);
+
+                                            // First: Apply optimistic update to show changes immediately
+                                            const optimisticResult = applyOptimisticMappingUpdateLocally(updatedMapping);
+                                            console.log('💾 [SAVE] Optimistic update result:', optimisticResult);
+
+                                            // Send optimistic update to main window immediately
+                                            if (window.opener && typeof window.opener.applyOptimisticMappingUpdate === 'function') {
+                                                try {
+                                                    console.log('🎯 [SAVE] Sending optimistic update to main window...');
+                                                    window.opener.applyOptimisticMappingUpdate(updatedMapping);
+                                                    console.log('🎯 [SAVE] Optimistic update sent to main window');
+                                                } catch (e) {
+                                                    console.warn('🎯 [SAVE] Failed to send optimistic update to main window:', e);
+                                                }
+                                            } else {
+                                                // Fallback: try postMessage
+                                                if (window.opener) {
+                                                    try {
+                                                        window.opener.postMessage({
+                                                            type: 'imock-optimistic-mapping-update',
+                                                            mapping: updatedMapping,
+                                                            source: 'json-editor-save',
+                                                            timestamp: Date.now()
+                                                        }, '*');
+                                                        console.log('🎯 [SAVE] Optimistic update sent via postMessage');
+                                                    } catch (e) {
+                                                        console.warn('🎯 [SAVE] postMessage failed:', e);
+                                                    }
+                                                }
+                                            }
+
+                                            // Skip cache refresh to avoid race conditions - let it happen naturally
+                                            return;
+                                        } catch (putError) {
+                                            console.warn('PUT failed, trying POST (create new):', putError);
+                                            // Fall through to POST attempt
+                                        }
+                                    }
+
+                                    try {
+                                        // Try POST (create new mapping) - either no ID or PUT failed
+                                        const response = await window.apiFetch('/mappings', {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            body: JSON.stringify(jsonData)
+                                        });
+
+                                        // Use server response for optimistic update - it contains the created mapping
+                                        const createdMapping = response?.mapping || response;
+                                        showNotification('Mapping saved to WireMock successfully', 'success');
+                                        console.log('💾 [SAVE] New mapping saved successfully, using server response for optimistic updates:', createdMapping);
+
+                                        // First: Apply optimistic update to show changes immediately
+                                        const optimisticResult = applyOptimisticMappingUpdateLocally(createdMapping);
+                                        console.log('💾 [SAVE] Optimistic update result:', optimisticResult);
+
+                                        // Send optimistic update to main window immediately
+                                        if (window.opener && typeof window.opener.applyOptimisticMappingUpdate === 'function') {
+                                            try {
+                                                console.log('🎯 [SAVE] Sending optimistic update to main window...');
+                                                window.opener.applyOptimisticMappingUpdate(createdMapping);
+                                                console.log('🎯 [SAVE] Optimistic update sent to main window');
+                                            } catch (e) {
+                                                console.warn('🎯 [SAVE] Failed to send optimistic update to main window:', e);
+                                            }
+                                        } else {
+                                            // Fallback: try postMessage
+                                            if (window.opener) {
+                                                try {
+                                                    window.opener.postMessage({
+                                                        type: 'imock-optimistic-mapping-update',
+                                                        mapping: jsonData,
+                                                        source: 'json-editor-save',
+                                                        timestamp: Date.now()
+                                                    }, '*');
+                                                    console.log('🎯 [SAVE] Optimistic update sent via postMessage');
+                                                } catch (e) {
+                                                    console.warn('🎯 [SAVE] postMessage failed:', e);
+                                                }
+                                            }
+                                        }
+
+                                        // Skip cache refresh to avoid race conditions
+                                    } catch (postError) {
+                                        console.warn('POST failed:', postError);
+
+                                        // If we haven't tried PUT yet (no ID case), try PUT as fallback
+                                        if (!hasId && jsonData.id) {
+                                            try {
+                                                console.log('Trying PUT as fallback');
+                                                const response = await window.apiFetch(`/mappings/${jsonData.id}`, {
+                                                    method: 'PUT',
+                                                    headers: { 'Content-Type': 'application/json' },
+                                                    body: JSON.stringify(jsonData)
+                                                });
+
+                                                // Use server response for optimistic update
+                                                const updatedMapping = response?.mapping || response;
+                                                showNotification('Mapping updated in WireMock successfully', 'success');
+                                                console.log('💾 [SAVE] Mapping updated via PUT fallback, using server response for optimistic updates:', updatedMapping);
+
+                                                // First: Apply optimistic update to show changes immediately
+                                                const optimisticResult = applyOptimisticMappingUpdateLocally(updatedMapping);
+                                                console.log('💾 [SAVE] Optimistic update result:', optimisticResult);
+
+                                                // Send optimistic update to main window immediately
+                                                if (window.opener && typeof window.opener.applyOptimisticMappingUpdate === 'function') {
+                                                    try {
+                                                        console.log('🎯 [SAVE] Sending optimistic update to main window...');
+                                                        window.opener.applyOptimisticMappingUpdate(updatedMapping);
+                                                        console.log('🎯 [SAVE] Optimistic update sent to main window');
+                                                    } catch (e) {
+                                                        console.warn('🎯 [SAVE] Failed to send optimistic update to main window:', e);
+                                                    }
+                                                } else {
+                                                    // Fallback: try postMessage
+                                                    if (window.opener) {
+                                                        try {
+                                                            window.opener.postMessage({
+                                                                type: 'imock-optimistic-mapping-update',
+                                                                mapping: jsonData,
+                                                                source: 'json-editor-save',
+                                                                timestamp: Date.now()
+                                                            }, '*');
+                                                            console.log('🎯 [SAVE] Optimistic update sent via postMessage');
+                                                        } catch (e) {
+                                                            console.warn('🎯 [SAVE] postMessage failed:', e);
+                                                        }
+                                                    }
+                                                }
+
+                                                // Skip cache refresh to avoid race conditions
+                                                return;
+                                            } catch (putError) {
+                                                console.error('Both POST and PUT failed:', { postError, putError });
+                                                throw new Error('Failed to save to WireMock');
+                                            }
+                                        } else {
+                                            throw postError;
+                                        }
+                                    }
+                                };
+
+                                sendToWireMock().catch(error => {
+                                    console.error('WireMock save failed:', error);
+                                    // Fall back to download
+                                    const content = JSON.stringify(jsonData, null, 2);
+                                    downloadFile(content, 'wiremock-mapping.json', 'application/json');
+                                    saveToHistory(content, 'Saved as download (WireMock unavailable)');
+                                    showNotification('WireMock unavailable, file downloaded instead', 'warning');
+                                });
+                            } else {
+                                // Fall back to download
+                                const content = JSON.stringify(jsonData, null, 2);
+                                downloadFile(content, 'wiremock-mapping.json', 'application/json');
+                                saveToHistory(content, 'Saved document');
+                                showNotification('File saved successfully', 'success');
+                            }
+                        } finally {
+                            // Разблокируем редактор
+                            if (window.monacoInitializer && window.monacoInitializer.getActiveEditor) {
+                                const editor = window.monacoInitializer.getActiveEditor();
+                                if (editor) {
+                                    editor.updateOptions({ readOnly: false });
+                                }
+                            }
+                        }
+                    })();
+
+                    return savePromise;
+                } else {
+                    showNotification('Editor not ready for save', 'error');
+                }
+            } catch (error) {
+                console.error('Save error:', error);
+                showNotification('Save error: ' + error.message, 'error');
+                // Разблокируем редактор в случае ошибки
+                if (window.monacoInitializer && window.monacoInitializer.getActiveEditor) {
+                    const editor = window.monacoInitializer.getActiveEditor();
+                    if (editor) {
+                        editor.updateOptions({ readOnly: false });
+                    }
+                }
+            }
+        }
+
+        /**
+         * Load file or mapping
+         */
+        function loadFile() {
+            try {
+                // Try WireMock integration first
+                if (typeof WireMockManager !== 'undefined' && WireMockManager.isConnected()) {
+                    const choice = confirm('Load from WireMock server or from local file?\nOK = WireMock Server\nCancel = Local File');
+                    
+                    if (choice) {
+                        // Load from WireMock
+                        WireMockManager.getAllMappings()
+                            .then(mappings => {
+                                if (mappings && mappings.length > 0) {
+                                    // Show mapping selection modal or load first mapping
+                                    const firstMapping = mappings[0];
+                                    if (window.monacoInitializer && typeof window.monacoInitializer.loadMappingIntoEditor === 'function') {
+                                        window.monacoInitializer.loadMappingIntoEditor(firstMapping);
+                                        showNotification(`Loaded mapping: ${firstMapping.name || 'Unnamed'}`, 'success');
+                                    }
+                                } else {
+                                    showNotification('No mappings found in WireMock', 'warning');
+                                }
+                            })
+                            .catch(error => {
+                                console.error('WireMock load failed:', error);
+                                showNotification('Failed to load from WireMock: ' + error.message, 'error');
+                            });
+                        return;
+                    }
+                }
+                
+                // Load from local file
+                if (window.monacoInitializer && typeof window.monacoInitializer.loadFile === 'function') {
+                    window.monacoInitializer.loadFile();
+                } else {
+                    showNotification('Load function not available', 'error');
+                }
+            } catch (error) {
+                console.error('Load error:', error);
+                showNotification('Load error: ' + error.message, 'error');
+            }
+        }
+
+
+        // Close modals when clicking outside
+        document.addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal')) {
+                e.target.style.display = 'none';
+                e.target.setAttribute('aria-hidden', 'true');
+            }
+        });
+
+        // Close modals with Escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                const openModal = document.querySelector('.modal[aria-hidden="false"]');
+                if (openModal) {
+                    openModal.style.display = 'none';
+                    openModal.setAttribute('aria-hidden', 'true');
+                }
+            }
+        });
+
+        /**
+         * Toggle performance monitoring display
+         */
+        function togglePerformanceMonitoring() {
+            if (window.monacoInitializer && typeof window.monacoInitializer.showPerformanceBadge === 'function') {
+                window.monacoInitializer.showPerformanceBadge();
+                showNotification('Performance monitoring enabled', 'info');
+            } else {
+                showNotification('Performance monitoring not available', 'warning');
+            }
+        }
+
+        /**
+         * Get health statistics
+         */
+        function getHealthStats() {
+            if (window.monacoInitializer && typeof window.monacoInitializer.getHealthStats === 'function') {
+                const stats = window.monacoInitializer.getHealthStats();
+                console.log('Health Stats:', stats);
+                showNotification('Health stats logged to console', 'info');
+                return stats;
+            } else {
+                showNotification('Health monitoring not available', 'warning');
+                return null;
+            }
+        }
+
+        /**
+         * Test optimistic update functionality
+         */
+        function testOptimisticUpdate() {
+            console.log('🧪 [TEST] Testing optimistic update functionality');
+
+            // Get current mapping ID from URL parameters
+            const urlParams = new URLSearchParams(window.location.search);
+            const currentMappingId = urlParams.get('mappingId');
+
+            if (!currentMappingId) {
+                console.warn('🧪 [TEST] No mapping ID found in URL, cannot test update');
+                showNotification('Cannot test optimistic update - no mapping ID in URL', 'warning');
+                return;
+            }
+
+            // Get current mapping data from editor
+            let currentMapping;
+            try {
+                if (window.monacoInitializer && typeof window.monacoInitializer.getMappingFromEditor === 'function') {
+                    currentMapping = window.monacoInitializer.getMappingFromEditor();
+                }
+            } catch (e) {
+                console.warn('🧪 [TEST] Could not get mapping from editor:', e);
+            }
+
+            if (!currentMapping) {
+                console.warn('🧪 [TEST] Could not retrieve current mapping data');
+                showNotification('Cannot test optimistic update - failed to get current mapping', 'warning');
+                return;
+            }
+
+            // Create a modified version of the current mapping for testing
+            const testMapping = {
+                ...currentMapping,
+                id: currentMappingId,
+                name: currentMapping.name + ' [OPTIMISTIC UPDATE ' + new Date().toLocaleTimeString() + ']',
+                response: {
+                    ...currentMapping.response,
+                    jsonBody: {
+                        ...currentMapping.response?.jsonBody,
+                        _testUpdate: true,
+                        _timestamp: new Date().toISOString()
+                    }
+                },
+                metadata: {
+                    ...currentMapping.metadata,
+                    edited: new Date().toISOString(), // Update edited timestamp for test
+                    source: 'editor-test'
+                }
+            };
+
+            console.log('🧪 [TEST] Test mapping update created:', testMapping);
+
+            // Test local optimistic update (updates editor's local arrays)
+            const localResult = applyOptimisticMappingUpdateLocally(testMapping);
+            console.log('🧪 [TEST] Local optimistic update result:', localResult);
+
+            // Test direct call to main window's applyOptimisticMappingUpdate (if available)
+            if (window.opener && typeof window.opener.applyOptimisticMappingUpdate === 'function') {
+                try {
+                    console.log('🎯 [TEST] Calling applyOptimisticMappingUpdate directly on opener...');
+                    window.opener.applyOptimisticMappingUpdate(testMapping);
+                    console.log('🎯 [TEST] Direct call to opener completed');
+                } catch (e) {
+                    console.warn('🎯 [TEST] Direct call to opener failed:', e);
+                }
+            } else {
+                console.log('🎯 [TEST] Opener not available or function not found, trying postMessage...');
+                // Fallback: try postMessage to parent/opener
+                if (window.opener) {
+                    try {
+                        window.opener.postMessage({
+                            type: 'imock-optimistic-mapping-update',
+                            mapping: testMapping,
+                            source: 'json-editor-test',
+                            timestamp: Date.now()
+                        }, '*');
+                        console.log('🎯 [TEST] postMessage to opener sent');
+                    } catch (e) {
+                        console.warn('🎯 [TEST] postMessage to opener failed:', e);
+                    }
+                }
+            }
+
+            showNotification('Optimistic update test completed - check console logs and main window', 'info');
+        }
+
+        /**
+         * Test cache refresh functionality
+         */
+        function testCacheRefresh() {
+            console.log('🧪 [TEST] Testing cache refresh functionality');
+
+            // Test cache refresh
+            tryRefreshParentCache();
+            console.log('🧪 [TEST] Cache refresh triggered');
+
+            showNotification('Cache refresh test completed - check console logs and main window', 'info');
+        }
+
+        console.log('✅ WireMock JSON Studio loaded with modal implementations');
+        
+        /**
+         * Initialize URL parameters and load mapping if specified
+         */
+        function initializeFromURL() {
+            if (window.initializedFromURL) {
+                console.log('🚀 initializeFromURL already called, skipping');
+                return;
+            }
+
+            console.log('🚀 initializeFromURL called');
+            console.log('🚀 Current URL:', window.location.href);
+            console.log('🚀 URL search params:', window.location.search);
+
+            // Инициализация WireMock URL - единая точка инициализации
+            const urlParams = new URLSearchParams(window.location.search);
+            const settingsParam = urlParams.get('settings');
+            const settings = settingsParam
+                ? JSON.parse(decodeURIComponent(settingsParam))
+                : JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
+
+            const host = settings.host || 'localhost';
+            const port = settings.port || '8080';
+
+            window.wiremockBaseUrl = window.normalizeWiremockBaseUrl
+                ? window.normalizeWiremockBaseUrl(host, port)
+                : `http://${host}:${port}/__admin`;
+
+            console.log('✅ WireMock URL initialized in initializeFromURL:', window.wiremockBaseUrl);
+
+            const mappingId = urlParams.get('mappingId');
+            const mode = urlParams.get('mode');
+
+            console.log('🚀 Parsed parameters:', { mappingId, mode, settings: settings ? 'present' : 'missing' });
+
+            if (mappingId) {
+                console.log(`🔍 Loading mapping with ID: ${mappingId}`);
+                loadMappingById(mappingId);
+            } else {
+                console.log('⚠️ No mappingId found in URL parameters');
+            }
+
+            if (mode) {
+                console.log(`🔧 Setting mode to: ${mode}`);
+                // Set mode if specified
+                if (mode === 'compare') {
+                    switchMode('compare');
+                }
+            }
+
+            window.initializedFromURL = true;
+        }
+        
+        /**
+         * Load mapping by ID from WireMock
+         */
+        async function loadMappingById(mappingId) {
+            try {
+                console.log('🔍 loadMappingById called with mappingId:', mappingId);
+                console.log('🔍 Current window.wiremockBaseUrl:', window.wiremockBaseUrl);
+                console.log('🔍 window.getMappingById available:', typeof window.getMappingById);
+
+                showNotification('Loading mapping...', 'info');
+
+                // Clear any existing content and show loading message
+                if (window.monacoInitializer && window.monacoInitializer.isInitialized) {
+                    const editor = window.monacoInitializer.getActiveEditor();
+                    if (editor) {
+                        editor.setValue(`{\n  "_status": "Loading mapping ${mappingId}..."\n}`);
+                    }
+                }
+
+                // Wait for getMappingById function to be available
+                let attempts = 0;
+                while ((typeof window.getMappingById !== 'function') && attempts < 50) {
+                    console.log(`⏳ Waiting for getMappingById... attempt ${attempts + 1}`);
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    attempts++;
+                }
+
+                if (typeof window.getMappingById !== 'function') {
+                    throw new Error('getMappingById function not available after 5 seconds');
+                }
+
+                console.log(`📡 Fetching mapping ${mappingId} from WireMock...`);
+                console.log('📡 Using WireMock URL:', window.wiremockBaseUrl);
+
+                const mapping = await window.getMappingById(mappingId);
+                console.log('📡 API response received:', mapping);
+                
+                if (mapping) {
+                    // Wait for Monaco editor to be ready
+                    let editorAttempts = 0;
+                    while ((!window.monacoInitializer || !window.monacoInitializer.isInitialized) && editorAttempts < 100) {
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                        editorAttempts++;
+                    }
+                    
+                    if (window.monacoInitializer && typeof window.monacoInitializer.loadMappingIntoEditor === 'function') {
+                        window.monacoInitializer.loadMappingIntoEditor(mapping);
+                        showNotification(`Mapping "${mapping.name || mappingId}" loaded successfully`, 'success');
+                        
+                        // Update page title
+                        document.title = `JSON Editor - ${mapping.name || mappingId}`;
+                    } else {
+                        throw new Error('Monaco editor not ready');
+                    }
+                } else {
+                    throw new Error(`Mapping with ID ${mappingId} not found`);
+                }
+            } catch (error) {
+                console.error('❌ Error loading mapping:', error);
+                console.error('❌ Error details:', {
+                    message: error.message,
+                    stack: error.stack,
+                    mappingId: mappingId,
+                    wiremockUrl: window.wiremockBaseUrl
+                });
+                showNotification(`Failed to load mapping: ${error.message}`, 'error');
+
+                // Show error in editor as comment
+                const errorContent = `{
+  "_error": "Failed to load mapping with ID: ${mappingId}",
+  "_message": "${error.message.replace(/"/g, '\\"')}",
+  "_wiremock_url": "${window.wiremockBaseUrl || 'NOT_SET'}",
+  "_auth_header": "${(JSON.parse(localStorage.getItem('wiremock-settings') || '{}')).authHeader || 'NOT_SET'}",
+  "_timestamp": "${new Date().toISOString()}",
+  "_debug_info": "Check browser console (F12) for detailed logs",
+  "_possible_issues": [
+    "Mapping ID not found on server",
+    "Authentication failed",
+    "CORS policy blocking request",
+    "Network connectivity issues",
+    "WireMock server not responding"
+  ]
+}`;
+                console.log('📝 Setting error content in editor:', errorContent);
+
+                if (window.monacoInitializer && window.monacoInitializer.isInitialized) {
+                    const editor = window.monacoInitializer.getActiveEditor();
+                    if (editor) {
+                        editor.setValue(errorContent);
+                    }
+                } else {
+                    console.error('❌ Monaco editor not ready to show error');
+                    // Try to set content after a delay
+                    setTimeout(() => {
+                        if (window.monacoInitializer && window.monacoInitializer.getActiveEditor) {
+                            const editor = window.monacoInitializer.getActiveEditor();
+                            if (editor) {
+                                editor.setValue(errorContent);
+                            }
+                        }
+                    }, 1000);
+                }
+            }
+        }
+        
+        // Initialize URL parameters - simplified and reliable approach
+        console.log('🚀 [DEBUG] Script block executing...');
+        console.log('🚀 Setting up URL initialization...');
+
+        // Wait for all scripts to be fully loaded, then initialize
+        const initializeWhenReady = () => {
+            console.log('🚀 Checking if all components are ready...');
+            console.log('🚀 window.getMappingById:', typeof window.getMappingById);
+            console.log('🚀 window.monacoInitializer:', !!window.monacoInitializer);
+            console.log('🚀 window.wiremockBaseUrl:', !!window.wiremockBaseUrl);
+
+            // window.wiremockBaseUrl will be set by initializeFromURL, so we don't require it here
+            if (window.getMappingById && window.monacoInitializer) {
+                console.log('✅ Core components ready, calling initializeFromURL');
+                initializeFromURL();
+                return true;
+            }
+            return false;
+        };
+
+        // Try immediately
+        if (!initializeWhenReady()) {
+            // If not ready, wait and try again
+            let attempts = 0;
+            const tryInit = () => {
+                attempts++;
+                console.log(`🚀 Initialization attempt ${attempts}`);
+
+                if (initializeWhenReady()) {
+                    return; // Success
+                }
+
+                if (attempts < 100) { // Try for up to 10 seconds
+                    setTimeout(tryInit, 100);
+                } else {
+                    console.error('❌ Failed to initialize URL parameters after 100 attempts');
+                    // Show error in editor
+                    if (window.monacoInitializer && window.monacoInitializer.getActiveEditor) {
+                        const editor = window.monacoInitializer.getActiveEditor();
+                        if (editor) {
+                            editor.setValue(`{
+  "_error": "Failed to initialize editor",
+  "_message": "Components failed to load properly",
+  "_getMappingById": ${typeof window.getMappingById},
+  "_monacoInitializer": ${!!window.monacoInitializer},
+  "_wiremockBaseUrl": "${window.wiremockBaseUrl || 'NOT_SET'}"
+}`);
+                        }
+                    }
+                }
+            };
+            setTimeout(tryInit, 100);
+        }
+    </script>
 </body>
 </html>

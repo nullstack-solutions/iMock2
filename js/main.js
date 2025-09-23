@@ -1,721 +1,398 @@
-// ===== MAIN.JS - Инициализация и связывание модулей =====
-// Точка входа приложения, инициализация всех систем
+'use strict';
 
-document.addEventListener('DOMContentLoaded', () => {
-    console.log('🚀 WireMock UI - Starting initialization...');
+console.log('✅ All required modules loaded successfully');
     
-    // --- ДОПОЛНИТЕЛЬНЫЕ ФУНКЦИИ ИЗ ОРИГИНАЛЬНОГО SCRIPTS.JS ---
+// === ФУНКЦИИ ДЛЯ ИНТЕГРАЦИИ С РЕДАКТОРОМ ===
     
-    // Функции записи запросов
-    window.updateRecordingUI = () => {
-        const indicator = document.getElementById(SELECTORS.RECORDING.INDICATOR);
-        const target = document.getElementById(SELECTORS.RECORDING.TARGET);
-        const count = document.getElementById(SELECTORS.RECORDING.COUNT);
-        const startBtn = document.getElementById(SELECTORS.BUTTONS.START_RECORDING);
-        const stopBtn = document.getElementById(SELECTORS.RECORDING.STOP_BTN);
-        
-        if (isRecording) {
-            if (indicator) {
-                indicator.textContent = '🔴 Recording';
-                indicator.style.color = '#e74c3c';
-            }
-            if (target) {
-                const urlInput = document.getElementById(SELECTORS.RECORDING.URL);
-                target.textContent = urlInput ? urlInput.value : '-';
-            }
-            if (startBtn) startBtn.disabled = true;
-            if (stopBtn) stopBtn.disabled = false;
-        } else {
-            if (indicator) {
-                indicator.textContent = '⚫ Not Recording';
-                indicator.style.color = '#666';
-            }
-            if (target) target.textContent = '-';
-            if (startBtn) startBtn.disabled = false;
-            if (stopBtn) stopBtn.disabled = true;
-        }
-        
-        if (count) count.textContent = recordedCount;
-    };
-    
-    window.startRecording = async () => {
-        const targetUrlElement = document.getElementById(SELECTORS.RECORDING.URL) || document.getElementById('record-target-url');
-        const targetUrl = targetUrlElement?.value?.trim();
-        if (!targetUrl) {
-            NotificationManager.error('Укажите URL для записи');
-            return;
-        }
-        const captureHeadersElement = document.getElementById(SELECTORS.RECORDING.CAPTURE_HEADERS);
-        const captureBodyElement = document.getElementById(SELECTORS.RECORDING.CAPTURE_BODY);
-        const urlFilterElement = document.getElementById(SELECTORS.RECORDING.URL_FILTER);
-        
-        const captureHeaders = captureHeadersElement?.value === 'true' || false;
-        const captureBody = captureBodyElement?.value === 'true' || false;
-        const urlFilter = urlFilterElement?.value?.trim() || '.*';
-        
-        try {
-            const recordingConfig = {
-                targetBaseUrl: targetUrl,
-                captureHeaders: captureHeaders,
-                requestBodyPattern: captureBody,
-                filters: {
-                    urlPattern: urlFilter
-                }
-            };
-            
-            await apiFetch('/recordings/start', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(recordingConfig)
-            });
-            
-            isRecording = true;
-            recordedCount = 0;
-            updateRecordingUI();
-            NotificationManager.success('Запись запросов запущена!');
-        } catch (e) {
-            NotificationManager.error(`Ошибка запуска записи: ${e.message}`);
-        }
-    };
-    
-    window.stopRecording = async () => {
-        try {
-            const result = await apiFetch('/recordings/stop', { method: 'POST' });
-            
-            isRecording = false;
-            updateRecordingUI();
-            
-            const mappingsCreated = result.mappings?.length || 0;
-            NotificationManager.success(`Запись остановлена! Создано ${mappingsCreated} маппингов.`);
-            await fetchAndRenderMappings();
-            await fetchAndRenderRequests();
-        } catch (e) {
-            console.error('Stop recording error:', e);
-            NotificationManager.error(`Ошибка остановки записи: ${e.message}`);
-        }
-    };
-    
-    window.refreshMappings = async () => {
-        try {
-            if (typeof fetchAndRenderMappings === 'function') {
-                const saved = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
-                const useCache = !!saved.cacheEnabled;
-                await fetchAndRenderMappings(null, { useCache });
-                NotificationManager.success('Маппинги обновлены');
-            } else {
-                console.warn('fetchAndRenderMappings function not available');
-                NotificationManager.info('Функция обновления маппингов недоступна');
-            }
-        } catch (e) {
-            console.error('Error refreshing mappings:', e);
-            NotificationManager.error(`Ошибка обновления маппингов: ${e.message}`);
-        }
-    };
+window.editMapping = (mappingId) => {
+    console.log('🔧 Opening editor for mapping:', mappingId);
 
-    
-    // Clear recordings function
-    window.clearRecordings = async () => {
-        try {
-            if (confirm('Очистить все записи? Это действие нельзя отменить.')) {
-                // Clear recordings list UI
-                const recordingsList = document.getElementById('recordings-list');
-                if (recordingsList) {
-                    recordingsList.innerHTML = '<p style="text-align: center; color: var(--text-secondary); margin: var(--space-4);">Нет записей</p>';
-                }
-                
-                NotificationManager.success('Записи очищены');
-            }
-        } catch (e) {
-            console.error('Clear recordings error:', e);
-            NotificationManager.error(`Ошибка очистки записей: ${e.message}`);
-        }
-    };
-    
-    // Быстрый фильтр времени (глобальная функция для HTML)
-    window.applyQuickTimeFilter = () => {
-        // Вызываем метод из FilterManager
-        if (typeof FilterManager !== 'undefined' && FilterManager.applyQuickTimeFilter) {
-            FilterManager.applyQuickTimeFilter();
-        } else {
-            console.warn('FilterManager not initialized or applyQuickTimeFilter method not found');
-        }
-    };
-    
-    // Force rebuild cache mapping and render from cache
-    window.forceRefreshCache = async () => {
-        try {
-            console.log('🧩 [CACHE] Manual rebuild triggered');
-            if (typeof window.refreshImockCache === 'function') {
-                await window.refreshImockCache();
-            } else {
-                console.warn('refreshImockCache function not available');
-            }
-            if (typeof fetchAndRenderMappings === 'function') {
-                await fetchAndRenderMappings(null, { useCache: true });
-            }
-            NotificationManager.success('Кэш маппинга пересобран');
-        } catch (e) {
-            console.error('Error rebuilding cache:', e);
-            NotificationManager.error(`Ошибка пересборки кэша: ${e.message}`);
-        }
-    };
+    // Get current settings to pass to editor
+    const currentSettings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
 
-    // Health Check (delegates to features.js single source)
-    window.checkHealth = async () => {
-        try {
-            if (typeof window.checkHealthAndStartUptime === 'function') {
-                await window.checkHealthAndStartUptime();
-            }
-            NotificationManager.success('Health OK');
-        } catch (e) {
-            if (typeof window.applyHealthUI === 'function') {
-                window.applyHealthUI(null, null);
-            }
-            NotificationManager.error(`Health check failed: ${e.message}`);
-        }
-    };
-    
-    // Demo Mode
-    window.loadMockData = async () => {
-        if (!confirm('Загрузить демо-данные? Это добавит несколько примеров маппингов.')) return;
-        
-        const demoMappings = [
-            {
-                name: 'Get Users Demo',
-                request: { method: 'GET', urlPath: '/api/users' },
-                response: {
-                    status: 200,
-                    headers: { 'Content-Type': 'application/json' },
-                    jsonBody: [{ id: 1, name: 'John Doe', email: 'john@example.com' }]
-                }
-            },
-            {
-                name: 'Create User Demo',
-                request: { method: 'POST', urlPath: '/api/users' },
-                response: {
-                    status: 201,
-                    headers: { 'Content-Type': 'application/json' },
-                    jsonBody: { id: 2, name: 'Jane Smith', email: 'jane@example.com' }
-                }
-            }
-        ];
-        
-        try {
-            for (const mapping of demoMappings) {
-                await apiFetch('/mappings', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(mapping)
-                });
-            }
-            NotificationManager.success('Демо-данные загружены!');
-            await fetchAndRenderMappings();
-        } catch (e) {
-            NotificationManager.error(`Ошибка загрузки демо-данных: ${e.message}`);
-        }
-    };
-    
-    // Обработчик формы редактирования маппинга
-    // REMOVED: Edit mapping form listener moved to editor.js
-    
-    // Import/Export функции
-    window.exportMappings = async () => {
-        try {
-            const format = document.getElementById(SELECTORS.EXPORT.FORMAT).value;
-            const mappings = await apiFetch('/mappings');
-            
-            let content, filename, mimeType;
-            
-            if (format === 'yaml') {
-                content = `mappings:\n${mappings.mappings.map(m => 
-                    `  - name: ${m.name || 'Unnamed'}\n    request:\n      method: ${m.request.method}\n      url: ${m.request.urlPath || m.request.url}`
-                ).join('\n')}`;
-                filename = 'wiremock-mappings.yaml';
-                mimeType = 'text/yaml';
-            } else {
-                content = JSON.stringify(mappings, null, 2);
-                filename = 'wiremock-mappings.json';
-                mimeType = 'application/json';
-            }
-            
-            const blob = new Blob([content], { type: mimeType });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            a.click();
-            URL.revokeObjectURL(url);
-            
-            NotificationManager.success(`Экспорт завершен: ${filename}`);
-        } catch (e) {
-            NotificationManager.error(`Ошибка экспорта: ${e.message}`);
-        }
-    };
-    
-    window.exportRequests = async () => {
-        try {
-            const requests = await apiFetch('/requests');
-            const content = JSON.stringify(requests, null, 2);
-            const filename = 'wiremock-requests.json';
-            
-            const blob = new Blob([content], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            a.click();
-            URL.revokeObjectURL(url);
-            
-            NotificationManager.success(`Экспорт завершен: ${filename}`);
-        } catch (e) {
-            NotificationManager.error(`Ошибка экспорта: ${e.message}`);
-        }
-    };
-    
-    window.importMappings = async () => {
-        const fileInput = document.getElementById(SELECTORS.IMPORT.FILE);
-        if (!fileInput.files[0]) { 
-            NotificationManager.error('Выберите файл для импорта'); 
-            return; 
-        }
-        
-        const file = fileInput.files[0];
-        const resultDiv = document.getElementById(SELECTORS.IMPORT.RESULT);
-        
-        try {
-            NotificationManager.info('📁 Обработка файла...');
-            resultDiv.innerHTML = '<div class="progress-indicator">🔄 Обработка файла...</div>';
-            
-            const content = await file.text();
-            let mappingsArray;
-            
-            try {
-                const parsed = JSON.parse(content);
-                mappingsArray = parsed.mappings || (Array.isArray(parsed) ? parsed : [parsed]);
-            } catch (e) {
-                throw new Error('Неверный формат JSON файла');
-            }
-            
-            for (const mapping of mappingsArray) {
-                await apiFetch('/mappings', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(mapping)
-                });
-            }
-            
-            resultDiv.innerHTML = `<div class="success-message">✅ Успешно импортировано ${mappingsArray.length} маппингов!</div>`;
-            NotificationManager.success(`✅ Импортировано ${mappingsArray.length} маппингов!`);
-            await fetchAndRenderMappings();
-        } catch (e) {
-            resultDiv.innerHTML = `<div class="error-message">❌ Ошибка: ${e.message}</div>`;
-            NotificationManager.error(`Ошибка импорта: ${e.message}`);
-        }
-    };
-    
-    window.importAndReplace = async () => {
-        if (!confirm('Заменить все существующие маппинги? Это действие необратимо!')) return;
-        
-        try {
-            await apiFetch('/mappings', { method: 'DELETE' });
-            await importMappings();
-        } catch (e) {
-            NotificationManager.error(`Ошибка замены: ${e.message}`);
-        }
-    };
-    
-    window.updateFileDisplay = () => {
-        const fileInput = document.getElementById(SELECTORS.IMPORT.FILE);
-        const fileDisplay = document.getElementById(SELECTORS.IMPORT.DISPLAY);
-        const importActions = document.getElementById(SELECTORS.IMPORT.ACTIONS);
-        
-        if (fileInput.files.length > 0) {
-            const file = fileInput.files[0];
-            const fileSize = (file.size / 1024).toFixed(1) + ' KB';
-            
-            fileDisplay.innerHTML = `
-                <span class="file-name">📄 ${file.name}</span>
-                <span class="file-size">(${fileSize})</span>
-            `;
-            fileDisplay.classList.add('has-file');
-            importActions.style.display = 'block';
-        } else {
-            fileDisplay.innerHTML = '<span class="file-placeholder">No file selected</span>';
-            fileDisplay.classList.remove('has-file');
-            importActions.style.display = 'none';
-        }
-    };
-    
-    // Статистика
-    window.updateSystemStats = async () => {
-        try {
-            const [mappings, requests] = await Promise.all([
-                apiFetch('/mappings'),
-                apiFetch('/requests')
-            ]);
-            
-            // Safe element access for stats
-            const totalMappingsEl = document.getElementById(SELECTORS.STATS.TOTAL_MAPPINGS);
-            const totalRequestsEl = document.getElementById(SELECTORS.STATS.TOTAL_REQUESTS);
-            
-            if (totalMappingsEl) totalMappingsEl.textContent = mappings.mappings?.length || 0;
-            if (totalRequestsEl) totalRequestsEl.textContent = requests.requests?.length || 0;
-        } catch (e) {
-            console.warn('Не удалось обновить статистику:', e.message);
-        }
-    };
-    
-    // Настройки
-    window.saveSettings = () => {
-        const hostElement = document.getElementById(SELECTORS.SETTINGS.HOST) || document.getElementById('default-host');
-        const portElement = document.getElementById(SELECTORS.SETTINGS.PORT) || document.getElementById('default-port');
-        const timeoutElement = document.getElementById(SELECTORS.SETTINGS.TIMEOUT) || document.getElementById('request-timeout');
-        const autoRefreshElement = document.getElementById(SELECTORS.SETTINGS.AUTO_REFRESH) || document.getElementById('refresh-interval');
-        const themeElement = document.getElementById(SELECTORS.SETTINGS.THEME) || document.getElementById('theme-select');
-        const authHeaderElement = document.getElementById(SELECTORS.SETTINGS.AUTH_HEADER);
-        const cacheEnabledElement = document.getElementById(SELECTORS.SETTINGS.CACHE_ENABLED);
-        
-        const host = hostElement?.value || 'localhost';
-        const port = portElement?.value || '8080';
-        const timeout = timeoutElement?.value || '5000';
-        const autoRefresh = autoRefreshElement?.value || '0';
-        const theme = themeElement?.value || 'light';
-        const authHeader = authHeaderElement?.value?.trim() || '';
-        
-        const cacheEnabled = !!cacheEnabledElement?.checked;
-        const settingsData = { host, port, timeout, autoRefresh, theme, authHeader, cacheEnabled };
-        localStorage.setItem('wiremock-settings', JSON.stringify(settingsData));
-        
-        // Update global variables immediately
-        window.wiremockBaseUrl = (typeof window.normalizeWiremockBaseUrl === 'function')
-            ? window.normalizeWiremockBaseUrl(host, port)
-            : `http://${host}:${port}/__admin`;
-        window.requestTimeout = parseInt(timeout);
-        window.authHeader = authHeader; // Update global auth header
-        
-        // Apply theme immediately
-        document.body.setAttribute('data-theme', theme);
-        const themeIcon = document.getElementById('theme-icon');
-        if (themeIcon) {
-            themeIcon.textContent = theme === 'dark' ? '☀️' : '🌙';
-        }
-        
-        setupAutoRefresh();
-        
-        console.log('💾 Settings saved to localStorage:', {
-            ...settingsData,
-            wiremockBaseUrl,
-            requestTimeout
-        });
-        
-        NotificationManager.success('✅ Настройки успешно сохранены в браузере!');
-        
-        // Визуальная обратная связь (без обязательного event)
-        const evt = window.event;
-        if (evt && evt.target) {
-            const saveBtn = evt.target;
-            const originalText = saveBtn.textContent;
-            saveBtn.textContent = '✅ Сохранено!';
-            saveBtn.style.background = '#27ae60';
-            
-            setTimeout(() => {
-                saveBtn.textContent = originalText;
-                saveBtn.style.background = '';
-            }, 2000);
-        }
-    };
-    
-    // Reset settings function
-    window.resetSettings = () => {
-        if (confirm('Сбросить все настройки к значениям по умолчанию?')) {
-            // Clear saved settings
-            localStorage.removeItem('wiremock-settings');
-            
-            // Reset form values to defaults
-            const hostElement = document.getElementById(SELECTORS.SETTINGS.HOST) || document.getElementById('default-host');
-            const portElement = document.getElementById(SELECTORS.SETTINGS.PORT) || document.getElementById('default-port');
-            const timeoutElement = document.getElementById(SELECTORS.SETTINGS.TIMEOUT) || document.getElementById('request-timeout');
-            const autoRefreshElement = document.getElementById(SELECTORS.SETTINGS.AUTO_REFRESH) || document.getElementById('refresh-interval');
-            const themeElement = document.getElementById(SELECTORS.SETTINGS.THEME) || document.getElementById('theme-select');
-            const authHeaderElement = document.getElementById(SELECTORS.SETTINGS.AUTH_HEADER);
-            const cacheEnabledElement = document.getElementById(SELECTORS.SETTINGS.CACHE_ENABLED);
-            
-            if (hostElement) hostElement.value = 'localhost';
-            if (portElement) portElement.value = '8080';
-            if (timeoutElement) timeoutElement.value = '5000';
-            if (autoRefreshElement) autoRefreshElement.value = '30';
-            if (themeElement) themeElement.value = 'light';
-            if (authHeaderElement) authHeaderElement.value = '';
-            if (cacheEnabledElement) cacheEnabledElement.checked = false;
-            
-            // Reset global variables
-            window.wiremockBaseUrl = (typeof window.normalizeWiremockBaseUrl === 'function')
-                ? window.normalizeWiremockBaseUrl('localhost', '8080')
-                : 'http://localhost:8080/__admin';
-            window.requestTimeout = 5000;
-            window.authHeader = ''; // Reset auth header
-            
-            // Reset theme
-            document.body.setAttribute('data-theme', 'light');
-            const themeIcon = document.getElementById('theme-icon');
-            if (themeIcon) {
-                themeIcon.textContent = '🌙';
-            }
-            
-            NotificationManager.success('Настройки сброшены к значениям по умолчанию');
-        }
-    };
-    
-    window.loadSettings = () => {
-        const saved = localStorage.getItem('wiremock-settings');
-        if (saved) {
-            const { host, port, timeout, autoRefresh, theme, authHeader, cacheEnabled } = JSON.parse(saved);
-            
-            // Load all form elements (settings page and main page)
-            const hostElement = document.getElementById(SELECTORS.SETTINGS.HOST) || document.getElementById('default-host');
-            const portElement = document.getElementById(SELECTORS.SETTINGS.PORT) || document.getElementById('default-port');
-            const timeoutElement = document.getElementById(SELECTORS.SETTINGS.TIMEOUT) || document.getElementById('request-timeout');
-            const autoRefreshElement = document.getElementById(SELECTORS.SETTINGS.AUTO_REFRESH) || document.getElementById('refresh-interval');
-            const themeElement = document.getElementById(SELECTORS.SETTINGS.THEME) || document.getElementById('theme-select');
-            const authHeaderElement = document.getElementById(SELECTORS.SETTINGS.AUTH_HEADER);
-            const cacheEnabledElement = document.getElementById(SELECTORS.SETTINGS.CACHE_ENABLED);
-            
-            // Main page connection form elements
-            const mainHostElement = document.getElementById('wiremock-host');
-            const mainPortElement = document.getElementById('wiremock-port');
-            
-            // Set form values with fallbacks (settings page)
-            if (hostElement) hostElement.value = host || 'localhost';
-            if (portElement) portElement.value = port || '8080';
-            if (timeoutElement) timeoutElement.value = timeout || '5000';
-            if (autoRefreshElement) autoRefreshElement.value = autoRefresh || '0';
-            if (themeElement) themeElement.value = theme || 'light';
-            if (authHeaderElement) authHeaderElement.value = authHeader || '';
-            if (cacheEnabledElement) cacheEnabledElement.checked = !!cacheEnabled;
-            
-            // Set main page connection form values
-            if (mainHostElement) mainHostElement.value = host || 'localhost';
-            if (mainPortElement) mainPortElement.value = port || '8080';
-            
-            // Apply settings to global variables
-            window.wiremockBaseUrl = (typeof window.normalizeWiremockBaseUrl === 'function')
-                ? window.normalizeWiremockBaseUrl(host || 'localhost', port || '8080')
-                : `http://${host || 'localhost'}:${port || '8080'}/__admin`;
-            window.requestTimeout = parseInt(timeout || '5000');
-            window.authHeader = authHeader || ''; // Load auth header
-            
-            console.log('🔧 wiremockBaseUrl initialized:', window.wiremockBaseUrl);
-            
-            // Apply theme
-            const selectedTheme = theme || 'light';
-            document.body.setAttribute('data-theme', selectedTheme);
-            const themeIcon = document.getElementById('theme-icon');
-            if (themeIcon) {
-                themeIcon.textContent = selectedTheme === 'dark' ? '☀️' : '🌙';
-            }
-            
-            // Setup auto-refresh
-            setupAutoRefresh();
-            
-            console.log('🔧 Settings loaded from localStorage:', {
-                host: host || 'localhost',
-                port: port || '8080',
-                timeout: timeout || '5000',
-                autoRefresh: autoRefresh || '0',
-                theme: selectedTheme,
-                wiremockBaseUrl,
-                cacheEnabled: !!cacheEnabled
-            });
-        } else {
-            // Default settings
-            window.wiremockBaseUrl = (typeof window.normalizeWiremockBaseUrl === 'function')
-                ? window.normalizeWiremockBaseUrl('localhost', '8080')
-                : 'http://localhost:8080/__admin';
-            window.requestTimeout = 5000;
-            document.body.setAttribute('data-theme', 'light');
-            console.log('🔧 Using default settings - no saved settings found');
-        }
-    };
-    
-    window.setupAutoRefresh = () => {
-        const inputEl = document.getElementById(SELECTORS.SETTINGS.AUTO_REFRESH) || document.getElementById('refresh-interval');
-        const enabledEl = document.getElementById('auto-refresh-enabled');
-        let interval = parseInt(inputEl?.value || '0', 10);
-        // Respect checkbox if present
-        if (enabledEl && !enabledEl.checked) interval = 0;
+    // Option 1: Pass ALL settings (current behavior)
+    const settingsParam = encodeURIComponent(JSON.stringify(currentSettings));
 
-        if (autoRefreshInterval) {
-            clearInterval(autoRefreshInterval);
+    // Option 2: Pass only specific settings (uncomment to use)
+    // const editorSettings = {
+    //     host: currentSettings.host,
+    //     port: currentSettings.port,
+    //     theme: currentSettings.theme
+    // };
+    // const settingsParam = encodeURIComponent(JSON.stringify(editorSettings));
+
+    const editorUrl = `editor/json-editor.html?mappingId=${mappingId}&mode=edit&settings=${settingsParam}`;
+    const editorWindow = window.open(
+        editorUrl,
+        `editor_${mappingId}`,
+        'width=1200,height=800,scrollbars=yes,resizable=yes,status=yes'
+    );
+
+    if (!editorWindow) {
+        NotificationManager.error('Popup blocked. Please allow popups for this site.');
+        return;
+    }
+        
+    NotificationManager.info(`Editor opened for mapping ${mappingId}`);
+        
+    // Отслеживаем закрытие окна для обновления счетчиков
+    const checkClosed = setInterval(() => {
+        if (editorWindow.closed) {
+            clearInterval(checkClosed);
+            console.log('🔄 Editor closed, updating counters only');
+            // Only update counters, don't refresh data to preserve optimistic updates
+            if (typeof window.updateMappingsCounter === 'function') {
+                window.updateMappingsCounter();
+            }
+            if (typeof window.updateRequestsCounter === 'function') {
+                window.updateRequestsCounter();
+            }
+        }
+    }, 1000);
+
+    // Safety cleanup: clear interval after 5 minutes to prevent memory leaks
+    setTimeout(() => {
+        if (!editorWindow.closed) {
+            clearInterval(checkClosed);
+            console.log('🔄 Editor interval cleaned up after timeout');
+        }
+    }, 5 * 60 * 1000); // 5 minutes
+};
+
+// === SETTINGS MANAGEMENT ===
+
+// Save settings from the settings page
+window.saveSettings = () => {
+    try {
+        // Collect settings from settings form (prioritize settings form values)
+        const settings = {
+            host: document.getElementById('default-host')?.value || 'localhost',
+            port: document.getElementById('default-port')?.value || '8080',
+            requestTimeout: document.getElementById('request-timeout')?.value || '5000',
+            authHeader: document.getElementById('auth-header')?.value || '',
+            cacheEnabled: document.getElementById('cache-enabled')?.checked || false,
+            autoRefreshEnabled: document.getElementById('auto-refresh-enabled')?.checked || true,
+            refreshInterval: document.getElementById('refresh-interval')?.value || '30',
+            // Cache timing settings
+            cacheRebuildDelay: document.getElementById('cache-rebuild-delay')?.value || '1000',
+            cacheValidationDelay: document.getElementById('cache-validation-delay')?.value || '1500',
+            optimisticCacheAgeLimit: document.getElementById('optimistic-cache-age-limit')?.value || '30000',
+            cacheCountDiffThreshold: document.getElementById('cache-count-diff-threshold')?.value || '2',
+            backgroundFetchDelay: document.getElementById('background-fetch-delay')?.value || '200'
+        };
+        
+        // Also update the main connection form to reflect the saved settings
+        const hostInput = document.getElementById('wiremock-host');
+        const portInput = document.getElementById('wiremock-port');
+        if (hostInput) hostInput.value = settings.host;
+        if (portInput) portInput.value = settings.port;
+        
+        // Save to localStorage
+        localStorage.setItem('wiremock-settings', JSON.stringify(settings));
+        console.log('🔧 [main.js] Settings saved to localStorage:', settings);
+        console.log('🔧 [main.js] Request timeout field value:', document.getElementById('request-timeout')?.value);
+
+        // Update global baseUrl immediately
+        if (typeof window.normalizeWiremockBaseUrl === 'function') {
+            window.wiremockBaseUrl = window.normalizeWiremockBaseUrl(settings.host, settings.port);
+        } else {
+            window.wiremockBaseUrl = `http://${settings.host}:${settings.port}/__admin`;
         }
 
-        if (interval > 0) {
-            autoRefreshInterval = setInterval(() => {
-                const currentPage = document.querySelector('.nav-item.active')?.textContent.trim();
-                const saved = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
-                const useCache = !!saved.cacheEnabled;
-                if (currentPage?.includes('Mappings')) {
-                    fetchAndRenderMappings && fetchAndRenderMappings(null, { useCache });
-                } else if (currentPage?.includes('Request Log')) {
-                    fetchAndRenderRequests && fetchAndRenderRequests(null, { useCache });
-                }
-            }, interval * 1000);
-            console.log('⏱️ Auto-refresh enabled:', { everySeconds: interval });
-        } else {
-            console.log('⏱️ Auto-refresh disabled');
-        }
-    };
-    
-    // --- ОБРАБОТЧИК ФОРМЫ МАППИНГОВ ---
-    // REMOVED: Moved to editor.js
-    
-    // --- РАСШИРЕННАЯ НАВИГАЦИЯ ---
-    const originalShowPage = window.showPage;
-    window.showPage = (pageId, element) => {
-        originalShowPage(pageId, element);
+        // Update global auth header immediately
+        window.authHeader = settings.authHeader || '';
+
+        // Broadcast settings update to any open editor windows
+        broadcastSettingsUpdate(settings);
         
-        // Removed updateSystemStats() call on settings tab switch
-        // Statistics will only update:
-        // 1. On initial connection (connectToWireMock)
-        // 2. By manual refresh buttons
-        // 3. Via auto-refresh interval (if enabled)
+        NotificationManager.success('Settings saved successfully!');
+        console.log('💾 Settings saved:', settings);
         
-        if (pageId === 'scenarios') {
-            loadScenarios().catch(e => {
-                NotificationManager.error(`Ошибка загрузки сценариев: ${e.message}`);
-            });
-        }
-    };
+    } catch (error) {
+        console.error('Error saving settings:', error);
+        NotificationManager.error('Failed to save settings');
+    }
+};
+
+// Reset settings to defaults
+window.resetSettings = () => {
+    if (!confirm('Reset all settings to defaults?')) return;
     
-    // --- ИНИЦИАЛИЗАЦИЯ ---
-    console.log('📋 Loading settings...');
+    try {
+        // Default settings
+        const defaults = {
+            host: 'localhost',
+            port: '8080',
+            requestTimeout: '5000',
+            authHeader: '',
+            cacheEnabled: false,
+            autoRefreshEnabled: true,
+            refreshInterval: '30',
+            // Default cache timing settings
+            cacheRebuildDelay: '1000',
+            cacheValidationDelay: '1500',
+            optimisticCacheAgeLimit: '30000',
+            cacheCountDiffThreshold: '2',
+            backgroundFetchDelay: '200'
+        };
+        
+        // Update form fields
+        if (document.getElementById('default-host')) document.getElementById('default-host').value = defaults.host;
+        if (document.getElementById('default-port')) document.getElementById('default-port').value = defaults.port;
+        if (document.getElementById('request-timeout')) document.getElementById('request-timeout').value = defaults.requestTimeout;
+        if (document.getElementById('auth-header')) document.getElementById('auth-header').value = defaults.authHeader;
+        if (document.getElementById('cache-enabled')) document.getElementById('cache-enabled').checked = defaults.cacheEnabled;
+        if (document.getElementById('auto-refresh-enabled')) document.getElementById('auto-refresh-enabled').checked = defaults.autoRefreshEnabled;
+        if (document.getElementById('refresh-interval')) document.getElementById('refresh-interval').value = defaults.refreshInterval;
+        
+        // Save defaults
+        localStorage.setItem('wiremock-settings', JSON.stringify(defaults));
+        
+        // Update global baseUrl
+        window.wiremockBaseUrl = `http://${defaults.host}:${defaults.port}/__admin`;
+
+        // Update global auth header
+        window.authHeader = defaults.authHeader || '';
+
+        // Broadcast update
+        broadcastSettingsUpdate(defaults);
+        
+        NotificationManager.success('Settings reset to defaults!');
+        console.log('🔄 Settings reset to defaults');
+        
+    } catch (error) {
+        console.error('Error resetting settings:', error);
+        NotificationManager.error('Failed to reset settings');
+    }
+};
+
+// Load settings into form fields
+window.loadSettings = () => {
+    try {
+        const settings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
+        console.log('🔧 [main.js] Loading settings from localStorage:', settings);
+
+        // Load into settings form fields if they exist
+        if (document.getElementById('default-host')) document.getElementById('default-host').value = settings.host || 'localhost';
+        if (document.getElementById('default-port')) document.getElementById('default-port').value = settings.port || '8080';
+        if (document.getElementById('request-timeout')) document.getElementById('request-timeout').value = settings.requestTimeout || '5000';
+        if (document.getElementById('auth-header')) document.getElementById('auth-header').value = settings.authHeader || '';
+        if (document.getElementById('cache-enabled')) document.getElementById('cache-enabled').checked = settings.cacheEnabled || false;
+        if (document.getElementById('auto-refresh-enabled')) document.getElementById('auto-refresh-enabled').checked = settings.autoRefreshEnabled !== false;
+        if (document.getElementById('refresh-interval')) document.getElementById('refresh-interval').value = settings.refreshInterval || '30';
+        // Cache timing settings
+        if (document.getElementById('cache-rebuild-delay')) document.getElementById('cache-rebuild-delay').value = settings.cacheRebuildDelay || '1000';
+        if (document.getElementById('cache-validation-delay')) document.getElementById('cache-validation-delay').value = settings.cacheValidationDelay || '1500';
+        if (document.getElementById('optimistic-cache-age-limit')) document.getElementById('optimistic-cache-age-limit').value = settings.optimisticCacheAgeLimit || '30000';
+        if (document.getElementById('cache-count-diff-threshold')) document.getElementById('cache-count-diff-threshold').value = settings.cacheCountDiffThreshold || '2';
+        if (document.getElementById('background-fetch-delay')) document.getElementById('background-fetch-delay').value = settings.backgroundFetchDelay || '200';
+
+        // Update global auth header
+        window.authHeader = settings.authHeader || '';
+
+        console.log('📋 Settings loaded into settings form');
+
+    } catch (error) {
+        console.error('Error loading settings:', error);
+    }
+};
+
+// Broadcast settings update to all open editor windows
+function broadcastSettingsUpdate(settings) {
+    try {
+        // Use localStorage event to notify other windows
+        localStorage.setItem('wiremock-settings-broadcast', JSON.stringify({
+            timestamp: Date.now(),
+            settings: settings
+        }));
+        
+        // Also try to directly message any child windows
+        // Note: This won't work for windows opened from other tabs
+        console.log('📡 Broadcasting settings update to editor windows');
+        
+    } catch (error) {
+        console.warn('Failed to broadcast settings update:', error);
+    }
+}
+
+// Initialize default WireMock URL
+if (!window.wiremockBaseUrl) {
+    window.wiremockBaseUrl = 'http://localhost:8080/__admin';
+    console.log('🔧 [main.js] Initialized default WireMock URL:', window.wiremockBaseUrl);
+}
+
+// Load settings when page loads
+document.addEventListener('DOMContentLoaded', async () => {
+    await new Promise(resolve => requestAnimationFrame(resolve));
     loadSettings();
-    
-    console.log('🎬 Initializing UI elements...');
-    updateRecordingUI();
-    
-    console.log('🎨 Initializing theme...');
-    initializeTheme();
-    
-    console.log('⚙️ Setting up auto-refresh...');
-    document.getElementById(SELECTORS.SETTINGS.AUTO_REFRESH)?.addEventListener('change', setupAutoRefresh);
-    document.getElementById('refresh-interval')?.addEventListener('change', setupAutoRefresh);
-    document.getElementById('auto-refresh-enabled')?.addEventListener('change', setupAutoRefresh);
-    setupAutoRefresh();
-    // Setup cache toggle listener to refetch mappings via cache service immediately
-    const cacheToggle = document.getElementById(SELECTORS.SETTINGS.CACHE_ENABLED);
-    if (cacheToggle) {
-        cacheToggle.addEventListener('change', async (e) => {
-            const enabled = !!e.target.checked;
-            // persist immediately
-            const currentSettings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
-            localStorage.setItem('wiremock-settings', JSON.stringify({ ...currentSettings, cacheEnabled: enabled }));
-            // refetch mappings accordingly
-            try {
-                await fetchAndRenderMappings(null, { useCache: enabled });
-                NotificationManager.info(`Кэш ${enabled ? 'включен' : 'выключен'} — список маппингов обновлён`);
-            } catch (err) {
-                console.warn('Cache toggle refetch failed:', err);
+    loadConnectionSettings();
+    // Убедимся что настройки загружены перед любыми операциями
+    console.log('🔧 [main.js] Page loaded, settings initialized, ready for user interaction');
+});
+
+// Listen for settings changes from editor windows or other sources
+window.addEventListener('storage', (e) => {
+    if (e.key === 'wiremock-settings' && e.newValue) {
+        try {
+            const settings = JSON.parse(e.newValue);
+            console.log('🔧 [main.js] Settings updated from external source:', settings);
+
+            // Update main connection form fields
+            const hostInput = document.getElementById('wiremock-host');
+            const portInput = document.getElementById('wiremock-port');
+            if (hostInput && settings.host) {
+                hostInput.value = settings.host;
+            }
+            if (portInput && settings.port) {
+                portInput.value = settings.port;
+            }
+
+            // Update URL if we have valid settings
+            if (settings.host && settings.port) {
+                if (typeof window.normalizeWiremockBaseUrl === 'function') {
+                    window.wiremockBaseUrl = window.normalizeWiremockBaseUrl(settings.host, settings.port);
+                } else {
+                    window.wiremockBaseUrl = `http://${settings.host}:${settings.port}/__admin`;
+                }
+                console.log('🔧 [main.js] URL updated from settings change:', window.wiremockBaseUrl);
+            }
+        } catch (error) {
+            console.error('🔧 [main.js] Error processing settings update:', error);
+        }
+    }
+});
+
+// Listen for messages from editor windows (e.g., cache refresh requests)
+window.addEventListener('message', (event) => {
+    // Only accept messages from same origin for security
+    if (event.origin !== window.location.origin) {
+        return;
+    }
+
+    if (event.data && event.data.type === 'imock-cache-refresh') {
+        console.log('📨 [main.js] Received cache refresh request from:', event.data.source);
+        if (typeof window.refreshImockCache === 'function') {
+            window.refreshImockCache().catch(error => {
+                console.warn('Failed to refresh cache from message:', error);
+            });
+        }
+    }
+
+    if (event.data && event.data.type === 'imock-optimistic-mapping-update') {
+        console.log('🎯 [main.js] Received optimistic mapping update from:', event.data.source, event.data.mapping.id);
+        if (typeof window.applyOptimisticMappingUpdate === 'function') {
+            window.applyOptimisticMappingUpdate(event.data.mapping);
+            // Also trigger UI refresh to show changes immediately
+            if (typeof window.fetchAndRenderMappings === 'function') {
+                console.log('🎯 [main.js] Triggering UI refresh after optimistic update');
+                window.fetchAndRenderMappings(window.allMappings);
+            }
+        }
+    }
+
+    if (event.data && event.data.type === 'imock-optimistic-cache-update') {
+        console.log('🧩 [main.js] Received optimistic cache update from:', event.data.source, event.data.operation, event.data.mapping?.id);
+        if (typeof window.updateOptimisticCache === 'function') {
+            window.updateOptimisticCache(event.data.mapping, event.data.operation);
+        }
+    }
+});
+
+// Listen for localStorage-based cache refresh triggers (cross-tab communication)
+window.addEventListener('storage', (e) => {
+    if (e.key === 'imock-cache-refresh-trigger' && e.newValue) {
+        console.log('💾 [main.js] Received localStorage cache refresh trigger');
+        if (typeof window.refreshImockCache === 'function') {
+            window.refreshImockCache().catch(error => {
+                console.warn('Failed to refresh cache from localStorage trigger:', error);
+            });
+        }
+    }
+
+    // Handle optimistic updates via localStorage
+    if (e.key === 'imock-optimistic-update' && e.newValue) {
+        try {
+            const data = JSON.parse(e.newValue);
+            console.log('🎯 [main.js] Received localStorage optimistic update from:', data.source, 'for mapping:', data.mapping?.id);
+            if (data.mapping && typeof window.applyOptimisticMappingUpdate === 'function') {
+                window.applyOptimisticMappingUpdate(data.mapping);
+                // Trigger UI refresh
+                if (typeof window.fetchAndRenderMappings === 'function' && window.allMappings) {
+                    console.log('🎯 [main.js] Triggering UI refresh after localStorage optimistic update');
+                    window.fetchAndRenderMappings(window.allMappings);
+                }
+                // Update counter if available
+                if (typeof window.updateMappingsCounter === 'function') {
+                    window.updateMappingsCounter();
+                }
+            }
+        } catch (error) {
+            console.warn('Failed to process optimistic update from localStorage:', error);
+        }
+    }
+});
+
+// Listen for BroadcastChannel cache refresh messages (modern browsers)
+if (typeof BroadcastChannel !== 'undefined') {
+    try {
+        const cacheRefreshChannel = new BroadcastChannel('imock-cache-refresh');
+        cacheRefreshChannel.addEventListener('message', (event) => {
+            if (event.data && event.data.type === 'cache-refresh') {
+                console.log('📡 [main.js] Received BroadcastChannel cache refresh from:', event.data.source);
+                if (typeof window.refreshImockCache === 'function') {
+                    window.refreshImockCache().catch(error => {
+                        console.warn('Failed to refresh cache from BroadcastChannel:', error);
+                    });
+                }
             }
         });
-    }
-    
-    console.log('🔗 Setting up live connection field sync...');
-    // Add live sync for main page connection fields
-    const mainHostField = document.getElementById('wiremock-host');
-    const mainPortField = document.getElementById('wiremock-port');
-    
-    if (mainHostField) {
-        mainHostField.addEventListener('input', (e) => {
-            const host = e.target.value.trim() || 'localhost';
-            const port = mainPortField?.value.trim() || '8080';
-            
-            // Update wiremockBaseUrl immediately
-            window.wiremockBaseUrl = (typeof window.normalizeWiremockBaseUrl === 'function')
-                ? window.normalizeWiremockBaseUrl(host, port)
-                : `http://${host}:${port}/__admin`;
-            
-            // Sync with settings page fields
-            const settingsHostField = document.getElementById(SELECTORS.SETTINGS.HOST);
-            if (settingsHostField) settingsHostField.value = host;
-            
-            // Save to localStorage
-            const currentSettings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
-            const updatedSettings = { ...currentSettings, host };
-            localStorage.setItem('wiremock-settings', JSON.stringify(updatedSettings));
-            
-            console.log('🔄 Host updated live:', { host, newBaseUrl: window.wiremockBaseUrl });
+
+        // Listen for optimistic mapping updates via BroadcastChannel
+        const optimisticUpdateChannel = new BroadcastChannel('imock-optimistic-updates');
+        optimisticUpdateChannel.addEventListener('message', (event) => {
+            if (event.data && event.data.type === 'optimistic-mapping-update') {
+                console.log('🎯 [main.js] Received BroadcastChannel optimistic update from:', event.data.source, event.data.mapping.id);
+                if (typeof window.applyOptimisticMappingUpdate === 'function') {
+                    window.applyOptimisticMappingUpdate(event.data.mapping);
+                    // Also trigger UI refresh to show changes immediately
+                    if (typeof window.fetchAndRenderMappings === 'function') {
+                        console.log('🎯 [main.js] Triggering UI refresh after BroadcastChannel optimistic update');
+                        window.fetchAndRenderMappings(window.allMappings);
+                    }
+                }
+            }
         });
+    } catch (error) {
+        console.warn('BroadcastChannel setup failed:', error);
     }
-    
-    if (mainPortField) {
-        mainPortField.addEventListener('input', (e) => {
-            const port = e.target.value.trim() || '8080';
-            const host = mainHostField?.value.trim() || 'localhost';
-            
-            // Update wiremockBaseUrl immediately
-            window.wiremockBaseUrl = (typeof window.normalizeWiremockBaseUrl === 'function')
-                ? window.normalizeWiremockBaseUrl(host, port)
-                : `http://${host}:${port}/__admin`;
-            
-            // Sync with settings page fields
-            const settingsPortField = document.getElementById(SELECTORS.SETTINGS.PORT);
-            if (settingsPortField) settingsPortField.value = port;
-            
-            // Save to localStorage
-            const currentSettings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
-            const updatedSettings = { ...currentSettings, port };
-            localStorage.setItem('wiremock-settings', JSON.stringify(updatedSettings));
-            
-            console.log('🔄 Port updated live:', { port, newBaseUrl: window.wiremockBaseUrl });
-        });
+}
+
+// Load connection settings into main connection form
+function loadConnectionSettings() {
+    try {
+        const settings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
+
+        console.log('🔧 [loadConnectionSettings] Loading settings:', settings);
+
+        // Update main connection form - ONLY set values in form fields
+        const hostInput = document.getElementById('wiremock-host');
+        const portInput = document.getElementById('wiremock-port');
+
+        if (hostInput && settings.host) {
+            hostInput.value = settings.host;
+            console.log('🔧 [loadConnectionSettings] Set host input:', settings.host);
+        }
+        if (portInput && settings.port) {
+            portInput.value = settings.port;
+            console.log('🔧 [loadConnectionSettings] Set port input:', settings.port);
+        }
+
+        // DON'T set window.wiremockBaseUrl here - let connectToWireMock() handle it
+        // This prevents overriding user-entered values in the form
+        console.log('🔧 [loadConnectionSettings] Form fields updated, URL will be set by connectToWireMock()');
+
+    } catch (error) {
+        console.error('Error loading connection settings:', error);
+        console.log('🔧 [loadConnectionSettings] Error loading settings, form fields may remain empty');
     }
-    
-    // Add reverse sync for settings page fields to main page
-    const settingsHostField = document.getElementById(SELECTORS.SETTINGS.HOST);
-    const settingsPortField = document.getElementById(SELECTORS.SETTINGS.PORT);
-    
-    if (settingsHostField) {
-        settingsHostField.addEventListener('input', (e) => {
-            const host = e.target.value.trim() || 'localhost';
-            const port = settingsPortField?.value.trim() || '8080';
-            
-            // Update wiremockBaseUrl immediately
-            window.wiremockBaseUrl = (typeof window.normalizeWiremockBaseUrl === 'function')
-                ? window.normalizeWiremockBaseUrl(host, port)
-                : `http://${host}:${port}/__admin`;
-            
-            // Sync with main page fields
-            if (mainHostField) mainHostField.value = host;
-            
-            console.log('🔄 Settings host updated live:', { host, newBaseUrl: window.wiremockBaseUrl });
-        });
-    }
-    
-    if (settingsPortField) {
-        settingsPortField.addEventListener('input', (e) => {
-            const port = e.target.value.trim() || '8080';
-            const host = settingsHostField?.value.trim() || 'localhost';
-            
-            // Update wiremockBaseUrl immediately
-            window.wiremockBaseUrl = (typeof window.normalizeWiremockBaseUrl === 'function')
-                ? window.normalizeWiremockBaseUrl(host, port)
-                : `http://${host}:${port}/__admin`;
-            
-            // Sync with main page fields
-            if (mainPortField) mainPortField.value = port;
-            
-            console.log('🔄 Settings port updated live:', { port, newBaseUrl: window.wiremockBaseUrl });
-        });
-    }
-    
-    console.log('📅 Setting default date filters...');
-    // Removed default date filters to avoid filtering out requests
-    // const today = new Date().toISOString().split('T')[0];
-    // const dateFromFilter = document.getElementById(SELECTORS.REQUEST_FILTERS.DATE_FROM);
-    // const dateToFilter = document.getElementById(SELECTORS.REQUEST_FILTERS.DATE_TO);
-    // if (dateFromFilter) dateFromFilter.value = today;
-    // if (dateToFilter) dateToFilter.value = today;
-    
-    console.log('✅ WireMock UI - Initialization complete!');
-    console.log('🎯 Ready to connect to WireMock server');
-});
+}

@@ -1,460 +1,392 @@
-// ===== MANAGERS.JS - Системы управления =====
-// NotificationManager, TabManager, системы управления состоянием
+'use strict';
+
+// === MANAGERS.JS ===
+// Management systems for notifications, tabs, and filters
 
 // --- NOTIFICATION MANAGER ---
-window.NotificationManager = {
-    queue: [],
-    isShowing: false,
-    toastContainer: null,
-    
-    // Типы уведомлений
-    TYPES: {
-        INFO: 'info',
-        SUCCESS: 'success', 
-        ERROR: 'error',
-        WARNING: 'warning'
-    },
-    
-    // Инициализация контейнера для тостов
-    init() {
-        // Создаем контейнер для тостов, если его еще нет
-        if (!this.toastContainer) {
-            this.toastContainer = document.createElement('div');
-            this.toastContainer.id = 'toast-container';
-            document.body.appendChild(this.toastContainer);
-        }
-    },
-    
-    // Показать уведомление
-    show(message, type = this.TYPES.INFO, duration = 3000) {
-        this.init(); // Инициализируем контейнер при первом вызове
-        this.queue.push({ message, type, duration });
-        this.processQueue();
-    },
-    
-    // Обработка очереди
-    processQueue() {
-        if (this.isShowing || this.queue.length === 0) return;
+// Enhanced notification system with queue and better UX
+if (!window.NotificationManager) {
+    window.NotificationManager = {
+        queue: [],
+        isShowing: false,
+        toastContainer: null,
         
-        const { message, type, duration } = this.queue.shift();
-        this.isShowing = true;
+        TYPES: {
+            INFO: 'info',
+            SUCCESS: 'success', 
+            ERROR: 'error',
+            WARNING: 'warning'
+        },
         
-        // Показать уведомление
-        this.displayNotification(message, type);
-        
-        // Автоскрытие
-        setTimeout(() => {
-            this.hideNotification();
-            this.isShowing = false;
-            this.processQueue(); // Показать следующее
-        }, duration);
-    },
-    
-    // Отображение уведомления
-    displayNotification(message, type) {
-        const toast = document.createElement('div');
-        toast.className = `toast toast-${type}`;
-        toast.textContent = message;
-        
-        // Добавляем тост в контейнер
-        this.toastContainer.appendChild(toast);
-        
-        // Анимация появления
-        setTimeout(() => {
-            toast.classList.add('show');
-        }, 10);
-        
-        // Сохраняем ссылку на тост для скрытия
-        this.currentToast = toast;
-    },
-    
-    // Скрытие уведомления
-    hideNotification() {
-        if (this.currentToast) {
-            this.currentToast.classList.remove('show');
-            
-            setTimeout(() => {
-                if (this.currentToast && this.currentToast.parentNode) {
-                    this.currentToast.parentNode.removeChild(this.currentToast);
-                    this.currentToast = null;
+        init() {
+            if (!this.toastContainer) {
+                this.toastContainer = document.getElementById('toast-container');
+                if (!this.toastContainer) {
+                    // Create toast container if it doesn't exist
+                    this.toastContainer = document.createElement('div');
+                    this.toastContainer.id = 'toast-container';
+                    this.toastContainer.style.cssText = `
+                        position: fixed;
+                        top: 20px;
+                        right: 20px;
+                        z-index: 10000;
+                        pointer-events: none;
+                    `;
+                    document.body.appendChild(this.toastContainer);
                 }
-            }, 300);
+            }
+        },
+        
+        show(message, type = this.TYPES.INFO, duration = 3000) {
+            this.init();
+            this.queue.push({ message, type, duration });
+            this.processQueue();
+        },
+        
+        success(message, duration) {
+            this.show(message, this.TYPES.SUCCESS, duration);
+        },
+        
+        error(message, duration) {
+            this.show(message, this.TYPES.ERROR, duration);
+        },
+        
+        warning(message, duration) {
+            this.show(message, this.TYPES.WARNING, duration);
+        },
+        
+        info(message, duration) {
+            this.show(message, this.TYPES.INFO, duration);
+        },
+        
+        processQueue() {
+            if (this.isShowing || this.queue.length === 0) return;
+            
+            const { message, type, duration } = this.queue.shift();
+            this.displayToast(message, type, duration);
+        },
+        
+        displayToast(message, type, duration = 3000) {
+            this.isShowing = true;
+            
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.textContent = message;
+            
+            this.toastContainer.appendChild(toast);
+            
+            // Trigger reflow to ensure the element is in the DOM before adding the show class
+            toast.offsetHeight;
+            
+            // Add show class to trigger the animation
+            requestAnimationFrame(() => {
+                toast.classList.add('show');
+            });
+            
+            // Auto-remove after duration
+            setTimeout(() => {
+                // Remove show class to trigger the exit animation
+                toast.classList.remove('show');
+                
+                // After animation completes, remove the element and process next in queue
+                setTimeout(() => {
+                    if (toast.parentNode) {
+                        toast.parentNode.removeChild(toast);
+                    }
+                    this.isShowing = false;
+                    this.processQueue(); // Process next in queue
+                }, 300); // Should match the CSS transition duration
+            }, duration);
         }
-    },
-    
-    // Быстрые методы
-    success(msg) { this.show(msg, this.TYPES.SUCCESS); },
-    error(msg) { this.show(msg, this.TYPES.ERROR); },
-    info(msg) { this.show(msg, this.TYPES.INFO); },
-    warning(msg) { this.show(msg, this.TYPES.WARNING); }
-};
+    };
+}
 
 // --- TAB MANAGER ---
+// Unified tab management system
 window.TabManager = {
-    // Конфигурация вкладок
     configs: {
         mappings: {
-            name: 'Маппинги',
-            loadFunction: () => window.fetchAndRenderMappings && window.fetchAndRenderMappings(),
-            clearFilters() {
-                const mf = document.getElementById(SELECTORS.MAPPING_FILTERS.METHOD);
-                const uf = document.getElementById(SELECTORS.MAPPING_FILTERS.URL);
-                const sf = document.getElementById(SELECTORS.MAPPING_FILTERS.STATUS);
-                if (mf) mf.value = '';
-                if (uf) uf.value = '';
-                if (sf) sf.value = '';
-                if (window.fetchAndRenderMappings) window.fetchAndRenderMappings();
-            },
-            filterSelectors: [
-                SELECTORS.MAPPING_FILTERS.METHOD,
-                SELECTORS.MAPPING_FILTERS.URL,
-                SELECTORS.MAPPING_FILTERS.STATUS
-            ]
+            name: 'Mappings',
+            loadFunction: 'loadMappings',
+            clearFunction: 'clearMappingFilters'
         },
         requests: {
-            name: 'Запросы',
-            loadFunction: () => window.fetchAndRenderRequests && window.fetchAndRenderRequests(),
-            clearFilters() {
-                const rf = {
-                    method: document.getElementById(SELECTORS.REQUEST_FILTERS.METHOD),
-                    url: document.getElementById(SELECTORS.REQUEST_FILTERS.URL),
-                    status: document.getElementById(SELECTORS.REQUEST_FILTERS.STATUS),
-                    dateFrom: document.getElementById(SELECTORS.REQUEST_FILTERS.DATE_FROM),
-                    dateTo: document.getElementById(SELECTORS.REQUEST_FILTERS.DATE_TO),
-                    timeFrom: document.getElementById(SELECTORS.REQUEST_FILTERS.TIME_FROM),
-                    timeTo: document.getElementById(SELECTORS.REQUEST_FILTERS.TIME_TO),
-                    quick: document.getElementById(SELECTORS.REQUEST_FILTERS.QUICK)
-                };
-                if (rf.method) rf.method.value = '';
-                if (rf.url) rf.url.value = '';
-                if (rf.status) rf.status.value = '';
-                if (rf.dateFrom) rf.dateFrom.value = '';
-                if (rf.dateTo) rf.dateTo.value = '';
-                if (rf.timeFrom) rf.timeFrom.value = '';
-                if (rf.timeTo) rf.timeTo.value = '';
-                if (rf.quick) rf.quick.value = '';
-                if (window.fetchAndRenderRequests) window.fetchAndRenderRequests();
-            },
-            filterSelectors: [
-                SELECTORS.REQUEST_FILTERS.METHOD,
-                SELECTORS.REQUEST_FILTERS.URL,
-                SELECTORS.REQUEST_FILTERS.STATUS,
-                SELECTORS.REQUEST_FILTERS.DATE_FROM,
-                SELECTORS.REQUEST_FILTERS.DATE_TO,
-                SELECTORS.REQUEST_FILTERS.TIME_FROM,
-                SELECTORS.REQUEST_FILTERS.TIME_TO,
-                SELECTORS.REQUEST_FILTERS.QUICK
-            ]
+            name: 'Requests', 
+            loadFunction: 'loadRequests',
+            clearFunction: 'clearRequestFilters'
         },
         scenarios: {
-            name: 'Сценарии',
-            loadFunction: () => window.loadScenarios && window.loadScenarios(),
-            clearFilters() {
-                // У сценариев нет фильтров, просто перезагружаем
-                if (window.loadScenarios) window.loadScenarios();
-            },
-            filterSelectors: [] // Нет фильтров для сценариев
+            name: 'Scenarios',
+            loadFunction: 'loadScenarios',
+            clearFunction: null
         }
     },
     
-    // Универсальное обновление
-    refresh(tabName) {
+    async refresh(tabName) {
         const config = this.configs[tabName];
-        if (config && config.loadFunction) {
-            try {
-                config.loadFunction();
-                console.log(`TabManager: Refreshed ${config.name}`);
-            } catch (e) {
-                console.error(`TabManager: Error refreshing ${tabName}:`, e);
-                NotificationManager.error(`Ошибка обновления ${config.name}: ${e.message}`);
+        if (!config) {
+            console.warn(`Tab config not found: ${tabName}`);
+            return;
+        }
+        
+        try {
+            const loadFn = window[config.loadFunction];
+            if (typeof loadFn === 'function') {
+                await loadFn();
+                console.log(`✅ ${config.name} refreshed`);
+            } else {
+                console.warn(`Load function not found: ${config.loadFunction}`);
             }
+        } catch (error) {
+            console.error(`Error refreshing ${config.name}:`, error);
+            NotificationManager.error(`Failed to refresh ${config.name}: ${error.message}`);
         }
     },
     
-    // Универсальная очистка фильтров
     clearFilters(tabName) {
         const config = this.configs[tabName];
-        if (config && config.clearFilters) {
-            try {
-                config.clearFilters();
-                console.log(`TabManager: Cleared filters for ${config.name}`);
-            } catch (e) {
-                console.error(`TabManager: Error clearing filters for ${tabName}:`, e);
-                NotificationManager.error(`Ошибка очистки фильтров ${config.name}: ${e.message}`);
-            }
-        }
-    },
-    
-    // Проверка наличия активных фильтров
-    hasActiveFilters(tabName) {
-        const config = this.configs[tabName];
-        if (!config || !config.filterSelectors) return false;
+        if (!config || !config.clearFunction) return;
         
-        return config.filterSelectors.some(selector => {
-            const element = document.getElementById(selector);
-            return element && element.value && element.value.trim() !== '';
-        });
+        try {
+            const clearFn = window[config.clearFunction];
+            if (typeof clearFn === 'function') {
+                clearFn();
+                console.log(`🧹 ${config.name} filters cleared`);
+            }
+        } catch (error) {
+            console.error(`Error clearing ${config.name} filters:`, error);
+        }
     }
 };
 
 // --- FILTER MANAGER ---
+// Centralized filter management
 window.FilterManager = {
-    // Применение фильтров маппингов
-    applyMappingFilters() {
-        const methodFilter = document.getElementById(SELECTORS.MAPPING_FILTERS.METHOD)?.value || '';
-        const urlFilter = document.getElementById(SELECTORS.MAPPING_FILTERS.URL)?.value || '';
-        const statusFilter = document.getElementById(SELECTORS.MAPPING_FILTERS.STATUS)?.value || '';
-        
-        const mappingCards = document.querySelectorAll('#mappings-list .mapping-card');
-        let visibleCount = 0;
-        
-        mappingCards.forEach(card => {
-            const method = card.querySelector('.method-badge')?.textContent || '';
-            const url = card.querySelector('.mapping-url')?.textContent || '';
-            const status = card.querySelector('.status-badge')?.textContent || '';
-            const name = card.querySelector('.mapping-name')?.textContent || '';
-            
-            const matchesMethod = !methodFilter || method.includes(methodFilter);
-            const matchesUrl = !urlFilter || url.toLowerCase().includes(urlFilter.toLowerCase());
-            const matchesStatus = !statusFilter || status.includes(statusFilter);
-            // Поиск по названию мапинга
-            const matchesName = !urlFilter || name.toLowerCase().includes(urlFilter.toLowerCase());
-            
-            if (matchesMethod && (matchesUrl || matchesName) && matchesStatus) {
-                card.style.display = 'block';
-                visibleCount++;
-            } else {
-                card.style.display = 'none';
-            }
-        });
-        
-        console.log(`Mapping filters applied: ${visibleCount} mappings shown`);
-    },
-    
-    // Применение фильтров запросов
-    applyRequestFilters() {
-        const methodFilter = document.getElementById(SELECTORS.REQUEST_FILTERS.METHOD)?.value || '';
-        const urlFilter = document.getElementById(SELECTORS.REQUEST_FILTERS.URL)?.value || '';
-        const statusFilter = document.getElementById(SELECTORS.REQUEST_FILTERS.STATUS)?.value || '';
-        const dateFromFilter = document.getElementById(SELECTORS.REQUEST_FILTERS.DATE_FROM)?.value || '';
-        const dateToFilter = document.getElementById(SELECTORS.REQUEST_FILTERS.DATE_TO)?.value || '';
-        const fromTimeFilter = document.getElementById(SELECTORS.REQUEST_FILTERS.TIME_FROM)?.value || '';
-        const toTimeFilter = document.getElementById(SELECTORS.REQUEST_FILTERS.TIME_TO)?.value || '';
-        
-        // Логируем установленные фильтры
-        console.log('Applying request filters:', {
-            method: methodFilter,
-            url: urlFilter,
-            status: statusFilter,
-            dateFrom: dateFromFilter,
-            dateTo: dateToFilter,
-            timeFrom: fromTimeFilter,
-            timeTo: toTimeFilter
-        });
-        
-        const requestItems = document.querySelectorAll('#requests-list .request-card');
-        let visibleCount = 0;
-        let filteredItems = [];
-        
-        requestItems.forEach(item => {
-            const method = item.querySelector('.method-badge')?.textContent || '';
-            const url = item.querySelector('.request-url')?.textContent || '';
-            const statusBadge = item.querySelector('.status-badge')?.textContent || '';
-            // Ищем badge для matched/unmatched в разных местах
-            const matchedBadge = item.querySelector('.badge-success, .badge-danger, .badge');
-            const timestamp = item.querySelector('.request-time')?.textContent || '';
-            
-            // Определяем статус фильтрации (matched/unmatched)
-            let displayStatus = statusBadge; // По умолчанию используем HTTP статус
-            let hasMatchedBadge = false;
-            
-            // Более надежный способ определения matched/unmatched статуса
-            if (item.querySelector('.badge-success')) {
-                displayStatus = 'matched';
-                hasMatchedBadge = true;
-            } else if (item.querySelector('.badge-danger')) {
-                displayStatus = 'unmatched';
-                hasMatchedBadge = true;
-            }
-            
-            // Debug logging
-            console.log('Request filter debug:', {
-                method, url, statusBadge, displayStatus, statusFilter, hasMatchedBadge,
-                matchedBadge: matchedBadge?.outerHTML,
-                timestamp
-            });
-            
-            // Проверка базовых фильтров
-            const matchesMethod = !methodFilter || method.toLowerCase().includes(methodFilter.toLowerCase());
-            const matchesUrl = !urlFilter || this.matchUrlPattern(url, urlFilter);
-            
-            // Для фильтра matched/unmatched проверяем только запросы с соответствующими бейджами
-            let matchesStatus = true;
-            if (statusFilter && statusFilter !== '') {
-                if (statusFilter === 'matched') {
-                    matchesStatus = hasMatchedBadge && displayStatus === 'matched';
-                } else if (statusFilter === 'unmatched') {
-                    matchesStatus = hasMatchedBadge && displayStatus === 'unmatched';
-                } else {
-                    // Для других статусов (HTTP кодов) используем обычное сравнение
-                    matchesStatus = displayStatus.toLowerCase().includes(statusFilter.toLowerCase()) || 
-                                   statusFilter.toLowerCase().includes(displayStatus.toLowerCase());
-                }
-            }
-            
-            // Debug logging for filter results
-            console.log('Filter results:', { matchesMethod, matchesUrl, matchesStatus });
-            
-            // Проверка временных фильтров
-            let matchesTime = true;
-            if (dateFromFilter || dateToFilter || fromTimeFilter || toTimeFilter) {
-                // Парсим дату из отформатированной строки в русском формате (dd.mm.yyyy, hh:mm:ss)
-                // Сначала извлекаем только дату и время, игнорируя IP адрес
-                let cleanTimestamp = timestamp;
-                if (timestamp.includes(' IP:')) {
-                    cleanTimestamp = timestamp.split(' IP:')[0];
-                }
-                
-                let requestDate;
-                if (cleanTimestamp.includes(',')) {
-                    const [datePart, timePart] = cleanTimestamp.split(', ');
-                    const [day, month, year] = datePart.split('.');
-                    // timePart может содержать секунды, извлекаем только часы и минуты
-                    const timeComponents = timePart.split(':');
-                    const hours = timeComponents[0];
-                    const minutes = timeComponents[1];
-                    const seconds = timeComponents[2] || '00'; // если секунды отсутствуют, используем 00
-                    requestDate = new Date(year, month - 1, day, hours, minutes, seconds);
-                } else {
-                    // Пытаемся стандартный парсинг
-                    requestDate = new Date(cleanTimestamp);
-                }
-                
-                // Debug logging for time parsing
-                console.log('Time filter debug:', {
-                    originalTimestamp: timestamp,
-                    parsedDate: requestDate,
-                    isValid: !isNaN(requestDate.getTime()),
-                    dateFromFilter, dateToFilter, fromTimeFilter, toTimeFilter
-                });
-                
-                // Проверяем валидность даты
-                if (isNaN(requestDate.getTime())) {
-                    console.log('Invalid date, hiding request');
-                    matchesTime = false;
-                } else {
-                    const requestDateStr = requestDate.toISOString().split('T')[0];
-                    const requestTimeStr = requestDate.toTimeString().split(' ')[0].substring(0, 5);
-                    
-                    // Debug logging for time comparison
-                    console.log('Time comparison:', {
-                        requestDateStr, dateFromFilter, dateToFilter,
-                        requestTimeStr, fromTimeFilter, toTimeFilter,
-                        dateFromCheck: dateFromFilter ? requestDateStr >= dateFromFilter : 'skip',
-                        dateToCheck: dateToFilter ? requestDateStr <= dateToFilter : 'skip',
-                        timeFromCheck: fromTimeFilter ? requestTimeStr >= fromTimeFilter : 'skip',
-                        timeToCheck: toTimeFilter ? requestTimeStr <= toTimeFilter : 'skip'
-                    });
-                    
-                    // Правильная проверка временных фильтров
-                    // Если установлена дата "с", скрываем запросы до этой даты
-                    if (dateFromFilter && requestDateStr < dateFromFilter) {
-                        console.log('Date from filter mismatch, hiding request', {requestDateStr, dateFromFilter, comparison: requestDateStr < dateFromFilter});
-                        matchesTime = false;
-                    }
-                    // Если установлена дата "по", скрываем запросы после этой даты
-                    if (dateToFilter && requestDateStr > dateToFilter) {
-                        console.log('Date to filter mismatch, hiding request', {requestDateStr, dateToFilter, comparison: requestDateStr > dateToFilter});
-                        matchesTime = false;
-                    }
-                    // Если установлено время "с", скрываем запросы до этого времени
-                    if (fromTimeFilter && requestTimeStr < fromTimeFilter) {
-                        console.log('Time from filter mismatch, hiding request', {requestTimeStr, fromTimeFilter, comparison: requestTimeStr < fromTimeFilter});
-                        matchesTime = false;
-                    }
-                    // Если установлено время "по", скрываем запросы после этого времени
-                    if (toTimeFilter && requestTimeStr > toTimeFilter) {
-                        console.log('Time to filter mismatch, hiding request', {requestTimeStr, toTimeFilter, comparison: requestTimeStr > toTimeFilter});
-                        matchesTime = false;
-                    }
-                }
-            }
-            
-            // Final debug logging
-            console.log('Final filter result:', { matchesMethod, matchesUrl, matchesStatus, matchesTime, willShow: matchesMethod && matchesUrl && matchesStatus && matchesTime });
-            
-            if (matchesMethod && matchesUrl && matchesStatus && matchesTime) {
-                item.style.display = 'block';
-                visibleCount++;
-                filteredItems.push({
-                    method,
-                    url,
-                    status: displayStatus,
-                    timestamp
-                });
-            } else {
-                item.style.display = 'none';
-            }
-        });
-        
-        // Обновляем счетчик
-        const requestLogTab = document.querySelector('[onclick="showTab(\'requests\')"]');
-        if (requestLogTab) {
-            const originalText = requestLogTab.textContent.split(' (')[0];
-            requestLogTab.textContent = `${originalText} (${visibleCount})`;
-        }
-        
-        // Логируем результат фильтрации
-        console.log(`Request filters applied: ${visibleCount} requests shown out of ${requestItems.length} total`, {
-            totalRequests: requestItems.length,
-            visibleRequests: visibleCount,
-            hiddenRequests: requestItems.length - visibleCount,
-            sampleVisibleItems: filteredItems.slice(0, 5) // Показываем первые 5 видимых элементов
-        });
-    },
-    
-    // Проверка соответствия URL паттерну
-    matchUrlPattern(url, pattern) {
-        if (!pattern) return true;
-        
+    // Save filter state to localStorage
+    saveFilterState(tabName, filters) {
         try {
-            // Если паттерн содержит регулярные выражения
-            if (pattern.includes('*') || pattern.includes('?') || pattern.includes('[')) {
-                const regexPattern = pattern
-                    .replace(/\*/g, '.*')
-                    .replace(/\?/g, '.')
-                    .replace(/\./g, '\\.');
-                return new RegExp(regexPattern, 'i').test(url);
-            }
-            
-            // Простой поиск подстроки
-            return url.toLowerCase().includes(pattern.toLowerCase());
+            const key = `imock-filters-${tabName}`;
+            localStorage.setItem(key, JSON.stringify(filters));
         } catch (e) {
-            // Если ошибка в регулярном выражении, используем простой поиск
-            return url.toLowerCase().includes(pattern.toLowerCase());
+            console.warn('Failed to save filter state:', e);
         }
     },
     
-    // Быстрый фильтр времени (исправлено для работы с минутами)
-    applyQuickTimeFilter() {
-        const quickFilter = document.getElementById(SELECTORS.REQUEST_FILTERS.QUICK)?.value;
-        if (!quickFilter) return;
+    // Load filter state from localStorage
+    loadFilterState(tabName) {
+        try {
+            const key = `imock-filters-${tabName}`;
+            const saved = localStorage.getItem(key);
+            return saved ? JSON.parse(saved) : {};
+        } catch (e) {
+            console.warn('Failed to load filter state:', e);
+            return {};
+        }
+    },
+    
+    // Apply mapping filters
+    applyMappingFilters() {
+        const method = document.getElementById('filter-method')?.value || '';
+        const url = document.getElementById('filter-url')?.value || '';
+        const status = document.getElementById('filter-status')?.value || '';
+
+        const filters = { method, url, status };
+        this.saveFilterState('mappings', filters);
+
+        // Apply filters to mappings
+        if (window.originalMappings && window.originalMappings.length > 0) {
+            let filtered = [...window.originalMappings];
+
+            if (method) {
+                filtered = filtered.filter(mapping =>
+                    (mapping.request?.method || '').toLowerCase().includes(method.toLowerCase())
+                );
+            }
+
+            if (url) {
+                filtered = filtered.filter(mapping => {
+                    // Search in URL fields
+                    const mappingUrl = mapping.request?.url || mapping.request?.urlPattern || mapping.request?.urlPath || '';
+                    const urlMatch = mappingUrl.toLowerCase().includes(url.toLowerCase());
+
+                    // Search in mapping name
+                    const mappingName = mapping.name || '';
+                    const nameMatch = mappingName.toLowerCase().includes(url.toLowerCase());
+
+                    // Return true if either URL or Name matches
+                    return urlMatch || nameMatch;
+                });
+            }
+
+            if (status) {
+                filtered = filtered.filter(mapping =>
+                    (mapping.response?.status || '').toString().includes(status)
+                );
+            }
+
+            window.allMappings = filtered;
+
+            // Re-render mappings
+            const container = document.getElementById(SELECTORS.LISTS.MAPPINGS);
+            if (container) {
+                const sortedMappings = [...window.allMappings].sort((a, b) => {
+                    const priorityA = a.priority || 1;
+                    const priorityB = b.priority || 1;
+                    if (priorityA !== priorityB) return priorityA - priorityB;
+
+                    const methodOrder = { 'GET': 1, 'POST': 2, 'PUT': 3, 'PATCH': 4, 'DELETE': 5 };
+                    const methodA = methodOrder[a.request?.method] || 999;
+                    const methodB = methodOrder[b.request?.method] || 999;
+                    if (methodA !== methodB) return methodA - methodB;
+
+                    const urlA = a.request?.url || a.request?.urlPattern || a.request?.urlPath || '';
+                    const urlB = b.request?.url || b.request?.urlPattern || b.request?.urlPath || '';
+                    return urlA.localeCompare(urlB);
+                });
+
+                // В managers.js добавьте проверку перед использованием:
+                if (typeof window.renderMappingCard === 'function') {
+                    container.innerHTML = sortedMappings.map(mapping => window.renderMappingCard(mapping)).join('');
+                }
+
+                // Update UI elements
+                const emptyState = document.getElementById('mappings-empty');
+                const loadingState = document.getElementById('mappings-loading');
+
+                if (window.allMappings.length === 0) {
+                    if (emptyState) emptyState.classList.remove('hidden');
+                    if (container) container.style.display = 'none';
+                } else {
+                    if (emptyState) emptyState.classList.add('hidden');
+                    if (container) container.style.display = 'block';
+                }
+
+                if (typeof updateMappingsCounter === 'function') {
+                    updateMappingsCounter();
+                }
+            }
+        }
+    },
+    
+    // Apply request filters
+    applyRequestFilters() {
+        const method = document.getElementById('req-filter-method')?.value || '';
+        const status = document.getElementById('req-filter-status')?.value || '';
+        const url = document.getElementById('req-filter-url')?.value || '';
+        const from = document.getElementById('req-filter-from')?.value || '';
+        const to = document.getElementById('req-filter-to')?.value || '';
+
+        const filters = { method, status, url, from, to };
+        this.saveFilterState('requests', filters);
+
+        // Apply filters to requests
+        if (window.originalRequests && window.originalRequests.length > 0) {
+            let filtered = [...window.originalRequests];
+
+            if (method) {
+                filtered = filtered.filter(request =>
+                    (request.request?.method || '').toLowerCase().includes(method.toLowerCase())
+                );
+            }
+
+            if (status) {
+                filtered = filtered.filter(request =>
+                    (request.response?.status || '').toString().includes(status)
+                );
+            }
+
+            if (url) {
+                filtered = filtered.filter(request =>
+                    (request.request?.url || '').toLowerCase().includes(url.toLowerCase())
+                );
+            }
+
+            if (from) {
+                const fromTime = new Date(from).getTime();
+                filtered = filtered.filter(request => {
+                    const requestTime = new Date(request.request?.loggedDate || request.loggedDate).getTime();
+                    return requestTime >= fromTime;
+                });
+            }
+
+            if (to) {
+                const toTime = new Date(to).getTime();
+                filtered = filtered.filter(request => {
+                    const requestTime = new Date(request.request?.loggedDate || request.loggedDate).getTime();
+                    return requestTime <= toTime;
+                });
+            }
+
+            window.allRequests = filtered;
+
+            // Re-render requests
+            const container = document.getElementById(SELECTORS.LISTS.REQUESTS);
+            if (container) {
+                // В managers.js добавьте проверку перед использованием:
+                if (typeof window.renderRequestCard === 'function') {
+                    container.innerHTML = window.allRequests.map(request => window.renderRequestCard(request)).join('');
+                }
+
+                // Update UI elements
+                const emptyState = document.getElementById('requests-empty');
+                const loadingState = document.getElementById('requests-loading');
+
+                if (window.allRequests.length === 0) {
+                    if (emptyState) emptyState.classList.remove('hidden');
+                    if (container) container.style.display = 'none';
+                } else {
+                    if (emptyState) emptyState.classList.add('hidden');
+                    if (container) container.style.display = 'block';
+                }
+
+                if (typeof updateRequestsCounter === 'function') {
+                    updateRequestsCounter();
+                }
+
+                console.log(`🔍 Filtered requests: ${window.allRequests.length} items`);
+            }
+        }
+    },
+    
+    // Restore filter state on page load
+    restoreFilters(tabName) {
+        const filters = this.loadFilterState(tabName);
         
-        const now = new Date();
-        const minutesAgo = parseInt(quickFilter);
-        const fromTime = new Date(now.getTime() - minutesAgo * 60000);
-        
-        const todayStr = now.toISOString().split('T')[0];
-        
-        // Устанавливаем даты "от" и "до" (сегодня)
-        document.getElementById(SELECTORS.REQUEST_FILTERS.DATE_FROM).value = todayStr;
-        document.getElementById(SELECTORS.REQUEST_FILTERS.DATE_TO).value = todayStr;
-        
-        document.getElementById(SELECTORS.REQUEST_FILTERS.TIME_FROM).value = fromTime.toTimeString().slice(0, 5);
-        document.getElementById(SELECTORS.REQUEST_FILTERS.TIME_TO).value = now.toTimeString().slice(0, 5);
-        
-        // Применяем фильтры
-        this.applyRequestFilters();
+        if (tabName === 'mappings') {
+            if (filters.method) {
+                const elem = document.getElementById('filter-method');
+                if (elem) elem.value = filters.method;
+            }
+            if (filters.url) {
+                const elem = document.getElementById('filter-url');
+                if (elem) elem.value = filters.url;
+            }
+            if (filters.status) {
+                const elem = document.getElementById('filter-status');
+                if (elem) elem.value = filters.status;
+            }
+        } else if (tabName === 'requests') {
+            if (filters.method) {
+                const elem = document.getElementById('req-filter-method');
+                if (elem) elem.value = filters.method;
+            }
+            if (filters.status) {
+                const elem = document.getElementById('req-filter-status');
+                if (elem) elem.value = filters.status;
+            }
+            if (filters.url) {
+                const elem = document.getElementById('req-filter-url');
+                if (elem) elem.value = filters.url;
+            }
+            if (filters.from) {
+                const elem = document.getElementById('req-filter-from');
+                if (elem) elem.value = filters.from;
+            }
+            if (filters.to) {
+                const elem = document.getElementById('req-filter-to');
+                if (elem) elem.value = filters.to;
+            }
+        }
     }
 };
 

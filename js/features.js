@@ -1,5 +1,8 @@
+'use strict';
+
 // ===== FEATURES.JS - Бизнес-функции =====
 // Все основные функции приложения: mappings, requests, scenarios, recording, import/export, settings
+// Updated: 2025-09-22 - Added missing HTML compatibility functions
 
 // --- ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ СОСТОЯНИЯ (используем window для межмодульного доступа) ---
 // Переменные определены в core.js
@@ -9,6 +12,172 @@ window.originalMappings = []; // Полный список маппингов с
 window.allMappings = []; // Текущий отображаемый список (может быть отфильтрован)
 window.originalRequests = []; // Полный список запросов с сервера
 window.allRequests = []; // Текущий отображаемый список запросов (может быть отфильтрован)
+
+// Reliable deletion tracking system
+window.pendingDeletedIds = new Set(); // Track items pending deletion to prevent cache flicker
+window.deletionTimeouts = new Map(); // Track cleanup timeouts for safety
+
+// === УЛУЧШЕННЫЙ МЕХАНИЗМ КЕШИРОВАНИЯ ===
+
+// Оптимизированная система отслеживания изменений
+window.cacheManager = {
+    // Основной кеш данных
+    cache: new Map(),
+
+    // Очередь optimistic updates с TTL (теперь массив для коалесинга)
+    optimisticQueue: [],
+
+    // Настройки TTL для optimistic updates (30 секунд по умолчанию)
+    optimisticTTL: 30000,
+
+    // Счетчик версий для отслеживания изменений
+    version: 0,
+
+    // Флаг синхронизации
+    isSyncing: false,
+
+    // Инициализация
+    init() {
+        // Периодическая очистка устаревших optimistic updates
+        setInterval(() => this.cleanupStaleOptimisticUpdates(), 5000);
+
+        // Периодическая синхронизация с сервером
+        setInterval(() => this.syncWithServer(), 60000);
+    },
+
+    // Добавление optimistic update (упрощенная версия)
+    addOptimisticUpdate(m, op) {
+        const id = m?.id || m?.uuid;
+        if (!id) return;
+
+        // Простая логика - сервер всегда источник правды
+        this.optimisticQueue.push({ id, op, payload: m, ts: Date.now() });
+        console.log(`🎯 [CACHE] Added optimistic update: ${id}, operation: ${op}`);
+    },
+
+    // Удаление optimistic update после подтверждения от сервера
+    confirmOptimisticUpdate(id) {
+        const i = this.optimisticQueue.findIndex(x => x.id === id);
+        if (i >= 0) {
+            console.log(`✅ [CACHE] Confirmed optimistic update: ${id}`);
+            this.optimisticQueue.splice(i, 1);
+        }
+    },
+
+    // Удаление устаревших optimistic updates
+    cleanupStaleOptimisticUpdates() {
+        const now = Date.now();
+        const initialLength = this.optimisticQueue.length;
+        this.optimisticQueue = this.optimisticQueue.filter(item => {
+            if (now - item.ts > this.optimisticTTL) {
+                console.log(`🧹 [CACHE] Removing stale optimistic update: ${item.id}`);
+                return false;
+            }
+            return true;
+        });
+
+        const removedCount = initialLength - this.optimisticQueue.length;
+        if (removedCount > 0) {
+            console.log(`🧹 [CACHE] Cleaned ${removedCount} stale optimistic updates`);
+            // Запускаем обновление UI если были удалены устаревшие updates
+            this.rebuildCache();
+        }
+    },
+
+    // Удаление конкретного optimistic update
+    removeOptimisticUpdate(id) {
+        const i = this.optimisticQueue.findIndex(x => x.id === id);
+        if (i >= 0) {
+            console.log(`🗑️ [CACHE] Removing optimistic update: ${id}`);
+            this.optimisticQueue.splice(i, 1);
+        }
+    },
+
+    // Полная перестройка кеша
+    async rebuildCache() {
+        if (this.isSyncing) {
+            console.log('⏳ [CACHE] Already syncing, skipping rebuild');
+            return;
+        }
+
+        this.isSyncing = true;
+        console.log('🔄 [CACHE] Starting cache rebuild');
+
+        try {
+            // Получаем свежие данные с сервера
+            const response = await apiFetch(ENDPOINTS.MAPPINGS);
+            const serverMappings = response.mappings || [];
+
+            // Очищаем старый кеш
+            this.cache.clear();
+
+            // Заполняем кеш данными с сервера
+            serverMappings.forEach(mapping => {
+                const id = mapping.id || mapping.uuid;
+                if (id && !isImockCacheMapping(mapping)) {
+                    this.cache.set(id, mapping);
+                }
+            });
+
+            // Применяем optimistic updates поверх серверных данных
+            for (const item of this.optimisticQueue) {
+                if (item.op === 'delete') {
+                    this.cache.delete(item.id);
+                } else {
+                    this.cache.set(item.id, item.payload);
+                }
+            }
+
+            // Обновляем глобальные массивы
+            window.originalMappings = Array.from(this.cache.values());
+            window.allMappings = [...window.originalMappings];
+
+            console.log(`✅ [CACHE] Rebuild complete: ${this.cache.size} mappings`);
+
+            // Обновляем UI
+            if (typeof window.fetchAndRenderMappings === 'function') {
+                window.fetchAndRenderMappings(window.allMappings);
+            }
+
+        } catch (error) {
+            console.error('❌ [CACHE] Rebuild failed:', error);
+        } finally {
+            this.isSyncing = false;
+        }
+    },
+
+    // Синхронизация с сервером
+    async syncWithServer() {
+        if (this.optimisticQueue.length === 0) {
+            console.log('✨ [CACHE] No optimistic updates to sync');
+            return;
+        }
+
+        console.log(`🔄 [CACHE] Syncing ${this.optimisticQueue.length} optimistic updates`);
+        await this.rebuildCache();
+    },
+
+    // Получение маппинга из кеша
+    getMapping(id) {
+        return this.cache.get(id);
+    },
+
+    // Проверка наличия маппинга
+    hasMapping(id) {
+        return this.cache.has(id);
+    },
+
+    // Очистка всего кеша
+    clear() {
+        this.cache.clear();
+        this.optimisticQueue.length = 0;
+        this.version = 0;
+        console.log('🧹 [CACHE] Cache cleared');
+    }
+};
+
+// Инициализация менеджера кеша
+window.cacheManager.init();
 
 // --- ОСНОВНЫЕ ФУНКЦИИ ПРИЛОЖЕНИЯ ---
 
@@ -27,16 +196,9 @@ window.connectToWireMock = async () => {
     const host = hostInput.value.trim() || 'localhost';
     const port = portInput.value.trim() || '8080';
     
-    // Save connection settings to localStorage for persistence
-    const currentSettings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
-    const updatedSettings = {
-        ...currentSettings,
-        host,
-        port
-    };
-    localStorage.setItem('wiremock-settings', JSON.stringify(updatedSettings));
-    
-    console.log('💾 Connection settings saved:', { host, port });
+    // DON'T save connection settings here - they should already be saved from Settings page
+    // Only use these values for the current connection attempt
+    console.log('🔗 Connecting with:', { host, port });
     
     // Обновляем базовый URL (с корректной нормализацией схемы/порта)
     if (typeof window.normalizeWiremockBaseUrl === 'function') {
@@ -141,7 +303,7 @@ window.checkHealthAndStartUptime = async () => {
             // Обновляем health indicator с временем отклика
             // Unified health UI (fallback DOM update remains below)
             if (typeof window.applyHealthUI === 'function') {
-                try { window.applyHealthUI(isHealthyNow, isHealthyNow ? responseTime : null); } catch (e) { console.warn('applyHealthUI failed:', e); }
+                try { window.applyHealthUI(isHealthy, isHealthy ? responseTime : null); } catch (e) { console.warn('applyHealthUI failed:', e); }
             }
             const healthIndicator = document.getElementById(SELECTORS.HEALTH.INDICATOR);
             if (healthIndicator) {
@@ -216,61 +378,39 @@ window.startHealthMonitoring = () => {
     }, 30000); // 30 секунд
 };
 
+// ===== UPTIME FUNCTIONS =====
 
+window.updateUptime = function() {
+    if (!window.startTime) return;
+    const uptimeSeconds = Math.floor((Date.now() - window.startTime) / 1000);
+    const hours = Math.floor(uptimeSeconds / 3600);
+    const minutes = Math.floor((uptimeSeconds % 3600) / 60);
+    const seconds = uptimeSeconds % 60;
 
-// Функция остановки uptime и сброса статуса подключения
-window.stopUptime = () => {
+    const uptimeElement = document.getElementById('uptime');
+    if (uptimeElement) {
+        if (hours > 0) {
+            uptimeElement.textContent = `${hours}h ${minutes}m ${seconds}s`;
+        } else if (minutes > 0) {
+            uptimeElement.textContent = `${minutes}m ${seconds}s`;
+        } else {
+            uptimeElement.textContent = `${seconds}s`;
+        }
+    }
+};
+
+window.stopUptime = function() {
     if (window.uptimeInterval) {
         clearInterval(window.uptimeInterval);
         window.uptimeInterval = null;
     }
-    if (healthCheckInterval) {
-        clearInterval(healthCheckInterval);
-        healthCheckInterval = null;
-    }
     window.startTime = null;
-    
-    const uptimeElement = document.getElementById(SELECTORS.UI.UPTIME);
+    const uptimeElement = document.getElementById('uptime');
     if (uptimeElement) {
         uptimeElement.textContent = '0s';
     }
-    
-    // Сбрасываем статус подключения в UI
-    const statusDot = document.getElementById(SELECTORS.CONNECTION.STATUS_DOT);
-    const statusText = document.getElementById(SELECTORS.CONNECTION.STATUS_TEXT);
-    const healthIndicator = document.getElementById(SELECTORS.HEALTH.INDICATOR);
-    const setupDiv = document.getElementById(SELECTORS.CONNECTION.SETUP);
-    const addButton = document.getElementById(SELECTORS.BUTTONS.ADD_MAPPING);
-    const statsElement = document.getElementById(SELECTORS.UI.STATS);
-    const filtersElement = document.getElementById(SELECTORS.UI.SEARCH_FILTERS);
-    
-    if (statusDot) statusDot.className = 'status-dot disconnected';
-    if (statusText) statusText.textContent = 'Disconnected';
-    if (healthIndicator) {
-        healthIndicator.style.display = 'none';
-        healthIndicator.innerHTML = '';
-    }
-    if (setupDiv) setupDiv.style.display = 'block'; // Показываем поля подключения
-    if (addButton) addButton.disabled = true; // Блокируем кнопку добавления
-    // Не скрываем statsElement и filtersElement, чтобы сохранить данные
-    
-    console.log('⏹️ Uptime and health monitoring stopped, connection status reset');
 };
 
-// Функция обновления uptime
-function updateUptime() {
-    if (!window.startTime) return;
-    
-    const uptimeElement = document.getElementById(SELECTORS.UI.UPTIME);
-    if (!uptimeElement) return;
-    
-    const uptime = Date.now() - window.startTime;
-    const seconds = Math.floor(uptime / 1000) % 60;
-    const minutes = Math.floor(uptime / (1000 * 60)) % 60;
-    const hours = Math.floor(uptime / (1000 * 60 * 60));
-    
-    uptimeElement.textContent = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-}
 
 // --- КОМПАКТНЫЕ УТИЛИТЫ (сокращено с ~80 до 20 строк) ---
 
@@ -313,10 +453,6 @@ const formatJson = Utils.formatJson;
 const parseRequestTime = Utils.parseRequestTime;
 const getStatusClass = Utils.getStatusClass;
 
-// Глобальные функции для использования в HTML
-window.toggleFullContent = Utils.toggleFullContent;
-window.toggleDetails = Utils.toggleDetails;
-
 // --- УНИВЕРСАЛЬНЫЕ UI КОМПОНЕНТЫ (сократить ~100 строк дублирования) ---
 
 const UIComponents = {
@@ -325,11 +461,11 @@ const UIComponents = {
         const { id, method, url, status, name, time, extras = {} } = data;
         return `
             <div class="${type}-card" data-id="${Utils.escapeHtml(id)}">
-                <div class="${type}-header" onclick="UIComponents.toggleDetails('${id}', '${type}')">
+                <div class="${type}-header" onclick="window.toggleDetails('${Utils.escapeHtml(id)}', '${type}')">
                     <div class="${type}-info">
                         <div class="${type}-top-line">
                             <span class="method-badge ${method.toLowerCase()}">
-                                <span class="collapse-arrow" id="arrow-${id}">▶</span> ${method}
+                                <span class="collapse-arrow" id="arrow-${Utils.escapeHtml(id)}">▶</span> ${method}
                             </span>
                             ${name ? `<span class="${type}-name">${Utils.escapeHtml(name)}</span>` : ''}
                             ${time ? `<span class="${type}-time">${time}</span>` : ''}
@@ -342,13 +478,13 @@ const UIComponents = {
                     </div>
                     <div class="${type}-actions" onclick="event.stopPropagation()">
                         ${actions.map(action => `
-                            <button class="btn btn-sm btn-${action.class}" 
-                                    onclick="${action.handler}('${id}')" 
-                                    title="${action.title}">${action.icon}</button>
+                            <button class="btn btn-sm btn-${action.class}"
+                                    onclick="${action.handler}('${Utils.escapeHtml(id)}')"
+                                    title="${Utils.escapeHtml(action.title)}">${action.icon}</button>
                         `).join('')}
                     </div>
                 </div>
-                <div class="${type}-preview" id="preview-${id}" style="display: none;">
+                <div class="${type}-preview" id="preview-${Utils.escapeHtml(id)}" style="display: none;">
                     ${extras.preview || ''}
                 </div>
             </div>`;
@@ -428,11 +564,11 @@ const UIComponents = {
             try {
                 const jsonData = button.getAttribute('data-json');
                 const parsedData = JSON.parse(jsonData);
-                element.innerHTML = `<pre style="max-height: 300px; overflow-y: auto; background: var(--bg-tertiary); padding: 1rem; border-radius: var(--radius-sm); margin-top: 0.5rem;">${JSON.stringify(parsedData, null, 2)}</pre>`;
+                element.innerHTML = `<pre style="max-height: 300px; overflow-y: auto; background: var(--bg-tertiary); padding: 1rem; border-radius: var(--radius-sm); margin-top: 0.5rem;">${Utils.escapeHtml(JSON.stringify(parsedData, null, 2))}</pre>`;
                 element.style.display = 'block';
                 button.textContent = 'Hide Full Content';
             } catch (e) {
-                element.innerHTML = `<div class="preview-value warning">Error parsing JSON: ${e.message}</div>`;
+                element.innerHTML = `<div class="preview-value warning">Error parsing JSON: ${Utils.escapeHtml(e.message)}</div>`;
                 element.style.display = 'block';
                 button.textContent = 'Hide';
             }
@@ -444,8 +580,9 @@ const UIComponents = {
     }
 };
 
-// Make toggleFullContent globally accessible for HTML onclick handlers
+// Make UIComponents functions globally accessible for HTML onclick handlers
 window.toggleFullContent = UIComponents.toggleFullContent;
+window.toggleDetails = UIComponents.toggleDetails;
 
 // --- ЗАГРУЗКА И ОТОБРАЖЕНИЕ ДАННЫХ ---
 
@@ -454,12 +591,14 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
     const container = document.getElementById(SELECTORS.LISTS.MAPPINGS);
     const emptyState = document.getElementById(SELECTORS.EMPTY.MAPPINGS);
     const loadingState = document.getElementById(SELECTORS.LOADING.MAPPINGS);
-    
+
     if (!container || !emptyState || !loadingState) {
         console.error('Required DOM elements not found for mappings rendering');
         return;
     }
-    
+
+    let renderSource = 'unknown';
+
     try {
         if (mappingsToRender === null) {
             loadingState.classList.remove('hidden');
@@ -471,8 +610,70 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
             if (options && options.useCache) {
                 const cached = await loadImockCacheBestOf3();
                 if (cached && cached.data && Array.isArray(cached.data.mappings)) {
-                    data = cached.data;
+                    // Cache hit - use cached data for quick UI, but always fetch fresh data for complete info
+                    console.log('🧩 [CACHE] Cache hit - using cached data for quick start, fetching fresh data');
                     dataSource = 'cache';
+
+                    // Start async fresh fetch for complete data (only if no optimistic updates in progress)
+                    (async () => {
+                        try {
+                            // Wait a bit for any optimistic updates to complete
+                            await new Promise(resolve => setTimeout(resolve, 200));
+
+                            const freshData = await apiFetch(ENDPOINTS.MAPPINGS);
+                            if (freshData && freshData.mappings) {
+                                const serverMappings = freshData.mappings.filter(x => !isImockCacheMapping(x));
+
+                                // Create a map of current optimistic mappings for preservation
+                                const currentIds = new Set(window.allMappings.map(m => m.id || m.uuid));
+                                const serverIds = new Set(serverMappings.map(m => m.id || m.uuid));
+
+                                // Merge strategy: combine server data with optimistic state
+                                // 1. Start with all server mappings (authoritative source)
+                                // 2. Update existing ones with full server data
+                                // 3. Keep optimistic creations that aren't on server yet
+                                // 4. Remove optimistic deletions
+
+                                const mergedMappings = [];
+
+                                // Add all server mappings first (they have full data)
+                                serverMappings.forEach(serverMapping => {
+                                    const serverId = serverMapping.id || serverMapping.uuid;
+
+                                    // Check if this server mapping was optimistically deleted
+                                    const optimisticItem = window.cacheManager.optimisticQueue.find(x => x.id === serverId);
+                                    const isOptimisticallyDeleted = optimisticItem && optimisticItem.op === 'delete';
+
+                                    if (!isOptimisticallyDeleted) {
+                                        mergedMappings.push(serverMapping);
+                                    }
+                                });
+
+                                // Add optimistic creations (mappings that exist locally but not on server)
+                                window.allMappings.forEach(currentMapping => {
+                                    const currentId = currentMapping.id || currentMapping.uuid;
+
+                                    // If this mapping doesn't exist on server, it's an optimistic creation
+                                    const existsOnServer = serverIds.has(currentId);
+                                    if (!existsOnServer) {
+                                        mergedMappings.push(currentMapping);
+                                    }
+                                });
+
+                                // Update with merged data
+                                window.allMappings = mergedMappings;
+                                window.originalMappings = [...mergedMappings];
+
+                                // Re-render UI with merged complete data
+                                fetchAndRenderMappings(window.allMappings);
+                            }
+                        } catch (e) {
+                            console.warn('🧩 [CACHE] Failed to load fresh data:', e);
+                        }
+                    })();
+
+                    // Use cached slim data for immediate UI (will be replaced by fresh data)
+                    data = cached.data;
                 } else {
                     data = await apiFetch(ENDPOINTS.MAPPINGS);
                     dataSource = 'direct';
@@ -485,6 +686,34 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
             }
             // If we fetched a full admin list, strip service cache mapping from UI
             let incoming = data.mappings || [];
+
+            // Server data is now authoritative - optimistic updates are handled through UI updates only
+            if (window.cacheManager.optimisticQueue.length > 0) {
+                console.log('🎯 [OPTIMISTIC] Applying optimistic updates to incoming data:', window.cacheManager.optimisticQueue.length, 'updates');
+
+                incoming = incoming.map(serverMapping => {
+                    const optimisticItem = window.cacheManager.optimisticQueue.find(x => x.id === (serverMapping.id || serverMapping.uuid));
+                    if (optimisticItem) {
+                        if (optimisticItem.op === 'delete') {
+                            console.log('🎯 [OPTIMISTIC] Removing deleted mapping from results:', serverMapping.id);
+                            return null; // Mark for removal
+                        }
+                        // Use optimistic version
+                        console.log('🎯 [OPTIMISTIC] Using optimistic version for:', serverMapping.id);
+                        return optimisticItem.payload;
+                    }
+                    return serverMapping;
+                }).filter(m => m !== null); // Remove deleted mappings
+
+                // Add any new optimistic mappings that weren't on server
+                window.cacheManager.optimisticQueue.forEach(item => {
+                    if (item.op !== 'delete' && !incoming.some(m => (m.id || m.uuid) === item.id)) {
+                        console.log('🎯 [OPTIMISTIC] Adding new optimistic mapping:', item.id);
+                        incoming.unshift(item.payload);
+                    }
+                });
+            }
+
             // Hide any items marked as pending-deleted to avoid stale cache flicker
             try {
                 if (window.pendingDeletedIds && window.pendingDeletedIds.size > 0) {
@@ -515,6 +744,9 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
         emptyState.classList.add('hidden');
         container.style.display = 'block';
         
+        // Invalidate cache before re-rendering to ensure fresh DOM references
+        window.invalidateElementCache(SELECTORS.LISTS.MAPPINGS);
+
         // Сортировка маппингов
         const sortedMappings = [...window.allMappings].sort((a, b) => {
             const priorityA = a.priority || 1;
@@ -554,25 +786,131 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
     }
 };
 
-// Optimistically update the list after fast CRUD without hiding the grid
+// Function to get a specific mapping by ID
+window.getMappingById = async (mappingId) => {
+    try {
+        if (!mappingId) {
+            throw new Error('Mapping ID is required');
+        }
+
+        console.log(`📥 [getMappingById] Fetching mapping with ID: ${mappingId}`);
+        console.log(`📥 [getMappingById] Current wiremockBaseUrl:`, window.wiremockBaseUrl);
+        console.log(`📥 [getMappingById] window.allMappings available:`, Array.isArray(window.allMappings));
+        console.log(`📥 [getMappingById] Cache size:`, window.allMappings?.length || 0);
+
+        // Try to get from cache first
+        const cachedMapping = window.allMappings?.find(m => m.id === mappingId);
+        if (cachedMapping) {
+            console.log(`📦 [getMappingById] Found mapping in cache: ${mappingId}`, cachedMapping);
+            return cachedMapping;
+        } else {
+            console.log(`📦 [getMappingById] Mapping not found in cache, will fetch from API`);
+        }
+
+        // Fetch from WireMock API
+        console.log(`📡 [getMappingById] Making API call to: /mappings/${mappingId}`);
+        const response = await apiFetch(`/mappings/${mappingId}`);
+        console.log(`📡 [getMappingById] Raw API response:`, response);
+
+        // Handle both wrapped and unwrapped responses
+        const mapping = response && typeof response === 'object' && response.mapping
+            ? response.mapping
+            : response;
+
+        console.log(`📡 [getMappingById] Processed mapping:`, mapping);
+
+        if (!mapping || typeof mapping !== 'object') {
+            console.log(`❌ [getMappingById] API returned invalid data for mapping ${mappingId}`);
+            throw new Error(`Mapping with ID ${mappingId} not found or invalid response`);
+        }
+
+        console.log(`✅ [getMappingById] Successfully fetched mapping: ${mappingId}`, mapping);
+        return mapping;
+
+    } catch (error) {
+        console.error(`❌ [getMappingById] Error fetching mapping ${mappingId}:`, error);
+        console.error(`❌ [getMappingById] Error details:`, {
+            message: error.message,
+            status: error.status,
+            statusText: error.statusText,
+            url: `${window.wiremockBaseUrl}/mappings/${mappingId}`
+        });
+        throw error;
+    }
+};
+
+// Обновленная функция applyOptimisticMappingUpdate
 window.applyOptimisticMappingUpdate = (mappingLike) => {
     try {
-        if (!mappingLike) return;
-        const m = mappingLike.mapping || mappingLike; // support WireMock response wrapper
-        if (!m || !m.id) return;
-        if (!Array.isArray(window.allMappings)) window.allMappings = [];
-        // drop service cache mapping if ever present
-        if (isImockCacheMapping(m)) return; // never render the service mapping
-        const idx = window.allMappings.findIndex(x => (x.id || x.uuid) === (m.id || m.uuid));
-        if (idx >= 0) {
-            window.allMappings[idx] = m;
-        } else {
-            window.allMappings.unshift(m);
+        if (!mappingLike) {
+            console.warn('🎯 [OPTIMISTIC] No mapping data provided');
+            return;
         }
-        // render quickly without toggling loading placeholders
-        fetchAndRenderMappings(window.allMappings);
+
+        const mapping = mappingLike.mapping || mappingLike;
+        if (!mapping || !mapping.id) {
+            console.warn('🎯 [OPTIMISTIC] Invalid mapping data - missing id:', mapping);
+            return;
+        }
+
+        // Проверяем, не является ли это служебным маппингом кеша
+        if (isImockCacheMapping(mapping)) {
+            console.log('🎯 [OPTIMISTIC] Skipping cache mapping update');
+            return;
+        }
+
+        // Добавляем в менеджер кеша
+        window.cacheManager.addOptimisticUpdate(mapping, 'update');
+
+        // Обновляем cacheManager.cache
+        window.cacheManager.cache.set(mapping.id, mapping);
+
+        // Используем текущие allMappings как базу, чтобы не потерять существующие маппинги
+        let updatedMappings = [...window.allMappings];
+
+        // Обновляем или добавляем новый маппинг
+        const existingIndex = updatedMappings.findIndex(m => m.id === mapping.id);
+        if (existingIndex >= 0) {
+            updatedMappings[existingIndex] = mapping;
+        } else {
+            updatedMappings.unshift(mapping); // Новые маппинги добавляем в начало
+        }
+
+        // Применяем optimistic updates (в основном для удалений)
+        for (const item of window.cacheManager.optimisticQueue) {
+            if (item.op === 'delete') {
+                updatedMappings = updatedMappings.filter(m => m.id !== item.id);
+            }
+            // Для create/update optimistic updates уже учтены выше
+        }
+
+        // Обновляем originalMappings (источник данных для фильтров)
+        window.originalMappings = [...updatedMappings];
+
+        // Применяем активные фильтры, если они есть
+        try {
+            const hasFilters = (document.getElementById(SELECTORS.MAPPING_FILTERS.METHOD)?.value || '')
+                || (document.getElementById(SELECTORS.MAPPING_FILTERS.URL)?.value || '')
+                || (document.getElementById(SELECTORS.MAPPING_FILTERS.STATUS)?.value || '');
+            if (hasFilters && typeof FilterManager !== 'undefined' && FilterManager.applyMappingFilters) {
+                // Фильтры активны - применяем их к обновленным данным
+                window.allMappings = [...window.originalMappings]; // Сначала устанавливаем нефильтрованные данные
+                FilterManager.applyMappingFilters();
+            } else {
+                // Фильтров нет - показываем все данные
+                window.allMappings = [...window.originalMappings];
+                fetchAndRenderMappings(window.allMappings);
+            }
+        } catch (e) {
+            // Fallback - показываем все данные без фильтров
+            window.allMappings = [...window.originalMappings];
+            fetchAndRenderMappings(window.allMappings);
+        }
+
+        console.log('🎯 [OPTIMISTIC] Applied update for mapping:', mapping.id);
+
     } catch (e) {
-        console.warn('Optimistic update failed:', e);
+        console.warn('🎯 [OPTIMISTIC] Update failed:', e);
     }
 };
 
@@ -606,13 +944,14 @@ window.backgroundRefreshMappings = async (useCache = false) => {
 };
 
 // Компактная функция рендеринга маппинга через UIComponents (сокращено с ~67 до 15 строк)
-function renderMappingCard(mapping) {
+window.renderMappingCard = function(mapping) {
     if (!mapping || !mapping.id) {
         console.warn('Invalid mapping data:', mapping);
         return '';
     }
     
     const actions = [
+        { class: 'secondary', handler: 'editMapping', title: 'Edit in Editor', icon: '📝' },
         { class: 'primary', handler: 'openEditModal', title: 'Редактировать', icon: '✏️' },
         { class: 'danger', handler: 'deleteMapping', title: 'Удалить', icon: '🗑️' }
     ];
@@ -643,8 +982,9 @@ function renderMappingCard(mapping) {
                 'Scenario': mapping.scenarioName,
                 'Required State': mapping.requiredScenarioState,
                 'New State': mapping.newScenarioState,
-                'Created': (window.showMetaTimestamps !== false && mapping.metadata?.created) ? new Date(mapping.metadata.created).toLocaleString() : null,
-                'Edited': (window.showMetaTimestamps !== false && mapping.metadata?.edited) ? new Date(mapping.metadata.edited).toLocaleString() : null,
+            'Created': (window.showMetaTimestamps !== false && mapping.metadata?.created) ? new Date(mapping.metadata.created).toLocaleString() : null,
+            'Edited': (window.showMetaTimestamps !== false && mapping.metadata?.edited) ? new Date(mapping.metadata.edited).toLocaleString() : null,
+            'Source': mapping.metadata?.source ? `Edited from ${mapping.metadata.source}` : null,
             })
             ,
             badges: [
@@ -652,7 +992,8 @@ function renderMappingCard(mapping) {
                 (typeof mapping.priority === 'number') ? `<span class="badge badge-secondary" title="Priority">P${mapping.priority}</span>` : '',
                 (mapping.scenarioName) ? `<span class="badge badge-secondary" title="Scenario">${Utils.escapeHtml(mapping.scenarioName)}</span>` : '',
                 (window.showMetaTimestamps !== false && mapping.metadata?.created) ? `<span class="badge badge-secondary" title="Created">C: ${new Date(mapping.metadata.created).toLocaleString()}</span>` : '',
-                (window.showMetaTimestamps !== false && mapping.metadata?.edited) ? `<span class="badge badge-secondary" title="Edited">E: ${new Date(mapping.metadata.edited).toLocaleString()}</span>` : ''
+                (window.showMetaTimestamps !== false && mapping.metadata?.edited) ? `<span class="badge badge-secondary" title="Edited">E: ${new Date(mapping.metadata.edited).toLocaleString()}</span>` : '',
+                (mapping.metadata?.source) ? `<span class="badge badge-info" title="Last edited from">${mapping.metadata.source.toUpperCase()}</span>` : ''
             ].filter(Boolean).join(' ')
         }
     };
@@ -661,7 +1002,7 @@ function renderMappingCard(mapping) {
 }
 
 // Обновляем счетчик маппингов
-function updateMappingsCounter() {
+window.updateMappingsCounter = function() {
     const counter = document.getElementById(SELECTORS.COUNTERS.MAPPINGS);
     if (counter) {
         counter.textContent = window.allMappings.length;
@@ -767,7 +1108,10 @@ window.fetchAndRenderRequests = async (requestsToRender = null) => {
         
         emptyState.classList.add('hidden');
         container.style.display = 'block';
-        
+
+        // Invalidate cache before re-rendering to ensure fresh DOM references
+        window.invalidateElementCache(SELECTORS.LISTS.REQUESTS);
+
         container.innerHTML = window.allRequests.map(request => renderRequestCard(request)).join('');
         updateRequestsCounter();
         // Source indicator + log, mirroring mappings
@@ -784,7 +1128,7 @@ window.fetchAndRenderRequests = async (requestsToRender = null) => {
 };
 
 // Компактная функция рендеринга запроса через UIComponents (сокращено с ~62 до 18 строк)
-function renderRequestCard(request) {
+window.renderRequestCard = function(request) {
     if (!request) {
         console.warn('Invalid request data:', request);
         return '';
@@ -892,37 +1236,25 @@ window.openEditModal = async (id) => {
 
 window.deleteMapping = async (id) => {
     if (!confirm('Удалить этот маппинг?')) return;
-    
+
     try {
+        // API call FIRST
         await apiFetch(`/mappings/${id}`, { method: 'DELETE' });
-        // Mark as pending-deleted locally to prevent reappearing from stale cache
-        try {
-            if (!window.pendingDeletedIds) window.pendingDeletedIds = new Set();
-            window.pendingDeletedIds.add(id);
-            console.log('🧩 [CACHE] pending deletion marked:', id);
-        } catch {}
+
         NotificationManager.success('Маппинг удален!');
-        // Optimistic UI: remove locally and re-render fast
-        try {
-            if (Array.isArray(window.allMappings)) {
-                window.allMappings = window.allMappings.filter(m => (m.id || m.uuid) !== id);
-                fetchAndRenderMappings(window.allMappings);
-            }
-        } catch {}
-        // Rebuild cache first, then background refresh
-        try {
-            const settings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
-            const useCache = !!settings.cacheEnabled;
-            if (typeof window.refreshImockCache === 'function') {
-                try { await window.refreshImockCache(); } catch (e) { console.warn('refreshImockCache after delete failed:', e); }
-            }
-            if (typeof window.backgroundRefreshMappings === 'function') {
-                window.backgroundRefreshMappings(useCache);
-            }
-            try { window.pendingDeletedIds && window.pendingDeletedIds.delete(id); } catch {}
-        } catch (e) { console.warn('post-delete refresh failed:', e); }
+
+        // Update cache and UI with server confirmation
+        updateOptimisticCache({ id }, 'delete');
+
     } catch (e) {
-        NotificationManager.error(`Ошибка удаления: ${e.message}`);
+        // Если ошибка 404, маппинг уже удален
+        if (e.message.includes('404')) {
+            console.log('🗑️ [DELETE] Mapping already deleted from server (404), updating cache locally');
+            updateOptimisticCache({ id }, 'delete');
+            NotificationManager.success('Маппинг уже был удален');
+        } else {
+            NotificationManager.error(`Ошибка удаления: ${e.message}`);
+        }
     }
 };
 
@@ -1050,12 +1382,10 @@ window.refreshRequests = async () => {
     await fetchAndRenderRequests();
     // Применяем фильтры автоматически после обновления
     const hasActiveFilters = document.getElementById(SELECTORS.REQUEST_FILTERS.METHOD)?.value ||
-                           document.getElementById(SELECTORS.REQUEST_FILTERS.URL)?.value ||
-                           document.getElementById(SELECTORS.REQUEST_FILTERS.STATUS)?.value ||
-                           document.getElementById(SELECTORS.REQUEST_FILTERS.DATE_FROM)?.value ||
-                           document.getElementById(SELECTORS.REQUEST_FILTERS.DATE_TO)?.value ||
-                           document.getElementById(SELECTORS.REQUEST_FILTERS.TIME_FROM)?.value ||
-                           document.getElementById(SELECTORS.REQUEST_FILTERS.TIME_TO)?.value;
+                          document.getElementById(SELECTORS.REQUEST_FILTERS.URL)?.value ||
+                          document.getElementById(SELECTORS.REQUEST_FILTERS.STATUS)?.value ||
+                          document.getElementById(SELECTORS.REQUEST_FILTERS.DATE_FROM)?.value ||
+                          document.getElementById(SELECTORS.REQUEST_FILTERS.DATE_TO)?.value;
     
     if (hasActiveFilters) {
         FilterManager.applyRequestFilters();
@@ -1071,27 +1401,43 @@ window.applyQuickTimeFilter = () => {
     const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     
     // Исправлено: используем правильные селекторы для Request Log
-    const dateFromInput = document.getElementById('req-filter-date-from');
-    const timeFromInput = document.getElementById('req-filter-time-from');
-    const dateToInput = document.getElementById('req-filter-date-to');
-    const timeToInput = document.getElementById('req-filter-time-to');
+    const dateFromInput = document.getElementById(SELECTORS.REQUEST_FILTERS.DATE_FROM);
+    const dateToInput = document.getElementById(SELECTORS.REQUEST_FILTERS.DATE_TO);
     
+    // Format dates for datetime-local input (YYYY-MM-DDTHH:MM)
+    const formatDateTime = (date) => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        const hours = String(date.getHours()).padStart(2, '0');
+        const minutes = String(date.getMinutes()).padStart(2, '0');
+        return `${year}-${month}-${day}T${hours}:${minutes}`;
+    };
+
     if (dateFromInput) {
-        dateFromInput.value = yesterday.toISOString().split('T')[0];
-    }
-    if (timeFromInput) {
-        timeFromInput.value = yesterday.toTimeString().split(' ')[0].substring(0, 5);
+        dateFromInput.value = formatDateTime(yesterday);
     }
     if (dateToInput) {
-        dateToInput.value = now.toISOString().split('T')[0];
-    }
-    if (timeToInput) {
-        timeToInput.value = now.toTimeString().split(' ')[0].substring(0, 5);
+        dateToInput.value = formatDateTime(now);
     }
     
     // Применяем фильтры
     FilterManager.applyRequestFilters();
 };
+
+// --- ОЧИСТКА РЕСУРСОВ ---
+
+// Очистка незакрытых таймаутов при навигации
+window.cleanupPendingDeletions = () => {
+    for (const [id, timeout] of window.deletionTimeouts) {
+        clearTimeout(timeout);
+    }
+    window.deletionTimeouts.clear();
+    window.pendingDeletedIds.clear();
+};
+
+// Вызывать при закрытии страницы
+window.addEventListener('beforeunload', window.cleanupPendingDeletions);
 
 // --- ПРЕВЬЮ ---
 
@@ -1429,6 +1775,37 @@ window.findMappingsByMetadata = async (metadata) => {
     }
 };
 
+// Обновленная функция для обработки результатов редактирования
+window.handleEditSuccess = async (mapping) => {
+    const id = mapping.id || mapping.uuid;
+
+    // Добавляем optimistic update
+    window.cacheManager.addOptimisticUpdate(mapping, 'update');
+
+    // Обновляем UI сразу
+    window.applyOptimisticMappingUpdate(mapping);
+
+    // Через небольшую задержку подтверждаем update
+    setTimeout(() => {
+        window.cacheManager.confirmOptimisticUpdate(id);
+    }, 1000);
+};
+
+// Функция принудительной синхронизации (для кнопки Force Refresh)
+window.forceRefreshCache = async () => {
+    try {
+        // Очищаем все optimistic updates
+        window.cacheManager.optimisticQueue.length = 0;
+
+        // Полная перестройка кеша
+        await window.cacheManager.rebuildCache();
+
+        NotificationManager.success('Кеш полностью обновлен!');
+    } catch (error) {
+        NotificationManager.error(`Ошибка обновления кеша: ${error.message}`);
+    }
+};
+
 console.log('✅ Features.js loaded - Business functions for mappings, requests, scenarios + WireMock 3.9.1+ API fixes');
 
 // Update connection status text with last successful request time
@@ -1499,16 +1876,18 @@ window.toggleMetaTimestamps = () => {
         }
     } catch (e) { console.warn('toggleMetaTimestamps failed:', e); }
 };
+
 // --- iMock cache mapping helpers (best-of-3 discovery) ---
 const IMOCK_CACHE_ID = '00000000-0000-0000-0000-00000000cace';
 const IMOCK_CACHE_URL = '/__imock/cache';
 
 function isImockCacheMapping(m) {
     try {
+        const byId = (m?.id || m?.uuid) === IMOCK_CACHE_ID;
         const byMeta = m?.metadata?.imock?.type === 'cache';
         const byName = (m?.name || '').toLowerCase() === 'imock cache';
         const byUrl = (m?.request?.url || m?.request?.urlPath) === IMOCK_CACHE_URL;
-        return !!(byMeta || byName || byUrl);
+        return !!(byId || byMeta || byName || byUrl);
     } catch { return false; }
 }
 
@@ -1523,17 +1902,20 @@ function slimMapping(m) {
         priority: m.priority,
         persistent: m.persistent,
         scenarioName: m.scenarioName,
+        requiredScenarioState: m.requiredScenarioState,
+        newScenarioState: m.newScenarioState,
         request: {
             method: m.request?.method,
             url: pickUrl(m.request),
-            headers: m.request?.headers,
-            queryParameters: m.request?.queryParameters,
+            // No headers/query params in cache - only essential matching data
         },
-        response: {
-            status: m.response?.status,
-            headers: m.response?.headers,
+        // No response data, minimal metadata - essential for UI display
+        metadata: {
+            created: m.metadata?.created,
+            edited: m.metadata?.edited,
+            source: m.metadata?.source,
+            // Essential metadata fields for timestamps and source tracking
         },
-        metadata: m.metadata,
     };
 }
 
@@ -1628,8 +2010,14 @@ async function upsertImockCacheMapping(slim) {
 async function regenerateImockCache() {
     console.log('🧩 [CACHE] Regenerate cache start');
     const t0 = performance.now();
+
+    // Get fresh data from server - server is now the source of truth
     const all = await apiFetch(ENDPOINTS.MAPPINGS);
-    const slim = buildSlimList(all?.mappings || []);
+    const mappings = all?.mappings || [];
+
+    console.log('🧩 [CACHE] Using fresh server data for cache regeneration');
+
+    const slim = buildSlimList(mappings);
     try { await upsertImockCacheMapping(slim); } catch (e) { console.warn('🧩 [CACHE] Upsert cache failed:', e); }
     const dt = Math.round(performance.now() - t0);
     console.log(`🧩 [CACHE] Regenerate cache done (${(slim?.mappings||[]).length} items) in ${dt}ms`);
@@ -1647,23 +2035,278 @@ async function loadImockCacheBestOf3() {
     return null;
 }
 
+// Resolve conflicts by querying the server for the authoritative version of a specific mapping
+async function resolveConflictWithServer(mappingId) {
+    try {
+        console.log('🔍 [CONFLICT] Resolving conflict for', mappingId, 'with server query');
+
+        // Query the specific mapping from server
+        const serverResponse = await apiFetch(`/mappings/${mappingId}`);
+        const serverMapping = serverResponse?.mapping || serverResponse;
+
+        if (!serverMapping) {
+            console.warn('🔍 [CONFLICT] Server returned no mapping for', mappingId);
+            return null; // No authoritative data available
+        }
+
+        console.log('🔍 [CONFLICT] Server returned authoritative data for', mappingId);
+        return serverMapping;
+
+    } catch (error) {
+        console.warn('🔍 [CONFLICT] Server query failed for', mappingId, error);
+        return null; // Fall back to no resolution
+    }
+}
+
+function updateOptimisticCache(mapping, operation) {
+    if (!mapping?.id) return;
+
+    if (operation === 'create' || operation === 'update') {
+        // кладём серверный объект в cache
+        window.cacheManager.cache.set(mapping.id, mapping);
+
+        // обновляем массивы
+        const idx = window.allMappings.findIndex(m => m.id === mapping.id);
+        if (idx >= 0) {
+            window.allMappings[idx] = mapping;
+        } else {
+            window.allMappings.push(mapping);
+        }
+        window.originalMappings = [...window.allMappings];
+
+        // обновляем UI
+        fetchAndRenderMappings(window.allMappings);
+
+    } else if (operation === 'delete') {
+        // чистим cache
+        window.cacheManager.cache.delete(mapping.id);
+
+        // убираем из массивов
+        window.allMappings = window.allMappings.filter(m => m.id !== mapping.id);
+        window.originalMappings = [...window.allMappings];
+
+        // обновляем UI
+        fetchAndRenderMappings(window.allMappings);
+    }
+}
+
+// простой дебаунс ребилда кеша, использует существующий refreshImockCache
+let _cacheRebuildTimer;
+function scheduleCacheRebuild() {
+  try {
+    const settings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
+    const delay = Number(settings.cacheRebuildDelay) || 1000;
+    clearTimeout(_cacheRebuildTimer);
+    _cacheRebuildTimer = setTimeout(() => {
+      if (typeof window.refreshImockCache === 'function') {
+        window.refreshImockCache().catch(console.warn);
+      }
+    }, delay);
+  } catch {}
+}
+
+// Защита от бесконечного цикла optimistic update in progress
+let optimisticInProgress = false;
+let optimisticDelayRetries = 0;
+
+// Cache validation timer (check every minute, validate every 5 minutes)
+setInterval(() => {
+    const timeSinceLastUpdate = Date.now() - (window.cacheLastUpdate || 0);
+    const optimisticOps = window.cacheOptimisticOperations || 0;
+
+    // Validate if cache is older than 5 minutes OR has too many optimistic operations
+    if (timeSinceLastUpdate > 5 * 60 * 1000 || optimisticOps > 20) {
+        console.log('🧩 [CACHE] Validation triggered - time:', Math.round(timeSinceLastUpdate/1000), 's, ops:', optimisticOps);
+        validateAndRefreshCache();
+    }
+}, 60 * 1000); // Check every minute
+
+async function validateAndRefreshCache() {
+    try {
+        console.log('🧩 [CACHE] Starting cache validation...');
+
+        // Get fresh data from server
+        const freshData = await apiFetch(ENDPOINTS.MAPPINGS);
+        if (!freshData?.mappings) {
+            console.warn('🧩 [CACHE] Failed to get fresh data for validation');
+            return;
+        }
+
+        // Rebuild cache with fresh data
+        await regenerateImockCache();
+
+        // Reset optimistic counters
+        window.cacheOptimisticOperations = 0;
+        window.cacheLastUpdate = Date.now();
+
+        console.log('🧩 [CACHE] Validation completed, cache refreshed');
+
+    } catch (e) {
+        console.warn('🧩 [CACHE] Validation failed:', e);
+        // Don't reset counters on failure - try again later
+    }
+}
+
 // Expose cache refresh for other modules (editor.js)
 window.refreshImockCache = async () => {
+    if (optimisticInProgress) {
+        if (optimisticDelayRetries++ > 10) {
+            console.warn('[CACHE] forced refresh after optimistic delay cap');
+        } else {
+            console.log('🔄 [CACHE] Optimistic update in progress, delaying cache refresh...');
+            return new Promise(resolve => {
+                setTimeout(async () => {
+                    console.log('🔄 [CACHE] Retrying cache refresh after optimistic update delay');
+                    await window.refreshImockCache();
+                    resolve();
+                }, 1000);
+            });
+        }
+    }
+    optimisticDelayRetries = 0;
+    optimisticInProgress = true;
     try {
         window.cacheRebuilding = true;
+        console.log('🔄 [CACHE] Set cache rebuilding flag');
+
         try {
             const settings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
-            if (settings.cacheEnabled) updateDataSourceIndicator('cache_rebuilding');
-        } catch {}
+            if (settings.cacheEnabled) {
+                updateDataSourceIndicator('cache_rebuilding');
+                console.log('🔄 [CACHE] Updated UI indicator to rebuilding');
+            }
+        } catch (settingsError) {
+            console.warn('🔄 [CACHE] Failed to update UI indicator:', settingsError);
+        }
+
+        console.log('🔄 [CACHE] Starting regeneration...');
         await regenerateImockCache();
+        console.log('🔄 [CACHE] Regeneration completed');
+
+        // Clear optimistic update queue after successful cache rebuild
+        console.log('🔄 [CACHE] Clearing optimistic update queue after rebuild');
+        window.cacheManager.optimisticQueue.length = 0;
+
+        // Auto-refresh UI after cache update
+        try {
+            if (typeof window.fetchAndRenderMappings === 'function' && window.allMappings) {
+                console.log('🔄 [CACHE] Auto-refreshing UI after cache rebuild');
+                window.fetchAndRenderMappings(window.allMappings);
+                console.log('🔄 [CACHE] UI refresh completed');
+            } else {
+                console.warn('🔄 [CACHE] UI refresh functions not available');
+            }
+        } catch (uiError) {
+            console.warn('🔄 [CACHE] UI refresh after cache rebuild failed:', uiError);
+        }
     } catch (e) {
-        console.warn('refreshImockCache failed:', e);
+        console.warn('🔄 [CACHE] refreshImockCache failed:', e);
     } finally {
         window.cacheRebuilding = false;
+        console.log('🔄 [CACHE] Cleared cache rebuilding flag');
+        window.cacheLastUpdate = Date.now();
+        window.cacheOptimisticOperations = 0;
+        optimisticInProgress = false;
+        optimisticDelayRetries = 0;
         try {
             const settings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
-            if (settings.cacheEnabled) updateDataSourceIndicator('cache');
-        } catch {}
+            if (settings.cacheEnabled) {
+                updateDataSourceIndicator('cache');
+                console.log('🔄 [CACHE] Updated UI indicator to cache');
+            }
+        } catch (settingsError) {
+            console.warn('🔄 [CACHE] Failed to reset UI indicator:', settingsError);
+        }
+    }
+};
+
+// === MISSING FUNCTIONS FOR HTML COMPATIBILITY ===
+
+// Simple health check function for button compatibility
+window.checkHealth = async () => {
+    try {
+        // Check if user has entered connection details in the form
+        const hostInput = document.getElementById('wiremock-host');
+        const portInput = document.getElementById('wiremock-port');
+
+        if (hostInput && portInput && (hostInput.value.trim() || portInput.value.trim())) {
+            // User has entered connection details - update URL before health check
+            const host = hostInput.value.trim() || 'localhost';
+            const port = portInput.value.trim() || '8080';
+
+            if (typeof window.normalizeWiremockBaseUrl === 'function') {
+                window.wiremockBaseUrl = window.normalizeWiremockBaseUrl(host, port);
+            } else {
+                window.wiremockBaseUrl = `http://${host}:${port}/__admin`;
+            }
+            console.log('🔧 [checkHealth] Updated WireMock URL from form:', window.wiremockBaseUrl);
+        }
+
+        await checkHealthAndStartUptime();
+        NotificationManager.success('Health check passed!');
+    } catch (error) {
+        NotificationManager.error(`Health check failed: ${error.message}`);
+    }
+};
+
+// Refresh mappings function for button compatibility
+window.refreshMappings = async () => {
+    try {
+        const settings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
+        const useCache = !!settings.cacheEnabled;
+        await fetchAndRenderMappings(null, { useCache });
+        NotificationManager.success('Mappings refreshed!');
+    } catch (error) {
+        NotificationManager.error(`Failed to refresh mappings: ${error.message}`);
+    }
+};
+
+// Force refresh cache function for button compatibility
+window.forceRefreshCache = async () => {
+    try {
+        const settings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
+        if (!settings.cacheEnabled) {
+            NotificationManager.warning('Cache is not enabled. Enable it in Settings first.');
+            return;
+        }
+
+        if (typeof window.refreshImockCache === 'function') {
+            await window.refreshImockCache();
+            await fetchAndRenderMappings(null, { useCache: true });
+            NotificationManager.success('Cache rebuilt and mappings refreshed!');
+        } else {
+            NotificationManager.error('Cache service not available');
+        }
+    } catch (error) {
+        NotificationManager.error(`Failed to rebuild cache: ${error.message}`);
+    }
+};
+
+// Missing HTML onclick functions
+window.loadMockData = () => {
+    NotificationManager.info('Demo mode not implemented yet');
+};
+
+window.updateScenarioState = async () => {
+    const scenarioSelect = document.getElementById('scenario-select');
+    const scenarioState = document.getElementById('scenario-state');
+
+    if (!scenarioSelect?.value || !scenarioState?.value) {
+        NotificationManager.warning('Please select scenario and enter state');
+        return;
+    }
+
+    // Call the correct function (not self-recursive)
+    await window.setScenarioState(scenarioSelect.value, scenarioState.value);
+};
+
+window.updateFileDisplay = () => {
+    const fileInput = document.getElementById('import-file');
+    const fileDisplay = document.getElementById('file-display');
+
+    if (fileInput?.files?.length > 0) {
+        fileDisplay.innerHTML = `<strong>${fileInput.files[0].name}</strong>`;
+        document.getElementById('import-actions').style.display = 'block';
     }
 };
 

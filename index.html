@@ -15,7 +15,7 @@
     <div class="header">
         <div class="logo">
             🍎 iMock
-            <span class="version">v2.1</span>
+            <span class="version">v2.2</span>
         </div>
         <div class="status">
             <div class="status-indicator">
@@ -23,7 +23,7 @@
                 <span id="status-text">Disconnected</span>
                 <span id="health-indicator" style="display: none; margin-left: 10px; font-size: 0.9em;"></span>
             </div>
-            <button class="theme-toggle" onclick="toggleTheme()">
+            <button class="theme-toggle" onclick="if(typeof toggleTheme === 'function') toggleTheme()">
                 <span id="theme-icon">🌙</span>
             </button>
         </div>
@@ -439,7 +439,7 @@
     <div id="add-mapping-modal" class="modal hidden">
         <div class="modal-content">
             <div class="modal-header">
-                <button type="button" class="btn btn-primary" onclick="saveMapping()">Save Mapping</button>
+                <button type="button" class="btn btn-primary" onclick="saveMappingWrapper()">Save Mapping</button>
                 <h3 id="modal-title">Add New Mapping</h3>
                 <button class="modal-close" onclick="hideModal('add-mapping-modal')">&times;</button>
             </div>

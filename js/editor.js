@@ -139,15 +139,33 @@ async function saveMapping() {
     try {
         if (id) {
             // Update existing mapping
-            // Ensure metadata.edited timestamp
+            // Ensure metadata with timestamps and source
             (function(){
                 try {
                     const nowIso = new Date().toISOString();
                     if (typeof mappingData === 'object' && mappingData) {
-                        mappingData.metadata = mappingData.metadata || {};
+                        // Initialize metadata object if it doesn't exist
+                        if (!mappingData.metadata) {
+                            mappingData.metadata = {};
+                            console.log('📅 [METADATA] Initialized metadata object (update)');
+                        }
+
+                        // Set created timestamp if not exists (first save)
+                        if (!mappingData.metadata.created) {
+                            mappingData.metadata.created = nowIso;
+                            console.log('📅 [METADATA] Set created timestamp (UI):', mappingData.metadata.created);
+                        }
+
+                        // Always update edited timestamp and source
                         mappingData.metadata.edited = nowIso;
+                        mappingData.metadata.source = 'ui';
+
+                        console.log('📅 [METADATA] Updated edited timestamp (UI):', mappingData.metadata.edited);
+                        console.log('📅 [METADATA] Set source: ui');
                     }
-                } catch (_) {}
+                } catch (e) {
+                    console.warn('📅 [METADATA] Failed to update metadata:', e);
+                }
             })();
             await apiFetch(`/mappings/${id}`, {
                 method: 'PUT',
@@ -157,49 +175,55 @@ async function saveMapping() {
             NotificationManager.success('Маппинг обновлен!');
         } else {
             // Create new mapping
-            // Ensure metadata.created timestamp
+            // Ensure metadata with timestamps and source
             (function(){
                 try {
                     const nowIso = new Date().toISOString();
                     if (typeof mappingData === 'object' && mappingData) {
-                        mappingData.metadata = mappingData.metadata || {};
-                        if (!mappingData.metadata.created) {
-                            mappingData.metadata.created = nowIso;
+                        // Initialize metadata object if it doesn't exist
+                        if (!mappingData.metadata) {
+                            mappingData.metadata = {};
+                            console.log('📅 [METADATA] Initialized metadata object (create)');
                         }
+
+                        // Set created timestamp (always for new mappings)
+                        mappingData.metadata.created = nowIso;
+                        mappingData.metadata.edited = nowIso;
+                        mappingData.metadata.source = 'ui';
+
+                        console.log('📅 [METADATA] Set created timestamp (UI):', mappingData.metadata.created);
+                        console.log('📅 [METADATA] Set source: ui');
                     }
-                } catch (_) {}
+                } catch (e) {
+                    console.warn('📅 [METADATA] Failed to update metadata:', e);
+                }
             })();
-            const created = await apiFetch('/mappings', {
+            const response = await apiFetch('/mappings', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(mappingData)
             });
+            const createdMapping = response?.mapping || response;
             NotificationManager.success('Маппинг создан!');
 
-            // Cache is maintained via service mapping; notify endpoint removed
-            // Optimistic UI: show the created mapping immediately
+            // NEW SEQUENCE: API → Optimistic Cache → UI
             try {
-                const createdMapping = created?.mapping || created;
-                if (typeof window.applyOptimisticMappingUpdate === 'function' && createdMapping) {
-                    window.applyOptimisticMappingUpdate(createdMapping);
+                if (createdMapping && createdMapping.id) {
+                    // Update cache and UI optimistically using the unified function
+                    if (typeof updateOptimisticCache === 'function') {
+                        updateOptimisticCache(createdMapping, 'create');
+                    } else if (typeof window.applyOptimisticMappingUpdate === 'function') {
+                        // Fallback if updateOptimisticCache is not available
+                        window.applyOptimisticMappingUpdate(createdMapping);
+                    }
+                } else {
+                    console.warn('Created mapping has no id, skipping optimistic updates');
                 }
-            } catch (e) { console.warn('optimistic insert after create failed:', e); }
+            } catch (e) { console.warn('optimistic updates after create failed:', e); }
         }
         
         hideModal('add-mapping-modal');
-        // Optimistic update already rendered; rebuild cache then soft refresh
-        try {
-            const saved = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
-            const useCache = !!saved.cacheEnabled;
-            if (typeof window.refreshImockCache === 'function') {
-                try { await window.refreshImockCache(); } catch (e) { console.warn('refreshImockCache after create failed:', e); }
-            }
-            if (typeof window.backgroundRefreshMappings === 'function') {
-                window.backgroundRefreshMappings(useCache);
-            } else {
-                fetchAndRenderMappings();
-            }
-        } catch (e) { console.warn('post-create refresh failed:', e); }
+        // Optimistic cache update already done - no need for additional cache rebuild
         
         // Применяем фильтры после обновления мапингов
         const hasActiveFilters = document.getElementById(SELECTORS.MAPPING_FILTERS.METHOD)?.value ||
@@ -223,67 +247,77 @@ window.updateMapping = async () => {
     console.log('updateMapping called');
     
     try {
-        // Save current state based on active mode
+        // Save current state based on active mode FIRST
         if (editorState.mode === EDITOR_MODES.JSON) {
             saveFromJSONMode();
         } else {
             saveFromFormMode();
         }
-        
+
         const mappingData = editorState.currentMapping;
         const id = mappingData?.id;
-        
+
         if (!id) {
             NotificationManager.error('ID маппинга не найден');
             return;
         }
-        
+
         console.log('Sending mapping update:', mappingData);
-        
-        // Ensure metadata.edited timestamp
+
+        // Ensure metadata with timestamps and source AFTER getting final mappingData
         (function(){
             try {
                 const nowIso = new Date().toISOString();
                 if (typeof mappingData === 'object' && mappingData) {
-                    mappingData.metadata = mappingData.metadata || {};
+                    // Initialize metadata object if it doesn't exist
+                    if (!mappingData.metadata) {
+                        mappingData.metadata = {};
+                        console.log('📅 [METADATA] Initialized metadata object');
+                    }
+
+                    // Set created timestamp if not exists (first save)
+                    if (!mappingData.metadata.created) {
+                        mappingData.metadata.created = nowIso;
+                        console.log('📅 [METADATA] Set created timestamp (UI):', mappingData.metadata.created);
+                    }
+
+                    // Always update edited timestamp and source
                     mappingData.metadata.edited = nowIso;
+                    mappingData.metadata.source = 'ui';
+
+                    console.log('📅 [METADATA] Updated edited timestamp (UI):', mappingData.metadata.edited);
+                    console.log('📅 [METADATA] Set source: ui');
                 }
-            } catch (_) {}
+            } catch (e) {
+                console.warn('📅 [METADATA] Failed to update metadata:', e);
+            }
         })();
-        const updated = await apiFetch(`/mappings/${id}`, {
+        const response = await apiFetch(`/mappings/${id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(mappingData)
         });
-        
-        console.log('Mapping updated successfully');
+
+        // Use server response for optimistic updates - it contains the authoritative data
+        const updatedMapping = response?.mapping || response;
+        console.log('Mapping updated successfully, using server response for optimistic updates:', updatedMapping);
+
         NotificationManager.success('Маппинг обновлен!');
 
-        // Cache is maintained via service mapping; notify endpoint removed
-        
+        // Update cache and UI with server response
+        try {
+            if (updatedMapping) {
+                updateOptimisticCache(updatedMapping, 'update');
+            }
+        } catch (e) { console.warn('optimistic updates after edit failed:', e); }
+
         editorState.isDirty = false;
         updateDirtyIndicator();
-        
+
         console.log('Hiding modal...');
         hideModal('edit-mapping-modal');
-        
-        console.log('Refreshing mappings list (background)...');
-        // Optimistic update for immediate UI
-        if (typeof window.applyOptimisticMappingUpdate === 'function') {
-            window.applyOptimisticMappingUpdate(mappingData);
-        }
-        try {
-            const saved = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
-            const useCache = !!saved.cacheEnabled;
-            if (typeof window.refreshImockCache === 'function') {
-                try { await window.refreshImockCache(); } catch (e) { console.warn('refreshImockCache after update failed:', e); }
-            }
-            if (typeof window.backgroundRefreshMappings === 'function') {
-                window.backgroundRefreshMappings(useCache);
-            } else {
-                fetchAndRenderMappings();
-            }
-        } catch (e) { console.warn('post-update refresh failed:', e); }
+
+        // No more immediate cache rebuild - optimistic cache handles it
         
         // Применяем фильтры после обновления мапингов
         const hasActiveFilters = document.getElementById(SELECTORS.MAPPING_FILTERS.METHOD)?.value ||
@@ -583,6 +617,12 @@ function collectFormData() {
             status: parseInt(document.getElementById('edit-response-status')?.value) || 200
         }
     };
+
+    // Preserve existing metadata if present
+    if (editorState.currentMapping?.metadata) {
+        mapping.metadata = { ...editorState.currentMapping.metadata };
+        console.log('📅 [METADATA] Preserved existing metadata in collectFormData');
+    }
     
     // Add optional fields
     const responseDelay = parseInt(document.getElementById('edit-response-delay')?.value) || 0;
@@ -761,3 +801,10 @@ function showNotification(message, type = 'info') {
     // Fallback to console log
     console.log(`[${type.toUpperCase()}] ${message}`);
 }
+
+// Wrapper function for HTML onclick handler
+window.saveMappingWrapper = () => {
+    saveMapping().catch(error => {
+        NotificationManager.error('Save failed: ' + error.message);
+    });
+};

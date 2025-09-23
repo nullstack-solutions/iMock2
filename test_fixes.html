@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Critical Fixes</title>
+</head>
+<body>
+    <h1>Testing Critical Fixes</h1>
+    <div id="results"></div>
+
+    <script src="js/core.js"></script>
+    <script src="js/managers.js"></script>
+    <script src="js/features.js"></script>
+    <script src="js/editor.js"></script>
+    <script src="js/main.js"></script>
+
+    <script>
+        // Test functions after DOM loads
+        document.addEventListener('DOMContentLoaded', () => {
+            const results = document.getElementById('results');
+            let testCount = 0;
+            let passCount = 0;
+
+            function test(name, condition) {
+                testCount++;
+                const status = condition ? '✅ PASS' : '❌ FAIL';
+                if (condition) passCount++;
+                results.innerHTML += `<div>${status}: ${name}</div>`;
+                console.log(`${status}: ${name}`);
+            }
+
+            // Test 1: checkHealth function exists
+            test('checkHealth function exists', typeof window.checkHealth === 'function');
+
+            // Test 2: updateUptime function exists
+            test('updateUptime function exists', typeof window.updateUptime === 'function');
+
+            // Test 3: stopUptime function exists
+            test('stopUptime function exists', typeof window.stopUptime === 'function');
+
+            // Test 4: UIComponents exists
+            test('UIComponents exists', typeof UIComponents === 'object');
+
+            // Test 5: toggleFullContent function exists
+            test('toggleFullContent function exists', typeof window.toggleFullContent === 'function');
+
+            // Test 6: saveMappingWrapper function exists
+            test('saveMappingWrapper function exists', typeof window.saveMappingWrapper === 'function');
+
+            // Test 7: loadMockData function exists
+            test('loadMockData function exists', typeof window.loadMockData === 'function');
+
+            // Test 8: updateScenarioState function exists
+            test('updateScenarioState function exists', typeof window.updateScenarioState === 'function');
+
+            // Test 9: updateFileDisplay function exists
+            test('updateFileDisplay function exists', typeof window.updateFileDisplay === 'function');
+
+            // Test 10: initializeTheme function exists
+            test('initializeTheme function exists', typeof window.initializeTheme === 'function');
+
+            // Summary
+            results.innerHTML += `<hr><h2>Summary: ${passCount}/${testCount} tests passed</h2>`;
+            console.log(`Summary: ${passCount}/${testCount} tests passed`);
+
+            if (passCount === testCount) {
+                results.innerHTML += '<div style="color: green; font-size: 1.2em;">🎉 All critical fixes are working!</div>';
+            } else {
+                results.innerHTML += '<div style="color: red; font-size: 1.2em;">⚠️ Some fixes may still need attention.</div>';
+            }
+        });
+    </script>
+</body>
+</html>
