@@ -71,28 +71,17 @@
                 </div>
             </div>
             <div class="toolbar-row toolbar-row--search">
-                <div class="search-container" role="search">
-                    <label class="sr-only" for="jsonPathInput">Search text or JSONPath</label>
-                    <input type="text" class="form-input search-input" id="jsonPathInput" placeholder="Search text or JSONPath ($.path)..." onkeydown="if(event.key==='Enter') searchJSONPath()">
-                    <div class="search-toggles" role="group" aria-label="Search filters">
-                        <label class="toggle-label" title="Match case" data-tooltip="Match case">
-                            <input type="checkbox" id="matchCaseToggle">
-                            <span>Aa</span>
-                        </label>
-                        <label class="toggle-label" title="Whole word" data-tooltip="Match whole words">
-                            <input type="checkbox" id="wholeWordToggle">
-                            <span>W</span>
-                        </label>
-                        <label class="toggle-label" title="Keys only" data-tooltip="Search only keys">
-                            <input type="checkbox" id="keysOnlyToggle">
-                            <span>K</span>
-                        </label>
-                        <label class="toggle-label" title="Values only" data-tooltip="Search only values">
-                            <input type="checkbox" id="valuesOnlyToggle">
-                            <span>V</span>
-                        </label>
-                    </div>
+                <div class="search-container" role="toolbar" aria-label="Editor utilities">
                     <div class="search-actions" role="group" aria-label="Editor utilities">
+                        <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="openTextFindWidget()" title="Find (Ctrl+F)" data-tooltip="Open find (Ctrl+F)">
+                            <span class="icon" aria-hidden="true">🔍</span>
+                            <span class="sr-only">Open find widget</span>
+                        </button>
+                        <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="openJSONPathWidget()" title="JSONPath (Alt+J)" data-tooltip="Open JSONPath mode (Alt+J)">
+                            <span class="icon" aria-hidden="true">$.</span>
+                            <span class="sr-only">Open JSONPath find widget</span>
+                        </button>
+                        <span class="search-actions__divider" role="presentation" aria-hidden="true"></span>
                         <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="formatJSON()" title="Format JSON" data-tooltip="Pretty print JSON">
                             <span class="icon" aria-hidden="true">{ }</span>
                             <span class="sr-only">Format JSON</span>
@@ -132,10 +121,6 @@
                             <span class="sr-only">Test cache refresh</span>
                         </button>
                     </div>
-                    <button class="btn btn-primary" onclick="searchJSONPath()" title="Search" data-tooltip="Search in document">
-                        <span class="icon" aria-hidden="true">🔍</span>
-                        <span class="btn-label">Search</span>
-                    </button>
                 </div>
             </div>
         </section>
@@ -653,29 +638,55 @@
         }
 
         /**
-         * Search JSONPath
+         * Trigger Monaco find widget
          */
-        function searchJSONPath() {
-            const input = document.getElementById('jsonPathInput');
-            const query = input ? input.value.trim() : '';
-            
-            if (!query) {
-                showNotification('Please enter a search term', 'warning');
-                return;
-            }
-            
+        function triggerFindWidget(mode = 'text') {
             try {
-                if (window.monacoInitializer && typeof window.monacoInitializer.searchJSONPath === 'function') {
-                    window.monacoInitializer.searchJSONPath(query);
-                } else if (window.monacoInitializer && typeof window.monacoInitializer.search === 'function') {
-                    window.monacoInitializer.search(query);
+                if (window.monacoInitializer && typeof window.monacoInitializer.openFindWidget === 'function') {
+                    const options = {
+                        focus: true,
+                        select: true
+                    };
+
+                    if (mode === 'jsonpath') {
+                        options.jsonPathMode = true;
+                    } else if (mode === 'text') {
+                        options.jsonPathMode = false;
+                    }
+
+                    const result = window.monacoInitializer.openFindWidget(options);
+                    if (result && typeof result.then === 'function') {
+                        result.catch(error => {
+                            console.error('Find widget error:', error);
+                            showNotification('Find widget error: ' + error.message, 'error');
+                        });
+                    }
                 } else {
-                    showNotification('Search function not available', 'error');
+                    showNotification('Find widget is not available', 'error');
                 }
             } catch (error) {
-                console.error('Search error:', error);
-                showNotification('Search error: ' + error.message, 'error');
+                console.error('Find widget error:', error);
+                showNotification('Find widget error: ' + error.message, 'error');
             }
+        }
+
+        /**
+         * Open regular find widget
+         */
+        function openTextFindWidget() {
+            triggerFindWidget('text');
+        }
+
+        /**
+         * Open find widget in JSONPath mode
+         */
+        function openJSONPathWidget() {
+            triggerFindWidget('jsonpath');
+        }
+
+        // Backwards compatibility for legacy handlers
+        function searchJSONPath() {
+            openJSONPathWidget();
         }
 
         /**

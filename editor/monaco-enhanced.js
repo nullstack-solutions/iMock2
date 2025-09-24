@@ -959,63 +959,55 @@ class MonacoInitializer {
         }
     }
 
-    // Enhanced search with toolbar toggles
-    async searchJSONPath(query) {
-        if (!query) {
-            query = document.getElementById('jsonPathInput')?.value?.trim();
-        }
-
-        if (!query) {
-            this.showNotification('Please enter a search term', 'warning');
-            return;
-        }
-
-        query = query.trim();
-
+    async searchJSONPath(query, options = {}) {
         const editor = this.getActiveEditor();
         if (!editor) {
-            this.showNotification('No active editor', 'warning');
-            return;
+            if (options.notify !== false) {
+                this.showNotification('No active editor', 'warning');
+            }
+            return [];
         }
 
-        try {
-            const matchCase = document.getElementById('matchCaseToggle')?.checked || false;
-            const wholeWord = document.getElementById('wholeWordToggle')?.checked || false;
-            const keysOnly = document.getElementById('keysOnlyToggle')?.checked || false;
-            const valuesOnly = document.getElementById('valuesOnlyToggle')?.checked || false;
+        const rawQuery = typeof query === 'string' ? query : '';
+        const trimmedQuery = rawQuery.trim();
+        const hasQuery = trimmedQuery.length > 0;
+        const allowEmpty = options.allowEmpty === true;
 
-            if (this.isJSONPathQuery(query)) {
-                await this.searchWithJSONPath(query, editor);
-                return;
+        if (!hasQuery && !allowEmpty) {
+            if (options.notify !== false) {
+                this.showNotification('Please enter a search term', 'warning');
             }
-
-            if (keysOnly || valuesOnly) {
-                const content = editor.getValue();
-                try {
-                    const jsonData = JSON.parse(content);
-                    const matches = this.findInJSONStructure(jsonData, query, keysOnly, valuesOnly, matchCase);
-                    this.highlightJSONMatches(editor, matches);
-                    this.showNotification(`Found ${matches.length} matches`, 'success');
-                    return;
-                } catch (error) {
-                    // Fall back to regular search if JSON parsing fails
-                }
-            }
-
-            editor.trigger('search', 'actions.find', {
-                searchString: query,
-                replaceString: '',
-                isRegex: false,
-                matchCase: matchCase,
-                matchWholeWord: wholeWord,
-                preserveCase: false
-            });
-
-            this.showNotification(`Searching for "${query}"`, 'success');
-        } catch (error) {
-            console.error('Search error:', error);
-            this.showNotification('Search error: ' + error.message, 'error');
+            return [];
         }
+
+        const forcedMode = typeof options.jsonPathMode === 'boolean' ? options.jsonPathMode : null;
+        const inferredMode = hasQuery && this.isJSONPathQuery(trimmedQuery);
+        const useJsonPath = forcedMode !== null ? forcedMode : inferredMode;
+
+        const integration = await this.openFindWidget({
+            query: hasQuery ? trimmedQuery : undefined,
+            jsonPathMode: useJsonPath,
+            focus: options.focus !== false,
+            select: typeof options.select === 'boolean' ? options.select : false,
+            notify: options.notify === true
+        });
+
+        if (!integration) {
+            if (options.notify !== false) {
+                this.showNotification('Find widget is not available', 'error');
+            }
+            return [];
+        }
+
+        if (!hasQuery) {
+            return [];
+        }
+
+        if (useJsonPath) {
+            return Array.isArray(this.lastJSONPathResults) ? this.lastJSONPathResults : [];
+        }
+
+        return [];
     }
 
     async searchWithJSONPath(jsonPath, editor, options = {}) {
@@ -1672,6 +1664,82 @@ class MonacoInitializer {
         }
     }
 
+    async openFindWidget(options = {}) {
+        const editor = this.getActiveEditor();
+        if (!editor) {
+            return null;
+        }
+
+        this.setupFindWidgetIntegration(editor);
+
+        const findAction = editor.getAction && editor.getAction('actions.find');
+        try {
+            if (findAction && typeof findAction.run === 'function') {
+                await findAction.run();
+            } else {
+                editor.trigger('keyboard', 'actions.find', null);
+            }
+        } catch (error) {
+            console.warn('Find widget command failed, triggering fallback:', error);
+            editor.trigger('keyboard', 'actions.find', null);
+        }
+
+        const start = Date.now();
+        const scheduler = typeof requestAnimationFrame === 'function'
+            ? requestAnimationFrame
+            : (callback) => setTimeout(callback, 30);
+
+        return new Promise((resolve) => {
+            const awaitWidget = () => {
+                const integration = this.findWidgetIntegration;
+                if (integration && integration.widget && integration.inputElement) {
+                    const input = integration.inputElement;
+                    const focus = options.focus !== false;
+                    const select = options.select !== false;
+                    const notify = options.notify === true;
+                    const explicitMode = typeof options.jsonPathMode === 'boolean';
+                    const targetMode = explicitMode ? options.jsonPathMode : null;
+                    const hasQueryOption = typeof options.query === 'string';
+                    const rawQuery = hasQueryOption ? options.query : '';
+                    const trimmedQuery = rawQuery.trim();
+
+                    if (hasQueryOption) {
+                        if (input.value !== trimmedQuery) {
+                            input.value = trimmedQuery;
+                        }
+                    }
+
+                    if (explicitMode) {
+                        this.setFindWidgetJSONPathMode(targetMode, { notify, focusInput: false });
+                    }
+
+                    if ((!explicitMode || targetMode !== true) && hasQueryOption) {
+                        input.dispatchEvent(new Event('input', { bubbles: true }));
+                    }
+
+                    if (focus) {
+                        input.focus();
+                        if (select) {
+                            input.select();
+                        }
+                    }
+
+                    resolve(integration);
+                    return;
+                }
+
+                if (Date.now() - start > 1200) {
+                    resolve(null);
+                    return;
+                }
+
+                scheduler(awaitWidget);
+            };
+
+            awaitWidget();
+        });
+    }
+
     decorateFindWidget(widgetNode, integration = this.findWidgetIntegration) {
         if (!integration || !widgetNode || typeof widgetNode.querySelector !== 'function') {
             return;
@@ -1942,59 +2010,6 @@ class MonacoInitializer {
         integration.prevButton = null;
         integration.closeButton = null;
         integration.enabled = false;
-    }
-
-    findInJSONStructure(obj, searchTerm, keysOnly, valuesOnly, matchCase) {
-        const matches = [];
-        const search = matchCase ? searchTerm : searchTerm.toLowerCase();
-
-        const traverse = (current, path = '') => {
-            if (typeof current === 'object' && current !== null) {
-                if (Array.isArray(current)) {
-                    current.forEach((item, index) => {
-                        traverse(item, `${path}[${index}]`);
-                    });
-                } else {
-                    Object.entries(current).forEach(([key, value]) => {
-                        const currentPath = path ? `${path}.${key}` : key;
-                        
-                        // Check keys
-                        if (!valuesOnly) {
-                            const keyToCheck = matchCase ? key : key.toLowerCase();
-                            if (keyToCheck.includes(search)) {
-                                matches.push({
-                                    path: currentPath,
-                                    type: 'key',
-                                    value: key
-                                });
-                            }
-                        }
-                        
-                        // Check values
-                        if (!keysOnly && typeof value === 'string') {
-                            const valueToCheck = matchCase ? value : value.toLowerCase();
-                            if (valueToCheck.includes(search)) {
-                                matches.push({
-                                    path: currentPath,
-                                    type: 'value',
-                                    value: value
-                                });
-                            }
-                        }
-                        
-                        traverse(value, currentPath);
-                    });
-                }
-            }
-        };
-
-        traverse(obj);
-        return matches;
-    }
-
-    highlightJSONMatches(editor, matches) {
-        // Log matches for now - full highlighting would require more complex implementation
-        console.log('JSON matches found:', matches);
     }
 
     startHealthMonitoring() {
