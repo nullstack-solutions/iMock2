@@ -71,28 +71,17 @@
                 </div>
             </div>
             <div class="toolbar-row toolbar-row--search">
-                <div class="search-container" role="search">
-                    <label class="sr-only" for="jsonPathInput">Search text or JSONPath</label>
-                    <input type="text" class="form-input search-input" id="jsonPathInput" placeholder="Search text or JSONPath ($.path)..." onkeydown="if(event.key==='Enter') searchJSONPath()">
-                    <div class="search-toggles" role="group" aria-label="Search filters">
-                        <label class="toggle-label" title="Match case" data-tooltip="Match case">
-                            <input type="checkbox" id="matchCaseToggle">
-                            <span>Aa</span>
-                        </label>
-                        <label class="toggle-label" title="Whole word" data-tooltip="Match whole words">
-                            <input type="checkbox" id="wholeWordToggle">
-                            <span>W</span>
-                        </label>
-                        <label class="toggle-label" title="Keys only" data-tooltip="Search only keys">
-                            <input type="checkbox" id="keysOnlyToggle">
-                            <span>K</span>
-                        </label>
-                        <label class="toggle-label" title="Values only" data-tooltip="Search only values">
-                            <input type="checkbox" id="valuesOnlyToggle">
-                            <span>V</span>
-                        </label>
-                    </div>
+                <div class="search-container" role="toolbar" aria-label="Editor utilities">
                     <div class="search-actions" role="group" aria-label="Editor utilities">
+                        <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="openTextFindWidget()" title="Find (Ctrl+F)" data-tooltip="Open find (Ctrl+F)">
+                            <span class="icon" aria-hidden="true">🔍</span>
+                            <span class="sr-only">Open find widget</span>
+                        </button>
+                        <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="openJSONPathWidget()" title="JSONPath (Alt+J)" data-tooltip="Open JSONPath mode (Alt+J)">
+                            <span class="icon" aria-hidden="true">$.</span>
+                            <span class="sr-only">Open JSONPath find widget</span>
+                        </button>
+                        <span class="search-actions__divider" role="presentation" aria-hidden="true"></span>
                         <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="formatJSON()" title="Format JSON" data-tooltip="Pretty print JSON">
                             <span class="icon" aria-hidden="true">{ }</span>
                             <span class="sr-only">Format JSON</span>
@@ -100,6 +89,18 @@
                         <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="minifyJSON()" title="Minify JSON" data-tooltip="Minify JSON">
                             <span class="icon" aria-hidden="true">➖</span>
                             <span class="sr-only">Minify JSON</span>
+                        </button>
+                        <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="sortJSONKeys()" title="Sort keys (Ctrl+Alt+S)" data-tooltip="Sort keys alphabetically (Ctrl+Alt+S)">
+                            <span class="icon" aria-hidden="true">🔤</span>
+                            <span class="sr-only">Sort JSON keys</span>
+                        </button>
+                        <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="collapseAllJSON()" title="Collapse all (Ctrl+Shift+[)" data-tooltip="Collapse all blocks (Ctrl+Shift+[)">
+                            <span class="icon" aria-hidden="true">📕</span>
+                            <span class="sr-only">Collapse all JSON blocks</span>
+                        </button>
+                        <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="expandAllJSON()" title="Expand all (Ctrl+Shift+])" data-tooltip="Expand all blocks (Ctrl+Shift+])">
+                            <span class="icon" aria-hidden="true">📖</span>
+                            <span class="sr-only">Expand all JSON blocks</span>
                         </button>
                         <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="validateJSON()" title="Validate JSON" data-tooltip="Validate JSON">
                             <span class="icon" aria-hidden="true">✔️</span>
@@ -132,10 +133,6 @@
                             <span class="sr-only">Test cache refresh</span>
                         </button>
                     </div>
-                    <button class="btn btn-primary" onclick="searchJSONPath()" title="Search" data-tooltip="Search in document">
-                        <span class="icon" aria-hidden="true">🔍</span>
-                        <span class="btn-label">Search</span>
-                    </button>
                 </div>
             </div>
         </section>
@@ -566,14 +563,58 @@
             const currentTheme = body.getAttribute('data-theme');
             const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
             body.setAttribute('data-theme', newTheme);
-            
+
             const themeIcon = document.querySelector('.theme-icon');
             if (themeIcon) {
                 themeIcon.textContent = newTheme === 'dark' ? '☀️' : '🌙';
             }
-            
+
             localStorage.setItem('theme', newTheme);
             showNotification(`Switched to ${newTheme} theme`, 'success');
+        }
+
+        function newDocument() {
+            try {
+                if (window.monacoInitializer && typeof window.monacoInitializer.newDocument === 'function') {
+                    window.monacoInitializer.newDocument();
+                    const editor = window.monacoInitializer.getActiveEditor ? window.monacoInitializer.getActiveEditor() : null;
+                    if (editor && typeof editor.getValue === 'function' && typeof saveToHistory === 'function') {
+                        saveToHistory(editor.getValue(), 'New document');
+                    }
+                } else {
+                    showNotification('New document action not available', 'error');
+                }
+            } catch (error) {
+                console.error('New document error:', error);
+                showNotification('Error creating new document: ' + error.message, 'error');
+            }
+        }
+
+        function clearComparePanel(side) {
+            const target = side || 'both';
+            try {
+                if (window.monacoInitializer && typeof window.monacoInitializer.clearCompareContent === 'function') {
+                    window.monacoInitializer.clearCompareContent(target);
+                } else {
+                    showNotification('Clear panel action not available', 'error');
+                }
+            } catch (error) {
+                console.error('Clear panel error:', error);
+                showNotification('Error clearing panel: ' + error.message, 'error');
+            }
+        }
+
+        function exportAsYAML() {
+            try {
+                if (window.monacoInitializer && typeof window.monacoInitializer.exportAsYAML === 'function') {
+                    window.monacoInitializer.exportAsYAML();
+                } else {
+                    showNotification('Export to YAML is not available', 'error');
+                }
+            } catch (error) {
+                console.error('Export YAML error:', error);
+                showNotification('Export YAML error: ' + error.message, 'error');
+            }
         }
 
         /**
@@ -609,29 +650,55 @@
         }
 
         /**
-         * Search JSONPath
+         * Trigger Monaco find widget
          */
-        function searchJSONPath() {
-            const input = document.getElementById('jsonPathInput');
-            const query = input ? input.value.trim() : '';
-            
-            if (!query) {
-                showNotification('Please enter a search term', 'warning');
-                return;
-            }
-            
+        function triggerFindWidget(mode = 'text') {
             try {
-                if (window.monacoInitializer && typeof window.monacoInitializer.searchJSONPath === 'function') {
-                    window.monacoInitializer.searchJSONPath(query);
-                } else if (window.monacoInitializer && typeof window.monacoInitializer.search === 'function') {
-                    window.monacoInitializer.search(query);
+                if (window.monacoInitializer && typeof window.monacoInitializer.openFindWidget === 'function') {
+                    const options = {
+                        focus: true,
+                        select: true
+                    };
+
+                    if (mode === 'jsonpath') {
+                        options.jsonPathMode = true;
+                    } else if (mode === 'text') {
+                        options.jsonPathMode = false;
+                    }
+
+                    const result = window.monacoInitializer.openFindWidget(options);
+                    if (result && typeof result.then === 'function') {
+                        result.catch(error => {
+                            console.error('Find widget error:', error);
+                            showNotification('Find widget error: ' + error.message, 'error');
+                        });
+                    }
                 } else {
-                    showNotification('Search function not available', 'error');
+                    showNotification('Find widget is not available', 'error');
                 }
             } catch (error) {
-                console.error('Search error:', error);
-                showNotification('Search error: ' + error.message, 'error');
+                console.error('Find widget error:', error);
+                showNotification('Find widget error: ' + error.message, 'error');
             }
+        }
+
+        /**
+         * Open regular find widget
+         */
+        function openTextFindWidget() {
+            triggerFindWidget('text');
+        }
+
+        /**
+         * Open find widget in JSONPath mode
+         */
+        function openJSONPathWidget() {
+            triggerFindWidget('jsonpath');
+        }
+
+        // Backwards compatibility for legacy handlers
+        function searchJSONPath() {
+            openJSONPathWidget();
         }
 
         /**
@@ -683,6 +750,56 @@
             } catch (error) {
                 console.error('Minify error:', error);
                 showNotification('Minify error: ' + error.message, 'error');
+            }
+        }
+
+        function sortJSONKeys() {
+            try {
+                if (window.monacoInitializer && typeof window.monacoInitializer.sortJSONKeys === 'function') {
+                    const editor = window.monacoInitializer.getActiveEditor ? window.monacoInitializer.getActiveEditor() : null;
+                    const currentContent = editor && typeof editor.getValue === 'function' ? editor.getValue() : '';
+                    window.monacoInitializer.sortJSONKeys();
+                    setTimeout(() => {
+                        if (editor && typeof editor.getValue === 'function') {
+                            const newContent = editor.getValue();
+                            if (newContent !== currentContent) {
+                                saveToHistory(newContent, 'JSON Keys Sorted');
+                                showNotification('JSON keys sorted', 'success');
+                            }
+                        }
+                    }, 100);
+                } else {
+                    showNotification('Sort keys function not available', 'error');
+                }
+            } catch (error) {
+                console.error('Sort keys error:', error);
+                showNotification('Sort keys error: ' + error.message, 'error');
+            }
+        }
+
+        function collapseAllJSON() {
+            try {
+                if (window.monacoInitializer && typeof window.monacoInitializer.collapseAllFolds === 'function') {
+                    window.monacoInitializer.collapseAllFolds({ focus: true });
+                } else {
+                    showNotification('Collapse all is not available', 'error');
+                }
+            } catch (error) {
+                console.error('Collapse JSON error:', error);
+                showNotification('Collapse JSON error: ' + error.message, 'error');
+            }
+        }
+
+        function expandAllJSON() {
+            try {
+                if (window.monacoInitializer && typeof window.monacoInitializer.expandAllFolds === 'function') {
+                    window.monacoInitializer.expandAllFolds({ focus: true });
+                } else {
+                    showNotification('Expand all is not available', 'error');
+                }
+            } catch (error) {
+                console.error('Expand JSON error:', error);
+                showNotification('Expand JSON error: ' + error.message, 'error');
             }
         }
 

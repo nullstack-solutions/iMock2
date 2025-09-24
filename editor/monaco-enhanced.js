@@ -28,6 +28,16 @@ class MonacoInitializer {
             interval: null,
             stats: {}
         };
+        this.lastJSONPathResults = [];
+        this.lastJSONPathPointerLocator = null;
+        this.lastJSONPathMeta = {
+            totalCount: 0,
+            truncated: false
+        };
+        this.currentJSONPathIndex = -1;
+        this.lastJSONPathQuery = '';
+        this.jsonPathSearchRequestId = 0;
+        this.findWidgetIntegration = null;
     }
 
     async initialize() {
@@ -147,6 +157,11 @@ class MonacoInitializer {
                                 } catch (error) {
                                     return { valid: false, error: error.message };
                                 }
+                            case 'sort_keys':
+                                const indent = data && typeof data.indent === 'number' && data.indent >= 0 ? data.indent : 2;
+                                const sortParsed = JSON.parse(data.text);
+                                const sorted = this.sortKeysDeep(sortParsed);
+                                return JSON.stringify(sorted, null, indent);
                             default:
                                 return data;
                         }
@@ -199,7 +214,9 @@ class MonacoInitializer {
 
     createEditor(container, options) {
         const editor = monaco.editor.create(container, options);
-        
+
+        this.setupFindWidgetIntegration(editor);
+
         // Initialize virtualized renderer for this editor
         if (typeof VirtualizedJSONRenderer !== 'undefined') {
             const virtualRenderer = new VirtualizedJSONRenderer(editor);
@@ -236,7 +253,13 @@ class MonacoInitializer {
             { key: monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, action: () => this.saveFile() },
             { key: monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF, action: () => this.formatJSON() },
             { key: monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyM, action: () => this.minifyJSON() },
-            { key: monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyT, action: () => this.validateJSON() }
+            { key: monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyT, action: () => this.validateJSON() },
+            { key: monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.BracketLeft, action: () => this.collapseAllFolds({ focus: true }) },
+            { key: monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.BracketRight, action: () => this.expandAllFolds({ focus: true }) },
+            { key: monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.KeyS, action: () => this.sortJSONKeys() },
+            { key: monaco.KeyMod.Alt | monaco.KeyCode.KeyN, action: () => this.navigateJSONPathMatches(1) },
+            { key: monaco.KeyMod.Alt | monaco.KeyCode.KeyP, action: () => this.navigateJSONPathMatches(-1) },
+            { key: monaco.KeyMod.Alt | monaco.KeyCode.KeyJ, action: () => this.toggleFindWidgetJSONPathMode() }
         ];
 
         shortcuts.forEach(({ key, action }) => {
@@ -364,6 +387,183 @@ class MonacoInitializer {
 
     getActiveEditor() {
         return window.editor || this.editors.get('main');
+    }
+
+    resolveTargetEditors(options = {}) {
+        if (options && options.editor) {
+            return options.editor ? [options.editor] : [];
+        }
+
+        if (options && Array.isArray(options.editors) && options.editors.length) {
+            return options.editors.filter(Boolean);
+        }
+
+        const editors = new Set();
+
+        const editorContainer = document.getElementById('editorContainer');
+        if (!editorContainer || editorContainer.style.display !== 'none') {
+            const mainEditor = this.editors.get('main');
+            if (mainEditor) {
+                editors.add(mainEditor);
+            }
+        }
+
+        const compareContainer = document.getElementById('compareContainer');
+        if (compareContainer && compareContainer.style.display !== 'none') {
+            if (this.diffEditor) {
+                const originalEditor = typeof this.diffEditor.getOriginalEditor === 'function'
+                    ? this.diffEditor.getOriginalEditor()
+                    : null;
+                const modifiedEditor = typeof this.diffEditor.getModifiedEditor === 'function'
+                    ? this.diffEditor.getModifiedEditor()
+                    : null;
+
+                if (originalEditor) editors.add(originalEditor);
+                if (modifiedEditor) editors.add(modifiedEditor);
+            } else {
+                const leftEditor = this.editors.get('compareEditorLeft');
+                const rightEditor = this.editors.get('compareEditorRight');
+                if (leftEditor) editors.add(leftEditor);
+                if (rightEditor) editors.add(rightEditor);
+            }
+        }
+
+        if (!editors.size) {
+            const activeEditor = this.getActiveEditor();
+            if (activeEditor) {
+                editors.add(activeEditor);
+            }
+        }
+
+        return Array.from(editors).filter(Boolean);
+    }
+
+    runEditorCommand(editor, commandId, payload = null) {
+        if (!editor) return false;
+
+        try {
+            if (typeof editor.getAction === 'function') {
+                const action = editor.getAction(commandId);
+                if (action && typeof action.run === 'function' && (!action.isSupported || action.isSupported())) {
+                    const result = action.run();
+                    if (result && typeof result.then === 'function') {
+                        result.catch(error => console.warn(`Command ${commandId} failed:`, error));
+                    }
+                    return true;
+                }
+            }
+
+            if (typeof editor.trigger === 'function') {
+                editor.trigger('json-tools', commandId, payload);
+                return true;
+            }
+        } catch (error) {
+            console.warn(`Command ${commandId} failed:`, error);
+        }
+
+        return false;
+    }
+
+    executeCommandOnEditors(commandId, options = {}) {
+        const editors = this.resolveTargetEditors(options);
+        let executed = 0;
+
+        editors.forEach(editor => {
+            if (this.runEditorCommand(editor, commandId, options.payload)) {
+                executed++;
+            }
+        });
+
+        if (options.focus && editors[0] && typeof editors[0].focus === 'function') {
+            editors[0].focus();
+        }
+
+        return { executed, editors };
+    }
+
+    collapseAllFolds(options = {}) {
+        const { executed } = this.executeCommandOnEditors('editor.foldAll', options);
+
+        if (executed > 0) {
+            const message = executed > 1
+                ? 'Collapsed JSON structures in all visible editors'
+                : 'Collapsed JSON structures';
+            this.showNotification(message, 'success');
+        } else {
+            this.showNotification('Unable to collapse JSON structures', 'warning');
+        }
+    }
+
+    expandAllFolds(options = {}) {
+        const { executed } = this.executeCommandOnEditors('editor.unfoldAll', options);
+
+        if (executed > 0) {
+            const message = executed > 1
+                ? 'Expanded JSON structures in all visible editors'
+                : 'Expanded JSON structures';
+            this.showNotification(message, 'success');
+        } else {
+            this.showNotification('Unable to expand JSON structures', 'warning');
+        }
+    }
+
+    async sortJSONKeys(options = {}) {
+        const editor = this.getActiveEditor();
+        if (!editor) {
+            this.showNotification('No active editor', 'warning');
+            return;
+        }
+
+        const content = editor.getValue();
+        const model = editor.getModel && editor.getModel();
+        const indentOption = options && typeof options.indent === 'number' && options.indent >= 0
+            ? options.indent
+            : model && typeof model.getOptions === 'function'
+                ? model.getOptions().tabSize
+                : 2;
+        const indent = Number.isFinite(indentOption) ? indentOption : 2;
+
+        try {
+            let sortedText;
+
+            if (this.workerPool && typeof this.workerPool.execute === 'function') {
+                sortedText = await this.workerPool.execute('sort_keys', { text: content, indent }, 1);
+            } else {
+                const parsed = JSON.parse(content);
+                const sortedValue = this.sortKeysDeep(parsed);
+                sortedText = JSON.stringify(sortedValue, null, indent);
+            }
+
+            if (typeof sortedText !== 'string') {
+                sortedText = JSON.stringify(sortedText);
+            }
+
+            if (sortedText !== content) {
+                editor.setValue(sortedText);
+            }
+
+            this.showNotification('JSON keys sorted alphabetically', 'success');
+        } catch (error) {
+            console.error('Sort keys error:', error);
+            this.showNotification('Sort keys error: ' + error.message, 'error');
+        }
+    }
+
+    sortKeysDeep(value) {
+        if (Array.isArray(value)) {
+            return value.map(item => this.sortKeysDeep(item));
+        }
+
+        if (value && typeof value === 'object') {
+            const sortedKeys = Object.keys(value).sort((a, b) => a.localeCompare(b));
+            const result = {};
+            sortedKeys.forEach(key => {
+                result[key] = this.sortKeysDeep(value[key]);
+            });
+            return result;
+        }
+
+        return value;
     }
 
     showNotification(message, type) {
@@ -675,122 +875,67 @@ class MonacoInitializer {
         }
     }
 
-    // Enhanced JSONPath search with real path-to-position mapping
-    searchJSONPath(query) {
-        const editor = this.getActiveEditor();
-        if (!editor) {
-            this.showNotification('No active editor', 'warning');
-            return;
-        }
-
-        try {
-            const content = editor.getValue();
-            if (!content.trim()) {
-                this.showNotification('No content to search', 'warning');
-                return;
-            }
-
-            if (query.startsWith('$.') || query.startsWith('$[') || query === '$') {
-                // Enhanced JSONPath search with position mapping
-                try {
-                    const parsed = JSON.parse(content);
-                    const results = this.evaluateJSONPath(parsed, query, content, editor);
-                    
-                    if (results.length > 0) {
-                        let message = `JSONPath "${query}" found ${results.length} match${results.length !== 1 ? 'es' : ''}`;
-                        
-                        // Highlight the first match
-                        if (results[0].position) {
-                            const position = results[0].position;
-                            editor.setSelection(new monaco.Range(
-                                position.startLineNumber,
-                                position.startColumn,
-                                position.endLineNumber,
-                                position.endColumn
-                            ));
-                            editor.revealPositionInCenter(position);
-                            
-                            message += ` - First match highlighted`;
-                        }
-                        
-                        // Show preview of the found value
-                        const preview = this.formatValuePreview(results[0].value);
-                        message += `: ${preview}`;
-                        
-                        this.showNotification(message, 'success');
-                        
-                        // Store results for navigation
-                        this.lastJSONPathResults = results;
-                        
-                        if (results.length > 1) {
-                            this.showNotification(`Use Alt+N/Alt+P to navigate between ${results.length} matches`, 'info');
-                        }
-                    } else {
-                        this.showNotification(`JSONPath "${query}" not found`, 'info');
-                    }
-                } catch (parseError) {
-                    this.showNotification('Cannot parse JSON for JSONPath search: ' + parseError.message, 'error');
-                }
-            } else {
-                // Fall back to regular text search
-                this.search(query);
-            }
-        } catch (error) {
-            console.error('JSONPath search error:', error);
-            this.showNotification('JSONPath search error: ' + error.message, 'error');
-        }
-    }
-    
     evaluateJSONPath(data, path, content, editor) {
         const results = [];
-        
+        const pointerLocator = this.createPointerLocator(content);
+        const rootPointer = '$';
+        const normalizedPath = typeof path === 'string' ? path.trim() : '';
+
         // Simple JSONPath implementation with position tracking
-        if (path === '$') {
-            // Root element
-            const position = this.findValuePosition(data, content, editor, '');
-            results.push({ value: data, path: '$', position });
+        if (!normalizedPath || normalizedPath === '$') {
+            const position = this.findValuePosition(data, content, editor, '$', pointerLocator, rootPointer);
+            results.push({ value: data, path: '$', pointer: rootPointer, position });
             return results;
         }
-        
+
         // Remove leading $. and split path
-        const pathParts = path.replace(/^\$\.?/, '').split('.');
-        this.traverseJSONPath(data, pathParts, content, editor, '$', results);
-        
+        const strippedPath = normalizedPath.replace(/^\$\.?/, '');
+        const pathParts = strippedPath ? strippedPath.split('.').filter(Boolean) : [];
+        this.traverseJSONPath(data, pathParts, content, editor, '$', results, pointerLocator, rootPointer);
+
         return results;
     }
-    
-    traverseJSONPath(current, pathParts, content, editor, currentPath, results) {
+
+    traverseJSONPath(current, pathParts, content, editor, currentPath, results, pointerLocator, currentPointer) {
         if (pathParts.length === 0) {
-            const position = this.findValuePosition(current, content, editor, currentPath);
-            results.push({ value: current, path: currentPath, position });
+            const position = this.findValuePosition(current, content, editor, currentPath, pointerLocator, currentPointer);
+            results.push({ value: current, path: currentPath, pointer: currentPointer, position });
             return;
         }
-        
+
         const [firstPart, ...remainingParts] = pathParts;
-        
+
         // Handle array notation like [0] or [*]
         if (firstPart.includes('[') && firstPart.includes(']')) {
             const [key, indexPart] = firstPart.split('[');
-            const index = indexPart.replace(']', '');
-            
+            const indexToken = indexPart.replace(']', '');
+
             let target = current;
+            let pointerBase = currentPointer;
+
             if (key) {
+                if (!current || typeof current !== 'object' || !Object.prototype.hasOwnProperty.call(current, key)) {
+                    return;
+                }
                 target = current[key];
+                pointerBase = appendPointerSegment(pointerBase, key);
             }
-            
+
             if (Array.isArray(target)) {
-                if (index === '*') {
+                if (indexToken === '*') {
                     // Wildcard - search all array elements
                     target.forEach((item, i) => {
                         const newPath = currentPath + (key ? `.${key}` : '') + `[${i}]`;
-                        this.traverseJSONPath(item, remainingParts, content, editor, newPath, results);
+                        const itemPointer = appendPointerSegment(pointerBase, i);
+                        this.traverseJSONPath(item, remainingParts, content, editor, newPath, results, pointerLocator, itemPointer);
                     });
                 } else {
                     // Specific index
-                    const idx = parseInt(index);
-                    if (idx >= 0 && idx < target.length) {
+                    const idx = parseInt(indexToken, 10);
+                    if (!Number.isNaN(idx) && idx >= 0 && idx < target.length) {
                         const newPath = currentPath + (key ? `.${key}` : '') + `[${idx}]`;
-                        this.traverseJSONPath(target[idx], remainingParts, content, editor, newPath, results);
+                        const itemPointer = appendPointerSegment(pointerBase, idx);
+                        this.traverseJSONPath(target[idx], remainingParts, content, editor, newPath, results, pointerLocator, itemPointer);
                     }
                 }
             }
@@ -799,20 +944,54 @@ class MonacoInitializer {
             if (current && typeof current === 'object' && !Array.isArray(current)) {
                 Object.keys(current).forEach(key => {
                     const newPath = currentPath + `.${key}`;
-                    this.traverseJSONPath(current[key], remainingParts, content, editor, newPath, results);
+                    const childPointer = appendPointerSegment(currentPointer, key);
+                    this.traverseJSONPath(current[key], remainingParts, content, editor, newPath, results, pointerLocator, childPointer);
                 });
             }
         } else {
             // Regular property access
-            if (current && typeof current === 'object' && firstPart in current) {
+            if (current && typeof current === 'object' && Object.prototype.hasOwnProperty.call(current, firstPart)) {
                 const newPath = currentPath + `.${firstPart}`;
-                this.traverseJSONPath(current[firstPart], remainingParts, content, editor, newPath, results);
+                const childPointer = appendPointerSegment(currentPointer, firstPart);
+                this.traverseJSONPath(current[firstPart], remainingParts, content, editor, newPath, results, pointerLocator, childPointer);
             }
         }
     }
     
-    findValuePosition(value, content, editor, jsonPath) {
+    findValuePosition(value, content, editor, jsonPath, pointerLocator = null, pointer = null) {
         try {
+            let locator = pointerLocator || null;
+            let pointerCandidate = pointer;
+
+            if (typeof pointerCandidate === 'string' && pointerCandidate.startsWith('$.')) {
+                const converted = this.convertJSONPathToPointer(pointerCandidate);
+                if (converted) {
+                    pointerCandidate = converted;
+                }
+            }
+
+            if (!pointerCandidate && typeof jsonPath === 'string' && jsonPath.length > 0) {
+                pointerCandidate = this.convertJSONPathToPointer(jsonPath);
+            }
+
+            if (pointerCandidate) {
+                if (!locator) {
+                    locator = this.createPointerLocator(content);
+                }
+
+                if (locator) {
+                    const pointerPosition = locator.getRange(pointerCandidate);
+                    if (pointerPosition) {
+                        return pointerPosition;
+                    }
+                }
+            }
+
+            const model = editor && typeof editor.getModel === 'function' ? editor.getModel() : null;
+            if (!model) {
+                return null;
+            }
+
             // Convert value to string for searching
             let searchText;
             if (typeof value === 'string') {
@@ -820,24 +999,40 @@ class MonacoInitializer {
             } else {
                 searchText = JSON.stringify(value);
             }
-            
-            // Use Monaco's find mechanism to locate the text
-            const model = editor.getModel();
-            const matches = model.findMatches(searchText, false, false, true, null, false);
-            
-            if (matches.length > 0) {
-                // Return the first match position
-                return {
-                    startLineNumber: matches[0].range.startLineNumber,
-                    startColumn: matches[0].range.startColumn,
-                    endLineNumber: matches[0].range.endLineNumber,
-                    endColumn: matches[0].range.endColumn
-                };
+
+            if (searchText) {
+                const matches = model.findMatches(searchText, false, false, true, null, false);
+
+                if (matches.length > 0) {
+                    const { range } = matches[0];
+                    return {
+                        startLineNumber: range.startLineNumber,
+                        startColumn: range.startColumn,
+                        endLineNumber: range.endLineNumber,
+                        endColumn: range.endColumn
+                    };
+                }
+            }
+
+            if (value && typeof value === 'object') {
+                const pretty = JSON.stringify(value, null, 2);
+                if (pretty && pretty !== searchText) {
+                    const matches = model.findMatches(pretty, false, false, true, null, false);
+                    if (matches.length > 0) {
+                        const { range } = matches[0];
+                        return {
+                            startLineNumber: range.startLineNumber,
+                            startColumn: range.startColumn,
+                            endLineNumber: range.endLineNumber,
+                            endColumn: range.endColumn
+                        };
+                    }
+                }
             }
         } catch (error) {
             console.warn('Could not find position for value:', error);
         }
-        
+
         return null;
     }
     
@@ -916,147 +1111,1334 @@ class MonacoInitializer {
         }
     }
 
-    // Enhanced search with toolbar toggles
-    searchJSONPath(query) {
-        if (!query) {
-            query = document.getElementById('jsonPathInput')?.value?.trim();
-        }
-        
-        if (!query) {
-            this.showNotification('Please enter a search term', 'warning');
-            return;
-        }
-
+    exportAsYAML() {
         const editor = this.getActiveEditor();
         if (!editor) {
             this.showNotification('No active editor', 'warning');
             return;
         }
 
+        let jsonData;
         try {
-            // Get search options from toolbar toggles
-            const matchCase = document.getElementById('matchCaseToggle')?.checked || false;
-            const wholeWord = document.getElementById('wholeWordToggle')?.checked || false;
-            const keysOnly = document.getElementById('keysOnlyToggle')?.checked || false;
-            const valuesOnly = document.getElementById('valuesOnlyToggle')?.checked || false;
-
-            // If it's a JSONPath query, handle it specially
-            if (query.startsWith('$.')) {
-                this.searchWithJSONPath(query, editor);
-                return;
-            }
-
-            // Enhanced search with key/value filtering
-            if (keysOnly || valuesOnly) {
-                const content = editor.getValue();
-                try {
-                    const jsonData = JSON.parse(content);
-                    const matches = this.findInJSONStructure(jsonData, query, keysOnly, valuesOnly, matchCase);
-                    this.highlightJSONMatches(editor, matches);
-                    this.showNotification(`Found ${matches.length} matches`, 'success');
-                    return;
-                } catch (e) {
-                    // Fall back to regular search if JSON parsing fails
-                }
-            }
-
-            // Use Monaco's built-in find functionality with options
-            editor.trigger('search', 'actions.find', {
-                searchString: query,
-                replaceString: '',
-                isRegex: false,
-                matchCase: matchCase,
-                matchWholeWord: wholeWord,
-                preserveCase: false
-            });
-            
-            this.showNotification(`Searching for "${query}"`, 'success');
+            jsonData = JSON.parse(editor.getValue());
         } catch (error) {
-            console.error('Search error:', error);
-            this.showNotification('Search error: ' + error.message, 'error');
+            this.showNotification('Cannot export YAML: ' + error.message, 'error');
+            return;
+        }
+
+        try {
+            const yaml = convertJSONToYAML(jsonData);
+            const content = yaml.endsWith('\n') ? yaml : `${yaml}\n`;
+            const blob = new Blob([content], { type: 'text/yaml' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'wiremock-mapping.yaml';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            this.showNotification('YAML exported', 'success');
+        } catch (error) {
+            this.showNotification('YAML export failed: ' + error.message, 'error');
         }
     }
 
-    searchWithJSONPath(jsonPath, editor) {
+    async searchJSONPath(query, options = {}) {
+        const editor = this.getActiveEditor();
+        if (!editor) {
+            if (options.notify !== false) {
+                this.showNotification('No active editor', 'warning');
+            }
+            return [];
+        }
+
+        const rawQuery = typeof query === 'string' ? query : '';
+        const trimmedQuery = rawQuery.trim();
+        const hasQuery = trimmedQuery.length > 0;
+        const allowEmpty = options.allowEmpty === true;
+
+        if (!hasQuery && !allowEmpty) {
+            if (options.notify !== false) {
+                this.showNotification('Please enter a search term', 'warning');
+            }
+            return [];
+        }
+
+        const forcedMode = typeof options.jsonPathMode === 'boolean' ? options.jsonPathMode : null;
+        const inferredMode = hasQuery && this.isJSONPathQuery(trimmedQuery);
+        const useJsonPath = forcedMode !== null ? forcedMode : inferredMode;
+
+        const integration = await this.openFindWidget({
+            query: hasQuery ? trimmedQuery : undefined,
+            jsonPathMode: useJsonPath,
+            focus: options.focus !== false,
+            select: typeof options.select === 'boolean' ? options.select : false,
+            notify: options.notify === true
+        });
+
+        if (!integration) {
+            if (options.notify !== false) {
+                this.showNotification('Find widget is not available', 'error');
+            }
+            return [];
+        }
+
+        if (!hasQuery) {
+            return [];
+        }
+
+        if (useJsonPath) {
+            return Array.isArray(this.lastJSONPathResults) ? this.lastJSONPathResults : [];
+        }
+
+        return [];
+    }
+
+    async searchWithJSONPath(jsonPath, editor, options = {}) {
+        const { notify = true, revealFirst = true, fromWidget = false } = options || {};
+        const requestId = ++this.jsonPathSearchRequestId;
+        const content = editor.getValue();
+
+        if (!content || !content.trim()) {
+            this.resetJSONPathResults({ keepQuery: true });
+            this.lastJSONPathQuery = jsonPath;
+            if (fromWidget) {
+                this.updateFindWidgetMatchesCount(0, false, -1, { noContent: true });
+            }
+            if (notify) {
+                this.showNotification('No content to search', 'warning');
+            }
+            return [];
+        }
+
+        let workerResult = null;
+
+        if (this.canUseWorkerForJSONPath()) {
+            try {
+                workerResult = await this.workerPool.execute('jsonpath', { text: content, path: jsonPath }, 5, 10000);
+            } catch (workerError) {
+                console.warn('JSONPath worker execution failed, falling back to local parser:', workerError);
+            }
+        }
+
+        if (workerResult && typeof workerResult === 'object' && Array.isArray(workerResult.values)) {
+            const { matches, pointerLocator } = this.convertWorkerResultToMatches(workerResult, jsonPath, content, editor);
+            const totalCount = typeof workerResult.count === 'number' ? workerResult.count : matches.length;
+            const truncated = Boolean(workerResult.truncated);
+
+            if (requestId !== this.jsonPathSearchRequestId) {
+                return matches;
+            }
+
+            this.lastJSONPathPointerLocator = pointerLocator;
+            return this.handleJSONPathMatches(jsonPath, matches, editor, totalCount, truncated, { notify, revealFirst, fromWidget });
+        }
+
         try {
-            const content = editor.getValue();
             const jsonData = JSON.parse(content);
-            
-            // Use the enhanced JSONPath implementation with position tracking
-            const results = this.evaluateJSONPath(jsonData, jsonPath, content, editor);
-            if (results && results.length > 0) {
-                const resultText = results.map(r => `${r.path}: ${this.formatValuePreview(r.value)}`).join(', ');
-                this.showNotification(`JSONPath found: ${resultText}`, 'success');
-                
-                // Highlight the first result if position is available
-                if (results[0].position && editor) {
-                    editor.setSelection({
-                        startLineNumber: results[0].position.startLineNumber,
-                        startColumn: results[0].position.startColumn,
-                        endLineNumber: results[0].position.endLineNumber,
-                        endColumn: results[0].position.endColumn
-                    });
-                    editor.revealLineInCenter(results[0].position.startLineNumber);
-                }
-            } else {
-                this.showNotification('JSONPath not found', 'warning');
+            const results = this.evaluateJSONPath(jsonData, jsonPath, content, editor) || [];
+
+            if (requestId !== this.jsonPathSearchRequestId) {
+                return results;
             }
+
+            this.lastJSONPathPointerLocator = null;
+            return this.handleJSONPathMatches(jsonPath, results, editor, results.length, false, { notify, revealFirst, fromWidget });
         } catch (error) {
-            this.showNotification('Invalid JSON or JSONPath: ' + error.message, 'error');
+            this.resetJSONPathResults({ keepQuery: true });
+            this.lastJSONPathPointerLocator = null;
+            this.lastJSONPathQuery = jsonPath;
+            if (fromWidget) {
+                this.updateFindWidgetMatchesCount(0, false, -1, { error: error.message });
+            }
+            if (notify) {
+                this.showNotification('Invalid JSON or JSONPath: ' + error.message, 'error');
+            }
+            return [];
         }
     }
 
-    findInJSONStructure(obj, searchTerm, keysOnly, valuesOnly, matchCase) {
-        const matches = [];
-        const search = matchCase ? searchTerm : searchTerm.toLowerCase();
+    isJSONPathQuery(query) {
+        if (!query) return false;
+        return query.trim().startsWith('$');
+    }
 
-        const traverse = (current, path = '') => {
-            if (typeof current === 'object' && current !== null) {
-                if (Array.isArray(current)) {
-                    current.forEach((item, index) => {
-                        traverse(item, `${path}[${index}]`);
-                    });
-                } else {
-                    Object.entries(current).forEach(([key, value]) => {
-                        const currentPath = path ? `${path}.${key}` : key;
-                        
-                        // Check keys
-                        if (!valuesOnly) {
-                            const keyToCheck = matchCase ? key : key.toLowerCase();
-                            if (keyToCheck.includes(search)) {
-                                matches.push({
-                                    path: currentPath,
-                                    type: 'key',
-                                    value: key
-                                });
-                            }
-                        }
-                        
-                        // Check values
-                        if (!keysOnly && typeof value === 'string') {
-                            const valueToCheck = matchCase ? value : value.toLowerCase();
-                            if (valueToCheck.includes(search)) {
-                                matches.push({
-                                    path: currentPath,
-                                    type: 'value',
-                                    value: value
-                                });
-                            }
-                        }
-                        
-                        traverse(value, currentPath);
-                    });
+    canUseWorkerForJSONPath() {
+        if (!this.workerPool || typeof this.workerPool.execute !== 'function') {
+            return false;
+        }
+
+        if (Array.isArray(this.workerPool.workers)) {
+            return this.workerPool.workers.length > 0;
+        }
+
+        return false;
+    }
+
+    convertWorkerResultToMatches(workerResult, fallbackPath, content, editor) {
+        const values = Array.isArray(workerResult.values) ? workerResult.values : [];
+        const pathStrings = this.extractJSONPathStrings(workerResult, fallbackPath, values.length);
+        const pointerPaths = this.extractPointerPaths(workerResult, values.length);
+        const hasPointers = pointerPaths.some(pointer => typeof pointer === 'string' && pointer.length > 0);
+        const pointerLocator = hasPointers ? this.createPointerLocator(content) : null;
+
+        const matches = values.map((value, index) => {
+            const path = pathStrings[index] || fallbackPath;
+            const pointer = pointerPaths[index] || null;
+            let position = null;
+
+            if (pointer && pointerLocator) {
+                const pointerPosition = pointerLocator.getRange(pointer);
+                if (pointerPosition) {
+                    position = pointerPosition;
                 }
             }
-        };
 
-        traverse(obj);
+            if (!position) {
+                position = this.findValuePosition(value, content, editor, path, pointerLocator, pointer);
+            }
+
+            return {
+                value,
+                path,
+                pointer,
+                position
+            };
+        });
+
+        return { matches, pointerLocator, pointerPaths };
+    }
+
+    extractJSONPathStrings(workerResult, fallbackPath, expectedLength = 0) {
+        if (!workerResult) return [];
+
+        if (Array.isArray(workerResult.jsonPaths) && workerResult.jsonPaths.length > 0) {
+            return workerResult.jsonPaths;
+        }
+
+        if (Array.isArray(workerResult.paths) && workerResult.paths.length > 0) {
+            return workerResult.paths.map(pathValue => Array.isArray(pathValue)
+                ? convertPathArrayToJSONPath(pathValue)
+                : String(pathValue));
+        }
+
+        if (expectedLength > 0) {
+            return new Array(expectedLength).fill(fallbackPath);
+        }
+
+        return [];
+    }
+
+    extractPointerPaths(workerResult, expectedLength = 0) {
+        if (!workerResult) return [];
+
+        if (Array.isArray(workerResult.pointerPaths) && workerResult.pointerPaths.length > 0) {
+            return workerResult.pointerPaths;
+        }
+
+        if (Array.isArray(workerResult.paths) && workerResult.paths.length > 0) {
+            return workerResult.paths.map(pathValue => Array.isArray(pathValue)
+                ? convertPathArrayToPointer(pathValue)
+                : null);
+        }
+
+        if (expectedLength > 0) {
+            return new Array(expectedLength).fill(null);
+        }
+
+        return [];
+    }
+
+    createPointerLocator(text) {
+        return buildJSONPointerLocator(text);
+    }
+
+    convertJSONPathToPointer(jsonPath) {
+        if (typeof jsonPath !== 'string') {
+            return null;
+        }
+
+        const trimmed = jsonPath.trim();
+        if (!trimmed) {
+            return null;
+        }
+
+        if (trimmed === '$') {
+            return '$';
+        }
+
+        if (!trimmed.startsWith('$')) {
+            return null;
+        }
+
+        let pointer = '$';
+        let index = 1;
+
+        while (index < trimmed.length) {
+            const char = trimmed[index];
+
+            if (char === '.') {
+                index++;
+
+                if (index >= trimmed.length) {
+                    break;
+                }
+
+                if (trimmed[index] === '.') {
+                    // Unsupported recursive descent
+                    return null;
+                }
+
+                if (trimmed[index] === '[') {
+                    continue;
+                }
+
+                let start = index;
+                while (index < trimmed.length && trimmed[index] !== '.' && trimmed[index] !== '[') {
+                    index++;
+                }
+
+                const segment = trimmed.slice(start, index);
+                if (segment) {
+                    pointer = appendPointerSegment(pointer, segment);
+                }
+
+                continue;
+            }
+
+            if (char === '[') {
+                index++;
+
+                if (index >= trimmed.length) {
+                    break;
+                }
+
+                if (trimmed[index] === '\'' || trimmed[index] === '"') {
+                    const quote = trimmed[index];
+                    index++;
+                    let segment = '';
+
+                    while (index < trimmed.length) {
+                        const currentChar = trimmed[index];
+                        if (currentChar === '\\' && index + 1 < trimmed.length) {
+                            segment += trimmed[index + 1];
+                            index += 2;
+                            continue;
+                        }
+
+                        if (currentChar === quote) {
+                            break;
+                        }
+
+                        segment += currentChar;
+                        index++;
+                    }
+
+                    if (index < trimmed.length && trimmed[index] === quote) {
+                        index++;
+                    }
+
+                    if (index < trimmed.length && trimmed[index] === ']') {
+                        index++;
+                    }
+
+                    if (!segment) {
+                        return null;
+                    }
+
+                    pointer = appendPointerSegment(pointer, segment);
+                } else {
+                    let start = index;
+                    while (index < trimmed.length && trimmed[index] !== ']') {
+                        index++;
+                    }
+
+                    const token = trimmed.slice(start, index);
+
+                    if (index < trimmed.length && trimmed[index] === ']') {
+                        index++;
+                    }
+
+                    if (!token || token === '*') {
+                        return null;
+                    }
+
+                    const numericIndex = Number(token);
+                    if (!Number.isNaN(numericIndex)) {
+                        pointer = appendPointerSegment(pointer, numericIndex);
+                    } else {
+                        pointer = appendPointerSegment(pointer, token);
+                    }
+                }
+
+                continue;
+            }
+
+            // Skip any other characters
+            index++;
+        }
+
+        return pointer;
+    }
+
+    handleJSONPathMatches(jsonPath, matches, editor, totalCount, truncated, options = {}) {
+        const { notify = true, revealFirst = true, fromWidget = false } = options || {};
+
+        if (!Array.isArray(matches) || matches.length === 0) {
+            this.resetJSONPathResults({ keepQuery: true });
+            this.lastJSONPathQuery = jsonPath;
+            this.lastJSONPathMeta = { totalCount: 0, truncated: false };
+            if (fromWidget) {
+                this.updateFindWidgetMatchesCount(0, truncated, -1, { query: jsonPath });
+            }
+            if (notify) {
+                this.showNotification(`JSONPath "${jsonPath}" not found`, 'info');
+            }
+            return [];
+        }
+
+        this.lastJSONPathResults = matches;
+        this.lastJSONPathMeta = { totalCount, truncated };
+        this.lastJSONPathQuery = jsonPath;
+
+        if (revealFirst) {
+            this.focusJSONPathMatch(0, editor, { fromWidget, reveal: true });
+        } else if (this.currentJSONPathIndex < 0 || this.currentJSONPathIndex >= matches.length) {
+            this.currentJSONPathIndex = 0;
+        }
+
+        if (fromWidget) {
+            this.updateFindWidgetMatchesCount(totalCount, truncated, this.currentJSONPathIndex);
+        }
+
+        if (notify) {
+            const effectiveIndex = Math.max(0, this.currentJSONPathIndex);
+            const matchForPreview = matches[effectiveIndex] || matches[0];
+            let message = `JSONPath "${jsonPath}" found ${totalCount} match${totalCount === 1 ? '' : 'es'}`;
+            if (truncated && matches.length < totalCount) {
+                message += ` (showing first ${matches.length})`;
+            }
+
+            if (matchForPreview && Object.prototype.hasOwnProperty.call(matchForPreview, 'value')) {
+                message += `: ${this.formatValuePreview(matchForPreview.value)}`;
+            }
+
+            this.showNotification(message, 'success');
+
+            if (totalCount > 1) {
+                this.showNotification(`Use Alt+N/Alt+P to navigate between ${totalCount} matches`, 'info');
+            }
+        }
+
         return matches;
     }
 
-    highlightJSONMatches(editor, matches) {
-        // Log matches for now - full highlighting would require more complex implementation
-        console.log('JSON matches found:', matches);
+    resetJSONPathResults(options = {}) {
+        const { keepQuery = false } = options || {};
+        this.lastJSONPathResults = [];
+        this.lastJSONPathMeta = { totalCount: 0, truncated: false };
+        this.lastJSONPathPointerLocator = null;
+        this.currentJSONPathIndex = -1;
+        if (!keepQuery) {
+            this.lastJSONPathQuery = '';
+        }
+    }
+
+    focusJSONPathMatch(index, editor = this.getActiveEditor(), options = {}) {
+        const { reveal = true, fromWidget = false } = options || {};
+
+        if (!editor) {
+            return false;
+        }
+
+        const matches = Array.isArray(this.lastJSONPathResults) ? this.lastJSONPathResults : [];
+        if (matches.length === 0) {
+            this.currentJSONPathIndex = -1;
+            if (fromWidget) {
+                this.updateFindWidgetMatchesCount(0, false, -1);
+            }
+            return false;
+        }
+
+        const targetIndex = Number(index);
+        if (Number.isNaN(targetIndex) || targetIndex < 0 || targetIndex >= matches.length) {
+            return false;
+        }
+
+        const match = matches[targetIndex];
+        if (!match) {
+            return false;
+        }
+
+        const content = editor.getValue();
+        let position = match.position;
+        let pointerLocator = this.lastJSONPathPointerLocator;
+
+        if (!pointerLocator) {
+            pointerLocator = this.createPointerLocator(content);
+            this.lastJSONPathPointerLocator = pointerLocator;
+        }
+
+        if ((!position || typeof position.startLineNumber !== 'number') && pointerLocator) {
+            const pointer = match.pointer || this.convertJSONPathToPointer(match.path);
+            if (pointer) {
+                const pointerPosition = pointerLocator.getRange(pointer);
+                if (pointerPosition) {
+                    position = pointerPosition;
+                    match.position = pointerPosition;
+                }
+            }
+        }
+
+        if (!position || typeof position.startLineNumber !== 'number') {
+            const pointer = match.pointer || null;
+            const fallbackPosition = this.findValuePosition(match.value, content, editor, match.path, pointerLocator, pointer);
+            if (fallbackPosition) {
+                position = fallbackPosition;
+                match.position = fallbackPosition;
+            }
+        }
+
+        if (!position || typeof position.startLineNumber !== 'number') {
+            return false;
+        }
+
+        const range = new monaco.Range(
+            position.startLineNumber,
+            position.startColumn,
+            position.endLineNumber,
+            position.endColumn
+        );
+
+        editor.setSelection(range);
+        if (reveal) {
+            if (monaco?.editor?.ScrollType) {
+                editor.revealRangeInCenter(range, monaco.editor.ScrollType.Smooth);
+            } else {
+                editor.revealRangeInCenter(range);
+            }
+        }
+
+        this.currentJSONPathIndex = targetIndex;
+
+        if (fromWidget || (this.findWidgetIntegration && this.findWidgetIntegration.enabled)) {
+            const meta = this.lastJSONPathMeta || {};
+            const total = typeof meta.totalCount === 'number' && meta.totalCount > 0
+                ? meta.totalCount
+                : matches.length;
+            this.updateFindWidgetMatchesCount(total, Boolean(meta.truncated), targetIndex);
+        }
+
+        return true;
+    }
+
+    navigateJSONPathMatches(direction = 1, editor = this.getActiveEditor(), options = {}) {
+        const matches = Array.isArray(this.lastJSONPathResults) ? this.lastJSONPathResults : [];
+
+        if (!editor || matches.length === 0) {
+            if (options.notify !== false) {
+                this.showNotification('No JSONPath matches to navigate', 'warning');
+            }
+            return false;
+        }
+
+        let step = Number(direction);
+        if (Number.isNaN(step) || step === 0) {
+            step = 1;
+        }
+
+        const total = matches.length;
+        let targetIndex = typeof this.currentJSONPathIndex === 'number' ? this.currentJSONPathIndex : -1;
+
+        if (targetIndex < 0 || targetIndex >= total) {
+            targetIndex = step > 0 ? 0 : total - 1;
+        } else {
+            targetIndex = (targetIndex + step + total) % total;
+        }
+
+        const success = this.focusJSONPathMatch(targetIndex, editor, {
+            fromWidget: options.fromWidget,
+            reveal: options.reveal !== false
+        });
+
+        if (!success && options.notify !== false) {
+            this.showNotification('Unable to navigate to JSONPath match', 'warning');
+        }
+
+        return success;
+    }
+
+    updateFindWidgetMatchesCount(totalCount, truncated, index = this.currentJSONPathIndex, extra = {}) {
+        const integration = this.findWidgetIntegration;
+        if (!integration || !integration.matchesElement) {
+            return;
+        }
+
+        const matchesElement = integration.matchesElement;
+
+        if (extra.reset) {
+            if (typeof integration.originalMatchesText === 'string') {
+                matchesElement.textContent = integration.originalMatchesText;
+            }
+            matchesElement.removeAttribute('data-jsonpath');
+            return;
+        }
+
+        if (!integration.enabled && !extra.force) {
+            return;
+        }
+
+        matchesElement.dataset.jsonpath = 'true';
+
+        if (extra.searching) {
+            matchesElement.textContent = 'JSONPath: searching…';
+            return;
+        }
+
+        if (extra.emptyQuery) {
+            matchesElement.textContent = 'JSONPath: enter path';
+            return;
+        }
+
+        if (extra.noContent) {
+            matchesElement.textContent = 'JSONPath: no content';
+            return;
+        }
+
+        if (extra.error) {
+            matchesElement.textContent = 'JSONPath error';
+            return;
+        }
+
+        if (!totalCount || totalCount <= 0) {
+            matchesElement.textContent = 'JSONPath: no results';
+            return;
+        }
+
+        const displayIndex = typeof index === 'number' && index >= 0 ? index + 1 : 1;
+        let label = `JSONPath: ${displayIndex}/${totalCount}`;
+        if (truncated && Array.isArray(this.lastJSONPathResults) && this.lastJSONPathResults.length < totalCount) {
+            label += ' (partial)';
+        }
+        matchesElement.textContent = label;
+    }
+
+    performFindWidgetJSONPathSearch(query, options = {}) {
+        const integration = this.findWidgetIntegration;
+        if (!integration || !integration.enabled) {
+            return;
+        }
+
+        const trimmed = typeof query === 'string' ? query.trim() : '';
+        const immediate = Boolean(options.immediate);
+        const delay = typeof options.delay === 'number' ? options.delay : 150;
+
+        if (integration.searchDebounce) {
+            clearTimeout(integration.searchDebounce);
+            integration.searchDebounce = null;
+        }
+
+        if (!trimmed) {
+            this.resetJSONPathResults({ keepQuery: false });
+            this.lastJSONPathQuery = '';
+            this.updateFindWidgetMatchesCount(0, false, -1, { emptyQuery: true });
+            return;
+        }
+
+        const runSearch = () => {
+            integration.searchDebounce = null;
+            const targetEditor = integration.editor || this.getActiveEditor();
+            if (targetEditor) {
+                this.searchWithJSONPath(trimmed, targetEditor, {
+                    notify: false,
+                    revealFirst: options.revealFirst !== false,
+                    fromWidget: true
+                });
+            }
+        };
+
+        this.updateFindWidgetMatchesCount(null, false, -1, { searching: true, force: true });
+
+        if (immediate) {
+            runSearch();
+            return;
+        }
+
+        integration.searchDebounce = setTimeout(runSearch, delay);
+    }
+
+    setupFindWidgetIntegration(editor) {
+        if (typeof document === 'undefined') {
+            return;
+        }
+
+        if (!this.findWidgetIntegration) {
+            this.findWidgetIntegration = {
+                editor,
+                widget: null,
+                toggleElement: null,
+                matchesElement: null,
+                inputElement: null,
+                nextButton: null,
+                prevButton: null,
+                closeButton: null,
+                enabled: false,
+                observer: null,
+                searchDebounce: null,
+                originalMatchesText: '',
+                resizeHandler: null,
+                resizeObserver: null,
+                layoutRaf: null,
+                layoutScheduler: 'raf',
+                lastLayoutWidth: null,
+                lastReservedPadding: null
+            };
+        } else {
+            this.findWidgetIntegration.editor = editor;
+            if (!('resizeHandler' in this.findWidgetIntegration)) {
+                this.findWidgetIntegration.resizeHandler = null;
+            }
+            if (!('resizeObserver' in this.findWidgetIntegration)) {
+                this.findWidgetIntegration.resizeObserver = null;
+            }
+            if (!('layoutRaf' in this.findWidgetIntegration)) {
+                this.findWidgetIntegration.layoutRaf = null;
+            }
+            if (!('layoutScheduler' in this.findWidgetIntegration)) {
+                this.findWidgetIntegration.layoutScheduler = 'raf';
+            }
+            if (!('lastLayoutWidth' in this.findWidgetIntegration)) {
+                this.findWidgetIntegration.lastLayoutWidth = null;
+            }
+            if (!('lastReservedPadding' in this.findWidgetIntegration)) {
+                this.findWidgetIntegration.lastReservedPadding = null;
+            }
+        }
+
+        const integration = this.findWidgetIntegration;
+
+        const tryDecorate = () => {
+            const widgetNode = document.querySelector('.editor-widget.find-widget');
+            if (widgetNode) {
+                this.decorateFindWidget(widgetNode, integration);
+                return true;
+            }
+            return false;
+        };
+
+        if (!tryDecorate()) {
+            if (!integration.observer) {
+                integration.observer = new MutationObserver((mutations) => {
+                    for (const mutation of mutations) {
+                        if (mutation.addedNodes) {
+                            for (const node of mutation.addedNodes) {
+                                if (!node || node.nodeType !== 1) {
+                                    continue;
+                                }
+
+                                const element = node;
+                                if (element.classList.contains('find-widget')) {
+                                    this.decorateFindWidget(element, integration);
+                                    continue;
+                                }
+
+                                const nested = element.querySelector ? element.querySelector('.editor-widget.find-widget, .find-widget') : null;
+                                if (nested) {
+                                    const actualWidget = nested.classList && nested.classList.contains('find-widget')
+                                        ? nested
+                                        : nested.querySelector('.find-widget');
+                                    if (actualWidget) {
+                                        this.decorateFindWidget(actualWidget, integration);
+                                    }
+                                }
+                            }
+                        }
+
+                        if (mutation.removedNodes && integration.widget) {
+                            for (const node of mutation.removedNodes) {
+                                if (!node || node.nodeType !== 1) {
+                                    continue;
+                                }
+                                if (node === integration.widget || (node.contains && node.contains(integration.widget))) {
+                                    this.handleFindWidgetRemoval();
+                                }
+                            }
+                        }
+                    }
+                });
+
+                integration.observer.observe(document.body, { childList: true, subtree: true });
+            }
+        }
+    }
+
+    async openFindWidget(options = {}) {
+        const editor = this.getActiveEditor();
+        if (!editor) {
+            return null;
+        }
+
+        this.setupFindWidgetIntegration(editor);
+
+        const findAction = editor.getAction && editor.getAction('actions.find');
+        try {
+            if (findAction && typeof findAction.run === 'function') {
+                await findAction.run();
+            } else {
+                editor.trigger('keyboard', 'actions.find', null);
+            }
+        } catch (error) {
+            console.warn('Find widget command failed, triggering fallback:', error);
+            editor.trigger('keyboard', 'actions.find', null);
+        }
+
+        const start = Date.now();
+        const scheduler = typeof requestAnimationFrame === 'function'
+            ? requestAnimationFrame
+            : (callback) => setTimeout(callback, 30);
+
+        return new Promise((resolve) => {
+            const awaitWidget = () => {
+                const integration = this.findWidgetIntegration;
+                if (integration && integration.widget && integration.inputElement) {
+                    const input = integration.inputElement;
+                    const focus = options.focus !== false;
+                    const select = options.select !== false;
+                    const notify = options.notify === true;
+                    const explicitMode = typeof options.jsonPathMode === 'boolean';
+                    const targetMode = explicitMode ? options.jsonPathMode : null;
+                    const hasQueryOption = typeof options.query === 'string';
+                    const rawQuery = hasQueryOption ? options.query : '';
+                    const trimmedQuery = rawQuery.trim();
+
+                    if (hasQueryOption) {
+                        if (input.value !== trimmedQuery) {
+                            input.value = trimmedQuery;
+                        }
+                    }
+
+                    if (explicitMode) {
+                        this.setFindWidgetJSONPathMode(targetMode, { notify, focusInput: false });
+                    }
+
+                    if ((!explicitMode || targetMode !== true) && hasQueryOption) {
+                        input.dispatchEvent(new Event('input', { bubbles: true }));
+                    }
+
+                    if (focus) {
+                        input.focus();
+                        if (select) {
+                            input.select();
+                        }
+                    }
+
+                    resolve(integration);
+                    return;
+                }
+
+                if (Date.now() - start > 1200) {
+                    resolve(null);
+                    return;
+                }
+
+                scheduler(awaitWidget);
+            };
+
+            awaitWidget();
+        });
+    }
+
+    decorateFindWidget(widgetNode, integration = this.findWidgetIntegration) {
+        if (!integration || !widgetNode || typeof widgetNode.querySelector !== 'function') {
+            return;
+        }
+
+        if (widgetNode.dataset) {
+            widgetNode.dataset.jsonpathDecorated = 'true';
+        }
+
+        widgetNode.classList.add('jsonpath-extended');
+
+        integration.widget = widgetNode;
+
+        if (typeof window !== 'undefined') {
+            if (integration.resizeHandler) {
+                window.removeEventListener('resize', integration.resizeHandler);
+            }
+
+            integration.resizeHandler = () => {
+                this.refreshFindWidgetLayout();
+            };
+
+            window.addEventListener('resize', integration.resizeHandler, { passive: true });
+        }
+
+        if (typeof ResizeObserver !== 'undefined') {
+            if (!integration.resizeObserver) {
+                integration.resizeObserver = new ResizeObserver(() => {
+                    this.refreshFindWidgetLayout();
+                });
+            } else {
+                integration.resizeObserver.disconnect();
+            }
+
+            integration.resizeObserver.observe(widgetNode);
+        }
+
+        const matchesElement = widgetNode.querySelector('.matchesCount');
+        if (matchesElement) {
+            integration.matchesElement = matchesElement;
+            if (!integration.originalMatchesText) {
+                integration.originalMatchesText = matchesElement.textContent || '';
+            }
+        }
+
+        const controls = widgetNode.querySelector('.controls');
+        if (controls) {
+            controls.classList.add('jsonpath-widget-controls');
+        }
+        if (controls && !widgetNode.querySelector('[data-jsonpath-toggle]')) {
+            const toggle = document.createElement('div');
+            toggle.className = 'monaco-custom-toggle codicon codicon-symbol-structure';
+            toggle.setAttribute('role', 'checkbox');
+            toggle.setAttribute('tabindex', '0');
+            toggle.setAttribute('aria-checked', 'false');
+            toggle.setAttribute('aria-label', 'Use JSONPath (Alt+J)');
+            toggle.setAttribute('title', 'Use JSONPath (Alt+J)');
+            toggle.dataset.jsonpathToggle = 'true';
+            toggle.classList.add('monaco-jsonpath-toggle');
+
+            const toggleHandler = (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                this.setFindWidgetJSONPathMode(!integration.enabled, { notify: true, focusInput: true });
+            };
+
+            toggle.addEventListener('click', toggleHandler);
+            toggle.addEventListener('keydown', (event) => {
+                if (event.key === ' ' || event.key === 'Enter') {
+                    toggleHandler(event);
+                }
+            });
+
+            if (controls.firstChild) {
+                controls.insertBefore(toggle, controls.firstChild);
+            } else {
+                controls.appendChild(toggle);
+            }
+            integration.toggleElement = toggle;
+        } else if (controls) {
+            if (!integration.toggleElement) {
+                integration.toggleElement = controls.querySelector('[data-jsonpath-toggle]');
+            }
+            if (integration.toggleElement) {
+                integration.toggleElement.classList.add('monaco-jsonpath-toggle');
+            }
+        }
+
+        const inputElement = widgetNode.querySelector('.find-part .input');
+        if (inputElement) {
+            integration.inputElement = inputElement;
+            if (!inputElement.dataset.jsonpathBound) {
+                inputElement.dataset.jsonpathBound = 'true';
+
+                inputElement.addEventListener('input', () => {
+                    if (integration.enabled) {
+                        this.performFindWidgetJSONPathSearch(inputElement.value);
+                    }
+                });
+
+                inputElement.addEventListener('keydown', (event) => {
+                    if (!integration.enabled) {
+                        return;
+                    }
+
+                    if (event.key === 'Enter') {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        const query = inputElement.value.trim();
+                        if (!query) {
+                            this.updateFindWidgetMatchesCount(0, false, -1, { emptyQuery: true });
+                            return;
+                        }
+
+                        if (query !== this.lastJSONPathQuery) {
+                            this.performFindWidgetJSONPathSearch(query, { immediate: true });
+                            return;
+                        }
+
+                        const direction = event.shiftKey ? -1 : 1;
+                        this.navigateJSONPathMatches(direction, integration.editor, { fromWidget: true, notify: false });
+                    }
+                });
+            }
+        }
+
+        const nextButton = widgetNode.querySelector('.codicon-find-next-match');
+        if (nextButton) {
+            integration.nextButton = nextButton;
+            if (!nextButton.dataset.jsonpathBound) {
+                nextButton.dataset.jsonpathBound = 'true';
+                nextButton.addEventListener('mousedown', (event) => {
+                    if (integration.enabled) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                    }
+                });
+                nextButton.addEventListener('click', (event) => {
+                    if (!integration.enabled) {
+                        return;
+                    }
+                    event.preventDefault();
+                    event.stopPropagation();
+                    const query = integration.inputElement ? integration.inputElement.value.trim() : '';
+                    if (query && query !== this.lastJSONPathQuery) {
+                        this.performFindWidgetJSONPathSearch(query, { immediate: true });
+                        return;
+                    }
+                    this.navigateJSONPathMatches(1, integration.editor, { fromWidget: true, notify: false });
+                });
+            }
+        }
+
+        const prevButton = widgetNode.querySelector('.codicon-find-previous-match');
+        if (prevButton) {
+            integration.prevButton = prevButton;
+            if (!prevButton.dataset.jsonpathBound) {
+                prevButton.dataset.jsonpathBound = 'true';
+                prevButton.addEventListener('mousedown', (event) => {
+                    if (integration.enabled) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                    }
+                });
+                prevButton.addEventListener('click', (event) => {
+                    if (!integration.enabled) {
+                        return;
+                    }
+                    event.preventDefault();
+                    event.stopPropagation();
+                    const query = integration.inputElement ? integration.inputElement.value.trim() : '';
+                    if (query && query !== this.lastJSONPathQuery) {
+                        this.performFindWidgetJSONPathSearch(query, { immediate: true });
+                        return;
+                    }
+                    this.navigateJSONPathMatches(-1, integration.editor, { fromWidget: true, notify: false });
+                });
+            }
+        }
+
+        const closeButton = widgetNode.querySelector('.codicon-widget-close');
+        if (closeButton) {
+            integration.closeButton = closeButton;
+            if (!closeButton.dataset.jsonpathBound) {
+                closeButton.dataset.jsonpathBound = 'true';
+                closeButton.addEventListener('click', () => {
+                    if (integration.enabled) {
+                        this.setFindWidgetJSONPathMode(false, { notify: false });
+                    }
+                });
+            }
+        }
+
+        if (integration.enabled) {
+            const meta = this.lastJSONPathMeta || {};
+            const total = typeof meta.totalCount === 'number' && meta.totalCount > 0
+                ? meta.totalCount
+                : (Array.isArray(this.lastJSONPathResults) ? this.lastJSONPathResults.length : 0);
+            if (total > 0) {
+                this.updateFindWidgetMatchesCount(total, Boolean(meta.truncated), this.currentJSONPathIndex, { force: true });
+            } else {
+                this.updateFindWidgetMatchesCount(0, false, -1, { emptyQuery: !this.lastJSONPathQuery });
+            }
+        }
+
+        this.refreshFindWidgetLayout({ immediate: true });
+    }
+
+    refreshFindWidgetLayout(options = {}) {
+        const integration = this.findWidgetIntegration;
+        if (!integration || !integration.widget) {
+            return;
+        }
+
+        const widget = integration.widget;
+        widget.classList.add('jsonpath-extended');
+
+        const schedulerType = typeof requestAnimationFrame === 'function' ? 'raf' : 'timeout';
+        const scheduler = schedulerType === 'raf'
+            ? requestAnimationFrame
+            : (callback) => setTimeout(callback, 20);
+
+        if (integration.layoutRaf !== null) {
+            if (integration.layoutScheduler === 'raf' && typeof cancelAnimationFrame === 'function') {
+                cancelAnimationFrame(integration.layoutRaf);
+            } else {
+                clearTimeout(integration.layoutRaf);
+            }
+            integration.layoutRaf = null;
+        }
+
+        integration.layoutScheduler = schedulerType;
+
+        const performLayout = () => {
+            integration.layoutRaf = null;
+
+            const viewportWidth = typeof window !== 'undefined' ? window.innerWidth || 0 : 0;
+            let targetWidth = 460;
+
+            if (viewportWidth > 0) {
+                const horizontalPadding = viewportWidth < 600 ? 24 : 48;
+                const idealFraction = viewportWidth < 1280 ? 0.62 : 0.5;
+                const idealWidth = Math.round(viewportWidth * idealFraction);
+                targetWidth = Math.max(380, Math.min(720, viewportWidth - horizontalPadding, idealWidth));
+
+                if (viewportWidth <= 520) {
+                    targetWidth = Math.max(320, viewportWidth - 20);
+                }
+            }
+
+            let widthLimit = targetWidth;
+            if (viewportWidth > 0) {
+                const viewportLimit = Math.max(320, viewportWidth - 32);
+                widthLimit = Math.min(targetWidth, viewportLimit);
+            }
+
+            if (integration.lastLayoutWidth !== widthLimit) {
+                widget.style.width = `${widthLimit}px`;
+                widget.style.maxWidth = 'calc(100vw - 32px)';
+                widget.style.minWidth = `${Math.min(Math.max(widthLimit, 320), 420)}px`;
+                integration.lastLayoutWidth = widthLimit;
+            }
+
+            const findPart = widget.querySelector('.find-part');
+            if (findPart) {
+                findPart.style.flex = '1 1 auto';
+                findPart.style.minWidth = '0';
+            }
+
+            const findInput = widget.querySelector('.find-part .monaco-findInput');
+            if (findInput) {
+                findInput.style.flex = '1 1 auto';
+                findInput.style.minWidth = '0';
+            }
+
+            const replacePart = widget.querySelector('.replace-part');
+            if (replacePart) {
+                replacePart.style.flex = '1 1 auto';
+                replacePart.style.minWidth = '0';
+            }
+
+            const controls = widget.querySelector('.find-part .controls');
+            let reservedPadding = 88;
+            if (controls) {
+                controls.classList.add('jsonpath-widget-controls');
+                const rect = controls.getBoundingClientRect();
+                if (rect && rect.width) {
+                    reservedPadding = Math.max(72, Math.round(rect.width) + 12);
+                } else if (controls.children && controls.children.length) {
+                    reservedPadding = Math.max(72, (controls.children.length * 24) + 12);
+                }
+            }
+
+            if (integration.lastReservedPadding !== reservedPadding) {
+                const adjustInput = (selector, offset, minimumPadding) => {
+                    const container = widget.querySelector(selector);
+                    if (!container) {
+                        return;
+                    }
+
+                    const input = container.querySelector('.input');
+                    const mirror = container.querySelector('.mirror');
+                    const paddingValue = Math.max(minimumPadding, reservedPadding - offset);
+
+                    if (input) {
+                        input.style.width = `calc(100% - ${paddingValue}px)`;
+                    }
+
+                    if (mirror) {
+                        mirror.style.paddingRight = `${paddingValue}px`;
+                    }
+                };
+
+                adjustInput('.find-part .monaco-findInput', 0, 72);
+                adjustInput('.replace-part .monaco-findInput', 24, 56);
+
+                integration.lastReservedPadding = reservedPadding;
+            }
+
+            const matchesElement = widget.querySelector('.matchesCount');
+            if (matchesElement) {
+                matchesElement.style.minWidth = '96px';
+                matchesElement.style.textAlign = 'right';
+            }
+        };
+
+        if (options.immediate) {
+            performLayout();
+        }
+
+        integration.layoutRaf = scheduler(() => {
+            performLayout();
+        });
+    }
+
+    toggleFindWidgetJSONPathMode(force) {
+        const editor = this.getActiveEditor();
+        if (!editor) {
+            return;
+        }
+
+        const integration = this.findWidgetIntegration;
+        const desiredState = typeof force === 'boolean'
+            ? force
+            : !(integration && integration.enabled);
+
+        const applyToggle = () => {
+            this.setupFindWidgetIntegration(editor);
+            const updatedIntegration = this.findWidgetIntegration;
+            if (updatedIntegration && updatedIntegration.widget) {
+                this.setFindWidgetJSONPathMode(desiredState, { notify: true, focusInput: true });
+            }
+        };
+
+        if (!integration || !integration.widget) {
+            const findAction = editor.getAction && editor.getAction('actions.find');
+            if (findAction && typeof findAction.run === 'function') {
+                findAction.run().then(() => {
+                    setTimeout(applyToggle, 0);
+                }).catch(() => {
+                    setTimeout(applyToggle, 0);
+                });
+            } else {
+                editor.trigger('keyboard', 'actions.find', null);
+                setTimeout(applyToggle, 0);
+            }
+        } else {
+            applyToggle();
+        }
+    }
+
+    setFindWidgetJSONPathMode(enabled, options = {}) {
+        const integration = this.findWidgetIntegration;
+        if (!integration) {
+            return;
+        }
+
+        const previousState = integration.enabled;
+        integration.enabled = Boolean(enabled);
+
+        if (integration.toggleElement) {
+            integration.toggleElement.setAttribute('aria-checked', integration.enabled ? 'true' : 'false');
+            integration.toggleElement.classList.toggle('checked', integration.enabled);
+            const toggleLabel = integration.enabled ? 'Disable JSONPath (Alt+J)' : 'Use JSONPath (Alt+J)';
+            integration.toggleElement.setAttribute('aria-label', toggleLabel);
+            integration.toggleElement.setAttribute('title', toggleLabel);
+        }
+
+        if (integration.widget) {
+            integration.widget.classList.toggle('jsonpath-mode', integration.enabled);
+        }
+
+        this.refreshFindWidgetLayout();
+
+        if (!integration.enabled) {
+            if (integration.searchDebounce) {
+                clearTimeout(integration.searchDebounce);
+                integration.searchDebounce = null;
+            }
+            this.updateFindWidgetMatchesCount(null, false, -1, { reset: true });
+            if (options.notify && previousState !== integration.enabled) {
+                this.showNotification('JSONPath mode disabled in find widget', 'info');
+            }
+            return;
+        }
+
+        if (options.notify && previousState !== integration.enabled) {
+            this.showNotification('JSONPath mode enabled in find widget', 'info');
+        }
+
+        const input = integration.inputElement;
+        if (options.focusInput && input) {
+            input.focus();
+            input.select();
+        }
+
+        const query = input ? input.value.trim() : '';
+        if (query) {
+            this.performFindWidgetJSONPathSearch(query, { immediate: true });
+        } else {
+            this.updateFindWidgetMatchesCount(0, false, -1, { emptyQuery: true });
+        }
+    }
+
+    handleFindWidgetRemoval() {
+        const integration = this.findWidgetIntegration;
+        if (!integration) {
+            return;
+        }
+
+        if (integration.searchDebounce) {
+            clearTimeout(integration.searchDebounce);
+            integration.searchDebounce = null;
+        }
+
+        if (integration.layoutRaf !== null) {
+            if (integration.layoutScheduler === 'raf' && typeof cancelAnimationFrame === 'function') {
+                cancelAnimationFrame(integration.layoutRaf);
+            } else {
+                clearTimeout(integration.layoutRaf);
+            }
+            integration.layoutRaf = null;
+        }
+
+        if (integration.resizeObserver && typeof integration.resizeObserver.disconnect === 'function') {
+            integration.resizeObserver.disconnect();
+            integration.resizeObserver = null;
+        }
+
+        if (integration.resizeHandler && typeof window !== 'undefined') {
+            window.removeEventListener('resize', integration.resizeHandler);
+            integration.resizeHandler = null;
+        }
+
+        if (integration.widget) {
+            integration.widget.classList.remove('jsonpath-extended', 'jsonpath-mode');
+            integration.widget.style.removeProperty('width');
+            integration.widget.style.removeProperty('maxWidth');
+            integration.widget.style.removeProperty('minWidth');
+
+            const findInput = integration.widget.querySelector('.find-part .input');
+            const findMirror = integration.widget.querySelector('.find-part .mirror');
+            if (findInput) {
+                findInput.style.removeProperty('width');
+            }
+            if (findMirror) {
+                findMirror.style.removeProperty('padding-right');
+            }
+
+            const replaceInput = integration.widget.querySelector('.replace-part .input');
+            const replaceMirror = integration.widget.querySelector('.replace-part .mirror');
+            if (replaceInput) {
+                replaceInput.style.removeProperty('width');
+            }
+            if (replaceMirror) {
+                replaceMirror.style.removeProperty('padding-right');
+            }
+        }
+
+        integration.lastLayoutWidth = null;
+        integration.lastReservedPadding = null;
+
+        integration.widget = null;
+        integration.toggleElement = null;
+        integration.matchesElement = null;
+        integration.inputElement = null;
+        integration.nextButton = null;
+        integration.prevButton = null;
+        integration.closeButton = null;
+        integration.enabled = false;
     }
 
     startHealthMonitoring() {
@@ -1162,8 +2544,515 @@ class MonacoInitializer {
         if (this.searchIndex && typeof this.searchIndex.clear === 'function') {
             this.searchIndex.clear();
         }
-        
+
+        if (this.findWidgetIntegration) {
+            this.handleFindWidgetRemoval();
+            if (this.findWidgetIntegration.observer) {
+                this.findWidgetIntegration.observer.disconnect();
+                this.findWidgetIntegration.observer = null;
+            }
+            if (this.findWidgetIntegration.searchDebounce) {
+                clearTimeout(this.findWidgetIntegration.searchDebounce);
+                this.findWidgetIntegration.searchDebounce = null;
+            }
+            this.findWidgetIntegration = null;
+        }
+
         this.isInitialized = false;
+    }
+}
+
+function convertJSONToYAML(value, indentLevel = 0) {
+    const indent = '  '.repeat(indentLevel);
+
+    if (Array.isArray(value)) {
+        if (value.length === 0) {
+            return `${indent}[]`;
+        }
+
+        return value.map((item) => {
+            if (isPlainObject(item) || Array.isArray(item)) {
+                const nested = convertJSONToYAML(item, indentLevel + 1).split('\n');
+                const firstLine = nested.shift() || '';
+                let line = `${indent}- ${firstLine.trimStart()}`;
+                if (nested.length > 0) {
+                    line += `\n${nested.join('\n')}`;
+                }
+                return line;
+            }
+
+            return `${indent}- ${formatYAMLScalar(item)}`;
+        }).join('\n');
+    }
+
+    if (isPlainObject(value)) {
+        const entries = Object.keys(value);
+        if (entries.length === 0) {
+            return `${indent}{}`;
+        }
+
+        return entries.map((key) => {
+            const formattedKey = formatYAMLKey(key);
+            const item = value[key];
+
+            if (isPlainObject(item) || Array.isArray(item)) {
+                const nested = convertJSONToYAML(item, indentLevel + 1);
+                return `${indent}${formattedKey}:\n${nested}`;
+            }
+
+            return `${indent}${formattedKey}: ${formatYAMLScalar(item)}`;
+        }).join('\n');
+    }
+
+    return `${indent}${formatYAMLScalar(value)}`;
+}
+
+function formatYAMLScalar(value) {
+    if (value === null || value === undefined) {
+        return 'null';
+    }
+
+    if (typeof value === 'number' || typeof value === 'boolean') {
+        return String(value);
+    }
+
+    if (value instanceof Date) {
+        return JSON.stringify(value.toISOString());
+    }
+
+    if (typeof value === 'string') {
+        if (value === '') {
+            return '""';
+        }
+
+        const simplePattern = /^[A-Za-z0-9_\-]+$/;
+        const reservedWords = /^(?:true|false|null|yes|no|on|off|~)$/i;
+        if (simplePattern.test(value) && !reservedWords.test(value)) {
+            return value;
+        }
+
+        if (!/[\n\r]/.test(value) && !/^\s|\s$/.test(value) && !/[#:>{}\[\],&*?]|!/.test(value)) {
+            return value;
+        }
+
+        return JSON.stringify(value);
+    }
+
+    return JSON.stringify(value);
+}
+
+function formatYAMLKey(key) {
+    if (typeof key === 'string' && /^[A-Za-z0-9_\-]+$/.test(key)) {
+        return key;
+    }
+
+    return JSON.stringify(key);
+}
+
+function isPlainObject(value) {
+    return Object.prototype.toString.call(value) === '[object Object]';
+}
+
+function convertPathArrayToJSONPath(pathArray) {
+    if (!Array.isArray(pathArray) || pathArray.length === 0) {
+        return '$';
+    }
+
+    let result = '$';
+
+    for (let i = 1; i < pathArray.length; i++) {
+        const part = pathArray[i];
+        if (typeof part === 'number') {
+            result += `[${part}]`;
+        } else if (typeof part === 'string') {
+            if (isSimpleJsonPathSegment(part)) {
+                result += `.${part}`;
+            } else {
+                const escaped = part.replace(/'/g, "\\'");
+                result += `['${escaped}']`;
+            }
+        } else if (part !== undefined && part !== null) {
+            result += `[${String(part)}]`;
+        }
+    }
+
+    return result;
+}
+
+function convertPathArrayToPointer(pathArray) {
+    if (!Array.isArray(pathArray) || pathArray.length === 0) {
+        return '$';
+    }
+
+    let pointer = '$';
+
+    for (let i = 1; i < pathArray.length; i++) {
+        const part = pathArray[i];
+        pointer = appendPointerSegment(pointer, part);
+    }
+
+    return pointer;
+}
+
+function appendPointerSegment(base, segment) {
+    if (typeof segment === 'number') {
+        return `${base}/${segment}`;
+    }
+
+    return `${base}/${escapeJsonPointerSegment(segment)}`;
+}
+
+function escapeJsonPointerSegment(segment) {
+    return String(segment).replace(/~/g, '~0').replace(/\//g, '~1');
+}
+
+function isSimpleJsonPathSegment(segment) {
+    return /^[A-Za-z_][A-Za-z0-9_]*$/.test(segment);
+}
+
+function buildJSONPointerLocator(text) {
+    if (typeof text !== 'string' || text.length === 0) {
+        return null;
+    }
+
+    try {
+        const pointerMap = new Map();
+        const length = text.length;
+        const lineOffsets = [0];
+
+        for (let i = 0; i < length; i++) {
+            if (text[i] === '\n') {
+                lineOffsets.push(i + 1);
+            }
+        }
+
+        let index = 0;
+
+        const offsetToPosition = (offset) => {
+            if (offset < 0) offset = 0;
+            if (offset > length) offset = length;
+
+            let low = 0;
+            let high = lineOffsets.length - 1;
+
+            while (low <= high) {
+                const mid = Math.floor((low + high) / 2);
+                const lineStart = lineOffsets[mid];
+                const nextLineStart = mid + 1 < lineOffsets.length ? lineOffsets[mid + 1] : length + 1;
+
+                if (offset < lineStart) {
+                    high = mid - 1;
+                } else if (offset >= nextLineStart) {
+                    low = mid + 1;
+                } else {
+                    return {
+                        lineNumber: mid + 1,
+                        column: offset - lineStart + 1
+                    };
+                }
+            }
+
+            const lastLineIndex = lineOffsets.length - 1;
+            const lineStart = lineOffsets[lastLineIndex] || 0;
+            return {
+                lineNumber: lastLineIndex + 1,
+                column: offset - lineStart + 1
+            };
+        };
+
+        const skipWhitespace = () => {
+            while (index < length) {
+                const char = text[index];
+                if (char === ' ' || char === '\t' || char === '\n' || char === '\r') {
+                    index++;
+                } else {
+                    break;
+                }
+            }
+        };
+
+        const recordPointer = (pointer, start, end) => {
+            if (pointer && start <= end) {
+                pointerMap.set(pointer, { start, end });
+            }
+        };
+
+        const parseValue = (pointer) => {
+            skipWhitespace();
+            if (index >= length) {
+                throw new Error('Unexpected end of JSON input');
+            }
+
+            const char = text[index];
+
+            if (char === '{') {
+                parseObject(pointer);
+                return;
+            }
+
+            if (char === '[') {
+                parseArray(pointer);
+                return;
+            }
+
+            if (char === '"') {
+                const { start, end } = parseStringLiteral();
+                recordPointer(pointer, start, end);
+                return;
+            }
+
+            if (char === '-' || isDigit(char)) {
+                const { start, end } = parseNumberLiteral();
+                recordPointer(pointer, start, end);
+                return;
+            }
+
+            if (text.startsWith('true', index)) {
+                const { start, end } = parseLiteral('true');
+                recordPointer(pointer, start, end);
+                return;
+            }
+
+            if (text.startsWith('false', index)) {
+                const { start, end } = parseLiteral('false');
+                recordPointer(pointer, start, end);
+                return;
+            }
+
+            if (text.startsWith('null', index)) {
+                const { start, end } = parseLiteral('null');
+                recordPointer(pointer, start, end);
+                return;
+            }
+
+            throw new Error(`Unexpected token ${char} at position ${index}`);
+        };
+
+        const parseObject = (pointer) => {
+            const start = index;
+            index++; // Skip {
+            skipWhitespace();
+
+            if (index < length && text[index] === '}') {
+                index++;
+                recordPointer(pointer, start, index);
+                return;
+            }
+
+            while (index < length) {
+                if (text[index] !== '"') {
+                    throw new Error('Expected string for object key');
+                }
+
+                const { value: key } = parseStringLiteral();
+                skipWhitespace();
+
+                if (text[index] !== ':') {
+                    throw new Error('Expected colon after object key');
+                }
+
+                index++; // Skip :
+                const childPointer = appendPointerSegment(pointer, key);
+                parseValue(childPointer);
+                skipWhitespace();
+
+                const delimiter = text[index];
+                if (delimiter === ',') {
+                    index++;
+                    skipWhitespace();
+                    continue;
+                }
+
+                if (delimiter === '}') {
+                    index++;
+                    recordPointer(pointer, start, index);
+                    return;
+                }
+
+                throw new Error('Expected comma or closing brace in object');
+            }
+
+            throw new Error('Unterminated object literal');
+        };
+
+        const parseArray = (pointer) => {
+            const start = index;
+            index++; // Skip [
+            skipWhitespace();
+
+            if (index < length && text[index] === ']') {
+                index++;
+                recordPointer(pointer, start, index);
+                return;
+            }
+
+            let arrayIndex = 0;
+            while (index < length) {
+                const childPointer = appendPointerSegment(pointer, arrayIndex);
+                parseValue(childPointer);
+                arrayIndex++;
+                skipWhitespace();
+
+                const delimiter = text[index];
+                if (delimiter === ',') {
+                    index++;
+                    skipWhitespace();
+                    continue;
+                }
+
+                if (delimiter === ']') {
+                    index++;
+                    recordPointer(pointer, start, index);
+                    return;
+                }
+
+                throw new Error('Expected comma or closing bracket in array');
+            }
+
+            throw new Error('Unterminated array literal');
+        };
+
+        const parseStringLiteral = () => {
+            const start = index;
+            index++; // Skip opening quote
+            let value = '';
+
+            while (index < length) {
+                const char = text[index];
+
+                if (char === '"') {
+                    index++;
+                    return { value, start, end: index };
+                }
+
+                if (char === '\\') {
+                    index++;
+                    if (index >= length) {
+                        throw new Error('Unterminated string literal');
+                    }
+
+                    const escapeChar = text[index];
+                    switch (escapeChar) {
+                        case '"':
+                        case '\\':
+                        case '/':
+                            value += escapeChar;
+                            break;
+                        case 'b':
+                            value += '\b';
+                            break;
+                        case 'f':
+                            value += '\f';
+                            break;
+                        case 'n':
+                            value += '\n';
+                            break;
+                        case 'r':
+                            value += '\r';
+                            break;
+                        case 't':
+                            value += '\t';
+                            break;
+                        case 'u':
+                            const hex = text.slice(index + 1, index + 5);
+                            if (!/^[0-9a-fA-F]{4}$/.test(hex)) {
+                                throw new Error('Invalid Unicode escape sequence');
+                            }
+                            value += String.fromCharCode(parseInt(hex, 16));
+                            index += 4;
+                            break;
+                        default:
+                            value += escapeChar;
+                            break;
+                    }
+                } else {
+                    value += char;
+                }
+
+                index++;
+            }
+
+            throw new Error('Unterminated string literal');
+        };
+
+        const parseNumberLiteral = () => {
+            const start = index;
+
+            if (text[index] === '-') {
+                index++;
+            }
+
+            if (text[index] === '0') {
+                index++;
+            } else {
+                if (!isDigit(text[index])) {
+                    throw new Error('Invalid number literal');
+                }
+                while (index < length && isDigit(text[index])) {
+                    index++;
+                }
+            }
+
+            if (text[index] === '.') {
+                index++;
+                if (!isDigit(text[index])) {
+                    throw new Error('Invalid number literal');
+                }
+                while (index < length && isDigit(text[index])) {
+                    index++;
+                }
+            }
+
+            if (text[index] === 'e' || text[index] === 'E') {
+                index++;
+                if (text[index] === '+' || text[index] === '-') {
+                    index++;
+                }
+                if (!isDigit(text[index])) {
+                    throw new Error('Invalid number literal');
+                }
+                while (index < length && isDigit(text[index])) {
+                    index++;
+                }
+            }
+
+            return { start, end: index };
+        };
+
+        const parseLiteral = (literal) => {
+            const start = index;
+            if (text.slice(index, index + literal.length) !== literal) {
+                throw new Error(`Expected literal ${literal}`);
+            }
+            index += literal.length;
+            return { start, end: index };
+        };
+
+        const isDigit = (char) => char >= '0' && char <= '9';
+
+        parseValue('$');
+        skipWhitespace();
+
+        return {
+            getRange(pointer) {
+                if (!pointerMap.has(pointer)) {
+                    return null;
+                }
+
+                const location = pointerMap.get(pointer);
+                const start = offsetToPosition(location.start);
+                const end = offsetToPosition(location.end);
+                return {
+                    startLineNumber: start.lineNumber,
+                    startColumn: start.column,
+                    endLineNumber: end.lineNumber,
+                    endColumn: end.column
+                };
+            }
+        };
+    } catch (error) {
+        console.warn('Failed to build JSON pointer locator:', error);
+        return null;
     }
 }
 
