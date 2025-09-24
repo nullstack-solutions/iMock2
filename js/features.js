@@ -848,7 +848,8 @@ window.applyOptimisticMappingUpdate = (mappingLike) => {
         }
 
         const mapping = mappingLike.mapping || mappingLike;
-        if (!mapping || !mapping.id) {
+        const mappingId = mapping?.id || mapping?.uuid;
+        if (!mapping || !mappingId) {
             console.warn('🎯 [OPTIMISTIC] Invalid mapping data - missing id:', mapping);
             return;
         }
@@ -859,55 +860,35 @@ window.applyOptimisticMappingUpdate = (mappingLike) => {
             return;
         }
 
-        // Добавляем в менеджер кеша
-        window.cacheManager.addOptimisticUpdate(mapping, 'update');
+        const cacheAvailable = window.cacheManager && window.cacheManager.cache instanceof Map;
+        const optimisticOperation = cacheAvailable && window.cacheManager.cache.has(mappingId) ? 'update' : 'create';
 
-        // Обновляем cacheManager.cache
-        window.cacheManager.cache.set(mapping.id, mapping);
-
-        // Используем текущие allMappings как базу, чтобы не потерять существующие маппинги
-        let updatedMappings = [...window.allMappings];
-
-        // Обновляем или добавляем новый маппинг
-        const existingIndex = updatedMappings.findIndex(m => m.id === mapping.id);
-        if (existingIndex >= 0) {
-            updatedMappings[existingIndex] = mapping;
-        } else {
-            updatedMappings.unshift(mapping); // Новые маппинги добавляем в начало
+        if (typeof window.cacheManager?.addOptimisticUpdate === 'function') {
+            window.cacheManager.addOptimisticUpdate(mapping, optimisticOperation);
         }
 
-        // Применяем optimistic updates (в основном для удалений)
-        for (const item of window.cacheManager.optimisticQueue) {
-            if (item.op === 'delete') {
-                updatedMappings = updatedMappings.filter(m => m.id !== item.id);
-            }
-            // Для create/update optimistic updates уже учтены выше
-        }
-
-        // Обновляем originalMappings (источник данных для фильтров)
-        window.originalMappings = [...updatedMappings];
-
-        // Применяем активные фильтры, если они есть
-        try {
-            const hasFilters = (document.getElementById(SELECTORS.MAPPING_FILTERS.METHOD)?.value || '')
-                || (document.getElementById(SELECTORS.MAPPING_FILTERS.URL)?.value || '')
-                || (document.getElementById(SELECTORS.MAPPING_FILTERS.STATUS)?.value || '');
-            if (hasFilters && typeof FilterManager !== 'undefined' && FilterManager.applyMappingFilters) {
-                // Фильтры активны - применяем их к обновленным данным
-                window.allMappings = [...window.originalMappings]; // Сначала устанавливаем нефильтрованные данные
-                FilterManager.applyMappingFilters();
+        if (cacheAvailable) {
+            const incoming = cloneMappingForCache(mapping);
+            if (!incoming) {
+                console.warn('🎯 [OPTIMISTIC] Failed to clone mapping for cache:', mappingId);
             } else {
-                // Фильтров нет - показываем все данные
-                window.allMappings = [...window.originalMappings];
-                fetchAndRenderMappings(window.allMappings);
+                if (!incoming.id && mappingId) {
+                    incoming.id = mappingId;
+                }
+
+                if (window.cacheManager.cache.has(mappingId)) {
+                    const merged = mergeMappingData(window.cacheManager.cache.get(mappingId), incoming);
+                    window.cacheManager.cache.set(mappingId, merged);
+                } else {
+                    window.cacheManager.cache.set(mappingId, incoming);
+                }
             }
-        } catch (e) {
-            // Fallback - показываем все данные без фильтров
-            window.allMappings = [...window.originalMappings];
-            fetchAndRenderMappings(window.allMappings);
         }
 
-        console.log('🎯 [OPTIMISTIC] Applied update for mapping:', mapping.id);
+        window.cacheLastUpdate = Date.now();
+        refreshMappingsFromCache();
+
+        console.log('🎯 [OPTIMISTIC] Applied update for mapping:', mappingId);
 
     } catch (e) {
         console.warn('🎯 [OPTIMISTIC] Update failed:', e);
@@ -2058,35 +2039,116 @@ async function resolveConflictWithServer(mappingId) {
     }
 }
 
-function updateOptimisticCache(mapping, operation) {
-    if (!mapping?.id) return;
+function cloneMappingForCache(mapping) {
+    if (!mapping) return null;
 
-    if (operation === 'create' || operation === 'update') {
-        // кладём серверный объект в cache
-        window.cacheManager.cache.set(mapping.id, mapping);
-
-        // обновляем массивы
-        const idx = window.allMappings.findIndex(m => m.id === mapping.id);
-        if (idx >= 0) {
-            window.allMappings[idx] = mapping;
-        } else {
-            window.allMappings.push(mapping);
+    try {
+        if (typeof structuredClone === 'function') {
+            return structuredClone(mapping);
         }
-        window.originalMappings = [...window.allMappings];
+    } catch (error) {
+        console.warn('structuredClone failed for mapping cache clone:', error);
+    }
 
-        // обновляем UI
-        fetchAndRenderMappings(window.allMappings);
+    try {
+        return JSON.parse(JSON.stringify(mapping));
+    } catch (error) {
+        console.warn('JSON clone failed for mapping cache clone:', error);
+    }
 
-    } else if (operation === 'delete') {
-        // чистим cache
-        window.cacheManager.cache.delete(mapping.id);
+    return { ...mapping };
+}
 
-        // убираем из массивов
-        window.allMappings = window.allMappings.filter(m => m.id !== mapping.id);
-        window.originalMappings = [...window.allMappings];
+function mergeMappingData(existing, incoming) {
+    if (!existing) return incoming;
+    if (!incoming) return existing;
 
-        // обновляем UI
-        fetchAndRenderMappings(window.allMappings);
+    return {
+        ...existing,
+        ...incoming,
+        request: { ...existing.request, ...incoming.request },
+        response: { ...existing.response, ...incoming.response },
+        metadata: { ...existing.metadata, ...incoming.metadata }
+    };
+}
+
+function refreshMappingsFromCache({ maintainFilters = true } = {}) {
+    try {
+        const cacheValues = window.cacheManager?.cache
+            ? Array.from(window.cacheManager.cache.values())
+            : [];
+        const sanitized = cacheValues.filter(mapping => !isImockCacheMapping(mapping));
+
+        window.originalMappings = sanitized;
+        window.allMappings = sanitized.slice();
+
+        const methodFilter = document.getElementById(SELECTORS.MAPPING_FILTERS.METHOD)?.value || '';
+        const urlFilter = document.getElementById(SELECTORS.MAPPING_FILTERS.URL)?.value || '';
+        const statusFilter = document.getElementById(SELECTORS.MAPPING_FILTERS.STATUS)?.value || '';
+        const hasFilters = maintainFilters && Boolean(methodFilter || urlFilter || statusFilter);
+
+        if (hasFilters && typeof FilterManager !== 'undefined' && typeof FilterManager.applyMappingFilters === 'function') {
+            FilterManager.applyMappingFilters();
+        } else if (typeof fetchAndRenderMappings === 'function') {
+            fetchAndRenderMappings(window.allMappings.slice());
+        }
+
+        if (typeof updateDataSourceIndicator === 'function') {
+            updateDataSourceIndicator('cache');
+        }
+    } catch (error) {
+        console.warn('refreshMappingsFromCache failed:', error);
+    }
+}
+
+function updateOptimisticCache(mapping, operation) {
+    try {
+        const mappingId = mapping?.id || mapping?.uuid;
+        if (!mappingId) {
+            console.warn('updateOptimisticCache called without valid id:', mapping);
+            return;
+        }
+
+        if (!window.cacheManager || !(window.cacheManager.cache instanceof Map)) {
+            console.warn('updateOptimisticCache skipped - cacheManager unavailable');
+            return;
+        }
+
+        const cache = window.cacheManager.cache;
+        const normalizedOperation = (operation || 'update').toLowerCase();
+
+        if (normalizedOperation === 'delete') {
+            cache.delete(mappingId);
+            if (typeof window.cacheManager.removeOptimisticUpdate === 'function') {
+                window.cacheManager.removeOptimisticUpdate(mappingId);
+            }
+        } else {
+            const incoming = cloneMappingForCache(mapping);
+            if (!incoming) {
+                console.warn('updateOptimisticCache: unable to clone mapping for cache:', mappingId);
+                return;
+            }
+
+            if (!incoming.id && mappingId) {
+                incoming.id = mappingId;
+            }
+
+            if (cache.has(mappingId)) {
+                const merged = mergeMappingData(cache.get(mappingId), incoming);
+                cache.set(mappingId, merged);
+            } else {
+                cache.set(mappingId, incoming);
+            }
+
+            if (typeof window.cacheManager.confirmOptimisticUpdate === 'function') {
+                window.cacheManager.confirmOptimisticUpdate(mappingId);
+            }
+        }
+
+        window.cacheLastUpdate = Date.now();
+        refreshMappingsFromCache();
+    } catch (error) {
+        console.warn('updateOptimisticCache failed:', error);
     }
 }
 
