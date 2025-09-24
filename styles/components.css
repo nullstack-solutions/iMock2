@@ -1,10 +1,11 @@
 /* ===== COMPONENTS ===== */
+
 .page-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: var(--space-8);
-    padding: var(--space-6);
+    margin-bottom: var(--space-6);
+    padding: var(--space-4) var(--space-5);
     background: var(--bg-primary);
     border-radius: var(--radius-xl);
     box-shadow: var(--shadow-sm);
@@ -14,6 +15,7 @@
     font-size: var(--font-size-3xl);
     font-weight: 700;
     color: var(--text-primary);
+    line-height: 1.2;
 }
 
 /* ===== BUTTONS ===== */
@@ -733,8 +735,8 @@
 
 .stat-card {
     background: var(--bg-primary);
-    padding: var(--space-6);
-    border-radius: var(--radius-xl);
+    padding: var(--space-1);
+    border-radius: var(--radius-sm);
     text-align: center;
     box-shadow: var(--shadow-sm);
     border: 1px solid var(--border-primary);
@@ -747,18 +749,28 @@
 }
 
 .stat-number {
-    font-size: var(--font-size-4xl);
-    font-weight: 700;
+    font-size: var(--font-size-lg);
+    font-weight: 600;
     color: var(--primary-600);
-    margin-bottom: var(--space-2);
+    margin-bottom: 2px;
 }
 
 .stat-label {
     color: var(--text-secondary);
-    font-size: var(--font-size-sm);
+    font-size: var(--font-size-xs);
     font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.025em;
+}
+
+/* Compact stats in page header */
+.page-header .stats {
+    display: flex;
+    gap: var(--space-1);
+    margin: 0;
+}
+
+/* Mappings page header with stats on left and controls on right */
+#mappings-page .page-header {
+    justify-content: space-between;
 }
 
 /* ===== FILTERS ===== */
