@@ -7,50 +7,35 @@
 class VirtualizedJSONRenderer {
     constructor(editor) {
         this.editor = editor;
-        this.chunkSize = 1000; // lines per chunk
-        this.visibleRange = { start: 0, end: 100 };
         this.fullContent = '';
-        this.chunks = new Map();
         this.isVirtualized = false;
     }
 
     setContent(content) {
+        if (typeof content !== 'string') {
+            content = '';
+        }
+
         this.fullContent = content;
-        const lines = content.split('\n');
-        
-        // Only virtualize for large documents
-        if (lines.length > 5000) {
-            this.isVirtualized = true;
-            this.chunks.clear();
-            
-            // Split into chunks
-            for (let i = 0; i < lines.length; i += this.chunkSize) {
-                this.chunks.set(i, lines.slice(i, i + this.chunkSize));
-            }
-            
-            // Show first chunk
-            this.updateVisibleRange(0, Math.min(this.chunkSize, lines.length));
-            console.log(`📄 Virtualized ${lines.length} lines into ${this.chunks.size} chunks`);
-        } else {
-            this.isVirtualized = false;
+        const lineCount = content.split('\n').length;
+
+        // Monaco already virtualizes the viewport efficiently. The previous manual
+        // chunking prevented users from scrolling beyond ~1000 lines. We now keep the
+        // full document in the editor while still tracking the latest content for
+        // consumers of getFullContent().
+        this.isVirtualized = false;
+
+        if (this.editor.getValue() !== content) {
             this.editor.setValue(content);
+        }
+
+        if (lineCount > 5000) {
+            console.log(`📄 Loaded large document (${lineCount} lines) without manual virtualization.`);
         }
     }
 
-    updateVisibleRange(start, end) {
-        if (!this.isVirtualized) return;
-        
-        this.visibleRange = { start, end };
-        const visibleChunks = [];
-        
-        for (let i = start; i < end; i += this.chunkSize) {
-            if (this.chunks.has(i)) {
-                visibleChunks.push(...this.chunks.get(i));
-            }
-        }
-        
-        // Update only visible part
-        this.editor.setValue(visibleChunks.join('\n'));
+    updateVisibleRange() {
+        // Manual virtualization disabled – nothing to do here.
     }
 
     getFullContent() {
@@ -58,7 +43,7 @@ class VirtualizedJSONRenderer {
     }
 
     dispose() {
-        this.chunks.clear();
+        this.fullContent = '';
         this.isVirtualized = false;
     }
 }
