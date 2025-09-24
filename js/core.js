@@ -397,8 +397,36 @@ window.showPage = (pageId, element) => {
 };
 
 // Модальные окна
-window.showModal = (modalId) => {
-    // Безопасная очистка формы
+const resolveModalElement = (modalId) => {
+    if (!modalId) {
+        console.warn('Modal ID is required to resolve modal element');
+        return null;
+    }
+
+    const candidates = modalId.endsWith('-modal')
+        ? [modalId, modalId.replace(/-modal$/, '')]
+        : [`${modalId}-modal`, modalId];
+
+    const [primaryId] = candidates;
+
+    for (let index = 0; index < candidates.length; index += 1) {
+        const candidateId = candidates[index];
+        if (!candidateId) continue;
+
+        const element = document.getElementById(candidateId);
+        if (element) {
+            if (index > 0) {
+                console.warn(`Modal element not found: ${primaryId}. Falling back to ${candidateId}`);
+            }
+            return element;
+        }
+    }
+
+    console.warn(`Modal element not found for id: ${modalId}`);
+    return null;
+};
+
+const resetMappingFormDefaults = () => {
     const formElement = document.getElementById(SELECTORS.MODAL.FORM);
     const idElement = document.getElementById(SELECTORS.MODAL.ID);
     const titleElement = document.getElementById(SELECTORS.MODAL.TITLE);
@@ -406,27 +434,40 @@ window.showModal = (modalId) => {
     if (formElement) formElement.reset();
     if (idElement) idElement.value = '';
     if (titleElement) titleElement.textContent = 'Add New Mapping';
+};
 
-    // Безопасное отображение модального окна - проверяем оба варианта
-    let modalElementId = modalId;
-    if (!modalId.endsWith('-modal')) {
-        modalElementId = `${modalId}-modal`;
+window.showModal = (modalId) => {
+    const modal = resolveModalElement(modalId);
+    if (!modal) {
+        return;
     }
 
-    const modalElement = document.getElementById(modalElementId);
-    if (modalElement) {
-        modalElement.style.display = 'flex';
-    } else {
-        console.warn(`Modal element not found: ${modalElementId}`);
-        // Попробуем найти элемент без суффикса -modal если он был добавлен
-        if (modalId.endsWith('-modal')) {
-            const alternativeModal = document.getElementById(modalId.replace('-modal', ''));
-            if (alternativeModal) {
-                alternativeModal.style.display = 'flex';
-            } else {
-                console.warn(`Alternative modal element not found: ${modalId.replace('-modal', '')}`);
-            }
-        }
+    modal.classList.remove('hidden');
+    modal.style.display = 'flex';
+
+    const firstInput = modal.querySelector('input, select, textarea');
+    if (firstInput) {
+        setTimeout(() => firstInput.focus(), 100);
+    }
+};
+
+window.openAddMappingModal = () => {
+    resetMappingFormDefaults();
+    window.showModal('add-mapping-modal');
+};
+
+window.hideModal = (modal) => {
+    const modalElement = typeof modal === 'string' ? resolveModalElement(modal) : modal;
+    if (!modalElement) {
+        return;
+    }
+
+    modalElement.classList.add('hidden');
+    modalElement.style.display = 'none';
+
+    const form = modalElement.querySelector('form');
+    if (form) {
+        form.reset();
     }
 };
 
@@ -455,87 +496,67 @@ window.showMessage = (text, type = 'info') => {
 };
 
 // --- THEME FUNCTIONS ---
-window.toggleTheme = () => {
+const applyThemeToDom = (theme) => {
     const body = document.body;
-    const currentTheme = body.getAttribute('data-theme');
-    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-    
-    body.setAttribute('data-theme', newTheme);
-    
-    // Update theme icon
+    if (!body) {
+        return;
+    }
+
+    body.setAttribute('data-theme', theme);
+
     const themeIcon = document.getElementById('theme-icon');
     if (themeIcon) {
-        themeIcon.textContent = newTheme === 'dark' ? '☀️' : '🌙';
+        themeIcon.textContent = theme === 'dark' ? '☀️' : '🌙';
     }
-    
-    // Save theme preference
-    localStorage.setItem('theme', newTheme);
-    // Keep settings bundle in sync
+};
+
+const persistThemePreference = (preference) => {
+    localStorage.setItem('theme', preference);
     try {
         const current = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
-        localStorage.setItem('wiremock-settings', JSON.stringify({ ...current, theme: newTheme }));
+        localStorage.setItem('wiremock-settings', JSON.stringify({ ...current, theme: preference }));
     } catch (_) {}
-    
+};
+
+window.toggleTheme = () => {
+    const body = document.body;
+    if (!body) {
+        return;
+    }
+
+    const currentTheme = body.getAttribute('data-theme') || 'light';
+    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+
+    applyThemeToDom(newTheme);
+    persistThemePreference(newTheme);
+
     showMessage(`Switched to ${newTheme} theme`, 'success');
 };
 
 window.changeTheme = () => {
     const themeSelect = document.getElementById('theme-select');
-    if (themeSelect) {
-        const selectedTheme = themeSelect.value;
-        const body = document.body;
-        
-        if (selectedTheme === 'auto') {
-            // Use system preference
-            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-            const theme = prefersDark ? 'dark' : 'light';
-            body.setAttribute('data-theme', theme);
-        } else {
-            body.setAttribute('data-theme', selectedTheme);
-        }
-        
-        // Update theme icon
-        const themeIcon = document.getElementById('theme-icon');
-        if (themeIcon) {
-            const currentTheme = body.getAttribute('data-theme');
-            themeIcon.textContent = currentTheme === 'dark' ? '☀️' : '🌙';
-        }
-        
-        // Save theme preference
-        localStorage.setItem('theme', selectedTheme);
-        // Keep settings bundle in sync
-        try {
-            const current = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
-            localStorage.setItem('wiremock-settings', JSON.stringify({ ...current, theme: selectedTheme }));
-        } catch (_) {}
-        
-        showMessage(`Theme changed to ${selectedTheme}`, 'success');
+    if (!themeSelect) {
+        return;
     }
+
+    const selectedTheme = themeSelect.value;
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const themeToApply = selectedTheme === 'auto' ? (prefersDark ? 'dark' : 'light') : selectedTheme;
+
+    applyThemeToDom(themeToApply);
+    persistThemePreference(selectedTheme);
+
+    showMessage(`Theme changed to ${selectedTheme}`, 'success');
 };
 
 // Initialize theme on load
 window.initializeTheme = () => {
     const savedTheme = localStorage.getItem('theme') || 'light';
-    const body = document.body;
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const themeToApply = savedTheme === 'auto' ? (prefersDark ? 'dark' : 'light') : savedTheme;
 
-    if (!body) return; // Add DOM check
+    applyThemeToDom(themeToApply);
 
-    if (savedTheme === 'auto') {
-        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        const theme = prefersDark ? 'dark' : 'light';
-        body.setAttribute('data-theme', theme);
-    } else {
-        body.setAttribute('data-theme', savedTheme);
-    }
-
-    // Update theme icon
-    const themeIcon = document.getElementById('theme-icon');
-    if (themeIcon) {
-        const currentTheme = body.getAttribute('data-theme');
-        themeIcon.textContent = currentTheme === 'dark' ? '☀️' : '🌙';
-    }
-
-    // Update theme select if it exists
     const themeSelect = document.getElementById('theme-select');
     if (themeSelect) {
         themeSelect.value = savedTheme;
@@ -549,50 +570,12 @@ if (document.readyState === 'loading') {
     initializeTheme();
 }
 
-// --- MODAL FUNCTIONS ---
-window.showModal = (modalId) => {
-    const modal = document.getElementById(modalId);
-    if (modal) {
-        modal.classList.remove('hidden');
-        modal.style.display = 'flex';
-        
-        // Focus first input in modal
-        const firstInput = modal.querySelector('input, select, textarea');
-        if (firstInput) {
-            setTimeout(() => firstInput.focus(), 100);
-        }
-    } else {
-        console.warn(`Modal with ID '${modalId}' not found`);
-    }
-};
-
-window.hideModal = (modalId) => {
-    const modal = document.getElementById(modalId);
-    if (modal) {
-        modal.classList.add('hidden');
-        modal.style.display = 'none';
-        
-        // Reset form if it exists
-        const form = modal.querySelector('form');
-        if (form) {
-            form.reset();
-        }
-    } else {
-        console.warn(`Modal with ID '${modalId}' not found`);
-    }
-};
+// --- MODAL EVENTS ---
 
 // Close modal when clicking outside
 document.addEventListener('click', (e) => {
     if (e.target.classList.contains('modal')) {
-        e.target.classList.add('hidden');
-        e.target.style.display = 'none';
-        
-        // Reset form if it exists
-        const form = e.target.querySelector('form');
-        if (form) {
-            form.reset();
-        }
+        hideModal(e.target);
     }
 });
 
@@ -601,8 +584,7 @@ document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
         const visibleModal = document.querySelector('.modal:not(.hidden)');
         if (visibleModal) {
-            visibleModal.classList.add('hidden');
-            visibleModal.style.display = 'none';
+            hideModal(visibleModal);
         }
     }
 });
