@@ -4,125 +4,160 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WireMock JSON Studio</title>
+    <link rel="stylesheet" href="../styles/animations.css">
+    <link rel="stylesheet" href="../styles/components.css">
+    <link rel="stylesheet" href="../styles/modals.css">
+    <link rel="stylesheet" href="../styles/main.css">
     <link href="json-editor.css" rel="stylesheet">
 </head>
 <body data-theme="light">
-    <div class="app-container">
-        <header class="header">
-            <div style="display: flex; align-items: center; gap: 1rem;">
-                <div class="logo">WM</div>
-                <h1>WireMock JSON Studio</h1>
+    <div class="editor-app">
+        <header class="header editor-header">
+            <div class="editor-header__brand">
+                <span class="logo-badge" aria-hidden="true">WM</span>
+                <div class="editor-header__text">
+                    <h1 class="editor-title">WireMock JSON Studio</h1>
+                    <p class="editor-subtitle">Refine mappings with Monaco-powered precision and parity with the main UI.</p>
+                </div>
             </div>
-            <div class="header-controls">
-                <button class="btn btn-icon" onclick="toggleTheme()" title="Toggle Theme">
-                    <span class="theme-icon" aria-hidden="true">&#9790;</span>
+            <div class="editor-header__actions">
+                <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="toggleTheme()" title="Toggle theme" data-tooltip="Toggle theme">
+                    <span class="theme-icon" aria-hidden="true">🌙</span>
+                    <span class="sr-only">Toggle theme</span>
                 </button>
             </div>
         </header>
-        <div class="toolbar">
-            <div class="toolbar-section">
-                <div class="btn-group" id="editorControls">
-                    <button class="btn btn-secondary" onclick="newDocument()" title="New (Ctrl+N)">
-                        <span class="btn-icon-label" aria-hidden="true">&#x1F4C4;</span>
-                        <span>New</span>
-                    </button>
-                    <button class="btn btn-secondary" onclick="loadFile()" title="Load (Ctrl+O)">
-                        <span class="btn-icon-label" aria-hidden="true">&#x1F4E5;</span>
-                        <span>Load</span>
-                    </button>
-                    <button class="btn btn-primary" onclick="saveFile()" title="Save (Ctrl+S)">
-                        <span class="btn-icon-label" aria-hidden="true">&#x1F4BE;</span>
-                        <span>Save</span>
-                    </button>
-                </div>
-                <div class="btn-group" id="compareControls" style="display: none;">
-                    <button class="btn btn-secondary" onclick="loadCompareFile('left')" title="Load File (Left)">
-                        <span class="btn-icon-label" aria-hidden="true">&#x2B05;</span>
-                        <span>Load Left</span>
-                    </button>
-                    <button class="btn btn-secondary" onclick="loadCompareFile('right')" title="Load File (Right)">
-                        <span class="btn-icon-label" aria-hidden="true">&#x27A1;</span>
-                        <span>Load Right</span>
-                    </button>
-                    <button class="btn btn-secondary" onclick="clearComparePanel('left')" title="Clear Left">
-                        <span class="btn-icon-label" aria-hidden="true">&#x2716;</span>
-                        <span>Clear Left</span>
-                    </button>
-                    <button class="btn btn-secondary" onclick="clearComparePanel('right')" title="Clear Right">
-                        <span class="btn-icon-label" aria-hidden="true">&#x2716;</span>
-                        <span>Clear Right</span>
-                    </button>
-                </div>
-            </div>
-            <div class="toolbar-section">
-                <div class="btn-group">
-                    <button class="btn btn-secondary mode-tab active" data-mode="editor" onclick="switchMode('editor')">
-                        <span class="btn-icon-label" aria-hidden="true">&#x270E;</span>
-                        <span>Editor</span>
-                    </button>
-                    <button class="btn btn-secondary mode-tab" data-mode="compare" onclick="switchMode('compare')">
-                        <span class="btn-icon-label" aria-hidden="true">&#x21C4;</span>
-                        <span>Compare</span>
-                    </button>
-                </div>
-            </div>
-            <div class="toolbar-section">
-                <div class="search-container">
-                    <input type="text" id="jsonPathInput" placeholder="Search text or JSONPath ($.path)..." onkeydown="if(event.key==='Enter') searchJSONPath()">
-                    <div class="search-toggles">
-                        <label class="toggle-label" title="Match case">
-                            <input type="checkbox" id="matchCaseToggle">
-                            <span>Aa</span>
-                        </label>
-                        <label class="toggle-label" title="Whole word">
-                            <input type="checkbox" id="wholeWordToggle">
-                            <span>W</span>
-                        </label>
-                        <label class="toggle-label" title="Keys only">
-                            <input type="checkbox" id="keysOnlyToggle">
-                            <span>K</span>
-                        </label>
-                        <label class="toggle-label" title="Values only">
-                            <input type="checkbox" id="valuesOnlyToggle">
-                            <span>V</span>
-                        </label>
+        <section class="editor-toolbar card" aria-label="Editor controls">
+            <div class="toolbar-grid">
+                <div class="toolbar-section">
+                    <div class="section-header">
+                        <span class="section-title">Workspace</span>
+                        <p class="section-hint">Start a fresh stub or open existing mappings.</p>
                     </div>
-                    <div class="search-actions">
-                        <button class="btn btn-icon btn-compact" onclick="formatJSON()" title="Format JSON">
-                            <span aria-hidden="true">&#123;&#125;</span>
+                    <div class="btn-group" id="editorControls">
+                        <button class="btn btn-secondary" onclick="newDocument()" title="New (Ctrl+N)" data-tooltip="New document (Ctrl+N)">
+                            <span class="icon" aria-hidden="true">📄</span>
+                            <span class="btn-label">New</span>
                         </button>
-                        <button class="btn btn-icon btn-compact" onclick="minifyJSON()" title="Minify JSON">
-                            <span aria-hidden="true">&#x2212;</span>
+                        <button class="btn btn-secondary" onclick="loadFile()" title="Load (Ctrl+O)" data-tooltip="Load JSON from file (Ctrl+O)">
+                            <span class="icon" aria-hidden="true">📥</span>
+                            <span class="btn-label">Load</span>
                         </button>
-                        <button class="btn btn-icon btn-compact" onclick="validateJSON()" title="Validate JSON">
-                            <span aria-hidden="true">&#x2714;</span>
-                        </button>
-                        <button class="btn btn-icon btn-compact" onclick="openModal()" title="WireMock Templates">
-                            <span aria-hidden="true">&#x1F4C3;</span>
-                        </button>
-                        <button class="btn btn-icon btn-compact" onclick="openHistoryModal()" title="History">
-                            <span aria-hidden="true">&#x23F2;</span>
-                        </button>
-                        <button class="btn btn-icon btn-compact" onclick="exportAsYAML()" title="Export as YAML">
-                            <span aria-hidden="true">&#x1F4E4;</span>
-                        </button>
-                        <button class="btn btn-icon btn-compact" onclick="togglePerformanceMonitoring()" title="Performance Monitor">
-                            <span aria-hidden="true">📈</span>
-                        </button>
-                        <button class="btn btn-icon btn-compact" onclick="testOptimisticUpdate()" title="Test Optimistic Update">
-                            <span aria-hidden="true">🎯</span>
-                        </button>
-                        <button class="btn btn-icon btn-compact" onclick="testCacheRefresh()" title="Test Cache Refresh">
-                            <span aria-hidden="true">🔄</span>
+                        <button class="btn btn-primary" onclick="saveFile()" title="Save (Ctrl+S)" data-tooltip="Save JSON locally (Ctrl+S)">
+                            <span class="icon" aria-hidden="true">💾</span>
+                            <span class="btn-label">Save</span>
                         </button>
                     </div>
-                    <button class="btn btn-icon" onclick="searchJSONPath()" title="Search">
-                        <span aria-hidden="true">&#x1F50D;</span>
-                    </button>
+                    <div class="btn-group" id="compareControls" style="display: none;">
+                        <button class="btn btn-secondary" onclick="loadCompareFile('left')" title="Load File (Left)" data-tooltip="Load left file">
+                            <span class="icon" aria-hidden="true">⬅️</span>
+                            <span class="btn-label">Load Left</span>
+                        </button>
+                        <button class="btn btn-secondary" onclick="loadCompareFile('right')" title="Load File (Right)" data-tooltip="Load right file">
+                            <span class="icon" aria-hidden="true">➡️</span>
+                            <span class="btn-label">Load Right</span>
+                        </button>
+                        <button class="btn btn-secondary" onclick="clearComparePanel('left')" title="Clear Left" data-tooltip="Clear left panel">
+                            <span class="icon" aria-hidden="true">✖️</span>
+                            <span class="btn-label">Clear Left</span>
+                        </button>
+                        <button class="btn btn-secondary" onclick="clearComparePanel('right')" title="Clear Right" data-tooltip="Clear right panel">
+                            <span class="icon" aria-hidden="true">✖️</span>
+                            <span class="btn-label">Clear Right</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="toolbar-section">
+                    <div class="section-header">
+                        <span class="section-title">Modes</span>
+                        <p class="section-hint">Switch between editing and side-by-side comparison.</p>
+                    </div>
+                    <div class="btn-group mode-tabs" role="tablist" aria-label="Editor modes">
+                        <button class="btn btn-secondary mode-tab active" data-mode="editor" onclick="switchMode('editor')" role="tab" aria-selected="true" data-tooltip="Single document mode">
+                            <span class="icon" aria-hidden="true">✏️</span>
+                            <span class="btn-label">Editor</span>
+                        </button>
+                        <button class="btn btn-secondary mode-tab" data-mode="compare" onclick="switchMode('compare')" role="tab" aria-selected="false" data-tooltip="Compare two files">
+                            <span class="icon" aria-hidden="true">🔀</span>
+                            <span class="btn-label">Compare</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="toolbar-section toolbar-section--search">
+                    <div class="section-header">
+                        <span class="section-title">Search &amp; Utilities</span>
+                        <p class="section-hint">Find content, format JSON, and access helper tools.</p>
+                    </div>
+                    <div class="search-container" role="search">
+                        <label class="sr-only" for="jsonPathInput">Search text or JSONPath</label>
+                        <input type="text" class="form-input search-input" id="jsonPathInput" placeholder="Search text or JSONPath ($.path)..." onkeydown="if(event.key==='Enter') searchJSONPath()">
+                        <div class="search-toggles" role="group" aria-label="Search filters">
+                            <label class="toggle-label" title="Match case" data-tooltip="Match case">
+                                <input type="checkbox" id="matchCaseToggle">
+                                <span>Aa</span>
+                            </label>
+                            <label class="toggle-label" title="Whole word" data-tooltip="Match whole words">
+                                <input type="checkbox" id="wholeWordToggle">
+                                <span>W</span>
+                            </label>
+                            <label class="toggle-label" title="Keys only" data-tooltip="Search only keys">
+                                <input type="checkbox" id="keysOnlyToggle">
+                                <span>K</span>
+                            </label>
+                            <label class="toggle-label" title="Values only" data-tooltip="Search only values">
+                                <input type="checkbox" id="valuesOnlyToggle">
+                                <span>V</span>
+                            </label>
+                        </div>
+                        <div class="search-actions" role="group" aria-label="Editor utilities">
+                            <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="formatJSON()" title="Format JSON" data-tooltip="Pretty print JSON">
+                                <span class="icon" aria-hidden="true">{ }</span>
+                                <span class="sr-only">Format JSON</span>
+                            </button>
+                            <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="minifyJSON()" title="Minify JSON" data-tooltip="Minify JSON">
+                                <span class="icon" aria-hidden="true">➖</span>
+                                <span class="sr-only">Minify JSON</span>
+                            </button>
+                            <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="validateJSON()" title="Validate JSON" data-tooltip="Validate JSON">
+                                <span class="icon" aria-hidden="true">✔️</span>
+                                <span class="sr-only">Validate JSON</span>
+                            </button>
+                            <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="openModal()" title="WireMock Templates" data-tooltip="WireMock templates">
+                                <span class="icon" aria-hidden="true">🧩</span>
+                                <span class="sr-only">WireMock templates</span>
+                            </button>
+                            <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="openHistoryModal()" title="History" data-tooltip="Show history">
+                                <span class="icon" aria-hidden="true">🕒</span>
+                                <span class="sr-only">History</span>
+                            </button>
+                        </div>
+                        <div class="search-actions" role="group" aria-label="Export and diagnostics">
+                            <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="exportAsYAML()" title="Export as YAML" data-tooltip="Export YAML">
+                                <span class="icon" aria-hidden="true">📤</span>
+                                <span class="sr-only">Export as YAML</span>
+                            </button>
+                            <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="togglePerformanceMonitoring()" title="Performance Monitor" data-tooltip="Toggle performance monitor">
+                                <span class="icon" aria-hidden="true">📈</span>
+                                <span class="sr-only">Toggle performance monitor</span>
+                            </button>
+                            <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="testOptimisticUpdate()" title="Test Optimistic Update" data-tooltip="Test optimistic update">
+                                <span class="icon" aria-hidden="true">🎯</span>
+                                <span class="sr-only">Test optimistic update</span>
+                            </button>
+                            <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="testCacheRefresh()" title="Test Cache Refresh" data-tooltip="Test cache refresh">
+                                <span class="icon" aria-hidden="true">🔄</span>
+                                <span class="sr-only">Test cache refresh</span>
+                            </button>
+                        </div>
+                        <button class="btn btn-primary" onclick="searchJSONPath()" title="Search" data-tooltip="Search in document">
+                            <span class="icon" aria-hidden="true">🔍</span>
+                            <span class="btn-label">Search</span>
+                        </button>
+                    </div>
                 </div>
             </div>
-        </div>
-        <main class="main-content">
+        </section>
+        <main class="editor-main">
             <div class="drag-overlay" id="dragOverlay">
                 <div class="drag-text">
                     Drop JSON files here
