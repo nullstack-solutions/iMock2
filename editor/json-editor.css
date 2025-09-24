@@ -875,7 +875,7 @@ body.modal-open {
 
 /* ===== MONACO FIND WIDGET ENHANCEMENTS ===== */
 .editor-widget.find-widget.jsonpath-extended {
-    padding: 0.6rem 0.85rem 0.72rem;
+    padding: 0.72rem 1.05rem;
     border-radius: var(--radius-xl);
     border: 1px solid rgba(15, 23, 42, 0.08);
     background: var(--bg-primary);
@@ -905,7 +905,7 @@ body.modal-open {
 .editor-widget.find-widget.jsonpath-extended .monaco-findInput .input {
     font-size: var(--font-size-sm);
     line-height: 1.4;
-    padding-block: 0.25rem;
+    padding-block: 0.28rem;
 }
 
 .editor-widget.find-widget.jsonpath-extended .monaco-findInput .mirror {
@@ -915,8 +915,8 @@ body.modal-open {
 .editor-widget.find-widget.jsonpath-extended .jsonpath-widget-controls {
     display: flex;
     align-items: center;
-    gap: 0.35rem;
-    margin-left: 0.35rem;
+    gap: 0.4rem;
+    margin-left: 0.45rem;
 }
 
 .editor-widget.find-widget.jsonpath-extended .jsonpath-widget-controls .monaco-custom-toggle {
@@ -964,7 +964,7 @@ body.modal-open {
 .editor-widget.find-widget.jsonpath-extended .replace-actions {
     display: flex;
     align-items: center;
-    gap: 0.35rem;
+    gap: 0.45rem;
 }
 
 .editor-widget.find-widget.jsonpath-extended .find-actions .button,
@@ -980,13 +980,74 @@ body.modal-open {
 }
 
 .editor-widget.find-widget.jsonpath-extended .matchesCount {
-    min-width: 96px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.4rem;
+    min-width: 168px;
+    flex: 0 0 168px;
+    padding: 0.125rem 0.35rem;
+    border-radius: var(--radius-sm);
     font-variant-numeric: tabular-nums;
     color: var(--text-secondary);
+    white-space: nowrap;
 }
 
 [data-theme="dark"] .editor-widget.find-widget.jsonpath-extended .matchesCount {
     color: var(--text-tertiary);
+}
+
+.editor-widget.find-widget.jsonpath-extended .matchesCount .jsonpath-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.1rem 0.45rem;
+    border-radius: var(--radius-sm);
+    background: rgba(var(--primary-500-rgb), 0.12);
+    color: var(--primary-600);
+    font-size: var(--font-size-xs);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+[data-theme="dark"] .editor-widget.find-widget.jsonpath-extended .matchesCount .jsonpath-chip {
+    background: rgba(var(--primary-500-rgb), 0.18);
+    color: var(--primary-200);
+}
+
+.editor-widget.find-widget.jsonpath-extended .matchesCount .jsonpath-status {
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    color: var(--text-secondary);
+    letter-spacing: 0.01em;
+}
+
+[data-theme="dark"] .editor-widget.find-widget.jsonpath-extended .matchesCount .jsonpath-status {
+    color: var(--text-tertiary);
+}
+
+.editor-widget.find-widget.jsonpath-extended .matchesCount[data-jsonpath-state="count"] {
+    justify-content: space-between;
+}
+
+.editor-widget.find-widget.jsonpath-extended .matchesCount[data-jsonpath-state="status"] {
+    justify-content: flex-start;
+}
+
+.editor-widget.find-widget.jsonpath-extended .matchesCount[data-jsonpath-state="status"] .jsonpath-status {
+    color: var(--text-secondary);
+}
+
+.editor-widget.find-widget.jsonpath-extended .matchesCount[data-jsonpath-state="error"] .jsonpath-status {
+    color: var(--accent-danger-600);
+}
+
+.editor-widget.find-widget.jsonpath-extended .matchesCount[data-jsonpath-partial="true"] .jsonpath-status::after {
+    content: ' · partial';
+    font-weight: 500;
+    color: var(--text-tertiary);
+    letter-spacing: 0;
 }
 
 .editor-widget.find-widget.jsonpath-extended .monaco-inputbox {
@@ -1002,12 +1063,13 @@ body.modal-open {
 
 @media (max-width: 768px) {
     .editor-widget.find-widget.jsonpath-extended {
-        padding: 0.5rem 0.7rem 0.62rem;
+        padding: 0.58rem 0.85rem;
         border-radius: var(--radius-lg);
     }
 
     .editor-widget.find-widget.jsonpath-extended .matchesCount {
-        min-width: 82px;
+        min-width: 132px;
+        flex-basis: 132px;
     }
 }
 

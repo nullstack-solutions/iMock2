@@ -1682,6 +1682,9 @@ class MonacoInitializer {
                 matchesElement.textContent = integration.originalMatchesText;
             }
             matchesElement.removeAttribute('data-jsonpath');
+            matchesElement.removeAttribute('data-jsonpath-state');
+            matchesElement.removeAttribute('data-jsonpath-partial');
+            matchesElement.removeAttribute('title');
             return;
         }
 
@@ -1689,39 +1692,71 @@ class MonacoInitializer {
             return;
         }
 
-        matchesElement.dataset.jsonpath = 'true';
+        const renderJSONPathStatus = (label, state = 'status', options = {}) => {
+            matchesElement.dataset.jsonpath = 'true';
+            matchesElement.dataset.jsonpathState = state;
+
+            if (options.partial) {
+                matchesElement.dataset.jsonpathPartial = 'true';
+            } else {
+                matchesElement.removeAttribute('data-jsonpath-partial');
+            }
+
+            matchesElement.innerHTML = '';
+
+            const chip = document.createElement('span');
+            chip.className = 'jsonpath-chip';
+            chip.textContent = 'JSONPath';
+            matchesElement.appendChild(chip);
+
+            if (label) {
+                const status = document.createElement('span');
+                status.className = 'jsonpath-status';
+                status.textContent = label;
+                matchesElement.appendChild(status);
+            }
+
+            if (options.title) {
+                matchesElement.title = options.title;
+            } else if (label) {
+                matchesElement.title = `JSONPath · ${label}`;
+            } else {
+                matchesElement.removeAttribute('title');
+            }
+        };
 
         if (extra.searching) {
-            matchesElement.textContent = 'JSONPath: searching…';
+            renderJSONPathStatus('searching…');
             return;
         }
 
         if (extra.emptyQuery) {
-            matchesElement.textContent = 'JSONPath: enter path';
+            renderJSONPathStatus('enter path');
             return;
         }
 
         if (extra.noContent) {
-            matchesElement.textContent = 'JSONPath: no content';
+            renderJSONPathStatus('no content');
             return;
         }
 
         if (extra.error) {
-            matchesElement.textContent = 'JSONPath error';
+            renderJSONPathStatus('error', 'error');
             return;
         }
 
         if (!totalCount || totalCount <= 0) {
-            matchesElement.textContent = 'JSONPath: no results';
+            renderJSONPathStatus('no results');
             return;
         }
 
         const displayIndex = typeof index === 'number' && index >= 0 ? index + 1 : 1;
-        let label = `JSONPath: ${displayIndex}/${totalCount}`;
-        if (truncated && Array.isArray(this.lastJSONPathResults) && this.lastJSONPathResults.length < totalCount) {
-            label += ' (partial)';
-        }
-        matchesElement.textContent = label;
+        const label = `${displayIndex}/${totalCount}`;
+        const partial = truncated && Array.isArray(this.lastJSONPathResults) && this.lastJSONPathResults.length < totalCount;
+        const title = partial
+            ? `JSONPath results · ${displayIndex}/${totalCount} (partial)`
+            : `JSONPath results · ${displayIndex}/${totalCount}`;
+        renderJSONPathStatus(label, 'count', { partial, title });
     }
 
     performFindWidgetJSONPathSearch(query, options = {}) {
