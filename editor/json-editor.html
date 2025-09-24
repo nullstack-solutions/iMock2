@@ -4,125 +4,142 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WireMock JSON Studio</title>
+    <link rel="stylesheet" href="../styles/animations.css">
+    <link rel="stylesheet" href="../styles/components.css">
+    <link rel="stylesheet" href="../styles/modals.css">
+    <link rel="stylesheet" href="../styles/main.css">
     <link href="json-editor.css" rel="stylesheet">
 </head>
 <body data-theme="light">
-    <div class="app-container">
-        <header class="header">
-            <div style="display: flex; align-items: center; gap: 1rem;">
-                <div class="logo">WM</div>
-                <h1>WireMock JSON Studio</h1>
-            </div>
-            <div class="header-controls">
-                <button class="btn btn-icon" onclick="toggleTheme()" title="Toggle Theme">
-                    <span class="theme-icon" aria-hidden="true">&#9790;</span>
-                </button>
-            </div>
-        </header>
-        <div class="toolbar">
-            <div class="toolbar-section">
-                <div class="btn-group" id="editorControls">
-                    <button class="btn btn-secondary" onclick="newDocument()" title="New (Ctrl+N)">
-                        <span class="btn-icon-label" aria-hidden="true">&#x1F4C4;</span>
-                        <span>New</span>
-                    </button>
-                    <button class="btn btn-secondary" onclick="loadFile()" title="Load (Ctrl+O)">
-                        <span class="btn-icon-label" aria-hidden="true">&#x1F4E5;</span>
-                        <span>Load</span>
-                    </button>
-                    <button class="btn btn-primary" onclick="saveFile()" title="Save (Ctrl+S)">
-                        <span class="btn-icon-label" aria-hidden="true">&#x1F4BE;</span>
-                        <span>Save</span>
+    <div class="editor-app">
+        <section class="editor-toolbar card" aria-label="Editor controls">
+            <div class="toolbar-row toolbar-row--primary">
+                <div class="toolbar-brand">
+                    <span class="logo-badge" aria-hidden="true">WM</span>
+                    <div class="toolbar-text">
+                        <h1 class="toolbar-title">JSON Studio</h1>
+                        <p class="toolbar-caption">Mapping workspace</p>
+                    </div>
+                </div>
+                <div class="toolbar-row__actions">
+                    <div class="btn-group" id="editorControls" role="group" aria-label="Workspace actions">
+                        <button class="btn btn-secondary" onclick="newDocument()" title="New (Ctrl+N)" data-tooltip="New document (Ctrl+N)">
+                            <span class="icon" aria-hidden="true">📄</span>
+                            <span class="btn-label">New</span>
+                        </button>
+                        <button class="btn btn-secondary" onclick="loadFile()" title="Load (Ctrl+O)" data-tooltip="Load JSON from file (Ctrl+O)">
+                            <span class="icon" aria-hidden="true">📥</span>
+                            <span class="btn-label">Load</span>
+                        </button>
+                        <button class="btn btn-primary" onclick="saveFile()" title="Save (Ctrl+S)" data-tooltip="Save JSON locally (Ctrl+S)">
+                            <span class="icon" aria-hidden="true">💾</span>
+                            <span class="btn-label">Save</span>
+                        </button>
+                    </div>
+                    <div class="btn-group" id="compareControls" role="group" aria-label="Compare actions" style="display: none;">
+                        <button class="btn btn-secondary" onclick="loadCompareFile('left')" title="Load File (Left)" data-tooltip="Load left file">
+                            <span class="icon" aria-hidden="true">⬅️</span>
+                            <span class="btn-label">Load Left</span>
+                        </button>
+                        <button class="btn btn-secondary" onclick="loadCompareFile('right')" title="Load File (Right)" data-tooltip="Load right file">
+                            <span class="icon" aria-hidden="true">➡️</span>
+                            <span class="btn-label">Load Right</span>
+                        </button>
+                        <button class="btn btn-secondary" onclick="clearComparePanel('left')" title="Clear Left" data-tooltip="Clear left panel">
+                            <span class="icon" aria-hidden="true">✖️</span>
+                            <span class="btn-label">Clear Left</span>
+                        </button>
+                        <button class="btn btn-secondary" onclick="clearComparePanel('right')" title="Clear Right" data-tooltip="Clear right panel">
+                            <span class="icon" aria-hidden="true">✖️</span>
+                            <span class="btn-label">Clear Right</span>
+                        </button>
+                    </div>
+                    <div class="btn-group mode-tabs" role="tablist" aria-label="Editor modes">
+                        <button class="btn btn-secondary mode-tab active" data-mode="editor" onclick="switchMode('editor')" role="tab" aria-selected="true" data-tooltip="Single document mode">
+                            <span class="icon" aria-hidden="true">✏️</span>
+                            <span class="btn-label">Editor</span>
+                        </button>
+                        <button class="btn btn-secondary mode-tab" data-mode="compare" onclick="switchMode('compare')" role="tab" aria-selected="false" data-tooltip="Compare two files">
+                            <span class="icon" aria-hidden="true">🔀</span>
+                            <span class="btn-label">Compare</span>
+                        </button>
+                    </div>
+                    <button class="btn btn-icon btn-secondary btn-icon-compact toolbar-theme-toggle" onclick="toggleTheme()" title="Toggle theme" data-tooltip="Toggle theme">
+                        <span class="theme-icon" aria-hidden="true">🌙</span>
+                        <span class="sr-only">Toggle theme</span>
                     </button>
                 </div>
-                <div class="btn-group" id="compareControls" style="display: none;">
-                    <button class="btn btn-secondary" onclick="loadCompareFile('left')" title="Load File (Left)">
-                        <span class="btn-icon-label" aria-hidden="true">&#x2B05;</span>
-                        <span>Load Left</span>
-                    </button>
-                    <button class="btn btn-secondary" onclick="loadCompareFile('right')" title="Load File (Right)">
-                        <span class="btn-icon-label" aria-hidden="true">&#x27A1;</span>
-                        <span>Load Right</span>
-                    </button>
-                    <button class="btn btn-secondary" onclick="clearComparePanel('left')" title="Clear Left">
-                        <span class="btn-icon-label" aria-hidden="true">&#x2716;</span>
-                        <span>Clear Left</span>
-                    </button>
-                    <button class="btn btn-secondary" onclick="clearComparePanel('right')" title="Clear Right">
-                        <span class="btn-icon-label" aria-hidden="true">&#x2716;</span>
-                        <span>Clear Right</span>
-                    </button>
-                </div>
             </div>
-            <div class="toolbar-section">
-                <div class="btn-group">
-                    <button class="btn btn-secondary mode-tab active" data-mode="editor" onclick="switchMode('editor')">
-                        <span class="btn-icon-label" aria-hidden="true">&#x270E;</span>
-                        <span>Editor</span>
-                    </button>
-                    <button class="btn btn-secondary mode-tab" data-mode="compare" onclick="switchMode('compare')">
-                        <span class="btn-icon-label" aria-hidden="true">&#x21C4;</span>
-                        <span>Compare</span>
-                    </button>
-                </div>
-            </div>
-            <div class="toolbar-section">
-                <div class="search-container">
-                    <input type="text" id="jsonPathInput" placeholder="Search text or JSONPath ($.path)..." onkeydown="if(event.key==='Enter') searchJSONPath()">
-                    <div class="search-toggles">
-                        <label class="toggle-label" title="Match case">
+            <div class="toolbar-row toolbar-row--search">
+                <div class="search-container" role="search">
+                    <label class="sr-only" for="jsonPathInput">Search text or JSONPath</label>
+                    <input type="text" class="form-input search-input" id="jsonPathInput" placeholder="Search text or JSONPath ($.path)..." onkeydown="if(event.key==='Enter') searchJSONPath()">
+                    <div class="search-toggles" role="group" aria-label="Search filters">
+                        <label class="toggle-label" title="Match case" data-tooltip="Match case">
                             <input type="checkbox" id="matchCaseToggle">
                             <span>Aa</span>
                         </label>
-                        <label class="toggle-label" title="Whole word">
+                        <label class="toggle-label" title="Whole word" data-tooltip="Match whole words">
                             <input type="checkbox" id="wholeWordToggle">
                             <span>W</span>
                         </label>
-                        <label class="toggle-label" title="Keys only">
+                        <label class="toggle-label" title="Keys only" data-tooltip="Search only keys">
                             <input type="checkbox" id="keysOnlyToggle">
                             <span>K</span>
                         </label>
-                        <label class="toggle-label" title="Values only">
+                        <label class="toggle-label" title="Values only" data-tooltip="Search only values">
                             <input type="checkbox" id="valuesOnlyToggle">
                             <span>V</span>
                         </label>
                     </div>
-                    <div class="search-actions">
-                        <button class="btn btn-icon btn-compact" onclick="formatJSON()" title="Format JSON">
-                            <span aria-hidden="true">&#123;&#125;</span>
+                    <div class="search-actions" role="group" aria-label="Editor utilities">
+                        <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="formatJSON()" title="Format JSON" data-tooltip="Pretty print JSON">
+                            <span class="icon" aria-hidden="true">{ }</span>
+                            <span class="sr-only">Format JSON</span>
                         </button>
-                        <button class="btn btn-icon btn-compact" onclick="minifyJSON()" title="Minify JSON">
-                            <span aria-hidden="true">&#x2212;</span>
+                        <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="minifyJSON()" title="Minify JSON" data-tooltip="Minify JSON">
+                            <span class="icon" aria-hidden="true">➖</span>
+                            <span class="sr-only">Minify JSON</span>
                         </button>
-                        <button class="btn btn-icon btn-compact" onclick="validateJSON()" title="Validate JSON">
-                            <span aria-hidden="true">&#x2714;</span>
+                        <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="validateJSON()" title="Validate JSON" data-tooltip="Validate JSON">
+                            <span class="icon" aria-hidden="true">✔️</span>
+                            <span class="sr-only">Validate JSON</span>
                         </button>
-                        <button class="btn btn-icon btn-compact" onclick="openModal()" title="WireMock Templates">
-                            <span aria-hidden="true">&#x1F4C3;</span>
+                        <span class="search-actions__divider" role="presentation" aria-hidden="true"></span>
+                        <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="openModal()" title="WireMock Templates" data-tooltip="WireMock templates">
+                            <span class="icon" aria-hidden="true">🧩</span>
+                            <span class="sr-only">WireMock templates</span>
                         </button>
-                        <button class="btn btn-icon btn-compact" onclick="openHistoryModal()" title="History">
-                            <span aria-hidden="true">&#x23F2;</span>
+                        <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="openHistoryModal()" title="History" data-tooltip="Show history">
+                            <span class="icon" aria-hidden="true">🕒</span>
+                            <span class="sr-only">History</span>
                         </button>
-                        <button class="btn btn-icon btn-compact" onclick="exportAsYAML()" title="Export as YAML">
-                            <span aria-hidden="true">&#x1F4E4;</span>
+                        <span class="search-actions__divider" role="presentation" aria-hidden="true"></span>
+                        <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="exportAsYAML()" title="Export as YAML" data-tooltip="Export YAML">
+                            <span class="icon" aria-hidden="true">📤</span>
+                            <span class="sr-only">Export as YAML</span>
                         </button>
-                        <button class="btn btn-icon btn-compact" onclick="togglePerformanceMonitoring()" title="Performance Monitor">
-                            <span aria-hidden="true">📈</span>
+                        <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="togglePerformanceMonitoring()" title="Performance Monitor" data-tooltip="Toggle performance monitor">
+                            <span class="icon" aria-hidden="true">📈</span>
+                            <span class="sr-only">Toggle performance monitor</span>
                         </button>
-                        <button class="btn btn-icon btn-compact" onclick="testOptimisticUpdate()" title="Test Optimistic Update">
-                            <span aria-hidden="true">🎯</span>
+                        <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="testOptimisticUpdate()" title="Test Optimistic Update" data-tooltip="Test optimistic update">
+                            <span class="icon" aria-hidden="true">🎯</span>
+                            <span class="sr-only">Test optimistic update</span>
                         </button>
-                        <button class="btn btn-icon btn-compact" onclick="testCacheRefresh()" title="Test Cache Refresh">
-                            <span aria-hidden="true">🔄</span>
+                        <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="testCacheRefresh()" title="Test Cache Refresh" data-tooltip="Test cache refresh">
+                            <span class="icon" aria-hidden="true">🔄</span>
+                            <span class="sr-only">Test cache refresh</span>
                         </button>
                     </div>
-                    <button class="btn btn-icon" onclick="searchJSONPath()" title="Search">
-                        <span aria-hidden="true">&#x1F50D;</span>
+                    <button class="btn btn-primary" onclick="searchJSONPath()" title="Search" data-tooltip="Search in document">
+                        <span class="icon" aria-hidden="true">🔍</span>
+                        <span class="btn-label">Search</span>
                     </button>
                 </div>
             </div>
-        </div>
-        <main class="main-content">
+        </section>
+        <main class="editor-main">
             <div class="drag-overlay" id="dragOverlay">
                 <div class="drag-text">
                     Drop JSON files here
@@ -143,7 +160,7 @@
     </div>
 
     <!-- Templates Modal -->
-    <div class="modal" id="fullscreenModal" role="dialog" aria-modal="true" aria-labelledby="modal-title-templates" aria-hidden="true">
+    <div class="modal hidden" id="fullscreenModal" role="dialog" aria-modal="true" aria-labelledby="modal-title-templates" aria-hidden="true">
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="modal-title-templates">WireMock Templates</h2>
@@ -158,7 +175,7 @@
     </div>
 
     <!-- History Modal -->
-    <div class="modal" id="historyModal" role="dialog" aria-modal="true" aria-labelledby="modal-title-history" aria-hidden="true">
+    <div class="modal hidden" id="historyModal" role="dialog" aria-modal="true" aria-labelledby="modal-title-history" aria-hidden="true">
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="modal-title-history">History</h2>
@@ -204,7 +221,24 @@
          * Show notification
          */
         function showNotification(message, type = 'info') {
-            console.log(`[${type.toUpperCase()}] ${message}`);
+            const manager = window.NotificationManager;
+            const normalizedType = (type || 'info').toString().toLowerCase();
+
+            if (manager && typeof manager.show === 'function') {
+                try {
+                    if (typeof manager[normalizedType] === 'function') {
+                        manager[normalizedType](message);
+                    } else {
+                        manager.show(message, normalizedType);
+                    }
+                    return;
+                } catch (error) {
+                    console.warn('NotificationManager failed, falling back to console log:', error);
+                }
+            }
+
+            const label = normalizedType.toUpperCase();
+            console.log(`[${label}] ${message}`);
         }
 
         /**
@@ -416,6 +450,112 @@
                 console.error('Download failed:', error);
                 showNotification('Download failed: ' + error.message, 'error');
             }
+        }
+
+        /**
+         * Modal helpers
+         */
+        const MODAL_FOCUSABLE_SELECTORS = [
+            'button:not([disabled])',
+            'a[href]',
+            'input:not([disabled])',
+            'select:not([disabled])',
+            'textarea:not([disabled])',
+            '[tabindex]:not([tabindex="-1"])'
+        ].join(', ');
+
+        function tryFocusElement(element) {
+            if (!element || typeof element.focus !== 'function') {
+                return;
+            }
+
+            try {
+                element.focus({ preventScroll: true });
+            } catch (e) {
+                element.focus();
+            }
+        }
+
+        function setModalVisibility(modal, shouldShow) {
+            if (!(modal instanceof HTMLElement)) {
+                return;
+            }
+
+            if (shouldShow) {
+                modal.classList.remove('hidden');
+                modal.classList.add('show');
+                modal.style.display = 'flex';
+                modal.setAttribute('aria-hidden', 'false');
+
+                if (!modal.__triggerElement && document.activeElement instanceof HTMLElement) {
+                    modal.__triggerElement = document.activeElement;
+                }
+
+                document.body.classList.add('modal-open');
+
+                const focusTarget = modal.querySelector('[data-autofocus]') || modal.querySelector(MODAL_FOCUSABLE_SELECTORS);
+                if (focusTarget) {
+                    tryFocusElement(focusTarget);
+                } else {
+                    modal.setAttribute('tabindex', '-1');
+                    tryFocusElement(modal);
+                }
+            } else {
+                const trigger = modal.__triggerElement instanceof HTMLElement ? modal.__triggerElement : null;
+                const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+                const hadFocusInside = activeElement ? modal.contains(activeElement) : false;
+
+                if (hadFocusInside) {
+                    if (trigger) {
+                        tryFocusElement(trigger);
+                    } else if (activeElement && typeof activeElement.blur === 'function') {
+                        activeElement.blur();
+                    }
+                }
+
+                modal.classList.remove('show');
+                modal.classList.add('hidden');
+                modal.style.display = 'none';
+                modal.setAttribute('aria-hidden', 'true');
+
+                delete modal.__triggerElement;
+
+                if (!document.querySelector('.modal.show, .modal[aria-hidden="false"]')) {
+                    document.body.classList.remove('modal-open');
+                }
+
+                if (!hadFocusInside && trigger) {
+                    tryFocusElement(trigger);
+                }
+            }
+        }
+
+        function openModal(modalId = 'fullscreenModal') {
+            const modal = document.getElementById(modalId);
+            if (!modal) {
+                console.warn(`Modal with id "${modalId}" not found`);
+                return;
+            }
+
+            setModalVisibility(modal, true);
+        }
+
+        function closeModal(modalId = 'fullscreenModal') {
+            const modal = document.getElementById(modalId);
+            if (!modal) {
+                console.warn(`Modal with id "${modalId}" not found`);
+                return;
+            }
+
+            setModalVisibility(modal, false);
+        }
+
+        function openHistoryModal() {
+            openModal('historyModal');
+        }
+
+        function closeHistoryModal() {
+            closeModal('historyModal');
         }
 
         /**
@@ -889,19 +1029,19 @@
 
         // Close modals when clicking outside
         document.addEventListener('click', (e) => {
-            if (e.target.classList.contains('modal')) {
-                e.target.style.display = 'none';
-                e.target.setAttribute('aria-hidden', 'true');
+            const target = e.target;
+            if (target instanceof HTMLElement && target.classList.contains('modal') && target.getAttribute('aria-hidden') === 'false') {
+                setModalVisibility(target, false);
             }
         });
 
         // Close modals with Escape key
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
-                const openModal = document.querySelector('.modal[aria-hidden="false"]');
-                if (openModal) {
-                    openModal.style.display = 'none';
-                    openModal.setAttribute('aria-hidden', 'true');
+                const openModal = document.querySelector('.modal.show, .modal[aria-hidden="false"]');
+                if (openModal instanceof HTMLElement) {
+                    e.preventDefault();
+                    setModalVisibility(openModal, false);
                 }
             }
         });
