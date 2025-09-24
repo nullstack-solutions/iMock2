@@ -442,8 +442,6 @@ window.showModal = (modalId) => {
         return;
     }
 
-    resetMappingFormDefaults();
-
     modal.classList.remove('hidden');
     modal.style.display = 'flex';
 
@@ -451,6 +449,11 @@ window.showModal = (modalId) => {
     if (firstInput) {
         setTimeout(() => firstInput.focus(), 100);
     }
+};
+
+window.openAddMappingModal = () => {
+    resetMappingFormDefaults();
+    window.showModal('add-mapping-modal');
 };
 
 window.hideModal = (modal) => {
