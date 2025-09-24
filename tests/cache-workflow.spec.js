@@ -191,6 +191,7 @@ runTest('delete hydrates cache then removes mapping and updates UI', () => {
 runTest('applyOptimisticMappingUpdate seeds cache from globals before writing', () => {
     context.__lastRender = null;
     context.cacheManager.cache.clear();
+    context.cacheManager.optimisticQueue.length = 0;
 
     const base = baseMapping('p');
     context.originalMappings = [base];
@@ -202,6 +203,28 @@ runTest('applyOptimisticMappingUpdate seeds cache from globals before writing', 
     const keys = Array.from(context.cacheManager.cache.keys()).sort();
     assert.strictEqual(keys.join(','), 'p,q');
     assert.strictEqual(getRenderedIds().slice().sort().join(','), 'p,q');
+    assert.strictEqual(context.cacheManager.optimisticQueue.length, 1);
+    const queued = context.cacheManager.optimisticQueue[0];
+    assert.strictEqual(queued.id, 'q');
+    assert.strictEqual(queued.op, 'create');
+});
+
+runTest('updateOptimisticCache confirms queue entries by default', () => {
+    context.__lastRender = null;
+    context.cacheManager.cache.clear();
+    context.cacheManager.optimisticQueue.length = 0;
+
+    const existing = baseMapping('z');
+    const updated = baseMapping('z', { response: { status: 204 } });
+
+    context.cacheManager.cache.set('z', existing);
+    context.cacheManager.addOptimisticUpdate(updated, 'update');
+
+    context.updateOptimisticCache(updated, 'update');
+
+    assert.strictEqual(context.cacheManager.optimisticQueue.length, 0);
+    const stored = context.cacheManager.cache.get('z');
+    assert.strictEqual(stored.response.status, 204);
 });
 
 console.log('✅ Cache workflow pipeline tests passed');
