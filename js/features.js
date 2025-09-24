@@ -895,6 +895,8 @@ window.applyOptimisticMappingUpdate = (mappingLike) => {
         const cacheAvailable = window.cacheManager && window.cacheManager.cache instanceof Map;
         const optimisticOperation = cacheAvailable && window.cacheManager.cache.has(mappingId) ? 'update' : 'create';
 
+
+        // Use updateOptimisticCache if available, otherwise fallback to legacy/manual logic
         if (typeof updateOptimisticCache === 'function') {
             updateOptimisticCache(mapping, optimisticOperation);
         } else {
@@ -2113,7 +2115,6 @@ function mergeMappingData(existing, incoming) {
         metadata: { ...existing.metadata, ...incoming.metadata }
     };
 }
-
 function seedCacheFromGlobals(cache) {
     try {
         if (!(cache instanceof Map)) {
@@ -2249,6 +2250,8 @@ function buildCacheSnapshot() {
 
 function refreshMappingsFromCache({ maintainFilters = true } = {}) {
     try {
+
+        // Use full cache snapshot logic for consistency
         const sanitized = buildCacheSnapshot();
 
         window.originalMappings = sanitized.slice();
