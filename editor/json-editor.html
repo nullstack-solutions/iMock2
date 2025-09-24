@@ -566,14 +566,58 @@
             const currentTheme = body.getAttribute('data-theme');
             const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
             body.setAttribute('data-theme', newTheme);
-            
+
             const themeIcon = document.querySelector('.theme-icon');
             if (themeIcon) {
                 themeIcon.textContent = newTheme === 'dark' ? '☀️' : '🌙';
             }
-            
+
             localStorage.setItem('theme', newTheme);
             showNotification(`Switched to ${newTheme} theme`, 'success');
+        }
+
+        function newDocument() {
+            try {
+                if (window.monacoInitializer && typeof window.monacoInitializer.newDocument === 'function') {
+                    window.monacoInitializer.newDocument();
+                    const editor = window.monacoInitializer.getActiveEditor ? window.monacoInitializer.getActiveEditor() : null;
+                    if (editor && typeof editor.getValue === 'function' && typeof saveToHistory === 'function') {
+                        saveToHistory(editor.getValue(), 'New document');
+                    }
+                } else {
+                    showNotification('New document action not available', 'error');
+                }
+            } catch (error) {
+                console.error('New document error:', error);
+                showNotification('Error creating new document: ' + error.message, 'error');
+            }
+        }
+
+        function clearComparePanel(side) {
+            const target = side || 'both';
+            try {
+                if (window.monacoInitializer && typeof window.monacoInitializer.clearCompareContent === 'function') {
+                    window.monacoInitializer.clearCompareContent(target);
+                } else {
+                    showNotification('Clear panel action not available', 'error');
+                }
+            } catch (error) {
+                console.error('Clear panel error:', error);
+                showNotification('Error clearing panel: ' + error.message, 'error');
+            }
+        }
+
+        function exportAsYAML() {
+            try {
+                if (window.monacoInitializer && typeof window.monacoInitializer.exportAsYAML === 'function') {
+                    window.monacoInitializer.exportAsYAML();
+                } else {
+                    showNotification('Export to YAML is not available', 'error');
+                }
+            } catch (error) {
+                console.error('Export YAML error:', error);
+                showNotification('Export YAML error: ' + error.message, 'error');
+            }
         }
 
         /**

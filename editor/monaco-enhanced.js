@@ -34,6 +34,10 @@ class MonacoInitializer {
             totalCount: 0,
             truncated: false
         };
+        this.currentJSONPathIndex = -1;
+        this.lastJSONPathQuery = '';
+        this.jsonPathSearchRequestId = 0;
+        this.findWidgetIntegration = null;
     }
 
     async initialize() {
@@ -205,7 +209,9 @@ class MonacoInitializer {
 
     createEditor(container, options) {
         const editor = monaco.editor.create(container, options);
-        
+
+        this.setupFindWidgetIntegration(editor);
+
         // Initialize virtualized renderer for this editor
         if (typeof VirtualizedJSONRenderer !== 'undefined') {
             const virtualRenderer = new VirtualizedJSONRenderer(editor);
@@ -242,7 +248,10 @@ class MonacoInitializer {
             { key: monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, action: () => this.saveFile() },
             { key: monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF, action: () => this.formatJSON() },
             { key: monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyM, action: () => this.minifyJSON() },
-            { key: monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyT, action: () => this.validateJSON() }
+            { key: monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyT, action: () => this.validateJSON() },
+            { key: monaco.KeyMod.Alt | monaco.KeyCode.KeyN, action: () => this.navigateJSONPathMatches(1) },
+            { key: monaco.KeyMod.Alt | monaco.KeyCode.KeyP, action: () => this.navigateJSONPathMatches(-1) },
+            { key: monaco.KeyMod.Alt | monaco.KeyCode.KeyJ, action: () => this.toggleFindWidgetJSONPathMode() }
         ];
 
         shortcuts.forEach(({ key, action }) => {
@@ -681,72 +690,6 @@ class MonacoInitializer {
         }
     }
 
-    // Enhanced JSONPath search with real path-to-position mapping
-    searchJSONPath(query) {
-        const editor = this.getActiveEditor();
-        if (!editor) {
-            this.showNotification('No active editor', 'warning');
-            return;
-        }
-
-        try {
-            const content = editor.getValue();
-            if (!content.trim()) {
-                this.showNotification('No content to search', 'warning');
-                return;
-            }
-
-            if (query.startsWith('$.') || query.startsWith('$[') || query === '$') {
-                // Enhanced JSONPath search with position mapping
-                try {
-                    const parsed = JSON.parse(content);
-                    const results = this.evaluateJSONPath(parsed, query, content, editor);
-                    
-                    if (results.length > 0) {
-                        let message = `JSONPath "${query}" found ${results.length} match${results.length !== 1 ? 'es' : ''}`;
-                        
-                        // Highlight the first match
-                        if (results[0].position) {
-                            const position = results[0].position;
-                            editor.setSelection(new monaco.Range(
-                                position.startLineNumber,
-                                position.startColumn,
-                                position.endLineNumber,
-                                position.endColumn
-                            ));
-                            editor.revealPositionInCenter(position);
-                            
-                            message += ` - First match highlighted`;
-                        }
-                        
-                        // Show preview of the found value
-                        const preview = this.formatValuePreview(results[0].value);
-                        message += `: ${preview}`;
-                        
-                        this.showNotification(message, 'success');
-                        
-                        // Store results for navigation
-                        this.lastJSONPathResults = results;
-                        
-                        if (results.length > 1) {
-                            this.showNotification(`Use Alt+N/Alt+P to navigate between ${results.length} matches`, 'info');
-                        }
-                    } else {
-                        this.showNotification(`JSONPath "${query}" not found`, 'info');
-                    }
-                } catch (parseError) {
-                    this.showNotification('Cannot parse JSON for JSONPath search: ' + parseError.message, 'error');
-                }
-            } else {
-                // Fall back to regular text search
-                this.search(query);
-            }
-        } catch (error) {
-            console.error('JSONPath search error:', error);
-            this.showNotification('JSONPath search error: ' + error.message, 'error');
-        }
-    }
-    
     evaluateJSONPath(data, path, content, editor) {
         const results = [];
         const pointerLocator = this.createPointerLocator(content);
@@ -983,6 +926,39 @@ class MonacoInitializer {
         }
     }
 
+    exportAsYAML() {
+        const editor = this.getActiveEditor();
+        if (!editor) {
+            this.showNotification('No active editor', 'warning');
+            return;
+        }
+
+        let jsonData;
+        try {
+            jsonData = JSON.parse(editor.getValue());
+        } catch (error) {
+            this.showNotification('Cannot export YAML: ' + error.message, 'error');
+            return;
+        }
+
+        try {
+            const yaml = convertJSONToYAML(jsonData);
+            const content = yaml.endsWith('\n') ? yaml : `${yaml}\n`;
+            const blob = new Blob([content], { type: 'text/yaml' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'wiremock-mapping.yaml';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            this.showNotification('YAML exported', 'success');
+        } catch (error) {
+            this.showNotification('YAML export failed: ' + error.message, 'error');
+        }
+    }
+
     // Enhanced search with toolbar toggles
     async searchJSONPath(query) {
         if (!query) {
@@ -1042,12 +1018,21 @@ class MonacoInitializer {
         }
     }
 
-    async searchWithJSONPath(jsonPath, editor) {
+    async searchWithJSONPath(jsonPath, editor, options = {}) {
+        const { notify = true, revealFirst = true, fromWidget = false } = options || {};
+        const requestId = ++this.jsonPathSearchRequestId;
         const content = editor.getValue();
 
         if (!content || !content.trim()) {
-            this.showNotification('No content to search', 'warning');
-            return;
+            this.resetJSONPathResults({ keepQuery: true });
+            this.lastJSONPathQuery = jsonPath;
+            if (fromWidget) {
+                this.updateFindWidgetMatchesCount(0, false, -1, { noContent: true });
+            }
+            if (notify) {
+                this.showNotification('No content to search', 'warning');
+            }
+            return [];
         }
 
         let workerResult = null;
@@ -1065,22 +1050,35 @@ class MonacoInitializer {
             const totalCount = typeof workerResult.count === 'number' ? workerResult.count : matches.length;
             const truncated = Boolean(workerResult.truncated);
 
+            if (requestId !== this.jsonPathSearchRequestId) {
+                return matches;
+            }
+
             this.lastJSONPathPointerLocator = pointerLocator;
-            this.handleJSONPathMatches(jsonPath, matches, editor, totalCount, truncated);
-            return;
+            return this.handleJSONPathMatches(jsonPath, matches, editor, totalCount, truncated, { notify, revealFirst, fromWidget });
         }
 
         try {
             const jsonData = JSON.parse(content);
             const results = this.evaluateJSONPath(jsonData, jsonPath, content, editor) || [];
 
+            if (requestId !== this.jsonPathSearchRequestId) {
+                return results;
+            }
+
             this.lastJSONPathPointerLocator = null;
-            this.handleJSONPathMatches(jsonPath, results, editor, results.length, false);
+            return this.handleJSONPathMatches(jsonPath, results, editor, results.length, false, { notify, revealFirst, fromWidget });
         } catch (error) {
-            this.lastJSONPathResults = [];
+            this.resetJSONPathResults({ keepQuery: true });
             this.lastJSONPathPointerLocator = null;
-            this.lastJSONPathMeta = { totalCount: 0, truncated: false };
-            this.showNotification('Invalid JSON or JSONPath: ' + error.message, 'error');
+            this.lastJSONPathQuery = jsonPath;
+            if (fromWidget) {
+                this.updateFindWidgetMatchesCount(0, false, -1, { error: error.message });
+            }
+            if (notify) {
+                this.showNotification('Invalid JSON or JSONPath: ' + error.message, 'error');
+            }
+            return [];
         }
     }
 
@@ -1307,24 +1305,137 @@ class MonacoInitializer {
         return pointer;
     }
 
-    handleJSONPathMatches(jsonPath, matches, editor, totalCount, truncated) {
+    handleJSONPathMatches(jsonPath, matches, editor, totalCount, truncated, options = {}) {
+        const { notify = true, revealFirst = true, fromWidget = false } = options || {};
+
         if (!Array.isArray(matches) || matches.length === 0) {
-            this.lastJSONPathResults = [];
+            this.resetJSONPathResults({ keepQuery: true });
+            this.lastJSONPathQuery = jsonPath;
             this.lastJSONPathMeta = { totalCount: 0, truncated: false };
-            this.showNotification(`JSONPath "${jsonPath}" not found`, 'info');
-            return;
+            if (fromWidget) {
+                this.updateFindWidgetMatchesCount(0, truncated, -1, { query: jsonPath });
+            }
+            if (notify) {
+                this.showNotification(`JSONPath "${jsonPath}" not found`, 'info');
+            }
+            return [];
         }
 
-        const firstMatch = matches[0];
+        this.lastJSONPathResults = matches;
+        this.lastJSONPathMeta = { totalCount, truncated };
+        this.lastJSONPathQuery = jsonPath;
 
-        if (firstMatch.position && typeof firstMatch.position.startLineNumber === 'number') {
-            const range = new monaco.Range(
-                firstMatch.position.startLineNumber,
-                firstMatch.position.startColumn,
-                firstMatch.position.endLineNumber,
-                firstMatch.position.endColumn
-            );
-            editor.setSelection(range);
+        if (revealFirst) {
+            this.focusJSONPathMatch(0, editor, { fromWidget, reveal: true });
+        } else if (this.currentJSONPathIndex < 0 || this.currentJSONPathIndex >= matches.length) {
+            this.currentJSONPathIndex = 0;
+        }
+
+        if (fromWidget) {
+            this.updateFindWidgetMatchesCount(totalCount, truncated, this.currentJSONPathIndex);
+        }
+
+        if (notify) {
+            const effectiveIndex = Math.max(0, this.currentJSONPathIndex);
+            const matchForPreview = matches[effectiveIndex] || matches[0];
+            let message = `JSONPath "${jsonPath}" found ${totalCount} match${totalCount === 1 ? '' : 'es'}`;
+            if (truncated && matches.length < totalCount) {
+                message += ` (showing first ${matches.length})`;
+            }
+
+            if (matchForPreview && Object.prototype.hasOwnProperty.call(matchForPreview, 'value')) {
+                message += `: ${this.formatValuePreview(matchForPreview.value)}`;
+            }
+
+            this.showNotification(message, 'success');
+
+            if (totalCount > 1) {
+                this.showNotification(`Use Alt+N/Alt+P to navigate between ${totalCount} matches`, 'info');
+            }
+        }
+
+        return matches;
+    }
+
+    resetJSONPathResults(options = {}) {
+        const { keepQuery = false } = options || {};
+        this.lastJSONPathResults = [];
+        this.lastJSONPathMeta = { totalCount: 0, truncated: false };
+        this.lastJSONPathPointerLocator = null;
+        this.currentJSONPathIndex = -1;
+        if (!keepQuery) {
+            this.lastJSONPathQuery = '';
+        }
+    }
+
+    focusJSONPathMatch(index, editor = this.getActiveEditor(), options = {}) {
+        const { reveal = true, fromWidget = false } = options || {};
+
+        if (!editor) {
+            return false;
+        }
+
+        const matches = Array.isArray(this.lastJSONPathResults) ? this.lastJSONPathResults : [];
+        if (matches.length === 0) {
+            this.currentJSONPathIndex = -1;
+            if (fromWidget) {
+                this.updateFindWidgetMatchesCount(0, false, -1);
+            }
+            return false;
+        }
+
+        const targetIndex = Number(index);
+        if (Number.isNaN(targetIndex) || targetIndex < 0 || targetIndex >= matches.length) {
+            return false;
+        }
+
+        const match = matches[targetIndex];
+        if (!match) {
+            return false;
+        }
+
+        const content = editor.getValue();
+        let position = match.position;
+        let pointerLocator = this.lastJSONPathPointerLocator;
+
+        if (!pointerLocator) {
+            pointerLocator = this.createPointerLocator(content);
+            this.lastJSONPathPointerLocator = pointerLocator;
+        }
+
+        if ((!position || typeof position.startLineNumber !== 'number') && pointerLocator) {
+            const pointer = match.pointer || this.convertJSONPathToPointer(match.path);
+            if (pointer) {
+                const pointerPosition = pointerLocator.getRange(pointer);
+                if (pointerPosition) {
+                    position = pointerPosition;
+                    match.position = pointerPosition;
+                }
+            }
+        }
+
+        if (!position || typeof position.startLineNumber !== 'number') {
+            const pointer = match.pointer || null;
+            const fallbackPosition = this.findValuePosition(match.value, content, editor, match.path, pointerLocator, pointer);
+            if (fallbackPosition) {
+                position = fallbackPosition;
+                match.position = fallbackPosition;
+            }
+        }
+
+        if (!position || typeof position.startLineNumber !== 'number') {
+            return false;
+        }
+
+        const range = new monaco.Range(
+            position.startLineNumber,
+            position.startColumn,
+            position.endLineNumber,
+            position.endColumn
+        );
+
+        editor.setSelection(range);
+        if (reveal) {
             if (monaco?.editor?.ScrollType) {
                 editor.revealRangeInCenter(range, monaco.editor.ScrollType.Smooth);
             } else {
@@ -1332,23 +1443,505 @@ class MonacoInitializer {
             }
         }
 
-        this.lastJSONPathResults = matches;
-        this.lastJSONPathMeta = { totalCount, truncated };
+        this.currentJSONPathIndex = targetIndex;
 
-        let message = `JSONPath "${jsonPath}" found ${totalCount} match${totalCount === 1 ? '' : 'es'}`;
-        if (truncated && matches.length < totalCount) {
-            message += ` (showing first ${matches.length})`;
+        if (fromWidget || (this.findWidgetIntegration && this.findWidgetIntegration.enabled)) {
+            const meta = this.lastJSONPathMeta || {};
+            const total = typeof meta.totalCount === 'number' && meta.totalCount > 0
+                ? meta.totalCount
+                : matches.length;
+            this.updateFindWidgetMatchesCount(total, Boolean(meta.truncated), targetIndex);
         }
 
-        if (firstMatch && Object.prototype.hasOwnProperty.call(firstMatch, 'value')) {
-            message += `: ${this.formatValuePreview(firstMatch.value)}`;
+        return true;
+    }
+
+    navigateJSONPathMatches(direction = 1, editor = this.getActiveEditor(), options = {}) {
+        const matches = Array.isArray(this.lastJSONPathResults) ? this.lastJSONPathResults : [];
+
+        if (!editor || matches.length === 0) {
+            if (options.notify !== false) {
+                this.showNotification('No JSONPath matches to navigate', 'warning');
+            }
+            return false;
         }
 
-        this.showNotification(message, 'success');
-
-        if (totalCount > 1) {
-            this.showNotification(`Use Alt+N/Alt+P to navigate between ${totalCount} matches`, 'info');
+        let step = Number(direction);
+        if (Number.isNaN(step) || step === 0) {
+            step = 1;
         }
+
+        const total = matches.length;
+        let targetIndex = typeof this.currentJSONPathIndex === 'number' ? this.currentJSONPathIndex : -1;
+
+        if (targetIndex < 0 || targetIndex >= total) {
+            targetIndex = step > 0 ? 0 : total - 1;
+        } else {
+            targetIndex = (targetIndex + step + total) % total;
+        }
+
+        const success = this.focusJSONPathMatch(targetIndex, editor, {
+            fromWidget: options.fromWidget,
+            reveal: options.reveal !== false
+        });
+
+        if (!success && options.notify !== false) {
+            this.showNotification('Unable to navigate to JSONPath match', 'warning');
+        }
+
+        return success;
+    }
+
+    updateFindWidgetMatchesCount(totalCount, truncated, index = this.currentJSONPathIndex, extra = {}) {
+        const integration = this.findWidgetIntegration;
+        if (!integration || !integration.matchesElement) {
+            return;
+        }
+
+        const matchesElement = integration.matchesElement;
+
+        if (extra.reset) {
+            if (typeof integration.originalMatchesText === 'string') {
+                matchesElement.textContent = integration.originalMatchesText;
+            }
+            matchesElement.removeAttribute('data-jsonpath');
+            return;
+        }
+
+        if (!integration.enabled && !extra.force) {
+            return;
+        }
+
+        matchesElement.dataset.jsonpath = 'true';
+
+        if (extra.searching) {
+            matchesElement.textContent = 'JSONPath: searching…';
+            return;
+        }
+
+        if (extra.emptyQuery) {
+            matchesElement.textContent = 'JSONPath: enter path';
+            return;
+        }
+
+        if (extra.noContent) {
+            matchesElement.textContent = 'JSONPath: no content';
+            return;
+        }
+
+        if (extra.error) {
+            matchesElement.textContent = 'JSONPath error';
+            return;
+        }
+
+        if (!totalCount || totalCount <= 0) {
+            matchesElement.textContent = 'JSONPath: no results';
+            return;
+        }
+
+        const displayIndex = typeof index === 'number' && index >= 0 ? index + 1 : 1;
+        let label = `JSONPath: ${displayIndex}/${totalCount}`;
+        if (truncated && Array.isArray(this.lastJSONPathResults) && this.lastJSONPathResults.length < totalCount) {
+            label += ' (partial)';
+        }
+        matchesElement.textContent = label;
+    }
+
+    performFindWidgetJSONPathSearch(query, options = {}) {
+        const integration = this.findWidgetIntegration;
+        if (!integration || !integration.enabled) {
+            return;
+        }
+
+        const trimmed = typeof query === 'string' ? query.trim() : '';
+        const immediate = Boolean(options.immediate);
+        const delay = typeof options.delay === 'number' ? options.delay : 150;
+
+        if (integration.searchDebounce) {
+            clearTimeout(integration.searchDebounce);
+            integration.searchDebounce = null;
+        }
+
+        if (!trimmed) {
+            this.resetJSONPathResults({ keepQuery: false });
+            this.lastJSONPathQuery = '';
+            this.updateFindWidgetMatchesCount(0, false, -1, { emptyQuery: true });
+            return;
+        }
+
+        const runSearch = () => {
+            integration.searchDebounce = null;
+            const targetEditor = integration.editor || this.getActiveEditor();
+            if (targetEditor) {
+                this.searchWithJSONPath(trimmed, targetEditor, {
+                    notify: false,
+                    revealFirst: options.revealFirst !== false,
+                    fromWidget: true
+                });
+            }
+        };
+
+        this.updateFindWidgetMatchesCount(null, false, -1, { searching: true, force: true });
+
+        if (immediate) {
+            runSearch();
+            return;
+        }
+
+        integration.searchDebounce = setTimeout(runSearch, delay);
+    }
+
+    setupFindWidgetIntegration(editor) {
+        if (typeof document === 'undefined') {
+            return;
+        }
+
+        if (!this.findWidgetIntegration) {
+            this.findWidgetIntegration = {
+                editor,
+                widget: null,
+                toggleElement: null,
+                matchesElement: null,
+                inputElement: null,
+                nextButton: null,
+                prevButton: null,
+                closeButton: null,
+                enabled: false,
+                observer: null,
+                searchDebounce: null,
+                originalMatchesText: ''
+            };
+        } else {
+            this.findWidgetIntegration.editor = editor;
+        }
+
+        const integration = this.findWidgetIntegration;
+
+        const tryDecorate = () => {
+            const widgetNode = document.querySelector('.editor-widget.find-widget');
+            if (widgetNode) {
+                this.decorateFindWidget(widgetNode, integration);
+                return true;
+            }
+            return false;
+        };
+
+        if (!tryDecorate()) {
+            if (!integration.observer) {
+                integration.observer = new MutationObserver((mutations) => {
+                    for (const mutation of mutations) {
+                        if (mutation.addedNodes) {
+                            for (const node of mutation.addedNodes) {
+                                if (!node || node.nodeType !== 1) {
+                                    continue;
+                                }
+
+                                const element = node;
+                                if (element.classList.contains('find-widget')) {
+                                    this.decorateFindWidget(element, integration);
+                                    continue;
+                                }
+
+                                const nested = element.querySelector ? element.querySelector('.editor-widget.find-widget, .find-widget') : null;
+                                if (nested) {
+                                    const actualWidget = nested.classList && nested.classList.contains('find-widget')
+                                        ? nested
+                                        : nested.querySelector('.find-widget');
+                                    if (actualWidget) {
+                                        this.decorateFindWidget(actualWidget, integration);
+                                    }
+                                }
+                            }
+                        }
+
+                        if (mutation.removedNodes && integration.widget) {
+                            for (const node of mutation.removedNodes) {
+                                if (!node || node.nodeType !== 1) {
+                                    continue;
+                                }
+                                if (node === integration.widget || (node.contains && node.contains(integration.widget))) {
+                                    this.handleFindWidgetRemoval();
+                                }
+                            }
+                        }
+                    }
+                });
+
+                integration.observer.observe(document.body, { childList: true, subtree: true });
+            }
+        }
+    }
+
+    decorateFindWidget(widgetNode, integration = this.findWidgetIntegration) {
+        if (!integration || !widgetNode || typeof widgetNode.querySelector !== 'function') {
+            return;
+        }
+
+        if (widgetNode.dataset) {
+            widgetNode.dataset.jsonpathDecorated = 'true';
+        }
+
+        integration.widget = widgetNode;
+
+        const matchesElement = widgetNode.querySelector('.matchesCount');
+        if (matchesElement) {
+            integration.matchesElement = matchesElement;
+            if (!integration.originalMatchesText) {
+                integration.originalMatchesText = matchesElement.textContent || '';
+            }
+        }
+
+        const controls = widgetNode.querySelector('.controls');
+        if (controls && !widgetNode.querySelector('[data-jsonpath-toggle]')) {
+            const toggle = document.createElement('div');
+            toggle.className = 'monaco-custom-toggle codicon codicon-symbol-structure';
+            toggle.setAttribute('role', 'checkbox');
+            toggle.setAttribute('tabindex', '0');
+            toggle.setAttribute('aria-checked', 'false');
+            toggle.setAttribute('aria-label', 'Use JSONPath (Alt+J)');
+            toggle.setAttribute('title', 'Use JSONPath (Alt+J)');
+            toggle.dataset.jsonpathToggle = 'true';
+
+            const toggleHandler = (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                this.setFindWidgetJSONPathMode(!integration.enabled, { notify: true, focusInput: true });
+            };
+
+            toggle.addEventListener('click', toggleHandler);
+            toggle.addEventListener('keydown', (event) => {
+                if (event.key === ' ' || event.key === 'Enter') {
+                    toggleHandler(event);
+                }
+            });
+
+            controls.appendChild(toggle);
+            integration.toggleElement = toggle;
+        } else if (controls && !integration.toggleElement) {
+            integration.toggleElement = controls.querySelector('[data-jsonpath-toggle]');
+        }
+
+        const inputElement = widgetNode.querySelector('.find-part .input');
+        if (inputElement) {
+            integration.inputElement = inputElement;
+            if (!inputElement.dataset.jsonpathBound) {
+                inputElement.dataset.jsonpathBound = 'true';
+
+                inputElement.addEventListener('input', () => {
+                    if (integration.enabled) {
+                        this.performFindWidgetJSONPathSearch(inputElement.value);
+                    }
+                });
+
+                inputElement.addEventListener('keydown', (event) => {
+                    if (!integration.enabled) {
+                        return;
+                    }
+
+                    if (event.key === 'Enter') {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        const query = inputElement.value.trim();
+                        if (!query) {
+                            this.updateFindWidgetMatchesCount(0, false, -1, { emptyQuery: true });
+                            return;
+                        }
+
+                        if (query !== this.lastJSONPathQuery) {
+                            this.performFindWidgetJSONPathSearch(query, { immediate: true });
+                            return;
+                        }
+
+                        const direction = event.shiftKey ? -1 : 1;
+                        this.navigateJSONPathMatches(direction, integration.editor, { fromWidget: true, notify: false });
+                    }
+                });
+            }
+        }
+
+        const nextButton = widgetNode.querySelector('.codicon-find-next-match');
+        if (nextButton) {
+            integration.nextButton = nextButton;
+            if (!nextButton.dataset.jsonpathBound) {
+                nextButton.dataset.jsonpathBound = 'true';
+                nextButton.addEventListener('mousedown', (event) => {
+                    if (integration.enabled) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                    }
+                });
+                nextButton.addEventListener('click', (event) => {
+                    if (!integration.enabled) {
+                        return;
+                    }
+                    event.preventDefault();
+                    event.stopPropagation();
+                    const query = integration.inputElement ? integration.inputElement.value.trim() : '';
+                    if (query && query !== this.lastJSONPathQuery) {
+                        this.performFindWidgetJSONPathSearch(query, { immediate: true });
+                        return;
+                    }
+                    this.navigateJSONPathMatches(1, integration.editor, { fromWidget: true, notify: false });
+                });
+            }
+        }
+
+        const prevButton = widgetNode.querySelector('.codicon-find-previous-match');
+        if (prevButton) {
+            integration.prevButton = prevButton;
+            if (!prevButton.dataset.jsonpathBound) {
+                prevButton.dataset.jsonpathBound = 'true';
+                prevButton.addEventListener('mousedown', (event) => {
+                    if (integration.enabled) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                    }
+                });
+                prevButton.addEventListener('click', (event) => {
+                    if (!integration.enabled) {
+                        return;
+                    }
+                    event.preventDefault();
+                    event.stopPropagation();
+                    const query = integration.inputElement ? integration.inputElement.value.trim() : '';
+                    if (query && query !== this.lastJSONPathQuery) {
+                        this.performFindWidgetJSONPathSearch(query, { immediate: true });
+                        return;
+                    }
+                    this.navigateJSONPathMatches(-1, integration.editor, { fromWidget: true, notify: false });
+                });
+            }
+        }
+
+        const closeButton = widgetNode.querySelector('.codicon-widget-close');
+        if (closeButton) {
+            integration.closeButton = closeButton;
+            if (!closeButton.dataset.jsonpathBound) {
+                closeButton.dataset.jsonpathBound = 'true';
+                closeButton.addEventListener('click', () => {
+                    if (integration.enabled) {
+                        this.setFindWidgetJSONPathMode(false, { notify: false });
+                    }
+                });
+            }
+        }
+
+        if (integration.enabled) {
+            const meta = this.lastJSONPathMeta || {};
+            const total = typeof meta.totalCount === 'number' && meta.totalCount > 0
+                ? meta.totalCount
+                : (Array.isArray(this.lastJSONPathResults) ? this.lastJSONPathResults.length : 0);
+            if (total > 0) {
+                this.updateFindWidgetMatchesCount(total, Boolean(meta.truncated), this.currentJSONPathIndex, { force: true });
+            } else {
+                this.updateFindWidgetMatchesCount(0, false, -1, { emptyQuery: !this.lastJSONPathQuery });
+            }
+        }
+    }
+
+    toggleFindWidgetJSONPathMode(force) {
+        const editor = this.getActiveEditor();
+        if (!editor) {
+            return;
+        }
+
+        const integration = this.findWidgetIntegration;
+        const desiredState = typeof force === 'boolean'
+            ? force
+            : !(integration && integration.enabled);
+
+        const applyToggle = () => {
+            this.setupFindWidgetIntegration(editor);
+            const updatedIntegration = this.findWidgetIntegration;
+            if (updatedIntegration && updatedIntegration.widget) {
+                this.setFindWidgetJSONPathMode(desiredState, { notify: true, focusInput: true });
+            }
+        };
+
+        if (!integration || !integration.widget) {
+            const findAction = editor.getAction && editor.getAction('actions.find');
+            if (findAction && typeof findAction.run === 'function') {
+                findAction.run().then(() => {
+                    setTimeout(applyToggle, 0);
+                }).catch(() => {
+                    setTimeout(applyToggle, 0);
+                });
+            } else {
+                editor.trigger('keyboard', 'actions.find', null);
+                setTimeout(applyToggle, 0);
+            }
+        } else {
+            applyToggle();
+        }
+    }
+
+    setFindWidgetJSONPathMode(enabled, options = {}) {
+        const integration = this.findWidgetIntegration;
+        if (!integration) {
+            return;
+        }
+
+        const previousState = integration.enabled;
+        integration.enabled = Boolean(enabled);
+
+        if (integration.toggleElement) {
+            integration.toggleElement.setAttribute('aria-checked', integration.enabled ? 'true' : 'false');
+            integration.toggleElement.classList.toggle('checked', integration.enabled);
+        }
+
+        if (integration.widget) {
+            integration.widget.classList.toggle('jsonpath-mode', integration.enabled);
+        }
+
+        if (!integration.enabled) {
+            if (integration.searchDebounce) {
+                clearTimeout(integration.searchDebounce);
+                integration.searchDebounce = null;
+            }
+            this.updateFindWidgetMatchesCount(null, false, -1, { reset: true });
+            if (options.notify && previousState !== integration.enabled) {
+                this.showNotification('JSONPath mode disabled in find widget', 'info');
+            }
+            return;
+        }
+
+        if (options.notify && previousState !== integration.enabled) {
+            this.showNotification('JSONPath mode enabled in find widget', 'info');
+        }
+
+        const input = integration.inputElement;
+        if (options.focusInput && input) {
+            input.focus();
+            input.select();
+        }
+
+        const query = input ? input.value.trim() : '';
+        if (query) {
+            this.performFindWidgetJSONPathSearch(query, { immediate: true });
+        } else {
+            this.updateFindWidgetMatchesCount(0, false, -1, { emptyQuery: true });
+        }
+    }
+
+    handleFindWidgetRemoval() {
+        const integration = this.findWidgetIntegration;
+        if (!integration) {
+            return;
+        }
+
+        if (integration.searchDebounce) {
+            clearTimeout(integration.searchDebounce);
+            integration.searchDebounce = null;
+        }
+
+        integration.widget = null;
+        integration.toggleElement = null;
+        integration.matchesElement = null;
+        integration.inputElement = null;
+        integration.nextButton = null;
+        integration.prevButton = null;
+        integration.closeButton = null;
+        integration.enabled = false;
     }
 
     findInJSONStructure(obj, searchTerm, keysOnly, valuesOnly, matchCase) {
@@ -1507,9 +2100,112 @@ class MonacoInitializer {
         if (this.searchIndex && typeof this.searchIndex.clear === 'function') {
             this.searchIndex.clear();
         }
-        
+
+        if (this.findWidgetIntegration) {
+            if (this.findWidgetIntegration.observer) {
+                this.findWidgetIntegration.observer.disconnect();
+                this.findWidgetIntegration.observer = null;
+            }
+            if (this.findWidgetIntegration.searchDebounce) {
+                clearTimeout(this.findWidgetIntegration.searchDebounce);
+                this.findWidgetIntegration.searchDebounce = null;
+            }
+            this.findWidgetIntegration = null;
+        }
+
         this.isInitialized = false;
     }
+}
+
+function convertJSONToYAML(value, indentLevel = 0) {
+    const indent = '  '.repeat(indentLevel);
+
+    if (Array.isArray(value)) {
+        if (value.length === 0) {
+            return `${indent}[]`;
+        }
+
+        return value.map((item) => {
+            if (isPlainObject(item) || Array.isArray(item)) {
+                const nested = convertJSONToYAML(item, indentLevel + 1).split('\n');
+                const firstLine = nested.shift() || '';
+                let line = `${indent}- ${firstLine.trimStart()}`;
+                if (nested.length > 0) {
+                    line += `\n${nested.join('\n')}`;
+                }
+                return line;
+            }
+
+            return `${indent}- ${formatYAMLScalar(item)}`;
+        }).join('\n');
+    }
+
+    if (isPlainObject(value)) {
+        const entries = Object.keys(value);
+        if (entries.length === 0) {
+            return `${indent}{}`;
+        }
+
+        return entries.map((key) => {
+            const formattedKey = formatYAMLKey(key);
+            const item = value[key];
+
+            if (isPlainObject(item) || Array.isArray(item)) {
+                const nested = convertJSONToYAML(item, indentLevel + 1);
+                return `${indent}${formattedKey}:\n${nested}`;
+            }
+
+            return `${indent}${formattedKey}: ${formatYAMLScalar(item)}`;
+        }).join('\n');
+    }
+
+    return `${indent}${formatYAMLScalar(value)}`;
+}
+
+function formatYAMLScalar(value) {
+    if (value === null || value === undefined) {
+        return 'null';
+    }
+
+    if (typeof value === 'number' || typeof value === 'boolean') {
+        return String(value);
+    }
+
+    if (value instanceof Date) {
+        return JSON.stringify(value.toISOString());
+    }
+
+    if (typeof value === 'string') {
+        if (value === '') {
+            return '""';
+        }
+
+        const simplePattern = /^[A-Za-z0-9_\-]+$/;
+        const reservedWords = /^(?:true|false|null|yes|no|on|off|~)$/i;
+        if (simplePattern.test(value) && !reservedWords.test(value)) {
+            return value;
+        }
+
+        if (!/[\n\r]/.test(value) && !/^\s|\s$/.test(value) && !/[#:>{}\[\],&*?]|!/.test(value)) {
+            return value;
+        }
+
+        return JSON.stringify(value);
+    }
+
+    return JSON.stringify(value);
+}
+
+function formatYAMLKey(key) {
+    if (typeof key === 'string' && /^[A-Za-z0-9_\-]+$/.test(key)) {
+        return key;
+    }
+
+    return JSON.stringify(key);
+}
+
+function isPlainObject(value) {
+    return Object.prototype.toString.call(value) === '[object Object]';
 }
 
 function convertPathArrayToJSONPath(pathArray) {
