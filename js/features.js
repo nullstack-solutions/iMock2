@@ -898,10 +898,17 @@ window.applyOptimisticMappingUpdate = (mappingLike) => {
 
         // Use updateOptimisticCache if available, otherwise fallback to legacy/manual logic
         if (typeof updateOptimisticCache === 'function') {
-            updateOptimisticCache(mapping, optimisticOperation);
+            updateOptimisticCache(mapping, optimisticOperation, { queueMode: 'add' });
         } else {
             // Fallback to legacy direct mutation if the new helper is unavailable
             if (cacheAvailable) {
+                if (typeof window.cacheManager?.addOptimisticUpdate === 'function') {
+                    try {
+                        window.cacheManager.addOptimisticUpdate(mapping, optimisticOperation);
+                    } catch (queueError) {
+                        console.warn('🎯 [OPTIMISTIC] Failed to enqueue optimistic update:', queueError);
+                    }
+                }
                 seedCacheFromGlobals(window.cacheManager.cache);
                 const incoming = cloneMappingForCache(mapping);
                 if (!incoming) {
@@ -2422,7 +2429,7 @@ function refreshMappingsFromCache({ maintainFilters = true } = {}) {
     }
 }
 
-function updateOptimisticCache(mapping, operation) {
+function updateOptimisticCache(mapping, operation, options = {}) {
     try {
         const mappingId = mapping?.id || mapping?.uuid;
         if (!mappingId) {
@@ -2438,6 +2445,17 @@ function updateOptimisticCache(mapping, operation) {
         const cache = window.cacheManager.cache;
         seedCacheFromGlobals(cache);
         const normalizedOperation = (operation || 'update').toLowerCase();
+        const queueMode = typeof options.queueMode === 'string' ? options.queueMode : 'confirm';
+        const shouldAddToQueue = queueMode === 'add';
+        const shouldConfirmQueue = queueMode === 'confirm';
+
+        if (shouldAddToQueue && typeof window.cacheManager.addOptimisticUpdate === 'function') {
+            try {
+                window.cacheManager.addOptimisticUpdate(mapping, normalizedOperation);
+            } catch (queueError) {
+                console.warn('updateOptimisticCache: failed to enqueue optimistic update', queueError);
+            }
+        }
 
         if (normalizedOperation === 'delete') {
             cache.delete(mappingId);
@@ -2462,7 +2480,7 @@ function updateOptimisticCache(mapping, operation) {
                 }, 15000);
                 window.deletionTimeouts.set(mappingId, timeout);
             }
-            if (typeof window.cacheManager.removeOptimisticUpdate === 'function') {
+            if (shouldConfirmQueue && typeof window.cacheManager.removeOptimisticUpdate === 'function') {
                 window.cacheManager.removeOptimisticUpdate(mappingId);
             }
         } else {
@@ -2486,7 +2504,7 @@ function updateOptimisticCache(mapping, operation) {
                 cache.set(mappingId, incoming);
             }
 
-            if (typeof window.cacheManager.confirmOptimisticUpdate === 'function') {
+            if (shouldConfirmQueue && typeof window.cacheManager.confirmOptimisticUpdate === 'function') {
                 window.cacheManager.confirmOptimisticUpdate(mappingId);
             }
         }
