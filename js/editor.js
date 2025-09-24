@@ -167,12 +167,27 @@ async function saveMapping() {
                     console.warn('📅 [METADATA] Failed to update metadata:', e);
                 }
             })();
-            await apiFetch(`/mappings/${id}`, {
+            const response = await apiFetch(`/mappings/${id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(mappingData)
             });
+            const updatedMapping = response?.mapping || response;
+
             NotificationManager.success('Маппинг обновлен!');
+
+            // NEW SEQUENCE: API → Cache → UI (reuse same flow as create)
+            try {
+                if (updatedMapping) {
+                    if (typeof updateOptimisticCache === 'function') {
+                        updateOptimisticCache(updatedMapping, 'update');
+                    } else if (typeof window.applyOptimisticMappingUpdate === 'function') {
+                        window.applyOptimisticMappingUpdate(updatedMapping);
+                    }
+                } else {
+                    console.warn('Update response missing mapping payload, skipping optimistic updates');
+                }
+            } catch (e) { console.warn('optimistic updates after inline update failed:', e); }
         } else {
             // Create new mapping
             // Ensure metadata with timestamps and source
