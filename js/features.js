@@ -865,34 +865,35 @@ window.applyOptimisticMappingUpdate = (mappingLike) => {
         const cacheAvailable = window.cacheManager && window.cacheManager.cache instanceof Map;
         const optimisticOperation = cacheAvailable && window.cacheManager.cache.has(mappingId) ? 'update' : 'create';
 
-        if (typeof window.cacheManager?.addOptimisticUpdate === 'function') {
-            window.cacheManager.addOptimisticUpdate(mapping, optimisticOperation);
-        }
-
-        if (cacheAvailable) {
-            seedCacheFromGlobals(window.cacheManager.cache);
-            const incoming = cloneMappingForCache(mapping);
-            if (!incoming) {
-                console.warn('🎯 [OPTIMISTIC] Failed to clone mapping for cache:', mappingId);
-            } else {
-                if (!incoming.id && mappingId) {
-                    incoming.id = mappingId;
-                }
-                if (!incoming.uuid && (mapping.uuid || mappingId)) {
-                    incoming.uuid = mapping.uuid || mappingId;
-                }
-
-                if (window.cacheManager.cache.has(mappingId)) {
-                    const merged = mergeMappingData(window.cacheManager.cache.get(mappingId), incoming);
-                    window.cacheManager.cache.set(mappingId, merged);
+        if (typeof updateOptimisticCache === 'function') {
+            updateOptimisticCache(mapping, optimisticOperation);
+        } else {
+            // Fallback to legacy direct mutation if the new helper is unavailable
+            if (cacheAvailable) {
+                seedCacheFromGlobals(window.cacheManager.cache);
+                const incoming = cloneMappingForCache(mapping);
+                if (!incoming) {
+                    console.warn('🎯 [OPTIMISTIC] Failed to clone mapping for cache:', mappingId);
                 } else {
-                    window.cacheManager.cache.set(mappingId, incoming);
+                    if (!incoming.id && mappingId) {
+                        incoming.id = mappingId;
+                    }
+                    if (!incoming.uuid && (mapping.uuid || mappingId)) {
+                        incoming.uuid = mapping.uuid || mappingId;
+                    }
+
+                    if (window.cacheManager.cache.has(mappingId)) {
+                        const merged = mergeMappingData(window.cacheManager.cache.get(mappingId), incoming);
+                        window.cacheManager.cache.set(mappingId, merged);
+                    } else {
+                        window.cacheManager.cache.set(mappingId, incoming);
+                    }
                 }
             }
-        }
 
-        window.cacheLastUpdate = Date.now();
-        refreshMappingsFromCache();
+            window.cacheLastUpdate = Date.now();
+            refreshMappingsFromCache();
+        }
 
         console.log('🎯 [OPTIMISTIC] Applied update for mapping:', mappingId);
 
@@ -2081,7 +2082,7 @@ function mergeMappingData(existing, incoming) {
 
 function seedCacheFromGlobals(cache) {
     try {
-        if (!(cache instanceof Map) || cache.size > 0) {
+        if (!(cache instanceof Map)) {
             return;
         }
 
@@ -2090,23 +2091,20 @@ function seedCacheFromGlobals(cache) {
             Array.isArray(window.allMappings) ? window.allMappings : null,
         ];
 
+        let seededFrom;
         for (const source of sources) {
             if (!source || source.length === 0) {
                 continue;
             }
 
-            let seeded = false;
+            let inserted = 0;
             for (const mapping of source) {
                 if (!mapping || isImockCacheMapping(mapping)) {
                     continue;
                 }
 
                 const existingId = mapping.id || mapping.uuid;
-                if (!existingId) {
-                    continue;
-                }
-
-                if (cache.has(existingId)) {
+                if (!existingId || cache.has(existingId)) {
                     continue;
                 }
 
@@ -2119,13 +2117,18 @@ function seedCacheFromGlobals(cache) {
                 }
 
                 cache.set(existingId, cloned);
-                seeded = true;
+                inserted++;
             }
 
-            if (seeded) {
-                console.log('🧩 [CACHE] Seeded in-memory cache from', source === window.originalMappings ? 'originalMappings' : 'allMappings');
+            if (inserted > 0) {
+                seededFrom = source === window.originalMappings ? 'originalMappings' : 'allMappings';
+                console.log(`🧩 [CACHE] Seeded ${inserted} mappings into cache from ${seededFrom}`);
                 break;
             }
+        }
+
+        if (!seededFrom && cache.size === 0) {
+            console.log('🧩 [CACHE] Nothing available to seed cache from globals');
         }
     } catch (error) {
         console.warn('seedCacheFromGlobals failed:', error);
@@ -2185,14 +2188,36 @@ function syncCacheWithMappings(mappings) {
     }
 }
 
+function buildCacheSnapshot() {
+    const manager = window.cacheManager;
+    if (!manager || !(manager.cache instanceof Map)) {
+        return [];
+    }
+
+    try {
+        const snapshot = [];
+        for (const mapping of manager.cache.values()) {
+            if (!mapping || isImockCacheMapping(mapping)) {
+                continue;
+            }
+
+            // Cache entries are stored as clones, but clone again defensively before
+            // exposing them to global arrays to prevent accidental mutation leaks.
+            const cloned = cloneMappingForCache(mapping) || { ...mapping };
+            snapshot.push(cloned);
+        }
+        return snapshot;
+    } catch (error) {
+        console.warn('buildCacheSnapshot failed:', error);
+        return [];
+    }
+}
+
 function refreshMappingsFromCache({ maintainFilters = true } = {}) {
     try {
-        const cacheValues = window.cacheManager?.cache
-            ? Array.from(window.cacheManager.cache.values())
-            : [];
-        const sanitized = cacheValues.filter(mapping => !isImockCacheMapping(mapping));
+        const sanitized = buildCacheSnapshot();
 
-        window.originalMappings = sanitized;
+        window.originalMappings = sanitized.slice();
         window.allMappings = sanitized.slice();
 
         const methodFilter = document.getElementById(SELECTORS.MAPPING_FILTERS.METHOD)?.value || '';
@@ -2263,6 +2288,9 @@ function updateOptimisticCache(mapping, operation) {
         }
 
         window.cacheLastUpdate = Date.now();
+        if (typeof window.cacheManager?.version === 'number') {
+            window.cacheManager.version += 1;
+        }
         refreshMappingsFromCache();
     } catch (error) {
         console.warn('updateOptimisticCache failed:', error);
