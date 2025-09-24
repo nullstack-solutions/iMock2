@@ -80,6 +80,86 @@ const taskManager = new TaskManager();
 const MAX_RESULT_COUNT = 10000; // Limit search results
 const MAX_PROCESSING_TIME = 5000; // 5 seconds for chunked operations
 
+function escapeJsonPointerSegment(segment) {
+    return String(segment).replace(/~/g, '~0').replace(/\//g, '~1');
+}
+
+function isSimpleJsonPathSegment(segment) {
+    return /^[A-Za-z_][A-Za-z0-9_]*$/.test(segment);
+}
+
+function pathArrayToJsonPath(pathArray) {
+    if (!Array.isArray(pathArray) || pathArray.length === 0) {
+        return '$';
+    }
+
+    let result = '$';
+
+    for (let i = 1; i < pathArray.length; i++) {
+        const part = pathArray[i];
+
+        if (typeof part === 'number') {
+            result += `[${part}]`;
+        } else if (typeof part === 'string') {
+            if (isSimpleJsonPathSegment(part)) {
+                result += `.${part}`;
+            } else {
+                const escaped = part.replace(/'/g, "\\'");
+                result += `['${escaped}']`;
+            }
+        } else if (part !== undefined && part !== null) {
+            result += `[${String(part)}]`;
+        }
+    }
+
+    return result;
+}
+
+function pathArrayToPointer(pathArray) {
+    if (!Array.isArray(pathArray) || pathArray.length === 0) {
+        return '$';
+    }
+
+    let pointer = '$';
+
+    for (let i = 1; i < pathArray.length; i++) {
+        const part = pathArray[i];
+        if (typeof part === 'number') {
+            pointer += `/${part}`;
+        } else if (typeof part === 'string') {
+            pointer += `/${escapeJsonPointerSegment(part)}`;
+        } else if (part !== undefined && part !== null) {
+            pointer += `/${escapeJsonPointerSegment(String(part))}`;
+        }
+    }
+
+    return pointer;
+}
+
+function appendJsonPathSegment(base, segment) {
+    if (typeof segment === 'number') {
+        return `${base}[${segment}]`;
+    }
+
+    if (isSimpleJsonPathSegment(segment)) {
+        return base === '$' ? `${base}.${segment}` : `${base}.${segment}`;
+    }
+
+    const escaped = String(segment).replace(/'/g, "\\'");
+    return `${base}['${escaped}']`;
+}
+
+function appendJsonPathArrayIndex(base, index) {
+    return `${base}[${index}]`;
+}
+
+function appendPointerSegment(base, segment) {
+    const normalized = typeof segment === 'number'
+        ? segment
+        : escapeJsonPointerSegment(String(segment));
+    return `${base}/${normalized}`;
+}
+
 // Legacy compatibility
 let cancelToken = null;
 let activeTasks = new Map();
@@ -376,8 +456,10 @@ async function handleJSONPathEnhanced(payload, taskId) {
         }
         
         const obj = JSON.parse(text);
-        let results = [];
-        let paths = [];
+        let values = [];
+        let pathArrays = [];
+        let jsonPathStrings = [];
+        let pointerPaths = [];
         let resultCount = 0;
         
         if (jsonpath && typeof jsonpath.query === 'function') {
@@ -387,25 +469,35 @@ async function handleJSONPathEnhanced(payload, taskId) {
             
             // Limit results to prevent memory issues
             resultCount = allResults.length;
-            results = allResults.slice(0, MAX_RESULT_COUNT);
-            paths = allPaths.slice(0, MAX_RESULT_COUNT);
+            const limitedResults = allResults.slice(0, MAX_RESULT_COUNT);
+            const limitedPaths = allPaths.slice(0, MAX_RESULT_COUNT);
+
+            values = limitedResults;
+            pathArrays = limitedPaths;
+            jsonPathStrings = limitedPaths.map(pathArrayToJsonPath);
+            pointerPaths = limitedPaths.map(pathArrayToPointer);
         } else {
             // Fallback to simple implementation
             console.log('🔄 Using fallback JSONPath implementation');
             const simpleResults = simpleJSONPath(obj, path);
             resultCount = simpleResults.length;
-            results = simpleResults.slice(0, MAX_RESULT_COUNT);
-            // Generate simple paths for results
-            paths = results.map((_, i) => `${path}[${i}]`);
+            const limited = simpleResults.slice(0, MAX_RESULT_COUNT);
+
+            values = limited.map(item => item.value);
+            pathArrays = limited.map(item => item.segments);
+            jsonPathStrings = limited.map(item => item.path);
+            pointerPaths = limited.map(item => item.pointer);
         }
-        
+
         if (taskManager.isTaskActive(taskId)) {
             postMessage({
                 type: 'jsonpath_complete',
                 taskId,
                 result: {
-                    values: results,
-                    paths: paths,
+                    values,
+                    paths: pathArrays,
+                    jsonPaths: jsonPathStrings,
+                    pointerPaths,
                     count: resultCount,
                     truncated: resultCount > MAX_RESULT_COUNT
                 }
@@ -501,80 +593,205 @@ function generatePositionMap(text, parsed) {
 }
 
 function simpleJSONPath(obj, path) {
-    if (!path || !obj) return [];
-    
-    // Remove leading $ if present
-    path = path.replace(/^\$\.?/, '');
-    
-    if (!path) return [obj];
-    
-    // Split path by dots (handle simple cases)
-    const parts = path.split('.');
-    let results = [obj];
-    
+    if (!path || obj === undefined || obj === null) return [];
+
+    const normalizedPath = String(path).replace(/^\$\.?/, '');
+    if (!normalizedPath) {
+        return [{
+            value: obj,
+            path: '$',
+            pointer: '$',
+            segments: ['$']
+        }];
+    }
+
+    const parts = normalizedPath.split('.');
+    let results = [{
+        value: obj,
+        path: '$',
+        pointer: '$',
+        segments: ['$']
+    }];
+
     try {
-        for (let i = 0; i < parts.length; i++) {
-            let nextResults = [];
-            
-            for (let current of results) {
-                if (current === null || current === undefined) continue;
-                
-                const part = parts[i];
-                
-                // Handle wildcard (*)
+        for (const rawPart of parts) {
+            if (!rawPart) continue;
+            const nextResults = [];
+
+            for (const result of results) {
+                const current = result.value;
+                if (current === null || current === undefined) {
+                    continue;
+                }
+
+                const part = rawPart;
+
                 if (part === '*') {
-                    if (Array.isArray(current)) {
-                        nextResults.push(...current);
-                    } else if (typeof current === 'object') {
-                        nextResults.push(...Object.values(current));
-                    }
+                    expandWildcard(result, nextResults);
                     continue;
                 }
-                
-                // Handle array notation like [0] or key[0]
-                const arrayMatch = part.match(/^(.+)\[(\d+)\]$/);
-                if (arrayMatch) {
-                    const key = arrayMatch[1];
-                    const index = parseInt(arrayMatch[2]);
-                    if (current[key] && Array.isArray(current[key]) && current[key][index] !== undefined) {
-                        nextResults.push(current[key][index]);
-                    }
+
+                if (part.startsWith('[')) {
+                    processStandaloneArrayToken(part, result, nextResults);
                     continue;
                 }
-                
-                // Handle array index notation [0]
-                const indexMatch = part.match(/^\[(\d+)\]$/);
-                if (indexMatch) {
-                    const index = parseInt(indexMatch[1]);
-                    if (Array.isArray(current) && current[index] !== undefined) {
-                        nextResults.push(current[index]);
-                    }
+
+                if (part.includes('[')) {
+                    processPropertyWithArray(part, current, result, nextResults);
                     continue;
                 }
-                
-                // Handle array wildcard [*]
-                if (part === '[*]') {
-                    if (Array.isArray(current)) {
-                        nextResults.push(...current);
-                    }
-                    continue;
-                }
-                
-                // Handle regular property access
-                if (typeof current === 'object' && current[part] !== undefined) {
-                    nextResults.push(current[part]);
+
+                if (typeof current === 'object' && Object.prototype.hasOwnProperty.call(current, part)) {
+                    const pathWithKey = appendJsonPathSegment(result.path, part);
+                    nextResults.push({
+                        value: current[part],
+                        path: pathWithKey,
+                        pointer: appendPointerSegment(result.pointer, part),
+                        segments: result.segments.concat(part)
+                    });
                 }
             }
-            
+
             results = nextResults;
             if (results.length === 0) break;
         }
-        
-        return results;
-    } catch (e) {
-        console.warn('JSONPath fallback error:', e.message);
+    } catch (error) {
+        console.warn('JSONPath fallback error:', error.message);
         return [];
     }
+
+    return results;
+}
+
+function expandWildcard(result, output) {
+    const current = result.value;
+
+    if (Array.isArray(current)) {
+        current.forEach((item, index) => {
+            output.push({
+                value: item,
+                path: appendJsonPathArrayIndex(result.path, index),
+                pointer: `${result.pointer}/${index}`,
+                segments: result.segments.concat(index)
+            });
+        });
+    } else if (current && typeof current === 'object') {
+        Object.keys(current).forEach(key => {
+            output.push({
+                value: current[key],
+                path: appendJsonPathSegment(result.path, key),
+                pointer: appendPointerSegment(result.pointer, key),
+                segments: result.segments.concat(key)
+            });
+        });
+    }
+}
+
+function processStandaloneArrayToken(token, result, output) {
+    const matches = token.match(/\[(.*?)\]/g);
+    if (!matches) {
+        return;
+    }
+
+    let targets = [{
+        value: result.value,
+        path: result.path,
+        pointer: result.pointer,
+        segments: result.segments
+    }];
+
+    matches.forEach(rawIndex => {
+        const indexToken = rawIndex.slice(1, -1);
+        const newTargets = [];
+
+        targets.forEach(target => {
+            if (!Array.isArray(target.value)) {
+                return;
+            }
+
+            if (indexToken === '*' || indexToken === '') {
+                target.value.forEach((item, index) => {
+                    newTargets.push({
+                        value: item,
+                        path: appendJsonPathArrayIndex(target.path, index),
+                        pointer: `${target.pointer}/${index}`,
+                        segments: target.segments.concat(index)
+                    });
+                });
+            } else {
+                const idx = parseInt(indexToken, 10);
+                if (!Number.isNaN(idx) && idx >= 0 && idx < target.value.length) {
+                    newTargets.push({
+                        value: target.value[idx],
+                        path: appendJsonPathArrayIndex(target.path, idx),
+                        pointer: `${target.pointer}/${idx}`,
+                        segments: target.segments.concat(idx)
+                    });
+                }
+            }
+        });
+
+        targets = newTargets;
+    });
+
+    output.push(...targets);
+}
+
+function processPropertyWithArray(part, current, result, output) {
+    const property = part.split('[')[0];
+    const bracketSection = part.slice(property.length);
+    const matches = bracketSection.match(/\[(.*?)\]/g);
+
+    if (!property || !matches) {
+        return;
+    }
+
+    if (current === null || typeof current !== 'object' || !Object.prototype.hasOwnProperty.call(current, property)) {
+        return;
+    }
+
+    let targets = [{
+        value: current[property],
+        path: appendJsonPathSegment(result.path, property),
+        pointer: appendPointerSegment(result.pointer, property),
+        segments: result.segments.concat(property)
+    }];
+
+    matches.forEach(rawIndex => {
+        const indexToken = rawIndex.slice(1, -1);
+        const newTargets = [];
+
+        targets.forEach(target => {
+            if (!Array.isArray(target.value)) {
+                return;
+            }
+
+            if (indexToken === '*' || indexToken === '') {
+                target.value.forEach((item, index) => {
+                    newTargets.push({
+                        value: item,
+                        path: appendJsonPathArrayIndex(target.path, index),
+                        pointer: `${target.pointer}/${index}`,
+                        segments: target.segments.concat(index)
+                    });
+                });
+            } else {
+                const idx = parseInt(indexToken, 10);
+                if (!Number.isNaN(idx) && idx >= 0 && idx < target.value.length) {
+                    newTargets.push({
+                        value: target.value[idx],
+                        path: appendJsonPathArrayIndex(target.path, idx),
+                        pointer: `${target.pointer}/${idx}`,
+                        segments: target.segments.concat(idx)
+                    });
+                }
+            }
+        });
+
+        targets = newTargets;
+    });
+
+    output.push(...targets);
 }
 
 function performLineDiff(leftText, rightText, taskId) {
