@@ -1601,10 +1601,34 @@ class MonacoInitializer {
                 enabled: false,
                 observer: null,
                 searchDebounce: null,
-                originalMatchesText: ''
+                originalMatchesText: '',
+                resizeHandler: null,
+                resizeObserver: null,
+                layoutRaf: null,
+                layoutScheduler: 'raf',
+                lastLayoutWidth: null,
+                lastReservedPadding: null
             };
         } else {
             this.findWidgetIntegration.editor = editor;
+            if (!('resizeHandler' in this.findWidgetIntegration)) {
+                this.findWidgetIntegration.resizeHandler = null;
+            }
+            if (!('resizeObserver' in this.findWidgetIntegration)) {
+                this.findWidgetIntegration.resizeObserver = null;
+            }
+            if (!('layoutRaf' in this.findWidgetIntegration)) {
+                this.findWidgetIntegration.layoutRaf = null;
+            }
+            if (!('layoutScheduler' in this.findWidgetIntegration)) {
+                this.findWidgetIntegration.layoutScheduler = 'raf';
+            }
+            if (!('lastLayoutWidth' in this.findWidgetIntegration)) {
+                this.findWidgetIntegration.lastLayoutWidth = null;
+            }
+            if (!('lastReservedPadding' in this.findWidgetIntegration)) {
+                this.findWidgetIntegration.lastReservedPadding = null;
+            }
         }
 
         const integration = this.findWidgetIntegration;
@@ -1749,7 +1773,33 @@ class MonacoInitializer {
             widgetNode.dataset.jsonpathDecorated = 'true';
         }
 
+        widgetNode.classList.add('jsonpath-extended');
+
         integration.widget = widgetNode;
+
+        if (typeof window !== 'undefined') {
+            if (integration.resizeHandler) {
+                window.removeEventListener('resize', integration.resizeHandler);
+            }
+
+            integration.resizeHandler = () => {
+                this.refreshFindWidgetLayout();
+            };
+
+            window.addEventListener('resize', integration.resizeHandler, { passive: true });
+        }
+
+        if (typeof ResizeObserver !== 'undefined') {
+            if (!integration.resizeObserver) {
+                integration.resizeObserver = new ResizeObserver(() => {
+                    this.refreshFindWidgetLayout();
+                });
+            } else {
+                integration.resizeObserver.disconnect();
+            }
+
+            integration.resizeObserver.observe(widgetNode);
+        }
 
         const matchesElement = widgetNode.querySelector('.matchesCount');
         if (matchesElement) {
@@ -1760,6 +1810,9 @@ class MonacoInitializer {
         }
 
         const controls = widgetNode.querySelector('.controls');
+        if (controls) {
+            controls.classList.add('jsonpath-widget-controls');
+        }
         if (controls && !widgetNode.querySelector('[data-jsonpath-toggle]')) {
             const toggle = document.createElement('div');
             toggle.className = 'monaco-custom-toggle codicon codicon-symbol-structure';
@@ -1769,6 +1822,7 @@ class MonacoInitializer {
             toggle.setAttribute('aria-label', 'Use JSONPath (Alt+J)');
             toggle.setAttribute('title', 'Use JSONPath (Alt+J)');
             toggle.dataset.jsonpathToggle = 'true';
+            toggle.classList.add('monaco-jsonpath-toggle');
 
             const toggleHandler = (event) => {
                 event.preventDefault();
@@ -1783,10 +1837,19 @@ class MonacoInitializer {
                 }
             });
 
-            controls.appendChild(toggle);
+            if (controls.firstChild) {
+                controls.insertBefore(toggle, controls.firstChild);
+            } else {
+                controls.appendChild(toggle);
+            }
             integration.toggleElement = toggle;
-        } else if (controls && !integration.toggleElement) {
-            integration.toggleElement = controls.querySelector('[data-jsonpath-toggle]');
+        } else if (controls) {
+            if (!integration.toggleElement) {
+                integration.toggleElement = controls.querySelector('[data-jsonpath-toggle]');
+            }
+            if (integration.toggleElement) {
+                integration.toggleElement.classList.add('monaco-jsonpath-toggle');
+            }
         }
 
         const inputElement = widgetNode.querySelector('.find-part .input');
@@ -1905,6 +1968,135 @@ class MonacoInitializer {
                 this.updateFindWidgetMatchesCount(0, false, -1, { emptyQuery: !this.lastJSONPathQuery });
             }
         }
+
+        this.refreshFindWidgetLayout({ immediate: true });
+    }
+
+    refreshFindWidgetLayout(options = {}) {
+        const integration = this.findWidgetIntegration;
+        if (!integration || !integration.widget) {
+            return;
+        }
+
+        const widget = integration.widget;
+        widget.classList.add('jsonpath-extended');
+
+        const schedulerType = typeof requestAnimationFrame === 'function' ? 'raf' : 'timeout';
+        const scheduler = schedulerType === 'raf'
+            ? requestAnimationFrame
+            : (callback) => setTimeout(callback, 20);
+
+        if (integration.layoutRaf !== null) {
+            if (integration.layoutScheduler === 'raf' && typeof cancelAnimationFrame === 'function') {
+                cancelAnimationFrame(integration.layoutRaf);
+            } else {
+                clearTimeout(integration.layoutRaf);
+            }
+            integration.layoutRaf = null;
+        }
+
+        integration.layoutScheduler = schedulerType;
+
+        const performLayout = () => {
+            integration.layoutRaf = null;
+
+            const viewportWidth = typeof window !== 'undefined' ? window.innerWidth || 0 : 0;
+            let targetWidth = 460;
+
+            if (viewportWidth > 0) {
+                const horizontalPadding = viewportWidth < 600 ? 24 : 48;
+                const idealFraction = viewportWidth < 1280 ? 0.62 : 0.5;
+                const idealWidth = Math.round(viewportWidth * idealFraction);
+                targetWidth = Math.max(380, Math.min(720, viewportWidth - horizontalPadding, idealWidth));
+
+                if (viewportWidth <= 520) {
+                    targetWidth = Math.max(320, viewportWidth - 20);
+                }
+            }
+
+            let widthLimit = targetWidth;
+            if (viewportWidth > 0) {
+                const viewportLimit = Math.max(320, viewportWidth - 32);
+                widthLimit = Math.min(targetWidth, viewportLimit);
+            }
+
+            if (integration.lastLayoutWidth !== widthLimit) {
+                widget.style.width = `${widthLimit}px`;
+                widget.style.maxWidth = 'calc(100vw - 32px)';
+                widget.style.minWidth = `${Math.min(Math.max(widthLimit, 320), 420)}px`;
+                integration.lastLayoutWidth = widthLimit;
+            }
+
+            const findPart = widget.querySelector('.find-part');
+            if (findPart) {
+                findPart.style.flex = '1 1 auto';
+                findPart.style.minWidth = '0';
+            }
+
+            const findInput = widget.querySelector('.find-part .monaco-findInput');
+            if (findInput) {
+                findInput.style.flex = '1 1 auto';
+                findInput.style.minWidth = '0';
+            }
+
+            const replacePart = widget.querySelector('.replace-part');
+            if (replacePart) {
+                replacePart.style.flex = '1 1 auto';
+                replacePart.style.minWidth = '0';
+            }
+
+            const controls = widget.querySelector('.find-part .controls');
+            let reservedPadding = 88;
+            if (controls) {
+                controls.classList.add('jsonpath-widget-controls');
+                const rect = controls.getBoundingClientRect();
+                if (rect && rect.width) {
+                    reservedPadding = Math.max(72, Math.round(rect.width) + 12);
+                } else if (controls.children && controls.children.length) {
+                    reservedPadding = Math.max(72, (controls.children.length * 24) + 12);
+                }
+            }
+
+            if (integration.lastReservedPadding !== reservedPadding) {
+                const adjustInput = (selector, offset, minimumPadding) => {
+                    const container = widget.querySelector(selector);
+                    if (!container) {
+                        return;
+                    }
+
+                    const input = container.querySelector('.input');
+                    const mirror = container.querySelector('.mirror');
+                    const paddingValue = Math.max(minimumPadding, reservedPadding - offset);
+
+                    if (input) {
+                        input.style.width = `calc(100% - ${paddingValue}px)`;
+                    }
+
+                    if (mirror) {
+                        mirror.style.paddingRight = `${paddingValue}px`;
+                    }
+                };
+
+                adjustInput('.find-part .monaco-findInput', 0, 72);
+                adjustInput('.replace-part .monaco-findInput', 24, 56);
+
+                integration.lastReservedPadding = reservedPadding;
+            }
+
+            const matchesElement = widget.querySelector('.matchesCount');
+            if (matchesElement) {
+                matchesElement.style.minWidth = '96px';
+                matchesElement.style.textAlign = 'right';
+            }
+        };
+
+        if (options.immediate) {
+            performLayout();
+        }
+
+        integration.layoutRaf = scheduler(() => {
+            performLayout();
+        });
     }
 
     toggleFindWidgetJSONPathMode(force) {
@@ -1955,11 +2147,16 @@ class MonacoInitializer {
         if (integration.toggleElement) {
             integration.toggleElement.setAttribute('aria-checked', integration.enabled ? 'true' : 'false');
             integration.toggleElement.classList.toggle('checked', integration.enabled);
+            const toggleLabel = integration.enabled ? 'Disable JSONPath (Alt+J)' : 'Use JSONPath (Alt+J)';
+            integration.toggleElement.setAttribute('aria-label', toggleLabel);
+            integration.toggleElement.setAttribute('title', toggleLabel);
         }
 
         if (integration.widget) {
             integration.widget.classList.toggle('jsonpath-mode', integration.enabled);
         }
+
+        this.refreshFindWidgetLayout();
 
         if (!integration.enabled) {
             if (integration.searchDebounce) {
@@ -2001,6 +2198,53 @@ class MonacoInitializer {
             clearTimeout(integration.searchDebounce);
             integration.searchDebounce = null;
         }
+
+        if (integration.layoutRaf !== null) {
+            if (integration.layoutScheduler === 'raf' && typeof cancelAnimationFrame === 'function') {
+                cancelAnimationFrame(integration.layoutRaf);
+            } else {
+                clearTimeout(integration.layoutRaf);
+            }
+            integration.layoutRaf = null;
+        }
+
+        if (integration.resizeObserver && typeof integration.resizeObserver.disconnect === 'function') {
+            integration.resizeObserver.disconnect();
+            integration.resizeObserver = null;
+        }
+
+        if (integration.resizeHandler && typeof window !== 'undefined') {
+            window.removeEventListener('resize', integration.resizeHandler);
+            integration.resizeHandler = null;
+        }
+
+        if (integration.widget) {
+            integration.widget.classList.remove('jsonpath-extended', 'jsonpath-mode');
+            integration.widget.style.removeProperty('width');
+            integration.widget.style.removeProperty('maxWidth');
+            integration.widget.style.removeProperty('minWidth');
+
+            const findInput = integration.widget.querySelector('.find-part .input');
+            const findMirror = integration.widget.querySelector('.find-part .mirror');
+            if (findInput) {
+                findInput.style.removeProperty('width');
+            }
+            if (findMirror) {
+                findMirror.style.removeProperty('padding-right');
+            }
+
+            const replaceInput = integration.widget.querySelector('.replace-part .input');
+            const replaceMirror = integration.widget.querySelector('.replace-part .mirror');
+            if (replaceInput) {
+                replaceInput.style.removeProperty('width');
+            }
+            if (replaceMirror) {
+                replaceMirror.style.removeProperty('padding-right');
+            }
+        }
+
+        integration.lastLayoutWidth = null;
+        integration.lastReservedPadding = null;
 
         integration.widget = null;
         integration.toggleElement = null;
@@ -2117,6 +2361,7 @@ class MonacoInitializer {
         }
 
         if (this.findWidgetIntegration) {
+            this.handleFindWidgetRemoval();
             if (this.findWidgetIntegration.observer) {
                 this.findWidgetIntegration.observer.disconnect();
                 this.findWidgetIntegration.observer = null;
