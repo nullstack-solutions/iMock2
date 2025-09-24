@@ -17,6 +17,36 @@ window.allRequests = []; // Текущий отображаемый список
 window.pendingDeletedIds = new Set(); // Track items pending deletion to prevent cache flicker
 window.deletionTimeouts = new Map(); // Track cleanup timeouts for safety
 
+// Ensure only one heavy /mappings request is in-flight at a time
+let mappingsFetchPromise = null;
+
+async function fetchMappingsFromServer({ force = false } = {}) {
+    if (!force && mappingsFetchPromise) {
+        return mappingsFetchPromise;
+    }
+
+    if (force && mappingsFetchPromise) {
+        try {
+            await mappingsFetchPromise;
+        } catch (error) {
+            console.warn('fetchMappingsFromServer: previous request failed, starting a new one', error);
+        }
+    }
+
+    const requestPromise = (async () => {
+        try {
+            return await apiFetch(ENDPOINTS.MAPPINGS);
+        } finally {
+            if (mappingsFetchPromise === requestPromise) {
+                mappingsFetchPromise = null;
+            }
+        }
+    })();
+
+    mappingsFetchPromise = requestPromise;
+    return requestPromise;
+}
+
 // === УЛУЧШЕННЫЙ МЕХАНИЗМ КЕШИРОВАНИЯ ===
 
 // Оптимизированная система отслеживания изменений
@@ -105,7 +135,7 @@ window.cacheManager = {
 
         try {
             // Получаем свежие данные с сервера
-            const response = await apiFetch(ENDPOINTS.MAPPINGS);
+            const response = await fetchMappingsFromServer({ force: true });
             const serverMappings = response.mappings || [];
 
             // Очищаем старый кеш
@@ -284,7 +314,7 @@ window.checkHealthAndStartUptime = async () => {
             console.log('[HEALTH] initial check:', { rawStatus: response?.status, healthyFlag: response?.healthy, isHealthy });
         } catch (primaryError) {
             // Фолбэк: проверяем доступность основных API через /mappings
-            const fallback = await apiFetch(ENDPOINTS.MAPPINGS);
+            const fallback = await fetchMappingsFromServer();
             responseTime = Math.round(performance.now() - startTime);
             // Если ответ JSON-объект (ожидаемо у WireMock), считаем здоровым
             isHealthy = typeof fallback === 'object';
@@ -345,7 +375,7 @@ window.startHealthMonitoring = () => {
                 console.log('[HEALTH] periodic check:', { rawStatus: healthResponse?.status, healthyFlag: healthResponse?.healthy, isHealthyNow });
             } catch (primaryError) {
                 // Фолбэк на /mappings
-                const fallback = await apiFetch(ENDPOINTS.MAPPINGS);
+                const fallback = await fetchMappingsFromServer();
                 responseTime = Math.round(performance.now() - startTime);
                 isHealthyNow = typeof fallback === 'object';
             }
@@ -620,7 +650,7 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                             // Wait a bit for any optimistic updates to complete
                             await new Promise(resolve => setTimeout(resolve, 200));
 
-                            const freshData = await apiFetch(ENDPOINTS.MAPPINGS);
+                            const freshData = await fetchMappingsFromServer({ force: true });
                             if (freshData && freshData.mappings) {
                                 const serverMappings = freshData.mappings.filter(x => !isImockCacheMapping(x));
 
@@ -676,13 +706,13 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                     // Use cached slim data for immediate UI (will be replaced by fresh data)
                     data = cached.data;
                 } else {
-                    data = await apiFetch(ENDPOINTS.MAPPINGS);
+                    data = await fetchMappingsFromServer({ force: true });
                     dataSource = 'direct';
                     // regenerate cache asynchronously
                     try { console.log('🧩 [CACHE] Async regenerate after cache miss'); regenerateImockCache(); } catch {}
                 }
             } else {
-                data = await apiFetch(ENDPOINTS.MAPPINGS);
+                data = await fetchMappingsFromServer({ force: true });
                 dataSource = 'direct';
             }
             // If we fetched a full admin list, strip service cache mapping from UI
@@ -865,6 +895,7 @@ window.applyOptimisticMappingUpdate = (mappingLike) => {
         const cacheAvailable = window.cacheManager && window.cacheManager.cache instanceof Map;
         const optimisticOperation = cacheAvailable && window.cacheManager.cache.has(mappingId) ? 'update' : 'create';
 
+
         // Use updateOptimisticCache if available, otherwise fallback to legacy/manual logic
         if (typeof updateOptimisticCache === 'function') {
             updateOptimisticCache(mapping, optimisticOperation);
@@ -914,11 +945,11 @@ window.backgroundRefreshMappings = async (useCache = false) => {
                 data = cached.data;
                 source = 'cache';
             } else {
-                data = await apiFetch(ENDPOINTS.MAPPINGS);
+                data = await fetchMappingsFromServer({ force: true });
                 source = 'direct';
             }
         } else {
-            data = await apiFetch(ENDPOINTS.MAPPINGS);
+            data = await fetchMappingsFromServer({ force: true });
             source = 'direct';
         }
         const incoming = data.mappings || [];
@@ -1997,12 +2028,16 @@ async function upsertImockCacheMapping(slim) {
     }
 }
 
-async function regenerateImockCache() {
+async function regenerateImockCache(existingData = null) {
     console.log('🧩 [CACHE] Regenerate cache start');
     const t0 = performance.now();
 
     // Get fresh data from server - server is now the source of truth
-    const all = await apiFetch(ENDPOINTS.MAPPINGS);
+    let all = existingData;
+    if (!all) {
+        all = await fetchMappingsFromServer({ force: true });
+    }
+
     const mappings = all?.mappings || [];
 
     console.log('🧩 [CACHE] Using fresh server data for cache regeneration');
@@ -2215,6 +2250,7 @@ function buildCacheSnapshot() {
 
 function refreshMappingsFromCache({ maintainFilters = true } = {}) {
     try {
+
         // Use full cache snapshot logic for consistency
         const sanitized = buildCacheSnapshot();
 
@@ -2259,6 +2295,27 @@ function updateOptimisticCache(mapping, operation) {
 
         if (normalizedOperation === 'delete') {
             cache.delete(mappingId);
+            if (window.pendingDeletedIds instanceof Set) {
+                window.pendingDeletedIds.add(mappingId);
+            }
+            if (window.deletionTimeouts instanceof Map) {
+                const existing = window.deletionTimeouts.get(mappingId);
+                if (existing) {
+                    clearTimeout(existing);
+                }
+                const timeout = setTimeout(() => {
+                    try {
+                        if (window.pendingDeletedIds instanceof Set) {
+                            window.pendingDeletedIds.delete(mappingId);
+                        }
+                    } finally {
+                        if (window.deletionTimeouts instanceof Map) {
+                            window.deletionTimeouts.delete(mappingId);
+                        }
+                    }
+                }, 15000);
+                window.deletionTimeouts.set(mappingId, timeout);
+            }
             if (typeof window.cacheManager.removeOptimisticUpdate === 'function') {
                 window.cacheManager.removeOptimisticUpdate(mappingId);
             }
@@ -2293,6 +2350,13 @@ function updateOptimisticCache(mapping, operation) {
             window.cacheManager.version += 1;
         }
         refreshMappingsFromCache();
+        if (typeof scheduleCacheRebuild === 'function') {
+            try {
+                scheduleCacheRebuild();
+            } catch (scheduleError) {
+                console.warn('updateOptimisticCache: failed to schedule cache rebuild', scheduleError);
+            }
+        }
     } catch (error) {
         console.warn('updateOptimisticCache failed:', error);
     }
@@ -2303,6 +2367,9 @@ let _cacheRebuildTimer;
 function scheduleCacheRebuild() {
   try {
     const settings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
+    if (settings.cacheEnabled !== true) {
+      return;
+    }
     const delay = Number(settings.cacheRebuildDelay) || 1000;
     clearTimeout(_cacheRebuildTimer);
     _cacheRebuildTimer = setTimeout(() => {
@@ -2334,14 +2401,14 @@ async function validateAndRefreshCache() {
         console.log('🧩 [CACHE] Starting cache validation...');
 
         // Get fresh data from server
-        const freshData = await apiFetch(ENDPOINTS.MAPPINGS);
+        const freshData = await fetchMappingsFromServer({ force: true });
         if (!freshData?.mappings) {
             console.warn('🧩 [CACHE] Failed to get fresh data for validation');
             return;
         }
 
         // Rebuild cache with fresh data
-        await regenerateImockCache();
+        await regenerateImockCache(freshData);
 
         // Reset optimistic counters
         window.cacheOptimisticOperations = 0;
