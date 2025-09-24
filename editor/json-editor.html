@@ -178,7 +178,7 @@
     </div>
 
     <!-- Templates Modal -->
-    <div class="modal" id="fullscreenModal" role="dialog" aria-modal="true" aria-labelledby="modal-title-templates" aria-hidden="true">
+    <div class="modal hidden" id="fullscreenModal" role="dialog" aria-modal="true" aria-labelledby="modal-title-templates" aria-hidden="true">
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="modal-title-templates">WireMock Templates</h2>
@@ -193,7 +193,7 @@
     </div>
 
     <!-- History Modal -->
-    <div class="modal" id="historyModal" role="dialog" aria-modal="true" aria-labelledby="modal-title-history" aria-hidden="true">
+    <div class="modal hidden" id="historyModal" role="dialog" aria-modal="true" aria-labelledby="modal-title-history" aria-hidden="true">
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="modal-title-history">History</h2>
@@ -502,19 +502,30 @@
                     tryFocusElement(modal);
                 }
             } else {
+                const trigger = modal.__triggerElement instanceof HTMLElement ? modal.__triggerElement : null;
+                const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+                const hadFocusInside = activeElement ? modal.contains(activeElement) : false;
+
+                if (hadFocusInside) {
+                    if (trigger) {
+                        tryFocusElement(trigger);
+                    } else if (activeElement && typeof activeElement.blur === 'function') {
+                        activeElement.blur();
+                    }
+                }
+
                 modal.classList.remove('show');
                 modal.classList.add('hidden');
                 modal.style.display = 'none';
                 modal.setAttribute('aria-hidden', 'true');
 
-                const trigger = modal.__triggerElement;
                 delete modal.__triggerElement;
 
                 if (!document.querySelector('.modal.show, .modal[aria-hidden="false"]')) {
                     document.body.classList.remove('modal-open');
                 }
 
-                if (trigger) {
+                if (!hadFocusInside && trigger) {
                     tryFocusElement(trigger);
                 }
             }
