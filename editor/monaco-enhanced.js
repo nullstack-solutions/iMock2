@@ -157,6 +157,11 @@ class MonacoInitializer {
                                 } catch (error) {
                                     return { valid: false, error: error.message };
                                 }
+                            case 'sort_keys':
+                                const indent = data && typeof data.indent === 'number' && data.indent >= 0 ? data.indent : 2;
+                                const sortParsed = JSON.parse(data.text);
+                                const sorted = this.sortKeysDeep(sortParsed);
+                                return JSON.stringify(sorted, null, indent);
                             default:
                                 return data;
                         }
@@ -249,6 +254,9 @@ class MonacoInitializer {
             { key: monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyF, action: () => this.formatJSON() },
             { key: monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyM, action: () => this.minifyJSON() },
             { key: monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyT, action: () => this.validateJSON() },
+            { key: monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.BracketLeft, action: () => this.collapseAllFolds({ focus: true }) },
+            { key: monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.BracketRight, action: () => this.expandAllFolds({ focus: true }) },
+            { key: monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.KeyS, action: () => this.sortJSONKeys() },
             { key: monaco.KeyMod.Alt | monaco.KeyCode.KeyN, action: () => this.navigateJSONPathMatches(1) },
             { key: monaco.KeyMod.Alt | monaco.KeyCode.KeyP, action: () => this.navigateJSONPathMatches(-1) },
             { key: monaco.KeyMod.Alt | monaco.KeyCode.KeyJ, action: () => this.toggleFindWidgetJSONPathMode() }
@@ -379,6 +387,183 @@ class MonacoInitializer {
 
     getActiveEditor() {
         return window.editor || this.editors.get('main');
+    }
+
+    resolveTargetEditors(options = {}) {
+        if (options && options.editor) {
+            return options.editor ? [options.editor] : [];
+        }
+
+        if (options && Array.isArray(options.editors) && options.editors.length) {
+            return options.editors.filter(Boolean);
+        }
+
+        const editors = new Set();
+
+        const editorContainer = document.getElementById('editorContainer');
+        if (!editorContainer || editorContainer.style.display !== 'none') {
+            const mainEditor = this.editors.get('main');
+            if (mainEditor) {
+                editors.add(mainEditor);
+            }
+        }
+
+        const compareContainer = document.getElementById('compareContainer');
+        if (compareContainer && compareContainer.style.display !== 'none') {
+            if (this.diffEditor) {
+                const originalEditor = typeof this.diffEditor.getOriginalEditor === 'function'
+                    ? this.diffEditor.getOriginalEditor()
+                    : null;
+                const modifiedEditor = typeof this.diffEditor.getModifiedEditor === 'function'
+                    ? this.diffEditor.getModifiedEditor()
+                    : null;
+
+                if (originalEditor) editors.add(originalEditor);
+                if (modifiedEditor) editors.add(modifiedEditor);
+            } else {
+                const leftEditor = this.editors.get('compareEditorLeft');
+                const rightEditor = this.editors.get('compareEditorRight');
+                if (leftEditor) editors.add(leftEditor);
+                if (rightEditor) editors.add(rightEditor);
+            }
+        }
+
+        if (!editors.size) {
+            const activeEditor = this.getActiveEditor();
+            if (activeEditor) {
+                editors.add(activeEditor);
+            }
+        }
+
+        return Array.from(editors).filter(Boolean);
+    }
+
+    runEditorCommand(editor, commandId, payload = null) {
+        if (!editor) return false;
+
+        try {
+            if (typeof editor.getAction === 'function') {
+                const action = editor.getAction(commandId);
+                if (action && typeof action.run === 'function' && (!action.isSupported || action.isSupported())) {
+                    const result = action.run();
+                    if (result && typeof result.then === 'function') {
+                        result.catch(error => console.warn(`Command ${commandId} failed:`, error));
+                    }
+                    return true;
+                }
+            }
+
+            if (typeof editor.trigger === 'function') {
+                editor.trigger('json-tools', commandId, payload);
+                return true;
+            }
+        } catch (error) {
+            console.warn(`Command ${commandId} failed:`, error);
+        }
+
+        return false;
+    }
+
+    executeCommandOnEditors(commandId, options = {}) {
+        const editors = this.resolveTargetEditors(options);
+        let executed = 0;
+
+        editors.forEach(editor => {
+            if (this.runEditorCommand(editor, commandId, options.payload)) {
+                executed++;
+            }
+        });
+
+        if (options.focus && editors[0] && typeof editors[0].focus === 'function') {
+            editors[0].focus();
+        }
+
+        return { executed, editors };
+    }
+
+    collapseAllFolds(options = {}) {
+        const { executed } = this.executeCommandOnEditors('editor.foldAll', options);
+
+        if (executed > 0) {
+            const message = executed > 1
+                ? 'Collapsed JSON structures in all visible editors'
+                : 'Collapsed JSON structures';
+            this.showNotification(message, 'success');
+        } else {
+            this.showNotification('Unable to collapse JSON structures', 'warning');
+        }
+    }
+
+    expandAllFolds(options = {}) {
+        const { executed } = this.executeCommandOnEditors('editor.unfoldAll', options);
+
+        if (executed > 0) {
+            const message = executed > 1
+                ? 'Expanded JSON structures in all visible editors'
+                : 'Expanded JSON structures';
+            this.showNotification(message, 'success');
+        } else {
+            this.showNotification('Unable to expand JSON structures', 'warning');
+        }
+    }
+
+    async sortJSONKeys(options = {}) {
+        const editor = this.getActiveEditor();
+        if (!editor) {
+            this.showNotification('No active editor', 'warning');
+            return;
+        }
+
+        const content = editor.getValue();
+        const model = editor.getModel && editor.getModel();
+        const indentOption = options && typeof options.indent === 'number' && options.indent >= 0
+            ? options.indent
+            : model && typeof model.getOptions === 'function'
+                ? model.getOptions().tabSize
+                : 2;
+        const indent = Number.isFinite(indentOption) ? indentOption : 2;
+
+        try {
+            let sortedText;
+
+            if (this.workerPool && typeof this.workerPool.execute === 'function') {
+                sortedText = await this.workerPool.execute('sort_keys', { text: content, indent }, 1);
+            } else {
+                const parsed = JSON.parse(content);
+                const sortedValue = this.sortKeysDeep(parsed);
+                sortedText = JSON.stringify(sortedValue, null, indent);
+            }
+
+            if (typeof sortedText !== 'string') {
+                sortedText = JSON.stringify(sortedText);
+            }
+
+            if (sortedText !== content) {
+                editor.setValue(sortedText);
+            }
+
+            this.showNotification('JSON keys sorted alphabetically', 'success');
+        } catch (error) {
+            console.error('Sort keys error:', error);
+            this.showNotification('Sort keys error: ' + error.message, 'error');
+        }
+    }
+
+    sortKeysDeep(value) {
+        if (Array.isArray(value)) {
+            return value.map(item => this.sortKeysDeep(item));
+        }
+
+        if (value && typeof value === 'object') {
+            const sortedKeys = Object.keys(value).sort((a, b) => a.localeCompare(b));
+            const result = {};
+            sortedKeys.forEach(key => {
+                result[key] = this.sortKeysDeep(value[key]);
+            });
+            return result;
+        }
+
+        return value;
     }
 
     showNotification(message, type) {

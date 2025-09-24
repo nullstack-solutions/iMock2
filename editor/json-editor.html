@@ -90,6 +90,18 @@
                             <span class="icon" aria-hidden="true">➖</span>
                             <span class="sr-only">Minify JSON</span>
                         </button>
+                        <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="sortJSONKeys()" title="Sort keys (Ctrl+Alt+S)" data-tooltip="Sort keys alphabetically (Ctrl+Alt+S)">
+                            <span class="icon" aria-hidden="true">🔤</span>
+                            <span class="sr-only">Sort JSON keys</span>
+                        </button>
+                        <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="collapseAllJSON()" title="Collapse all (Ctrl+Shift+[)" data-tooltip="Collapse all blocks (Ctrl+Shift+[)">
+                            <span class="icon" aria-hidden="true">📕</span>
+                            <span class="sr-only">Collapse all JSON blocks</span>
+                        </button>
+                        <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="expandAllJSON()" title="Expand all (Ctrl+Shift+])" data-tooltip="Expand all blocks (Ctrl+Shift+])">
+                            <span class="icon" aria-hidden="true">📖</span>
+                            <span class="sr-only">Expand all JSON blocks</span>
+                        </button>
                         <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="validateJSON()" title="Validate JSON" data-tooltip="Validate JSON">
                             <span class="icon" aria-hidden="true">✔️</span>
                             <span class="sr-only">Validate JSON</span>
@@ -738,6 +750,56 @@
             } catch (error) {
                 console.error('Minify error:', error);
                 showNotification('Minify error: ' + error.message, 'error');
+            }
+        }
+
+        function sortJSONKeys() {
+            try {
+                if (window.monacoInitializer && typeof window.monacoInitializer.sortJSONKeys === 'function') {
+                    const editor = window.monacoInitializer.getActiveEditor ? window.monacoInitializer.getActiveEditor() : null;
+                    const currentContent = editor && typeof editor.getValue === 'function' ? editor.getValue() : '';
+                    window.monacoInitializer.sortJSONKeys();
+                    setTimeout(() => {
+                        if (editor && typeof editor.getValue === 'function') {
+                            const newContent = editor.getValue();
+                            if (newContent !== currentContent) {
+                                saveToHistory(newContent, 'JSON Keys Sorted');
+                                showNotification('JSON keys sorted', 'success');
+                            }
+                        }
+                    }, 100);
+                } else {
+                    showNotification('Sort keys function not available', 'error');
+                }
+            } catch (error) {
+                console.error('Sort keys error:', error);
+                showNotification('Sort keys error: ' + error.message, 'error');
+            }
+        }
+
+        function collapseAllJSON() {
+            try {
+                if (window.monacoInitializer && typeof window.monacoInitializer.collapseAllFolds === 'function') {
+                    window.monacoInitializer.collapseAllFolds({ focus: true });
+                } else {
+                    showNotification('Collapse all is not available', 'error');
+                }
+            } catch (error) {
+                console.error('Collapse JSON error:', error);
+                showNotification('Collapse JSON error: ' + error.message, 'error');
+            }
+        }
+
+        function expandAllJSON() {
+            try {
+                if (window.monacoInitializer && typeof window.monacoInitializer.expandAllFolds === 'function') {
+                    window.monacoInitializer.expandAllFolds({ focus: true });
+                } else {
+                    showNotification('Expand all is not available', 'error');
+                }
+            } catch (error) {
+                console.error('Expand JSON error:', error);
+                showNotification('Expand JSON error: ' + error.message, 'error');
             }
         }
 

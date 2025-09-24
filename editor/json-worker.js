@@ -224,6 +224,9 @@ self.onmessage = function(e) {
             case 'validate':
                 handleValidateEnhanced(payload, taskId);
                 break;
+            case 'sort_keys':
+                handleSortKeysEnhanced(payload, taskId);
+                break;
             case 'jsonpath':
                 handleJSONPathEnhanced(payload, taskId);
                 break;
@@ -382,7 +385,7 @@ async function handleMinifyEnhanced(payload, taskId) {
 
 async function handleValidateEnhanced(payload, taskId) {
     const task = taskManager.addTask(taskId, 'validate', payload, 1);
-    
+
     try {
         const { text, withPositions = false } = payload;
         
@@ -445,9 +448,46 @@ async function handleValidateEnhanced(payload, taskId) {
     }
 }
 
+async function handleSortKeysEnhanced(payload, taskId) {
+    const task = taskManager.addTask(taskId, 'sort_keys', payload, 1);
+
+    try {
+        if (!payload || typeof payload.text !== 'string') {
+            throw new Error('No JSON content provided');
+        }
+
+        if (checkCancellation(taskId)) {
+            throw new Error('Operation cancelled');
+        }
+
+        const indent = typeof payload.indent === 'number' && payload.indent >= 0 ? payload.indent : 2;
+        const parsed = JSON.parse(payload.text);
+        const sorted = sortKeysDeep(parsed);
+        const result = JSON.stringify(sorted, null, indent);
+
+        if (taskManager.isTaskActive(taskId)) {
+            postMessage({
+                type: 'sort_keys_complete',
+                taskId,
+                result
+            });
+        }
+    } catch (error) {
+        if (taskManager.isTaskActive(taskId)) {
+            postMessage({
+                type: 'error',
+                taskId,
+                error: error.message
+            });
+        }
+    } finally {
+        taskManager.completeTask(taskId);
+    }
+}
+
 async function handleJSONPathEnhanced(payload, taskId) {
     const task = taskManager.addTask(taskId, 'jsonpath', payload, 3);
-    
+
     try {
         const { text, path } = payload;
         
@@ -867,18 +907,36 @@ function normalizeObject(obj) {
     if (obj === null || typeof obj !== 'object') {
         return obj;
     }
-    
+
     if (Array.isArray(obj)) {
         return obj.map(normalizeObject);
     }
-    
+
     // Sort object keys
     const sorted = {};
     Object.keys(obj).sort().forEach(key => {
         sorted[key] = normalizeObject(obj[key]);
     });
-    
+
     return sorted;
+}
+
+function sortKeysDeep(value) {
+    if (Array.isArray(value)) {
+        return value.map(sortKeysDeep);
+    }
+
+    if (value && typeof value === 'object') {
+        const sorted = {};
+        Object.keys(value)
+            .sort((a, b) => a.localeCompare(b))
+            .forEach(key => {
+                sorted[key] = sortKeysDeep(value[key]);
+            });
+        return sorted;
+    }
+
+    return value;
 }
 
 function collectStructuralDifferences(left, right, taskId, path = '') {
