@@ -749,54 +749,65 @@ class MonacoInitializer {
     
     evaluateJSONPath(data, path, content, editor) {
         const results = [];
-        
+        const pointerLocator = this.createPointerLocator(content);
+        const rootPointer = '$';
+        const normalizedPath = typeof path === 'string' ? path.trim() : '';
+
         // Simple JSONPath implementation with position tracking
-        if (path === '$') {
-            // Root element
-            const position = this.findValuePosition(data, content, editor, '');
-            results.push({ value: data, path: '$', position });
+        if (!normalizedPath || normalizedPath === '$') {
+            const position = this.findValuePosition(data, content, editor, '$', pointerLocator, rootPointer);
+            results.push({ value: data, path: '$', pointer: rootPointer, position });
             return results;
         }
-        
+
         // Remove leading $. and split path
-        const pathParts = path.replace(/^\$\.?/, '').split('.');
-        this.traverseJSONPath(data, pathParts, content, editor, '$', results);
-        
+        const strippedPath = normalizedPath.replace(/^\$\.?/, '');
+        const pathParts = strippedPath ? strippedPath.split('.').filter(Boolean) : [];
+        this.traverseJSONPath(data, pathParts, content, editor, '$', results, pointerLocator, rootPointer);
+
         return results;
     }
-    
-    traverseJSONPath(current, pathParts, content, editor, currentPath, results) {
+
+    traverseJSONPath(current, pathParts, content, editor, currentPath, results, pointerLocator, currentPointer) {
         if (pathParts.length === 0) {
-            const position = this.findValuePosition(current, content, editor, currentPath);
-            results.push({ value: current, path: currentPath, position });
+            const position = this.findValuePosition(current, content, editor, currentPath, pointerLocator, currentPointer);
+            results.push({ value: current, path: currentPath, pointer: currentPointer, position });
             return;
         }
-        
+
         const [firstPart, ...remainingParts] = pathParts;
-        
+
         // Handle array notation like [0] or [*]
         if (firstPart.includes('[') && firstPart.includes(']')) {
             const [key, indexPart] = firstPart.split('[');
-            const index = indexPart.replace(']', '');
-            
+            const indexToken = indexPart.replace(']', '');
+
             let target = current;
+            let pointerBase = currentPointer;
+
             if (key) {
+                if (!current || typeof current !== 'object' || !Object.prototype.hasOwnProperty.call(current, key)) {
+                    return;
+                }
                 target = current[key];
+                pointerBase = appendPointerSegment(pointerBase, key);
             }
-            
+
             if (Array.isArray(target)) {
-                if (index === '*') {
+                if (indexToken === '*') {
                     // Wildcard - search all array elements
                     target.forEach((item, i) => {
                         const newPath = currentPath + (key ? `.${key}` : '') + `[${i}]`;
-                        this.traverseJSONPath(item, remainingParts, content, editor, newPath, results);
+                        const itemPointer = appendPointerSegment(pointerBase, i);
+                        this.traverseJSONPath(item, remainingParts, content, editor, newPath, results, pointerLocator, itemPointer);
                     });
                 } else {
                     // Specific index
-                    const idx = parseInt(index);
-                    if (idx >= 0 && idx < target.length) {
+                    const idx = parseInt(indexToken, 10);
+                    if (!Number.isNaN(idx) && idx >= 0 && idx < target.length) {
                         const newPath = currentPath + (key ? `.${key}` : '') + `[${idx}]`;
-                        this.traverseJSONPath(target[idx], remainingParts, content, editor, newPath, results);
+                        const itemPointer = appendPointerSegment(pointerBase, idx);
+                        this.traverseJSONPath(target[idx], remainingParts, content, editor, newPath, results, pointerLocator, itemPointer);
                     }
                 }
             }
@@ -805,20 +816,54 @@ class MonacoInitializer {
             if (current && typeof current === 'object' && !Array.isArray(current)) {
                 Object.keys(current).forEach(key => {
                     const newPath = currentPath + `.${key}`;
-                    this.traverseJSONPath(current[key], remainingParts, content, editor, newPath, results);
+                    const childPointer = appendPointerSegment(currentPointer, key);
+                    this.traverseJSONPath(current[key], remainingParts, content, editor, newPath, results, pointerLocator, childPointer);
                 });
             }
         } else {
             // Regular property access
-            if (current && typeof current === 'object' && firstPart in current) {
+            if (current && typeof current === 'object' && Object.prototype.hasOwnProperty.call(current, firstPart)) {
                 const newPath = currentPath + `.${firstPart}`;
-                this.traverseJSONPath(current[firstPart], remainingParts, content, editor, newPath, results);
+                const childPointer = appendPointerSegment(currentPointer, firstPart);
+                this.traverseJSONPath(current[firstPart], remainingParts, content, editor, newPath, results, pointerLocator, childPointer);
             }
         }
     }
     
-    findValuePosition(value, content, editor, jsonPath) {
+    findValuePosition(value, content, editor, jsonPath, pointerLocator = null, pointer = null) {
         try {
+            let locator = pointerLocator || null;
+            let pointerCandidate = pointer;
+
+            if (typeof pointerCandidate === 'string' && pointerCandidate.startsWith('$.')) {
+                const converted = this.convertJSONPathToPointer(pointerCandidate);
+                if (converted) {
+                    pointerCandidate = converted;
+                }
+            }
+
+            if (!pointerCandidate && typeof jsonPath === 'string' && jsonPath.length > 0) {
+                pointerCandidate = this.convertJSONPathToPointer(jsonPath);
+            }
+
+            if (pointerCandidate) {
+                if (!locator) {
+                    locator = this.createPointerLocator(content);
+                }
+
+                if (locator) {
+                    const pointerPosition = locator.getRange(pointerCandidate);
+                    if (pointerPosition) {
+                        return pointerPosition;
+                    }
+                }
+            }
+
+            const model = editor && typeof editor.getModel === 'function' ? editor.getModel() : null;
+            if (!model) {
+                return null;
+            }
+
             // Convert value to string for searching
             let searchText;
             if (typeof value === 'string') {
@@ -826,24 +871,40 @@ class MonacoInitializer {
             } else {
                 searchText = JSON.stringify(value);
             }
-            
-            // Use Monaco's find mechanism to locate the text
-            const model = editor.getModel();
-            const matches = model.findMatches(searchText, false, false, true, null, false);
-            
-            if (matches.length > 0) {
-                // Return the first match position
-                return {
-                    startLineNumber: matches[0].range.startLineNumber,
-                    startColumn: matches[0].range.startColumn,
-                    endLineNumber: matches[0].range.endLineNumber,
-                    endColumn: matches[0].range.endColumn
-                };
+
+            if (searchText) {
+                const matches = model.findMatches(searchText, false, false, true, null, false);
+
+                if (matches.length > 0) {
+                    const { range } = matches[0];
+                    return {
+                        startLineNumber: range.startLineNumber,
+                        startColumn: range.startColumn,
+                        endLineNumber: range.endLineNumber,
+                        endColumn: range.endColumn
+                    };
+                }
+            }
+
+            if (value && typeof value === 'object') {
+                const pretty = JSON.stringify(value, null, 2);
+                if (pretty && pretty !== searchText) {
+                    const matches = model.findMatches(pretty, false, false, true, null, false);
+                    if (matches.length > 0) {
+                        const { range } = matches[0];
+                        return {
+                            startLineNumber: range.startLineNumber,
+                            startColumn: range.startColumn,
+                            endLineNumber: range.endLineNumber,
+                            endColumn: range.endColumn
+                        };
+                    }
+                }
             }
         } catch (error) {
             console.warn('Could not find position for value:', error);
         }
-        
+
         return null;
     }
     
@@ -1060,7 +1121,7 @@ class MonacoInitializer {
             }
 
             if (!position) {
-                position = this.findValuePosition(value, content, editor, path);
+                position = this.findValuePosition(value, content, editor, path, pointerLocator, pointer);
             }
 
             return {
@@ -1116,6 +1177,134 @@ class MonacoInitializer {
 
     createPointerLocator(text) {
         return buildJSONPointerLocator(text);
+    }
+
+    convertJSONPathToPointer(jsonPath) {
+        if (typeof jsonPath !== 'string') {
+            return null;
+        }
+
+        const trimmed = jsonPath.trim();
+        if (!trimmed) {
+            return null;
+        }
+
+        if (trimmed === '$') {
+            return '$';
+        }
+
+        if (!trimmed.startsWith('$')) {
+            return null;
+        }
+
+        let pointer = '$';
+        let index = 1;
+
+        while (index < trimmed.length) {
+            const char = trimmed[index];
+
+            if (char === '.') {
+                index++;
+
+                if (index >= trimmed.length) {
+                    break;
+                }
+
+                if (trimmed[index] === '.') {
+                    // Unsupported recursive descent
+                    return null;
+                }
+
+                if (trimmed[index] === '[') {
+                    continue;
+                }
+
+                let start = index;
+                while (index < trimmed.length && trimmed[index] !== '.' && trimmed[index] !== '[') {
+                    index++;
+                }
+
+                const segment = trimmed.slice(start, index);
+                if (segment) {
+                    pointer = appendPointerSegment(pointer, segment);
+                }
+
+                continue;
+            }
+
+            if (char === '[') {
+                index++;
+
+                if (index >= trimmed.length) {
+                    break;
+                }
+
+                if (trimmed[index] === '\'' || trimmed[index] === '"') {
+                    const quote = trimmed[index];
+                    index++;
+                    let segment = '';
+
+                    while (index < trimmed.length) {
+                        const currentChar = trimmed[index];
+                        if (currentChar === '\\' && index + 1 < trimmed.length) {
+                            segment += trimmed[index + 1];
+                            index += 2;
+                            continue;
+                        }
+
+                        if (currentChar === quote) {
+                            break;
+                        }
+
+                        segment += currentChar;
+                        index++;
+                    }
+
+                    if (index < trimmed.length && trimmed[index] === quote) {
+                        index++;
+                    }
+
+                    if (index < trimmed.length && trimmed[index] === ']') {
+                        index++;
+                    }
+
+                    if (!segment) {
+                        return null;
+                    }
+
+                    pointer = appendPointerSegment(pointer, segment);
+                } else {
+                    let start = index;
+                    while (index < trimmed.length && trimmed[index] !== ']') {
+                        index++;
+                    }
+
+                    const token = trimmed.slice(start, index);
+
+                    if (index < trimmed.length && trimmed[index] === ']') {
+                        index++;
+                    }
+
+                    if (!token || token === '*') {
+                        return null;
+                    }
+
+                    const numericIndex = Number(token);
+                    if (!Number.isNaN(numericIndex)) {
+                        pointer = appendPointerSegment(pointer, numericIndex);
+                    } else {
+                        pointer = appendPointerSegment(pointer, token);
+                    }
+                }
+
+                continue;
+            }
+
+            // Skip any other characters
+            index++;
+        }
+
+        return pointer;
     }
 
     handleJSONPathMatches(jsonPath, matches, editor, totalCount, truncated) {
