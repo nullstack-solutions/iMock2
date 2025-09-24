@@ -454,6 +454,101 @@
         }
 
         /**
+         * Modal helpers
+         */
+        const MODAL_FOCUSABLE_SELECTORS = [
+            'button:not([disabled])',
+            'a[href]',
+            'input:not([disabled])',
+            'select:not([disabled])',
+            'textarea:not([disabled])',
+            '[tabindex]:not([tabindex="-1"])'
+        ].join(', ');
+
+        function tryFocusElement(element) {
+            if (!element || typeof element.focus !== 'function') {
+                return;
+            }
+
+            try {
+                element.focus({ preventScroll: true });
+            } catch (e) {
+                element.focus();
+            }
+        }
+
+        function setModalVisibility(modal, shouldShow) {
+            if (!(modal instanceof HTMLElement)) {
+                return;
+            }
+
+            if (shouldShow) {
+                modal.classList.remove('hidden');
+                modal.classList.add('show');
+                modal.style.display = 'flex';
+                modal.setAttribute('aria-hidden', 'false');
+
+                if (!modal.__triggerElement && document.activeElement instanceof HTMLElement) {
+                    modal.__triggerElement = document.activeElement;
+                }
+
+                document.body.classList.add('modal-open');
+
+                const focusTarget = modal.querySelector('[data-autofocus]') || modal.querySelector(MODAL_FOCUSABLE_SELECTORS);
+                if (focusTarget) {
+                    tryFocusElement(focusTarget);
+                } else {
+                    modal.setAttribute('tabindex', '-1');
+                    tryFocusElement(modal);
+                }
+            } else {
+                modal.classList.remove('show');
+                modal.classList.add('hidden');
+                modal.style.display = 'none';
+                modal.setAttribute('aria-hidden', 'true');
+
+                const trigger = modal.__triggerElement;
+                delete modal.__triggerElement;
+
+                if (!document.querySelector('.modal.show, .modal[aria-hidden="false"]')) {
+                    document.body.classList.remove('modal-open');
+                }
+
+                if (trigger) {
+                    tryFocusElement(trigger);
+                }
+            }
+        }
+
+        function openModal(modalId = 'fullscreenModal') {
+            const modal = document.getElementById(modalId);
+            if (!modal) {
+                console.warn(`Modal with id "${modalId}" not found`);
+                return;
+            }
+
+            setModalVisibility(modal, true);
+        }
+
+        function closeModal(modalId = 'fullscreenModal') {
+            const modal = document.getElementById(modalId);
+            if (!modal) {
+                console.warn(`Modal with id "${modalId}" not found`);
+                return;
+            }
+
+            setModalVisibility(modal, false);
+        }
+
+        function openHistoryModal() {
+            openModal('historyModal');
+        }
+
+        function closeHistoryModal() {
+            closeModal('historyModal');
+        }
+
+        /**
          * Toggle theme
          */
         function toggleTheme() {
@@ -924,19 +1019,19 @@
 
         // Close modals when clicking outside
         document.addEventListener('click', (e) => {
-            if (e.target.classList.contains('modal')) {
-                e.target.style.display = 'none';
-                e.target.setAttribute('aria-hidden', 'true');
+            const target = e.target;
+            if (target instanceof HTMLElement && target.classList.contains('modal') && target.getAttribute('aria-hidden') === 'false') {
+                setModalVisibility(target, false);
             }
         });
 
         // Close modals with Escape key
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
-                const openModal = document.querySelector('.modal[aria-hidden="false"]');
-                if (openModal) {
-                    openModal.style.display = 'none';
-                    openModal.setAttribute('aria-hidden', 'true');
+                const openModal = document.querySelector('.modal.show, .modal[aria-hidden="false"]');
+                if (openModal instanceof HTMLElement) {
+                    e.preventDefault();
+                    setModalVisibility(openModal, false);
                 }
             }
         });
