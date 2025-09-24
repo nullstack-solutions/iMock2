@@ -15,6 +15,11 @@ body {
     background: var(--bg-secondary);
     color: var(--text-primary);
     min-height: 100vh;
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+body.modal-open {
     overflow: hidden;
 }
 
@@ -326,7 +331,7 @@ body {
 
 /* ===== EDITOR WORKSPACE ===== */
 .editor-main {
-    flex: 1;
+    flex: 1 0 auto;
     display: flex;
     flex-direction: column;
     gap: var(--space-4);
@@ -1028,7 +1033,8 @@ body {
 
 @media (max-width: 768px) {
     body {
-        overflow: auto;
+        overflow-x: hidden;
+        overflow-y: auto;
     }
 
     .editor-toolbar {
