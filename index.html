@@ -55,7 +55,25 @@
             <!-- MAPPINGS PAGE -->
             <div id="mappings-page">
                 <div class="page-header">
-                    <div class="page-title">API Mappings</div>
+                    <div class="stats-spacer" id="stats-spacer"></div>
+                    <div class="stats" id="stats" style="display: none;">
+                        <div class="stat-card">
+                            <div class="stat-number" id="mappings-count">0</div>
+                            <div class="stat-label">Mappings</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-number" id="requests-count">0</div>
+                            <div class="stat-label">Requests</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-number" id="scenarios-count">0</div>
+                            <div class="stat-label">Scenarios</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-number" id="uptime">0s</div>
+                            <div class="stat-label">Uptime</div>
+                        </div>
+                    </div>
                     <div style="display: flex; gap: var(--space-3); align-items: center;">
                         <span id="data-source-indicator" class="badge badge-secondary" title="Current data source">Source: direct</span>
                         <button class="btn btn-secondary" onclick="refreshMappings()">🔄 Refresh</button>
@@ -63,7 +81,7 @@
                         <button class="btn btn-primary" onclick="openAddMappingModal()" id="add-mapping-btn" disabled>+ Add Mapping</button>
                     </div>
                 </div>
-                
+
                 <div class="card" id="connection-setup">
                     <div class="card-header">
                         <h3 class="card-title">Connect to WireMock Server</h3>
@@ -86,24 +104,6 @@
                     </div>
                 </div>
                 
-                <div class="stats" id="stats" style="display: none;">
-                    <div class="stat-card">
-                        <div class="stat-number" id="mappings-count">0</div>
-                        <div class="stat-label">Mappings</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-number" id="requests-count">0</div>
-                        <div class="stat-label">Requests</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-number" id="scenarios-count">0</div>
-                        <div class="stat-label">Scenarios</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-number" id="uptime">0s</div>
-                        <div class="stat-label">Uptime</div>
-                    </div>
-                </div>
                 
                 <div class="search-filters" id="search-filters" style="display: none;">
                     <div class="filter-grid">

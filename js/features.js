@@ -260,8 +260,10 @@ window.connectToWireMock = async () => {
         
         // Показываем статистику и фильтры
         const statsElement = document.getElementById(SELECTORS.UI.STATS);
+        const statsSpacer = document.getElementById('stats-spacer');
         const filtersElement = document.getElementById(SELECTORS.UI.SEARCH_FILTERS);
         if (statsElement) statsElement.style.display = 'flex';
+        if (statsSpacer) statsSpacer.style.display = 'none';
         if (filtersElement) filtersElement.style.display = 'block';
         
         // Запускаем периодический health check
