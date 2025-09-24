@@ -2015,16 +2015,18 @@ async function upsertImockCacheMapping(slim) {
     try {
         // Try update first; if 404, create
         console.log('🧩 [CACHE] PUT /mappings/{id}');
-        await apiFetch(`/mappings/${IMOCK_CACHE_ID}`, {
+        const response = await apiFetch(`/mappings/${IMOCK_CACHE_ID}`, {
             method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(stub),
         });
         console.log('🧩 [CACHE] Upsert done (PUT)');
+        return response;
     } catch (e) {
         console.log('🧩 [CACHE] PUT failed, POST /mappings');
-        await apiFetch('/mappings', {
+        const response = await apiFetch('/mappings', {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(stub),
         });
         console.log('🧩 [CACHE] Upsert done (POST)');
+        return response;
     }
 }
 
@@ -2043,10 +2045,19 @@ async function regenerateImockCache(existingData = null) {
     console.log('🧩 [CACHE] Using fresh server data for cache regeneration');
 
     const slim = buildSlimList(mappings);
-    try { await upsertImockCacheMapping(slim); } catch (e) { console.warn('🧩 [CACHE] Upsert cache failed:', e); }
+    let finalPayload = slim;
+    try {
+        const response = await upsertImockCacheMapping(slim);
+        const serverPayload = extractCacheJsonBody(response);
+        if (serverPayload) {
+            finalPayload = serverPayload;
+        }
+    } catch (e) {
+        console.warn('🧩 [CACHE] Upsert cache failed:', e);
+    }
     const dt = Math.round(performance.now() - t0);
-    console.log(`🧩 [CACHE] Regenerate cache done (${(slim?.mappings||[]).length} items) in ${dt}ms`);
-    return slim;
+    console.log(`🧩 [CACHE] Regenerate cache done (${(finalPayload?.mappings||[]).length} items) in ${dt}ms`);
+    return finalPayload;
 }
 
 async function loadImockCacheBestOf3() {
@@ -2248,6 +2259,141 @@ function buildCacheSnapshot() {
     }
 }
 
+function extractCacheJsonBody(payload) {
+    try {
+        if (!payload || typeof payload !== 'object') {
+            return null;
+        }
+
+        if (payload.response?.jsonBody) {
+            return payload.response.jsonBody;
+        }
+
+        if (payload.mapping?.response?.jsonBody) {
+            return payload.mapping.response.jsonBody;
+        }
+
+        if (payload.jsonBody?.mappings || Array.isArray(payload.mappings)) {
+            const mappings = Array.isArray(payload.jsonBody?.mappings)
+                ? payload.jsonBody.mappings
+                : Array.isArray(payload.mappings)
+                    ? payload.mappings
+                    : [];
+            return { mappings: mappings.map(item => ({ ...item })) };
+        }
+    } catch (error) {
+        console.warn('extractCacheJsonBody failed:', error);
+    }
+    return null;
+}
+
+function cloneSlimMappingsList(source) {
+    if (!Array.isArray(source)) {
+        return [];
+    }
+    return source.map(item => ({ ...item }));
+}
+
+function buildUpdatedCachePayload(existingPayload, mapping, operation) {
+    try {
+        const normalizedOp = (operation || 'update').toLowerCase();
+        const mappingId = mapping?.id || mapping?.uuid;
+        const incoming = normalizedOp === 'delete' ? null : mapping;
+
+        if (!mappingId) {
+            return existingPayload ? { mappings: cloneSlimMappingsList(existingPayload.mappings) } : { mappings: [] };
+        }
+
+        const base = existingPayload && Array.isArray(existingPayload.mappings)
+            ? cloneSlimMappingsList(existingPayload.mappings)
+            : [];
+
+        const index = base.findIndex(item => (item?.id || item?.uuid) === mappingId);
+
+        if (normalizedOp === 'delete') {
+            if (index !== -1) {
+                base.splice(index, 1);
+            }
+            return { mappings: base };
+        }
+
+        if (!incoming) {
+            return { mappings: base };
+        }
+
+        const slim = slimMapping(incoming);
+
+        if (index !== -1) {
+            base[index] = { ...base[index], ...slim };
+        } else {
+            base.push(slim);
+        }
+
+        return { mappings: base };
+    } catch (error) {
+        console.warn('buildUpdatedCachePayload failed:', error);
+        return null;
+    }
+}
+
+async function fetchExistingCacheMapping() {
+    try {
+        let cacheMapping = await getCacheByFixedId();
+        if (cacheMapping) {
+            return cacheMapping;
+        }
+        cacheMapping = await getCacheByMetadata();
+        if (cacheMapping) {
+            return cacheMapping;
+        }
+    } catch (error) {
+        console.warn('fetchExistingCacheMapping failed:', error);
+    }
+    return null;
+}
+
+async function syncCacheMappingWithServer(mapping, operation) {
+    try {
+        const settings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
+        if (settings.cacheEnabled !== true) {
+            console.log('🧩 [CACHE] Remote cache sync skipped - cache disabled');
+            return;
+        }
+
+        const existingMapping = await fetchExistingCacheMapping();
+        if (!existingMapping || !existingMapping.response) {
+            console.log('🧩 [CACHE] Remote cache sync skipped - cache mapping missing');
+            return;
+        }
+
+        const currentPayload = extractCacheJsonBody(existingMapping) || { mappings: [] };
+        const updatedPayload = buildUpdatedCachePayload(currentPayload, mapping, operation);
+        if (!updatedPayload) {
+            console.log('🧩 [CACHE] Remote cache sync skipped - unable to build payload');
+            return;
+        }
+
+        const response = await upsertImockCacheMapping(updatedPayload);
+        const finalPayload = extractCacheJsonBody(response) || updatedPayload;
+        window.imockCacheSnapshot = finalPayload;
+        window.cacheLastUpdate = Date.now();
+        console.log('🧩 [CACHE] Remote cache mapping updated via optimistic sync');
+    } catch (error) {
+        console.warn('🧩 [CACHE] syncCacheMappingWithServer failed:', error);
+    }
+}
+
+let cacheSyncQueue = Promise.resolve();
+function enqueueCacheSync(mapping, operation) {
+    try {
+        cacheSyncQueue = cacheSyncQueue
+            .catch(() => { })
+            .then(() => syncCacheMappingWithServer(mapping, operation));
+    } catch (error) {
+        console.warn('🧩 [CACHE] enqueueCacheSync failed:', error);
+    }
+}
+
 function refreshMappingsFromCache({ maintainFilters = true } = {}) {
     try {
 
@@ -2350,13 +2496,7 @@ function updateOptimisticCache(mapping, operation) {
             window.cacheManager.version += 1;
         }
         refreshMappingsFromCache();
-        if (typeof scheduleCacheRebuild === 'function') {
-            try {
-                scheduleCacheRebuild();
-            } catch (scheduleError) {
-                console.warn('updateOptimisticCache: failed to schedule cache rebuild', scheduleError);
-            }
-        }
+        enqueueCacheSync(mapping, normalizedOperation);
     } catch (error) {
         console.warn('updateOptimisticCache failed:', error);
     }
@@ -2372,12 +2512,23 @@ function scheduleCacheRebuild() {
     }
     const delay = Number(settings.cacheRebuildDelay) || 1000;
     clearTimeout(_cacheRebuildTimer);
-    _cacheRebuildTimer = setTimeout(() => {
-      if (typeof window.refreshImockCache === 'function') {
-        window.refreshImockCache().catch(console.warn);
+    _cacheRebuildTimer = setTimeout(async () => {
+      try {
+        const existing = await fetchExistingCacheMapping();
+        if (existing && extractCacheJsonBody(existing)) {
+          console.log('🧩 [CACHE] Skipping scheduled rebuild - cache mapping already exists');
+          return;
+        }
+        if (typeof window.refreshImockCache === 'function') {
+          await window.refreshImockCache();
+        }
+      } catch (timerError) {
+        console.warn('🧩 [CACHE] Scheduled rebuild attempt failed:', timerError);
       }
     }, delay);
-  } catch {}
+  } catch (error) {
+    console.warn('🧩 [CACHE] scheduleCacheRebuild failed:', error);
+  }
 }
 
 // Защита от бесконечного цикла optimistic update in progress
@@ -2400,21 +2551,33 @@ async function validateAndRefreshCache() {
     try {
         console.log('🧩 [CACHE] Starting cache validation...');
 
-        // Get fresh data from server
+        const settings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
+        if (settings.cacheEnabled !== true) {
+            console.log('🧩 [CACHE] Validation skipped - cache disabled');
+            return;
+        }
+
+        const existing = await fetchExistingCacheMapping();
+        if (existing && extractCacheJsonBody(existing)) {
+            console.log('🧩 [CACHE] Validation skipped - cache mapping already present');
+            return;
+        }
+
+        // Cache mapping missing - rebuild from server data
         const freshData = await fetchMappingsFromServer({ force: true });
         if (!freshData?.mappings) {
             console.warn('🧩 [CACHE] Failed to get fresh data for validation');
             return;
         }
 
-        // Rebuild cache with fresh data
-        await regenerateImockCache(freshData);
+        const payload = await regenerateImockCache(freshData);
+        window.imockCacheSnapshot = payload;
 
         // Reset optimistic counters
         window.cacheOptimisticOperations = 0;
         window.cacheLastUpdate = Date.now();
 
-        console.log('🧩 [CACHE] Validation completed, cache refreshed');
+        console.log('🧩 [CACHE] Validation rebuilt cache because mapping was missing');
 
     } catch (e) {
         console.warn('🧩 [CACHE] Validation failed:', e);
@@ -2455,7 +2618,8 @@ window.refreshImockCache = async () => {
         }
 
         console.log('🔄 [CACHE] Starting regeneration...');
-        await regenerateImockCache();
+        const payload = await regenerateImockCache();
+        window.imockCacheSnapshot = payload;
         console.log('🔄 [CACHE] Regeneration completed');
 
         // Clear optimistic update queue after successful cache rebuild
