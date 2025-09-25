@@ -318,10 +318,25 @@
                                 </div>
                             </div>
                         </div>
+                        <div class="form-group">
+                            <label class="form-label">Import Mode</label>
+                            <select class="form-select" id="import-mode" onchange="updateImportModeVisibility()">
+                                <option value="MERGE">MERGE (default)</option>
+                                <option value="OVERWRITE">OVERWRITE</option>
+                                <option value="DELETE_ALL">DELETE_ALL</option>
+                                <option value="STANDARD">STANDARD</option>
+                                <option value="__custom__">Custom…</option>
+                            </select>
+                            <p class="form-help">Select how WireMock should handle existing mappings during import.</p>
+                        </div>
+                        <div class="form-group" id="import-mode-custom-container" style="display: none;">
+                            <label class="form-label">Custom Import Mode</label>
+                            <input type="text" class="form-input" id="import-mode-custom" placeholder="Enter custom import mode value">
+                        </div>
                         <div class="form-group" id="import-actions" style="display: none;">
                             <div style="display: flex; flex-direction: column; gap: var(--space-3);">
-                                <button class="btn btn-primary" onclick="importMappings()">📥 Add to Existing</button>
-                                <button class="btn btn-danger" onclick="importAndReplace()">🔄 Replace All</button>
+                                <button class="btn btn-primary" onclick="importMappings()">📥 Import with Selected Mode</button>
+                                <button class="btn btn-danger" onclick="importAndReplace()">🧹 Delete All &amp; Import</button>
                             </div>
                         </div>
                         <div id="import-result" style="margin-top: var(--space-4);"></div>
@@ -633,6 +648,7 @@
     </div>
 
 <!-- JavaScript modules in loading order -->
+<script src="js/vendor-js-yaml.min.js"></script>
 <script src="js/core.js"></script>
 <script src="js/managers.js"></script>
 <script src="js/features.js"></script>

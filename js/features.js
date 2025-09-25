@@ -2761,9 +2761,271 @@ window.updateFileDisplay = () => {
     const fileInput = document.getElementById('import-file');
     const fileDisplay = document.getElementById('file-display');
 
+    if (!fileInput || !fileDisplay) {
+        console.warn('Import file elements not found.');
+        return;
+    }
+
     if (fileInput?.files?.length > 0) {
-        fileDisplay.innerHTML = `<strong>${fileInput.files[0].name}</strong>`;
-        document.getElementById('import-actions').style.display = 'block';
+        const file = fileInput.files[0];
+        const sizeKb = file.size ? ` (${Math.round(file.size / 1024)} KB)` : '';
+        fileDisplay.innerHTML = `<strong>${file.name}</strong>${sizeKb}`;
+        const actions = document.getElementById(SELECTORS.IMPORT.ACTIONS);
+        if (actions) actions.style.display = 'block';
+    } else {
+        fileDisplay.innerHTML = '<span class="file-placeholder">No file selected</span>';
+        const actions = document.getElementById(SELECTORS.IMPORT.ACTIONS);
+        if (actions) actions.style.display = 'none';
+    }
+};
+
+// Toggle visibility for custom import mode input
+window.updateImportModeVisibility = () => {
+    const select = document.getElementById(SELECTORS.IMPORT.MODE);
+    const customContainer = document.getElementById(SELECTORS.IMPORT.MODE_CUSTOM_CONTAINER);
+    if (!customContainer) return;
+
+    if (select?.value === '__custom__') {
+        customContainer.style.display = 'block';
+    } else {
+        customContainer.style.display = 'none';
+    }
+};
+
+function setStatusMessage(elementId, type, message) {
+    const el = document.getElementById(elementId);
+    if (!el) return;
+    const prefix = type === 'success' ? '✅' : type === 'error' ? '❌' : 'ℹ️';
+    el.textContent = `${prefix} ${message}`;
+}
+
+function downloadFile(filename, content, mimeType) {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function serializeMappingsToYaml(data) {
+    if (window.jsyaml?.dump) {
+        return window.jsyaml.dump(data, { noRefs: true });
+    }
+    if (typeof convertJSONToYAML === 'function') {
+        return convertJSONToYAML(data);
+    }
+    throw new Error('YAML serializer is not available.');
+}
+
+function resolveImportMode(overrideMode = null) {
+    if (overrideMode) {
+        return overrideMode;
+    }
+
+    const select = document.getElementById(SELECTORS.IMPORT.MODE);
+    if (!select) {
+        return 'MERGE';
+    }
+
+    if (select.value === '__custom__') {
+        const customInput = document.getElementById(SELECTORS.IMPORT.MODE_CUSTOM);
+        const customValue = customInput?.value?.trim();
+        if (!customValue) {
+            throw new Error('Enter a custom import mode value.');
+        }
+        return customValue.toUpperCase();
+    }
+
+    return select.value || 'MERGE';
+}
+
+async function parseImportFile() {
+    const fileInput = document.getElementById(SELECTORS.IMPORT.FILE);
+    if (!fileInput?.files?.length) {
+        throw new Error('Please select a file to import.');
+    }
+
+    const file = fileInput.files[0];
+    const text = await file.text();
+    const extension = file.name.split('.').pop()?.toLowerCase();
+
+    if (extension === 'yaml' || extension === 'yml') {
+        if (window.jsyaml?.load) {
+            return window.jsyaml.load(text);
+        }
+        throw new Error('YAML parser is not available.');
+    }
+
+    try {
+        return JSON.parse(text);
+    } catch (error) {
+        throw new Error('Failed to parse JSON import file.');
+    }
+}
+
+function normalizeImportPayload(rawData, importMode) {
+    if (!rawData || typeof rawData !== 'object') {
+        throw new Error('Import file is empty or malformed.');
+    }
+
+    const clone = JSON.parse(JSON.stringify(rawData));
+    const payload = {};
+
+    const preservedKeys = ['meta', 'globalSettings', 'requestJournal', 'importSettings'];
+    preservedKeys.forEach((key) => {
+        if (clone && Object.prototype.hasOwnProperty.call(clone, key)) {
+            payload[key] = clone[key];
+        }
+    });
+
+    if (Array.isArray(clone)) {
+        payload.mappings = clone;
+    } else if (Array.isArray(clone.mappings)) {
+        payload.mappings = clone.mappings;
+    } else if (clone.mappings) {
+        payload.mappings = [clone.mappings];
+    } else if (Array.isArray(clone.mapping)) {
+        payload.mappings = clone.mapping;
+    } else if (clone.mapping) {
+        payload.mappings = [clone.mapping];
+    } else if (clone.request || clone.response) {
+        payload.mappings = [clone];
+    }
+
+    if (!Array.isArray(payload.mappings)) {
+        throw new Error('No mappings array found in the import file.');
+    }
+
+    payload.mappings = payload.mappings.filter(Boolean);
+    if (payload.mappings.length === 0) {
+        throw new Error('The import file does not contain any mappings.');
+    }
+
+    Object.keys(clone).forEach((key) => {
+        if (['mappings', 'mapping', 'importMode'].includes(key)) {
+            return;
+        }
+        if (!Object.prototype.hasOwnProperty.call(payload, key)) {
+            payload[key] = clone[key];
+        }
+    });
+
+    const mode = importMode || clone.importMode || 'MERGE';
+    payload.importMode = mode;
+
+    return payload;
+}
+
+async function executeImport(importModeOverride = null) {
+    try {
+        setStatusMessage(SELECTORS.IMPORT.RESULT, 'info', 'Processing import file...');
+        const rawData = await parseImportFile();
+        const mode = resolveImportMode(importModeOverride);
+        const payload = normalizeImportPayload(rawData, mode);
+        payload.importMode = mode;
+
+        await apiFetch(ENDPOINTS.MAPPINGS_IMPORT, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        setStatusMessage(SELECTORS.IMPORT.RESULT, 'success', `Imported ${payload.mappings.length} mapping(s) using mode ${mode}.`);
+        NotificationManager.success(`Imported ${payload.mappings.length} mapping(s).`);
+
+        const fileInput = document.getElementById(SELECTORS.IMPORT.FILE);
+        if (fileInput) {
+            fileInput.value = '';
+            window.updateFileDisplay();
+        }
+
+        // Refresh mappings after import to reflect updates
+        try {
+            await window.refreshMappings();
+        } catch (refreshError) {
+            console.warn('Failed to refresh mappings after import:', refreshError);
+        }
+    } catch (error) {
+        console.error('Import failed:', error);
+        setStatusMessage(SELECTORS.IMPORT.RESULT, 'error', error.message || 'Import failed.');
+        NotificationManager.error(`Import failed: ${error.message}`);
+        throw error;
+    }
+}
+
+window.importMappings = async () => {
+    try {
+        await executeImport();
+    } catch (_) {
+        // error handling performed inside executeImport
+    }
+};
+
+window.importAndReplace = async () => {
+    try {
+        await executeImport('DELETE_ALL');
+    } catch (_) {
+        // handled inside executeImport
+    }
+};
+
+window.exportMappings = async () => {
+    const formatSelect = document.getElementById(SELECTORS.EXPORT.FORMAT);
+    const format = formatSelect?.value || 'json';
+    setStatusMessage(SELECTORS.EXPORT.RESULT, 'info', 'Preparing mappings export...');
+
+    try {
+        const data = await apiFetch(ENDPOINTS.MAPPINGS);
+        const mappings = data?.mappings || [];
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const baseName = `wiremock-mappings-${timestamp}`;
+
+        if (format === 'yaml') {
+            const yamlContent = serializeMappingsToYaml({ mappings });
+            downloadFile(`${baseName}.yaml`, yamlContent.endsWith('\n') ? yamlContent : `${yamlContent}\n`, 'text/yaml');
+        } else {
+            const jsonContent = JSON.stringify({ mappings }, null, 2);
+            downloadFile(`${baseName}.json`, `${jsonContent}\n`, 'application/json');
+        }
+
+        setStatusMessage(SELECTORS.EXPORT.RESULT, 'success', `Exported ${mappings.length} mapping(s) as ${format.toUpperCase()}.`);
+        NotificationManager.success(`Exported ${mappings.length} mapping(s).`);
+    } catch (error) {
+        console.error('Export mappings failed:', error);
+        setStatusMessage(SELECTORS.EXPORT.RESULT, 'error', error.message || 'Failed to export mappings.');
+        NotificationManager.error(`Failed to export mappings: ${error.message}`);
+    }
+};
+
+window.exportRequests = async () => {
+    const formatSelect = document.getElementById(SELECTORS.EXPORT.FORMAT);
+    const format = formatSelect?.value || 'json';
+    setStatusMessage(SELECTORS.EXPORT.RESULT, 'info', 'Preparing request log export...');
+
+    try {
+        const data = await apiFetch(ENDPOINTS.REQUESTS);
+        const requests = data?.requests || [];
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const baseName = `wiremock-requests-${timestamp}`;
+
+        if (format === 'yaml') {
+            const yamlContent = serializeMappingsToYaml({ requests });
+            downloadFile(`${baseName}.yaml`, yamlContent.endsWith('\n') ? yamlContent : `${yamlContent}\n`, 'text/yaml');
+        } else {
+            const jsonContent = JSON.stringify({ requests }, null, 2);
+            downloadFile(`${baseName}.json`, `${jsonContent}\n`, 'application/json');
+        }
+
+        setStatusMessage(SELECTORS.EXPORT.RESULT, 'success', `Exported ${requests.length} request(s) as ${format.toUpperCase()}.`);
+        NotificationManager.success(`Exported ${requests.length} request(s).`);
+    } catch (error) {
+        console.error('Export requests failed:', error);
+        setStatusMessage(SELECTORS.EXPORT.RESULT, 'error', error.message || 'Failed to export request log.');
+        NotificationManager.error(`Failed to export request log: ${error.message}`);
     }
 };
 
