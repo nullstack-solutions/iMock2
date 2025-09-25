@@ -181,6 +181,23 @@
         </div>
     </div>
 
+    <div class="modal hidden" id="historyPreviewModal" role="dialog" aria-modal="true" aria-labelledby="modal-title-history-preview" aria-hidden="true">
+        <div class="modal-content modal-content--wide">
+            <div class="modal-header">
+                <h2 id="modal-title-history-preview">Snapshot preview</h2>
+                <button class="btn btn-icon" onclick="closeModal('historyPreviewModal')" aria-label="Close history preview">&times;</button>
+            </div>
+            <div class="modal-body history-preview-body">
+                <div class="history-preview-meta" id="historyPreviewMeta"></div>
+                <pre class="history-preview-summary" id="historyPreviewSummary"></pre>
+                <pre class="history-preview-code" id="historyPreviewContent"></pre>
+                <div class="history-preview-actions" id="historyPreviewActions">
+                    <button class="btn btn-secondary btn-sm" type="button" data-history-preview-action="copy">Copy JSON</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- History Modal -->
     <div class="modal hidden" id="historyModal" role="dialog" aria-modal="true" aria-labelledby="modal-title-history" aria-hidden="true">
         <div class="modal-content">
