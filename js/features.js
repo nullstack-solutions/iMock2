@@ -1247,9 +1247,13 @@ window.openEditModal = async (id) => {
         console.error('populateEditMappingForm function not found!');
         return;
     }
-    
+
     // Then fetch the latest mapping version by UUID
     try {
+        if (typeof window.setMappingEditorBusyState === 'function') {
+            window.setMappingEditorBusyState(true, 'Loading…');
+        }
+
         const latest = await apiFetch(`/mappings/${id}`);
         const latestMapping = latest?.mapping || latest; // support multiple response formats
         if (latestMapping && latestMapping.id) {
@@ -1263,8 +1267,12 @@ window.openEditModal = async (id) => {
         }
     } catch (e) {
         console.warn('Failed to load latest mapping, using cached version.', e);
+    } finally {
+        if (typeof window.setMappingEditorBusyState === 'function') {
+            window.setMappingEditorBusyState(false);
+        }
     }
-    
+
     // Update the modal title
     const modalTitleElement = document.getElementById(SELECTORS.MODAL.TITLE);
     if (modalTitleElement) modalTitleElement.textContent = 'Edit Mapping';

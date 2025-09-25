@@ -481,12 +481,19 @@
     <div id="edit-mapping-modal" class="modal hidden">
         <div class="modal-content">
             <div class="modal-header">
-                <button type="button" class="btn btn-primary" id="update-mapping-btn" onclick="updateMapping()">
-                    <span class="btn-label">Update Mapping</span>
-                    <span class="btn-spinner loading-spinner" aria-hidden="true"></span>
-                </button>
-                <h3 id="edit-modal-title">Edit Mapping</h3>
-                <button class="modal-close" onclick="hideModal('edit-mapping-modal')">&times;</button>
+                <div class="modal-header-main">
+                    <h3 id="edit-modal-title">Edit Mapping</h3>
+                    <span id="editor-dirty-indicator" class="dirty-indicator" style="display: none;">● Unsaved changes</span>
+                </div>
+                <div class="modal-header-actions">
+                    <button type="button" class="btn btn-secondary btn-sm" data-action="format-json">🎨 Format</button>
+                    <button type="button" class="btn btn-secondary btn-sm" data-action="minify-json">📦 Minify</button>
+                    <button type="button" class="btn btn-primary" id="update-mapping-btn" onclick="updateMapping()">
+                        <span class="btn-label">Update Mapping</span>
+                        <span class="btn-spinner loading-spinner" aria-hidden="true"></span>
+                    </button>
+                    <button class="modal-close" onclick="hideModal('edit-mapping-modal')">&times;</button>
+                </div>
             </div>
             
             <!-- Form Editor (Hidden by default) -->
@@ -561,15 +568,6 @@
             
             <!-- JSON Editor Container -->
             <div id="json-editor-container" class="json-editor-wrapper">
-                <div class="json-editor-toolbar">
-                    <div class="json-editor-meta">
-                        <span id="editor-dirty-indicator" class="dirty-indicator" style="display: none;">● Unsaved changes</span>
-                    </div>
-                    <div class="json-editor-actions">
-                        <button type="button" class="btn btn-sm" data-action="format-json">🎨 Format</button>
-                        <button type="button" class="btn btn-sm" data-action="minify-json">📦 Minify</button>
-                    </div>
-                </div>
                 <textarea id="json-editor" class="json-editor" rows="1" placeholder="{
   \"name\": \"My Mapping\",
   \"request\": {

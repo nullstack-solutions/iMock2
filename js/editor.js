@@ -58,16 +58,16 @@ function setupEditorModeHandlers() {
         if (e.target.matches('[data-action="validate-json"]')) {
             validateCurrentJSON();
         }
-        
+
         if (e.target.matches('[data-action="format-json"]')) {
             formatCurrentJSON();
         }
-        
+
         if (e.target.matches('[data-action="minify-json"]')) {
             minifyCurrentJSON();
         }
     });
-    
+
     // Auto-save on input changes
     document.addEventListener('input', (e) => {
         if (e.target.matches('.editor-field') || e.target.id === 'json-editor') {
@@ -111,6 +111,12 @@ function setButtonLoadingState(button, isLoading, loadingLabel) {
 
     }
 }
+
+window.setMappingEditorBusyState = (isLoading, loadingLabel) => {
+    const updateButton = document.getElementById('update-mapping-btn');
+    if (!updateButton) return;
+    setButtonLoadingState(updateButton, isLoading, loadingLabel);
+};
 
 function initializeJsonEditorAutoResize() {
     const jsonEditor = document.getElementById('json-editor');
@@ -344,10 +350,8 @@ async function saveMapping() {
 window.updateMapping = async () => {
     console.log('updateMapping called');
 
-    const updateButton = document.getElementById('update-mapping-btn');
-
     try {
-        setButtonLoadingState(updateButton, true, 'Updating…');
+        window.setMappingEditorBusyState(true, 'Updating…');
 
         // Save current state based on active mode FIRST
         if (editorState.mode === EDITOR_MODES.JSON) {
@@ -436,7 +440,7 @@ window.updateMapping = async () => {
         console.error('Error in updateMapping:', e);
         NotificationManager.error(`Update failed: ${e.message}`);
     } finally {
-        setButtonLoadingState(updateButton, false);
+        window.setMappingEditorBusyState(false);
     }
 };
 
@@ -571,27 +575,14 @@ function populateFormFields(mapping) {
 /**
  * Switch editor mode
  */
-function switchEditorMode(mode) {
-    console.log('🟠 [MODE DEBUG] switchEditorMode called');
-    console.log('🟠 [MODE DEBUG] Previous mode:', editorState.mode);
-    console.log('🟠 [MODE DEBUG] New mode:', mode);
-    console.log('🟠 [MODE DEBUG] Current mapping ID before switch:', editorState.currentMapping?.id);
-    
-    const previousMode = editorState.mode;
-    
+function switchEditorMode() {
+    console.log('🟠 [MODE DEBUG] switchEditorMode forced to JSON');
+
     try {
-        // Always load JSON mode
+        editorState.mode = EDITOR_MODES.JSON;
         loadJSONMode();
-        
-        // Update UI
-        updateEditorUI(mode);
-        
-        // Update mode indicator
-        updateModeIndicator(mode);
-        
-        // Show notification about form mode being disabled
-        showNotification('Form mode is temporarily disabled. Using JSON mode only.', 'warning');
-        
+        updateEditorUI();
+        updateModeIndicator(EDITOR_MODES.JSON);
     } catch (error) {
         console.error('Error in editor mode:', error);
         showNotification(`Error: ${error.message}`, 'error');
@@ -601,35 +592,17 @@ function switchEditorMode(mode) {
 /**
  * Update editor UI based on mode
  */
-function updateEditorUI(mode) {
+function updateEditorUI() {
     const formContainer = document.getElementById('form-editor-container');
     const jsonContainer = document.getElementById('json-editor-container');
-    
-    // Hide all containers
+
     if (formContainer) formContainer.style.display = 'none';
-    if (jsonContainer) jsonContainer.style.display = 'none';
-    
-    // Show relevant container
-    switch (mode) {
-        case EDITOR_MODES.FORM:
-            if (formContainer) formContainer.style.display = 'block';
-            break;
-        case EDITOR_MODES.JSON:
-            if (jsonContainer) jsonContainer.style.display = 'block';
-            break;
-    }
-    
-    // Update mode buttons
+    if (jsonContainer) jsonContainer.style.display = 'block';
+
     document.querySelectorAll('[data-editor-mode]').forEach(btn => {
-        btn.classList.remove('active');
-        if (btn.dataset.editorMode === mode) {
-            btn.classList.add('active');
-        }
-        // Disable form mode button
-        if (btn.dataset.editorMode === EDITOR_MODES.FORM) {
-            btn.disabled = true;
-            btn.title = 'Form mode is temporarily disabled due to bugs';
-        }
+        btn.classList.toggle('active', btn.dataset.editorMode === EDITOR_MODES.JSON);
+        btn.disabled = btn.dataset.editorMode !== EDITOR_MODES.JSON;
+        btn.removeAttribute('title');
     });
 }
 
