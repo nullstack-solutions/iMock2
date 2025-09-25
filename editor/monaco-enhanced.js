@@ -1781,6 +1781,8 @@ function openHistoryPreview(entry, previousEntry) {
         return;
     }
 
+    const initializer = window.monacoInitializer;
+
     const title = modal.querySelector('#modal-title-history-preview');
     if (title) {
         title.textContent = entry.label || 'Snapshot preview';
@@ -1812,6 +1814,18 @@ function openHistoryPreview(entry, previousEntry) {
     const actions = modal.querySelector('#historyPreviewActions');
     if (actions) {
         actions.dataset.currentContent = entry.content || '';
+        actions.dataset.entryId = entry.id || '';
+
+        const restoreButton = actions.querySelector('[data-history-preview-action="restore"]');
+        if (restoreButton) {
+            const currentEntryId = initializer && typeof initializer.getCurrentHistoryEntryId === 'function'
+                ? initializer.getCurrentHistoryEntryId()
+                : null;
+            const isCurrent = currentEntryId && entry.id === currentEntryId;
+            restoreButton.disabled = Boolean(isCurrent);
+            restoreButton.textContent = isCurrent ? 'Current version' : 'Restore';
+        }
+
         if (!actions.dataset.bound) {
             actions.dataset.bound = 'true';
             actions.addEventListener('click', async (event) => {
@@ -1824,11 +1838,46 @@ function openHistoryPreview(entry, previousEntry) {
                 if (button.dataset.historyPreviewAction === 'copy') {
                     const snapshotContent = actions.dataset.currentContent || '';
                     const success = await copyTextToClipboard(snapshotContent);
-                    if (window.monacoInitializer && typeof window.monacoInitializer.showNotification === 'function') {
-                        window.monacoInitializer.showNotification(
+                    if (initializer && typeof initializer.showNotification === 'function') {
+                        initializer.showNotification(
                             success ? 'Snapshot copied to clipboard' : 'Failed to copy snapshot',
                             success ? 'success' : 'error'
                         );
+                    }
+                    return;
+                }
+
+                if (button.dataset.historyPreviewAction === 'restore') {
+                    if (!initializer || typeof initializer.restoreHistoryEntry !== 'function') {
+                        return;
+                    }
+
+                    const targetId = actions.dataset.entryId;
+                    if (!targetId || button.disabled) {
+                        return;
+                    }
+
+                    const originalLabel = button.textContent;
+                    button.disabled = true;
+
+                    try {
+                        await initializer.restoreHistoryEntry(targetId, { forceRestore: false, requireConfirm: true });
+                    } catch (error) {
+                        console.error('[HISTORY] Failed to restore entry from preview', error);
+                        button.disabled = false;
+                        button.textContent = originalLabel;
+                        return;
+                    }
+
+                    const currentEntryId = typeof initializer.getCurrentHistoryEntryId === 'function'
+                        ? initializer.getCurrentHistoryEntryId()
+                        : null;
+                    const isCurrent = currentEntryId && targetId === currentEntryId;
+                    if (!isCurrent) {
+                        button.disabled = false;
+                        button.textContent = originalLabel;
+                    } else {
+                        button.textContent = 'Current version';
                     }
                 }
             });
@@ -2062,11 +2111,6 @@ async function renderHistoryModal(options = {}) {
             item.appendChild(preview);
             item.appendChild(metaRow);
             item.appendChild(buttonsRow);
-
-            item.addEventListener('click', () => {
-                void initializer.restoreHistoryEntry(entry.id, { forceRestore: false, requireConfirm: true })
-                    .catch((error) => console.error('[HISTORY] Failed to restore entry', error));
-            });
 
             list.appendChild(item);
         });

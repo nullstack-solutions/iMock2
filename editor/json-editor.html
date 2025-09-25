@@ -181,7 +181,7 @@
         </div>
     </div>
 
-    <div class="modal hidden" id="historyPreviewModal" role="dialog" aria-modal="true" aria-labelledby="modal-title-history-preview" aria-hidden="true">
+    <div class="modal hidden modal--stacked" id="historyPreviewModal" role="dialog" aria-modal="true" aria-labelledby="modal-title-history-preview" aria-hidden="true">
         <div class="modal-content modal-content--wide">
             <div class="modal-header">
                 <h2 id="modal-title-history-preview">Snapshot preview</h2>
@@ -192,6 +192,7 @@
                 <pre class="history-preview-summary" id="historyPreviewSummary"></pre>
                 <pre class="history-preview-code" id="historyPreviewContent"></pre>
                 <div class="history-preview-actions" id="historyPreviewActions">
+                    <button class="btn btn-primary btn-sm" type="button" data-history-preview-action="restore">Restore</button>
                     <button class="btn btn-secondary btn-sm" type="button" data-history-preview-action="copy">Copy JSON</button>
                 </div>
             </div>
