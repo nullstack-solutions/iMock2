@@ -66,6 +66,10 @@
 
 .modal-content > #json-editor-container {
     margin: var(--space-6);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
 }
 
 .modal-header h2 {
@@ -397,11 +401,12 @@ pre {
 .json-editor-wrapper {
     border: 1px solid var(--border-primary);
     border-radius: var(--radius-lg);
-    overflow: auto;
     background: var(--bg-primary);
     flex: 1;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
 }
 
 .json-editor-toolbar {
@@ -412,6 +417,10 @@ pre {
     align-items: center;
     justify-content: space-between;
     gap: var(--space-3);
+    flex-shrink: 0;
+    position: sticky;
+    top: 0;
+    z-index: 1;
 }
 
 .json-editor-meta {
@@ -441,7 +450,11 @@ pre {
     min-height: 320px;
     outline: none;
     tab-size: 2;
-    overflow: hidden;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    box-sizing: border-box;
+    overflow: auto;
 }
 
 .json-editor:focus {

@@ -77,33 +77,68 @@ function setupEditorModeHandlers() {
     });
 }
 
+let jsonEditorResizeObserver = null;
+let jsonEditorResizeFrame = null;
+let jsonEditorWindowResizeHandler = null;
+
 function initializeJsonEditorAutoResize() {
     const jsonEditor = document.getElementById('json-editor');
-    if (!jsonEditor) return;
+    const container = document.getElementById('json-editor-container');
+
+    if (!jsonEditor || !container) return;
 
     const computedMinHeight = parseInt(window.getComputedStyle(jsonEditor).minHeight, 10);
     if (!Number.isNaN(computedMinHeight)) {
         jsonEditor.dataset.minHeight = computedMinHeight;
     }
 
-    const handleResize = () => adjustJsonEditorHeight();
+    if (jsonEditorResizeObserver) {
+        jsonEditorResizeObserver.disconnect();
+        jsonEditorResizeObserver = null;
+    }
 
-    jsonEditor.addEventListener('input', handleResize);
-    jsonEditor.addEventListener('change', handleResize);
-    window.addEventListener('resize', handleResize);
+    if (typeof ResizeObserver !== 'undefined') {
+        jsonEditorResizeObserver = new ResizeObserver(() => adjustJsonEditorHeight());
+        jsonEditorResizeObserver.observe(container);
+    }
 
-    adjustJsonEditorHeight();
+    if (jsonEditorWindowResizeHandler) {
+        window.removeEventListener('resize', jsonEditorWindowResizeHandler);
+    }
+
+    jsonEditorWindowResizeHandler = () => adjustJsonEditorHeight();
+    window.addEventListener('resize', jsonEditorWindowResizeHandler);
+
+    adjustJsonEditorHeight(true);
 }
 
-function adjustJsonEditorHeight() {
+function adjustJsonEditorHeight(scrollToTop = false) {
     const jsonEditor = document.getElementById('json-editor');
-    if (!jsonEditor) return;
+    const container = document.getElementById('json-editor-container');
 
-    const minHeight = parseInt(jsonEditor.dataset.minHeight || '0', 10) || 320;
+    if (!jsonEditor || !container) return;
 
-    jsonEditor.style.height = 'auto';
-    const desiredHeight = Math.max(jsonEditor.scrollHeight, minHeight);
-    jsonEditor.style.height = `${desiredHeight}px`;
+    if (jsonEditorResizeFrame) {
+        cancelAnimationFrame(jsonEditorResizeFrame);
+    }
+
+    jsonEditorResizeFrame = requestAnimationFrame(() => {
+        jsonEditorResizeFrame = null;
+
+        const toolbar = container.querySelector('.json-editor-toolbar');
+        const toolbarHeight = toolbar ? toolbar.offsetHeight : 0;
+        const minHeight = parseInt(jsonEditor.dataset.minHeight || '0', 10) || 320;
+        const availableHeight = Math.max(container.clientHeight - toolbarHeight, minHeight);
+
+        jsonEditor.style.height = `${availableHeight}px`;
+        jsonEditor.style.overflowY = 'auto';
+        jsonEditor.style.overflowX = 'auto';
+
+        if (scrollToTop) {
+            jsonEditor.scrollTop = 0;
+            jsonEditor.scrollLeft = 0;
+        }
+    });
 }
 
 /**
@@ -621,7 +656,7 @@ function loadJSONMode() {
     
     const formattedJSON = JSON.stringify(editorState.currentMapping, null, 2);
     jsonEditor.value = formattedJSON;
-    adjustJsonEditorHeight();
+    adjustJsonEditorHeight(true);
 
     console.log('🟡 [JSON DEBUG] JSON editor populated with mapping ID:', editorState.currentMapping?.id);
     console.log('🟡 [JSON DEBUG] JSON content length:', formattedJSON.length);
@@ -773,7 +808,7 @@ function formatCurrentJSON() {
     try {
         const parsed = JSON.parse(jsonEditor.value);
         jsonEditor.value = JSON.stringify(parsed, null, 2);
-        adjustJsonEditorHeight();
+        adjustJsonEditorHeight(true);
         showNotification('JSON formatted', 'success');
     } catch (error) {
         showNotification('Formatting failed: ' + error.message, 'error');
@@ -790,7 +825,7 @@ function minifyCurrentJSON() {
     try {
         const parsed = JSON.parse(jsonEditor.value);
         jsonEditor.value = JSON.stringify(parsed);
-        adjustJsonEditorHeight();
+        adjustJsonEditorHeight(true);
         showNotification('JSON minified', 'success');
     } catch (error) {
         showNotification('Minification failed: ' + error.message, 'error');
