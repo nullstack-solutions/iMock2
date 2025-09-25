@@ -860,6 +860,95 @@ body.modal-open {
     color: var(--text-tertiary);
 }
 
+.history-preview {
+    font-family: var(--font-mono);
+    font-size: var(--font-size-xs);
+    background: var(--bg-secondary);
+    border-radius: var(--radius-lg);
+    padding: var(--space-3);
+    color: var(--text-secondary);
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 160px;
+    overflow: hidden;
+    transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.history-preview.is-clickable {
+    cursor: pointer;
+}
+
+.history-preview.is-clickable:hover,
+.history-preview.is-clickable:focus {
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    outline: none;
+}
+
+.history-preview-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+}
+
+.history-preview-meta {
+    display: grid;
+    gap: var(--space-2);
+    font-size: var(--font-size-xs);
+    color: var(--text-secondary);
+}
+
+.history-preview-meta__row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: var(--space-3);
+}
+
+.history-preview-meta__label {
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+}
+
+.history-preview-meta__value {
+    color: var(--text-primary);
+    font-size: var(--font-size-sm);
+    text-align: right;
+}
+
+.history-preview-summary {
+    font-family: var(--font-mono);
+    font-size: var(--font-size-sm);
+    background: var(--bg-secondary);
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
+    color: var(--text-secondary);
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: min(40vh, 320px);
+    overflow: auto;
+}
+
+.history-preview-code {
+    font-family: var(--font-mono);
+    font-size: var(--font-size-sm);
+    background: var(--bg-secondary);
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
+    color: var(--text-primary);
+    white-space: pre;
+    max-height: min(60vh, 480px);
+    overflow: auto;
+}
+
+.history-preview-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-3);
+}
+
 /* ===== NOTIFICATION SYSTEM ===== */
 .notification {
     position: fixed;

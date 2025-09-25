@@ -307,19 +307,347 @@ function formatBytes(bytes) {
     return `${value.toFixed(2)} GB`;
 }
 
+const HISTORY_DB_NAME = 'imock-history-ak';
+const HISTORY_DB_VERSION = 1;
+const HISTORY_FRAMES_STORE = 'frames';
+const HISTORY_SHA_STORE = 'shaIndex';
+const HISTORY_LOCK_KEY = 'imock-history-lock';
+const HISTORY_LOCK_TTL = 3000;
+const DEBOUNCE_MS = 10_000;
+const MIN_DELTA_LEN = 200;
+const DEFAULT_HISTORY_BUDGET = 50 * 1024 * 1024;
+const IOS_HISTORY_BUDGET = 30 * 1024 * 1024;
+const LARGE_DIGEST_THRESHOLD = 1_000_000;
+const HEADER_PARENT_KEYS = new Set(['headers']);
+const IGNORED_KEYS = new Set(['id', 'uuid', 'updatedAt', 'insertionIndex']);
+
+function isInsideJsonBody(context) {
+    if (!context || !Array.isArray(context.path)) {
+        return false;
+    }
+
+    return context.path.includes('jsonBody');
+}
+
+function detectHistoryBudget() {
+    if (typeof navigator === 'undefined') {
+        return DEFAULT_HISTORY_BUDGET;
+    }
+
+    const ua = navigator.userAgent || '';
+    if (/iphone|ipad|ipod/i.test(ua)) {
+        return IOS_HISTORY_BUDGET;
+    }
+
+    return DEFAULT_HISTORY_BUDGET;
+}
+
+function promisifyRequest(request) {
+    return new Promise((resolve, reject) => {
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+function waitForTransaction(tx) {
+    return new Promise((resolve, reject) => {
+        tx.oncomplete = () => resolve();
+        tx.onabort = () => reject(tx.error || new Error('Transaction aborted'));
+        tx.onerror = () => reject(tx.error || new Error('Transaction error'));
+    });
+}
+
+function openHistoryDatabase() {
+    if (typeof indexedDB === 'undefined') {
+        throw new Error('IndexedDB is not available');
+    }
+
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open(HISTORY_DB_NAME, HISTORY_DB_VERSION);
+
+        request.onupgradeneeded = () => {
+            const db = request.result;
+            if (!db.objectStoreNames.contains(HISTORY_FRAMES_STORE)) {
+                const frames = db.createObjectStore(HISTORY_FRAMES_STORE, { keyPath: 'seq', autoIncrement: true });
+                frames.createIndex('id', 'id', { unique: true });
+                frames.createIndex('ts', 'ts');
+            }
+
+            if (!db.objectStoreNames.contains(HISTORY_SHA_STORE)) {
+                db.createObjectStore(HISTORY_SHA_STORE, { keyPath: 'sha256' });
+            }
+        };
+
+        request.onsuccess = () => {
+            const db = request.result;
+            db.onversionchange = () => {
+                db.close();
+            };
+            resolve(db);
+        };
+
+        request.onerror = () => reject(request.error);
+    });
+}
+
+function mappingSortKey(mapping) {
+    if (!mapping || typeof mapping !== 'object') {
+        return '';
+    }
+
+    if (mapping.name) {
+        return String(mapping.name).toLowerCase();
+    }
+
+    const request = mapping.request || {};
+    const method = request.method ? String(request.method) : '';
+    const url = request.url
+        || request.urlPath
+        || request.urlPattern
+        || request.urlPathPattern
+        || '';
+    return [method, url].filter(Boolean).join(' ').toLowerCase();
+}
+
+function normalizeLineEndings(value) {
+    return typeof value === 'string' ? value.replace(/\r\n/g, '\n') : value;
+}
+
+function canonicalizeValue(value, context = { path: [] }) {
+    if (Array.isArray(value)) {
+        const parentKey = context.path[context.path.length - 1];
+        const mapped = value.map((item) => canonicalizeValue(item, { path: [...context.path, null] }));
+
+        if (parentKey === 'mappings') {
+            return mapped
+                .map((item) => ({ key: mappingSortKey(item), item }))
+                .sort((a, b) => a.key.localeCompare(b.key))
+                .map(({ item }) => item);
+        }
+
+        return mapped;
+    }
+
+    if (value && typeof value === 'object') {
+        const entries = [];
+        const preserveOrder = isInsideJsonBody(context);
+        for (const [rawKey, rawValue] of Object.entries(value)) {
+            if (IGNORED_KEYS.has(rawKey) && !preserveOrder) {
+                continue;
+            }
+
+            const parentKey = context.path[context.path.length - 1];
+            const keyNeedsLowercase = parentKey && HEADER_PARENT_KEYS.has(parentKey) && !preserveOrder;
+            const key = keyNeedsLowercase ? rawKey.toLowerCase() : rawKey;
+            const nextContext = { path: [...context.path, key] };
+            const canonicalValue = canonicalizeValue(rawValue, nextContext);
+            entries.push([key, canonicalValue]);
+        }
+
+        const out = {};
+        const sourceEntries = preserveOrder ? entries : entries.sort((a, b) => a[0].localeCompare(b[0]));
+        for (const [key, val] of sourceEntries) {
+            out[key] = val;
+        }
+        return out;
+    }
+
+    if (typeof value === 'string') {
+        return normalizeLineEndings(value);
+    }
+
+    return value;
+}
+
+function stableStringifyWireMock(value) {
+    if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (!trimmed) {
+            return '';
+        }
+
+        try {
+            const parsed = JSON.parse(normalizeLineEndings(value));
+            const canonical = canonicalizeValue(parsed, { path: [] });
+            return JSON.stringify(canonical, null, 2);
+        } catch (error) {
+            return normalizeLineEndings(value);
+        }
+    }
+
+    if (value && typeof value === 'object') {
+        const canonical = canonicalizeValue(value, { path: [] });
+        return JSON.stringify(canonical, null, 2);
+    }
+
+    return typeof value === 'undefined' ? '' : String(value);
+}
+
+function crc32(u8) {
+    let crc = -1;
+    for (let i = 0; i < u8.length; i += 1) {
+        crc ^= u8[i];
+        for (let j = 0; j < 8; j += 1) {
+            const mask = -(crc & 1);
+            crc = (crc >>> 1) ^ (0xEDB88320 & mask);
+        }
+    }
+    return (crc ^ -1) >>> 0;
+}
+
+let digestWorker = null;
+
+async function digestInWorker(u8) {
+    if (typeof Worker === 'undefined') {
+        return null;
+    }
+
+    if (!digestWorker) {
+        const script = `self.onmessage = async (event) => {
+    try {
+        const buffer = event.data;
+        const digest = await crypto.subtle.digest('SHA-256', buffer);
+        self.postMessage(digest, [digest]);
+    } catch (error) {
+        self.postMessage({ error: error.message });
+    }
+};`;
+        const blob = new Blob([script], { type: 'application/javascript' });
+        digestWorker = new Worker(URL.createObjectURL(blob));
+    }
+
+    const bufferCopy = u8.buffer.slice(0);
+    return new Promise((resolve, reject) => {
+        const handleMessage = (event) => {
+            digestWorker.removeEventListener('message', handleMessage);
+            digestWorker.removeEventListener('error', handleError);
+            const { data } = event;
+            if (data && data.error) {
+                reject(new Error(data.error));
+            } else {
+                resolve(data);
+            }
+        };
+
+        const handleError = (error) => {
+            digestWorker.removeEventListener('message', handleMessage);
+            digestWorker.removeEventListener('error', handleError);
+            reject(error);
+        };
+
+        digestWorker.addEventListener('message', handleMessage);
+        digestWorker.addEventListener('error', handleError);
+        digestWorker.postMessage(bufferCopy, [bufferCopy]);
+    });
+}
+
+async function sha256Hex(u8) {
+    if (typeof crypto !== 'undefined' && crypto.subtle) {
+        try {
+            if (u8.byteLength > LARGE_DIGEST_THRESHOLD) {
+                const digestBuffer = await digestInWorker(u8);
+                if (digestBuffer instanceof ArrayBuffer) {
+                    const hashArray = Array.from(new Uint8Array(digestBuffer));
+                    return { algorithm: 'sha256', hash: hashArray.map((b) => b.toString(16).padStart(2, '0')).join('') };
+                }
+            }
+
+            const digest = await crypto.subtle.digest('SHA-256', u8);
+            const hashArray = Array.from(new Uint8Array(digest));
+            return {
+                algorithm: 'sha256',
+                hash: hashArray.map((b) => b.toString(16).padStart(2, '0')).join('')
+            };
+        } catch (error) {
+            console.warn('[HISTORY] Failed to compute SHA-256, falling back to CRC32', error);
+        }
+    }
+
+    const fallback = crc32(u8).toString(16).padStart(8, '0');
+    return { algorithm: 'crc32', hash: fallback };
+}
+
+function delay(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 class EditorHistory {
     constructor(limit = 50) {
         this.limit = Math.max(5, limit);
-        this.entries = [];
+        this.dbPromise = openHistoryDatabase();
+        this.cache = new Map();
+        this.cacheLimit = 5;
         this.currentId = null;
+        this.lastEntry = null;
+        this.budgetBytes = detectHistoryBudget();
+        this.stats = {
+            count: 0,
+            byteSize: 0,
+            latestTimestamp: null,
+            latestLabel: null
+        };
+        this.ready = this.initialiseState();
     }
 
-    reset(initialContent = '', meta = {}) {
-        this.entries = [];
-        this.currentId = null;
+    async initialiseState() {
+        try {
+            const db = await this.dbPromise;
+            const entries = await this.readAllFrames(db);
+            if (entries.length) {
+                const latest = entries[entries.length - 1];
+                this.currentId = latest.id;
+                this.lastEntry = {
+                    seq: latest.seq,
+                    length: latest.json.length,
+                    timestamp: latest.ts,
+                    manual: Boolean(latest.manual)
+                };
+            }
+
+            let totalBytes = 0;
+            let latestTimestamp = null;
+            let latestLabel = null;
+            for (const entry of entries) {
+                totalBytes += entry.byteSize || 0;
+                if (!latestTimestamp || entry.ts >= latestTimestamp) {
+                    latestTimestamp = entry.ts;
+                    latestLabel = entry.label;
+                }
+            }
+
+            this.stats = {
+                count: entries.length,
+                byteSize: totalBytes,
+                latestTimestamp,
+                latestLabel
+            };
+        } catch (error) {
+            console.warn('[HISTORY] Failed to initialise history', error);
+        }
+    }
+
+    async reset(initialContent = '', meta = {}) {
+        await this.ready;
         const normalized = typeof initialContent === 'string' ? initialContent : '';
+        await this.withLock(async () => {
+            const db = await this.dbPromise;
+            const tx = db.transaction([HISTORY_FRAMES_STORE, HISTORY_SHA_STORE], 'readwrite');
+            tx.objectStore(HISTORY_FRAMES_STORE).clear();
+            tx.objectStore(HISTORY_SHA_STORE).clear();
+            await waitForTransaction(tx);
+            this.cache.clear();
+            this.currentId = null;
+            this.lastEntry = null;
+            this.stats = {
+                count: 0,
+                byteSize: 0,
+                latestTimestamp: null,
+                latestLabel: null
+            };
+        });
+
         if (normalized.length > 0 || meta.forceInitial) {
-            this.record(normalized, {
+            await this.record(normalized, {
                 ...meta,
                 reason: meta.reason || 'Initial snapshot',
                 label: meta.label || 'Initial document',
@@ -328,28 +656,73 @@ class EditorHistory {
         }
     }
 
-    record(content, meta = {}) {
-        const normalized = typeof content === 'string' ? content : '';
-        const timestamp = Date.now();
-        const lastEntry = this.entries[this.entries.length - 1];
-        const forceRecord = Boolean(meta.force);
+    async readAllFrames(db) {
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(HISTORY_FRAMES_STORE, 'readonly');
+            const store = tx.objectStore(HISTORY_FRAMES_STORE);
+            const entries = [];
+            const request = store.openCursor();
+            request.onsuccess = (event) => {
+                const cursor = event.target.result;
+                if (cursor) {
+                    entries.push(cursor.value);
+                    cursor.continue();
+                } else {
+                    resolve(entries);
+                }
+            };
+            request.onerror = () => reject(request.error);
+        });
+    }
 
-        if (!forceRecord && lastEntry && lastEntry.content === normalized) {
-            lastEntry.timestamp = timestamp;
-            lastEntry.meta = { ...lastEntry.meta, ...this.cleanMeta(meta) };
-            this.currentId = lastEntry.id;
-            return { recorded: false, entry: lastEntry, reason: 'unchanged' };
+    updateCache(seq, json) {
+        if (!seq) {
+            return;
         }
 
-        const entry = this.createEntry(normalized, this.cleanMeta(meta), timestamp);
-        this.entries.push(entry);
-
-        if (this.entries.length > this.limit) {
-            this.entries.splice(0, this.entries.length - this.limit);
+        if (this.cache.has(seq)) {
+            this.cache.delete(seq);
         }
 
-        this.currentId = entry.id;
-        return { recorded: true, entry };
+        this.cache.set(seq, json);
+        while (this.cache.size > this.cacheLimit) {
+            const firstKey = this.cache.keys().next().value;
+            this.cache.delete(firstKey);
+        }
+    }
+
+    async withLock(fn) {
+        if (typeof localStorage === 'undefined') {
+            return fn();
+        }
+
+        const expiry = Date.now() + HISTORY_LOCK_TTL;
+        let acquired = false;
+        for (let attempt = 0; attempt < 10; attempt += 1) {
+            const raw = localStorage.getItem(HISTORY_LOCK_KEY);
+            if (!raw || Number(raw) < Date.now()) {
+                try {
+                    localStorage.setItem(HISTORY_LOCK_KEY, String(expiry));
+                    acquired = true;
+                    break;
+                } catch (error) {
+                    console.warn('[HISTORY] Failed to acquire lock', error);
+                }
+            }
+            await delay(100);
+        }
+
+        if (!acquired) {
+            return fn();
+        }
+
+        try {
+            return await fn();
+        } finally {
+            if (localStorage.getItem(HISTORY_LOCK_KEY) === String(expiry)) {
+                localStorage.removeItem(HISTORY_LOCK_KEY);
+            }
+        }
     }
 
     cleanMeta(meta) {
@@ -365,32 +738,8 @@ class EditorHistory {
         return clone;
     }
 
-    createEntry(content, meta, timestamp) {
-        const encoder = typeof TextEncoder !== 'undefined' ? new TextEncoder() : null;
-        const byteSize = encoder ? encoder.encode(content).length : content.length;
-        const label = meta && meta.label ? meta.label : this.deriveLabel(content, meta);
-        const reason = meta && meta.reason ? meta.reason : (meta && meta.action ? meta.action : 'Edit');
-
-        return {
-            id: `hist-${timestamp}-${Math.random().toString(36).slice(2, 8)}`,
-            timestamp,
-            content,
-            label,
-            preview: this.buildPreview(content),
-            byteSize,
-            sizeLabel: formatBytes(byteSize),
-            meta: {
-                ...meta,
-                label,
-                reason,
-                recordedAt: new Date(timestamp).toISOString()
-            }
-        };
-    }
-
     deriveLabel(content, meta = {}) {
         const fallback = meta && meta.action ? meta.action : 'Snapshot';
-
         const trimmed = typeof content === 'string' ? content.trim() : '';
         if (!trimmed) {
             return fallback;
@@ -414,7 +763,7 @@ class EditorHistory {
                 }
             }
         } catch (error) {
-            // Parsing failed – fall back to raw string
+            // ignore
         }
 
         const firstLine = trimmed.split('\n')[0];
@@ -431,78 +780,359 @@ class EditorHistory {
             const pretty = JSON.stringify(parsed, null, 2);
             return this.truncatePreview(pretty);
         } catch (error) {
-            return this.truncatePreview(content);
+            const firstLines = content.split('\n').slice(0, 12).join('\n');
+            return this.truncatePreview(firstLines);
         }
     }
 
-    truncatePreview(text, maxLines = 8, maxChars = 400) {
-        const lines = text.split('\n').slice(0, maxLines);
-        let preview = lines.join('\n');
-        if (preview.length > maxChars) {
-            preview = `${preview.slice(0, maxChars - 1)}…`;
+    truncatePreview(content) {
+        const limit = 480;
+        if (content.length <= limit) {
+            return content;
         }
-        return preview;
+
+        return `${content.slice(0, limit - 1)}…`;
     }
 
-    getEntries(options = {}) {
-        const newestFirst = options && options.newestFirst !== undefined ? options.newestFirst : true;
-        const entries = [...this.entries];
-        return newestFirst ? entries.reverse() : entries;
-    }
+    async record(content, meta = {}) {
+        await this.ready;
+        const normalized = typeof content === 'string' ? content : '';
+        const timestamp = Date.now();
+        const manual = Boolean(meta.manual);
+        const cleanMeta = this.cleanMeta(meta);
+        const canonical = stableStringifyWireMock(normalized);
+        const encoder = typeof TextEncoder !== 'undefined' ? new TextEncoder() : null;
+        const u8 = encoder ? encoder.encode(canonical) : new Uint8Array(Array.from(canonical, (c) => c.charCodeAt(0) & 0xff));
+        const { hash, algorithm } = await sha256Hex(u8);
 
-    getEntryById(entryId) {
-        return this.entries.find(entry => entry.id === entryId) || null;
-    }
-
-    markCurrent(entryId) {
-        if (!entryId) {
-            return;
+        const last = this.lastEntry;
+        if (!manual && last && !meta.force) {
+            const deltaLen = Math.abs(canonical.length - last.length);
+            const deltaTime = timestamp - last.timestamp;
+            if (deltaLen < MIN_DELTA_LEN && deltaTime < DEBOUNCE_MS) {
+                return { recorded: false, reason: 'debounced', entry: null };
+            }
         }
-        const entry = this.getEntryById(entryId);
-        if (entry) {
+
+        return this.withLock(async () => {
+            const db = await this.dbPromise;
+            const tx = db.transaction([HISTORY_FRAMES_STORE, HISTORY_SHA_STORE], 'readwrite');
+            const frames = tx.objectStore(HISTORY_FRAMES_STORE);
+            const shaIndex = tx.objectStore(HISTORY_SHA_STORE);
+
+            const shaMatch = await promisifyRequest(shaIndex.get(hash));
+            if (shaMatch != null) {
+                const seq = typeof shaMatch === 'object' && shaMatch.lastSeq ? shaMatch.lastSeq : shaMatch;
+                const existing = seq != null ? await promisifyRequest(frames.get(seq)) : null;
+                if (existing && existing.json === canonical) {
+                    existing.occurrences = (existing.occurrences || 1) + 1;
+                    existing.lastAt = timestamp;
+                    if (manual && !existing.manual) {
+                        existing.manual = true;
+                    }
+                    existing.meta = {
+                        ...(existing.meta || {}),
+                        ...cleanMeta,
+                        manual: manual || existing.meta?.manual || existing.manual,
+                        occurrences: existing.occurrences,
+                        lastRecordedAt: new Date(timestamp).toISOString(),
+                        hashAlgorithm: algorithm
+                    };
+                    await promisifyRequest(frames.put(existing));
+                    await waitForTransaction(tx);
+
+                    this.stats.latestTimestamp = timestamp;
+                    this.stats.latestLabel = existing.label;
+                    this.currentId = existing.id;
+                    this.lastEntry = {
+                        seq: existing.seq,
+                        length: canonical.length,
+                        timestamp,
+                        manual: existing.manual
+                    };
+                    this.updateCache(existing.seq, canonical);
+                    return { recorded: false, reason: 'duplicate', entry: this.normalizeEntry(existing) };
+                }
+            }
+
+            const label = cleanMeta.label || this.deriveLabel(canonical, cleanMeta);
+            const entry = {
+                id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `hist-${timestamp}-${Math.random().toString(36).slice(2, 8)}`,
+                ts: timestamp,
+                kind: 'full',
+                sha256: hash,
+                shaAlgorithm: algorithm,
+                byteSize: u8.byteLength,
+                label,
+                occurrences: 1,
+                json: canonical,
+                manual,
+                meta: {
+                    ...cleanMeta,
+                    label,
+                    reason: cleanMeta.reason || cleanMeta.action || 'Edit',
+                    occurrences: 1,
+                    firstRecordedAt: new Date(timestamp).toISOString(),
+                    lastRecordedAt: new Date(timestamp).toISOString(),
+                    hashAlgorithm: algorithm
+                }
+            };
+
+            const seq = await promisifyRequest(frames.add(entry));
+            entry.seq = seq;
+            await promisifyRequest(shaIndex.put({ sha256: hash, lastSeq: seq }));
+            await waitForTransaction(tx);
+
+            this.updateCache(seq, canonical);
             this.currentId = entry.id;
+            this.lastEntry = { seq, length: canonical.length, timestamp, manual };
+            this.stats.count += 1;
+            this.stats.byteSize += entry.byteSize;
+            this.stats.latestTimestamp = timestamp;
+            this.stats.latestLabel = label;
+
+            await this.enforceBudget({ withinLock: true, db });
+
+            return { recorded: true, entry: this.normalizeEntry(entry) };
+        });
+    }
+
+    normalizeEntry(raw) {
+        const content = typeof raw.json === 'string' ? raw.json : '';
+        return {
+            id: raw.id,
+            seq: raw.seq,
+            timestamp: raw.ts,
+            content,
+            label: raw.label,
+            preview: this.buildPreview(content),
+            byteSize: raw.byteSize,
+            sizeLabel: formatBytes(raw.byteSize || 0),
+            meta: {
+                ...(raw.meta || {}),
+                occurrences: raw.occurrences || 1,
+                recordedAt: new Date(raw.ts).toISOString()
+            }
+        };
+    }
+
+    async getEntries(options = {}) {
+        await this.ready;
+        const newestFirst = options.newestFirst === true;
+        const db = await this.dbPromise;
+        const entries = await this.readAllFrames(db);
+        const normalized = entries.map((entry) => this.normalizeEntry(entry));
+        normalized.sort((a, b) => (newestFirst ? b.timestamp - a.timestamp : a.timestamp - b.timestamp));
+        if (options.limit) {
+            return normalized.slice(0, options.limit);
         }
+        return normalized;
+    }
+
+    async getStats() {
+        await this.ready;
+        return { ...this.stats };
     }
 
     getCurrentId() {
         return this.currentId;
     }
 
-    clear(options = {}) {
-        const keepLatest = options && options.keepLatest !== undefined ? options.keepLatest : true;
-        const label = options && options.label ? options.label : 'Current document';
-        const content = typeof options.latestContent === 'string' ? options.latestContent : '';
+    async getEntryById(id) {
+        await this.ready;
+        const db = await this.dbPromise;
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(HISTORY_FRAMES_STORE, 'readonly');
+            const store = tx.objectStore(HISTORY_FRAMES_STORE);
+            const index = store.index('id');
+            const request = index.get(id);
+            request.onsuccess = () => {
+                resolve(request.result ? this.normalizeEntry(request.result) : null);
+            };
+            request.onerror = () => reject(request.error);
+        });
+    }
 
-        this.entries = [];
+    markCurrent(id) {
+        this.currentId = id;
+    }
+
+    async clear(options = {}) {
+        await this.ready;
+        const keepLatest = options.keepLatest !== false;
+        const latestContent = options.latestContent || '';
+        const label = options.label || 'Current document';
+
+        let preserved = null;
+        if (keepLatest) {
+            const latestEntries = await this.getEntries({ newestFirst: true, limit: 1 });
+            preserved = latestEntries[0] || null;
+        }
+
+        await this.withLock(async () => {
+            const db = await this.dbPromise;
+            const tx = db.transaction([HISTORY_FRAMES_STORE, HISTORY_SHA_STORE], 'readwrite');
+            tx.objectStore(HISTORY_FRAMES_STORE).clear();
+            tx.objectStore(HISTORY_SHA_STORE).clear();
+            await waitForTransaction(tx);
+        });
+
+        this.cache.clear();
         this.currentId = null;
+        this.lastEntry = null;
+        this.stats = {
+            count: 0,
+            byteSize: 0,
+            latestTimestamp: null,
+            latestLabel: null
+        };
 
-        if (keepLatest && content) {
-            this.record(content, {
-                reason: 'History cleared',
+        if (preserved) {
+            await this.record(preserved.content, {
+                ...preserved.meta,
+                label: preserved.label,
+                reason: 'Preserved latest snapshot',
+                manual: Boolean(preserved.meta?.manual),
+                force: true
+            });
+        } else if (keepLatest && latestContent) {
+            await this.record(latestContent, {
                 label,
+                reason: 'Current document',
                 force: true
             });
         }
     }
 
-    getStats() {
-        if (!this.entries.length) {
-            return {
-                count: 0,
-                byteSize: 0,
-                latestTimestamp: null
-            };
+    async enforceBudget(options = {}) {
+        await this.ready;
+        if (this.stats.byteSize <= this.budgetBytes) {
+            return;
         }
 
-        const totalBytes = this.entries.reduce((acc, entry) => acc + (entry.byteSize || 0), 0);
-        const latest = this.entries[this.entries.length - 1];
+        const run = async (db) => {
+            const entries = await this.readAllFrames(db);
+            if (!entries.length) {
+                return;
+            }
 
-        return {
-            count: this.entries.length,
-            byteSize: totalBytes,
-            latestTimestamp: latest ? latest.timestamp : null,
-            latestLabel: latest ? latest.label : null
+            const latestSeq = entries[entries.length - 1].seq;
+            const manualSeq = new Set(entries.filter((entry) => entry.manual).map((entry) => entry.seq));
+            const keepSeq = new Set([latestSeq]);
+
+            const bucketKeep = new Map();
+            const now = Date.now();
+            for (const entry of entries) {
+                if (manualSeq.has(entry.seq)) {
+                    keepSeq.add(entry.seq);
+                    continue;
+                }
+
+                const age = now - entry.ts;
+                let bucketSize;
+                if (age <= 60 * 60 * 1000) {
+                    bucketSize = 60 * 1000;
+                } else if (age <= 24 * 60 * 60 * 1000) {
+                    bucketSize = 10 * 60 * 1000;
+                } else if (age <= 7 * 24 * 60 * 60 * 1000) {
+                    bucketSize = 60 * 60 * 1000;
+                } else {
+                    bucketSize = 24 * 60 * 60 * 1000;
+                }
+
+                const bucketKey = `${bucketSize}:${Math.floor(entry.ts / bucketSize)}`;
+                const existing = bucketKeep.get(bucketKey);
+                if (!existing || existing.ts < entry.ts) {
+                    bucketKeep.set(bucketKey, { seq: entry.seq, ts: entry.ts });
+                }
+            }
+
+            for (const value of bucketKeep.values()) {
+                keepSeq.add(value.seq);
+            }
+
+            const deletable = entries
+                .filter((entry) => !keepSeq.has(entry.seq) && !manualSeq.has(entry.seq))
+                .sort((a, b) => a.ts - b.ts);
+
+            if (!deletable.length) {
+                return;
+            }
+
+            const tx = db.transaction([HISTORY_FRAMES_STORE, HISTORY_SHA_STORE], 'readwrite');
+            const frames = tx.objectStore(HISTORY_FRAMES_STORE);
+            const shaIndex = tx.objectStore(HISTORY_SHA_STORE);
+
+            for (const entry of deletable) {
+                await promisifyRequest(frames.delete(entry.seq));
+                this.stats.byteSize -= entry.byteSize || 0;
+                this.stats.count -= 1;
+
+                const shaRecord = await promisifyRequest(shaIndex.get(entry.sha256));
+                if (shaRecord && (shaRecord.lastSeq === entry.seq || shaRecord === entry.seq)) {
+                    const next = entries
+                        .filter((candidate) => candidate.sha256 === entry.sha256 && candidate.seq !== entry.seq)
+                        .sort((a, b) => b.seq - a.seq)[0];
+                    if (next) {
+                        await promisifyRequest(shaIndex.put({ sha256: entry.sha256, lastSeq: next.seq }));
+                    } else {
+                        await promisifyRequest(shaIndex.delete(entry.sha256));
+                    }
+                }
+
+                if (this.stats.byteSize <= this.budgetBytes) {
+                    break;
+                }
+            }
+
+            await waitForTransaction(tx);
+
+            if (this.stats.byteSize <= 0 || this.stats.count <= 0) {
+                this.stats = {
+                    count: 0,
+                    byteSize: 0,
+                    latestTimestamp: null,
+                    latestLabel: null
+                };
+                this.currentId = null;
+                this.lastEntry = null;
+            } else {
+                const remaining = await this.readAllFrames(db);
+                if (remaining.length) {
+                    this.stats.count = remaining.length;
+                    this.stats.byteSize = remaining.reduce((acc, entry) => acc + (entry.byteSize || 0), 0);
+                    const latest = remaining[remaining.length - 1];
+                    this.currentId = latest.id;
+                    this.lastEntry = {
+                        seq: latest.seq,
+                        length: latest.json.length,
+                        timestamp: latest.ts,
+                        manual: Boolean(latest.manual)
+                    };
+                    this.stats.latestTimestamp = latest.ts;
+                    this.stats.latestLabel = latest.label;
+                } else {
+                    this.stats = {
+                        count: 0,
+                        byteSize: 0,
+                        latestTimestamp: null,
+                        latestLabel: null
+                    };
+                    this.currentId = null;
+                    this.lastEntry = null;
+                }
+            }
         };
+
+        if (options.withinLock && options.db) {
+            await run(options.db);
+            return;
+        }
+
+        await this.withLock(async () => {
+            const db = await this.dbPromise;
+            await run(db);
+        });
     }
 }
 
@@ -949,7 +1579,325 @@ function applyTemplateFromCard(template) {
     }
 }
 
-function renderHistoryModal(options = {}) {
+const HISTORY_SUMMARY_MAX_CHANGES = 8;
+const HISTORY_SUMMARY_MODAL_CHANGES = 20;
+const HISTORY_SUMMARY_MAX_DEPTH = 4;
+const HISTORY_SUMMARY_BRANCH_LIMIT = 20;
+
+function safeParseSnapshot(content) {
+    if (typeof content !== 'string') {
+        return null;
+    }
+
+    try {
+        return JSON.parse(content);
+    } catch (error) {
+        return null;
+    }
+}
+
+function formatHistoryLeafValue(value) {
+    if (value === undefined) {
+        return '—';
+    }
+
+    if (value === null) {
+        return 'null';
+    }
+
+    if (typeof value === 'string') {
+        const trimmed = value.length > 80 ? `${value.slice(0, 77)}…` : value;
+        return `"${trimmed}"`;
+    }
+
+    if (typeof value === 'number' || typeof value === 'boolean') {
+        return String(value);
+    }
+
+    if (Array.isArray(value)) {
+        if (value.length === 0) {
+            return '[]';
+        }
+        const simple = value.every((item) => item == null || ['string', 'number', 'boolean'].includes(typeof item));
+        if (simple && value.length <= 5) {
+            return `[${value.map((item) => formatHistoryLeafValue(item)).join(', ')}]`;
+        }
+        return `[${value.length} items]`;
+    }
+
+    if (typeof value === 'object') {
+        const keys = Object.keys(value || {});
+        if (!keys.length) {
+            return '{}';
+        }
+        return `{${keys.slice(0, 5).join(', ')}${keys.length > 5 ? ', …' : ''}}`;
+    }
+
+    return String(value);
+}
+
+function flattenSnapshotForSummary(value, target, path = '', depth = 0) {
+    if (depth >= HISTORY_SUMMARY_MAX_DEPTH || value == null || typeof value !== 'object') {
+        target.set(path || '(root)', formatHistoryLeafValue(value));
+        return;
+    }
+
+    if (Array.isArray(value)) {
+        if (value.length === 0) {
+            target.set(path || '(root)', '[]');
+            return;
+        }
+
+        const length = Math.min(value.length, HISTORY_SUMMARY_BRANCH_LIMIT);
+        for (let index = 0; index < length; index += 1) {
+            const childPath = path ? `${path}[${index}]` : `[${index}]`;
+            flattenSnapshotForSummary(value[index], target, childPath, depth + 1);
+        }
+        return;
+    }
+
+    const keys = Object.keys(value);
+    if (!keys.length) {
+        target.set(path || '(root)', '{}');
+        return;
+    }
+
+    const sortedKeys = keys.sort((a, b) => a.localeCompare(b)).slice(0, HISTORY_SUMMARY_BRANCH_LIMIT);
+    for (const key of sortedKeys) {
+        const childPath = path ? `${path}.${key}` : key;
+        flattenSnapshotForSummary(value[key], target, childPath, depth + 1);
+    }
+}
+
+function summarizeHistoryChanges(currentContent, previousContent, options = {}) {
+    const limit = typeof options.limit === 'number' ? options.limit : HISTORY_SUMMARY_MAX_CHANGES;
+    const currentParsed = safeParseSnapshot(currentContent);
+    const previousParsed = safeParseSnapshot(previousContent);
+
+    if (!currentParsed) {
+        const currentLength = typeof currentContent === 'string' ? currentContent.length : 0;
+        if (previousParsed) {
+            return `Snapshot replaced with non-JSON content (${currentLength} chars)`;
+        }
+
+        const previousLength = typeof previousContent === 'string' ? previousContent.length : 0;
+        if (previousContent == null) {
+            return `Snapshot captured (non-JSON, ${currentLength} chars)`;
+        }
+
+        if (typeof previousContent === 'string' && previousContent === currentContent) {
+            return 'No textual changes detected';
+        }
+
+        return `Content changed (${previousLength} → ${currentLength} chars)`;
+    }
+
+    const currentMap = new Map();
+    flattenSnapshotForSummary(currentParsed, currentMap);
+
+    const previousMap = new Map();
+    if (previousParsed) {
+        flattenSnapshotForSummary(previousParsed, previousMap);
+    }
+
+    const keys = new Set([...currentMap.keys(), ...previousMap.keys()]);
+    const sortedKeys = Array.from(keys).sort((a, b) => a.localeCompare(b));
+
+    const lines = [];
+    let hidden = 0;
+
+    for (const key of sortedKeys) {
+        const prevValue = previousMap.has(key) ? previousMap.get(key) : undefined;
+        const nextValue = currentMap.has(key) ? currentMap.get(key) : undefined;
+        if (prevValue === nextValue) {
+            continue;
+        }
+
+        const label = key || '(root)';
+        let line;
+        if (typeof prevValue === 'undefined') {
+            line = `${label}: ++ ${nextValue}`;
+        } else if (typeof nextValue === 'undefined') {
+            line = `${label}: -- ${prevValue}`;
+        } else {
+            line = `${label}: ${prevValue} → ${nextValue}`;
+        }
+
+        if (lines.length < limit) {
+            lines.push(line);
+        } else {
+            hidden += 1;
+        }
+    }
+
+    if (!lines.length) {
+        if (previousContent == null) {
+            return 'Snapshot captured';
+        }
+        return 'No field-level changes detected';
+    }
+
+    if (hidden > 0) {
+        lines.push(`…and ${hidden} more change${hidden === 1 ? '' : 's'}`);
+    }
+
+    return lines.join('\n');
+}
+
+function formatHistoryFullContent(content) {
+    if (typeof content !== 'string') {
+        return '';
+    }
+
+    const parsed = safeParseSnapshot(content);
+    if (parsed != null) {
+        try {
+            return JSON.stringify(parsed, null, 2);
+        } catch (error) {
+            // ignore
+        }
+    }
+
+    return content;
+}
+
+function renderHistoryPreviewMeta(container, rows) {
+    if (!container) {
+        return;
+    }
+
+    container.innerHTML = '';
+    rows.forEach(([label, value]) => {
+        const row = document.createElement('div');
+        row.className = 'history-preview-meta__row';
+
+        const labelEl = document.createElement('span');
+        labelEl.className = 'history-preview-meta__label';
+        labelEl.textContent = label;
+
+        const valueEl = document.createElement('span');
+        valueEl.className = 'history-preview-meta__value';
+        valueEl.textContent = value;
+
+        row.appendChild(labelEl);
+        row.appendChild(valueEl);
+        container.appendChild(row);
+    });
+}
+
+function openHistoryPreview(entry, previousEntry) {
+    const modal = document.getElementById('historyPreviewModal');
+    if (!modal || !entry) {
+        return;
+    }
+
+    const initializer = window.monacoInitializer;
+
+    const title = modal.querySelector('#modal-title-history-preview');
+    if (title) {
+        title.textContent = entry.label || 'Snapshot preview';
+    }
+
+    const meta = modal.querySelector('#historyPreviewMeta');
+    const occurrences = entry.meta?.occurrences || 1;
+    renderHistoryPreviewMeta(meta, [
+        ['Saved', `${formatRelativeTime(entry.timestamp)} · ${new Date(entry.timestamp).toLocaleString()}`],
+        ['Reason', entry.meta?.reason || 'edit'],
+        ['Size', entry.sizeLabel || formatBytes(entry.byteSize || (entry.content ? entry.content.length : 0))],
+        ['Occurrences', `${occurrences}×`]
+    ]);
+
+    const summary = modal.querySelector('#historyPreviewSummary');
+    if (summary) {
+        summary.textContent = summarizeHistoryChanges(
+            entry.content,
+            previousEntry ? previousEntry.content : null,
+            { limit: HISTORY_SUMMARY_MODAL_CHANGES }
+        );
+    }
+
+    const content = modal.querySelector('#historyPreviewContent');
+    if (content) {
+        content.textContent = formatHistoryFullContent(entry.content);
+    }
+
+    const actions = modal.querySelector('#historyPreviewActions');
+    if (actions) {
+        actions.dataset.currentContent = entry.content || '';
+        actions.dataset.entryId = entry.id || '';
+
+        const restoreButton = actions.querySelector('[data-history-preview-action="restore"]');
+        if (restoreButton) {
+            const currentEntryId = initializer && typeof initializer.getCurrentHistoryEntryId === 'function'
+                ? initializer.getCurrentHistoryEntryId()
+                : null;
+            const isCurrent = currentEntryId && entry.id === currentEntryId;
+            restoreButton.disabled = Boolean(isCurrent);
+            restoreButton.textContent = isCurrent ? 'Current version' : 'Restore';
+        }
+
+        if (!actions.dataset.bound) {
+            actions.dataset.bound = 'true';
+            actions.addEventListener('click', async (event) => {
+                const button = event.target instanceof HTMLElement ? event.target.closest('[data-history-preview-action]') : null;
+                if (!button) {
+                    return;
+                }
+
+                event.preventDefault();
+                if (button.dataset.historyPreviewAction === 'copy') {
+                    const snapshotContent = actions.dataset.currentContent || '';
+                    const success = await copyTextToClipboard(snapshotContent);
+                    if (initializer && typeof initializer.showNotification === 'function') {
+                        initializer.showNotification(
+                            success ? 'Snapshot copied to clipboard' : 'Failed to copy snapshot',
+                            success ? 'success' : 'error'
+                        );
+                    }
+                    return;
+                }
+
+                if (button.dataset.historyPreviewAction === 'restore') {
+                    if (!initializer || typeof initializer.restoreHistoryEntry !== 'function') {
+                        return;
+                    }
+
+                    const targetId = actions.dataset.entryId;
+                    if (!targetId || button.disabled) {
+                        return;
+                    }
+
+                    const originalLabel = button.textContent;
+                    button.disabled = true;
+
+                    try {
+                        await initializer.restoreHistoryEntry(targetId, { forceRestore: false, requireConfirm: true });
+                    } catch (error) {
+                        console.error('[HISTORY] Failed to restore entry from preview', error);
+                        button.disabled = false;
+                        button.textContent = originalLabel;
+                        return;
+                    }
+
+                    const currentEntryId = typeof initializer.getCurrentHistoryEntryId === 'function'
+                        ? initializer.getCurrentHistoryEntryId()
+                        : null;
+                    const isCurrent = currentEntryId && targetId === currentEntryId;
+                    if (!isCurrent) {
+                        button.disabled = false;
+                        button.textContent = originalLabel;
+                    } else {
+                        button.textContent = 'Current version';
+                    }
+                }
+            });
+        }
+    }
+
+    window.openModal('historyPreviewModal');
+}
+
+async function renderHistoryModal(options = {}) {
     const modal = document.getElementById('historyModal');
     if (!modal) {
         return;
@@ -960,218 +1908,227 @@ function renderHistoryModal(options = {}) {
         return;
     }
 
-    const modalBody = modal.querySelector('.modal-body');
-    const list = modalBody ? modalBody.querySelector('#historyList') : null;
-    if (!modalBody || !list) {
-        return;
-    }
+    try {
+        const modalBody = modal.querySelector('.modal-body');
+        const list = modalBody ? modalBody.querySelector('#historyList') : null;
+        if (!modalBody || !list) {
+            return;
+        }
 
-    let statsContainer = modalBody.querySelector('#historyStats');
-    if (!statsContainer) {
-        statsContainer = document.createElement('div');
-        statsContainer.id = 'historyStats';
-        statsContainer.className = 'history-stats';
-        modalBody.insertBefore(statsContainer, modalBody.firstChild);
-    }
+        let statsContainer = modalBody.querySelector('#historyStats');
+        if (!statsContainer) {
+            statsContainer = document.createElement('div');
+            statsContainer.id = 'historyStats';
+            statsContainer.className = 'history-stats';
+            modalBody.insertBefore(statsContainer, modalBody.firstChild);
+        }
 
-    const stats = initializer.getHistoryStats();
-    const approxSize = formatBytes(stats.byteSize);
-    const lastSaved = stats.latestTimestamp ? `${formatRelativeTime(stats.latestTimestamp)} (${new Date(stats.latestTimestamp).toLocaleString()})` : '—';
-    const latestLabel = stats.latestLabel || '—';
+        const stats = await initializer.getHistoryStats();
+        const approxSize = formatBytes(stats.byteSize);
+        const lastSaved = stats.latestTimestamp
+            ? `${formatRelativeTime(stats.latestTimestamp)} (${new Date(stats.latestTimestamp).toLocaleString()})`
+            : '—';
+        const latestLabel = stats.latestLabel || '—';
 
-    statsContainer.innerHTML = `
-        <div class="history-meta">
-            <span class="history-meta__label">Snapshots</span>
-            <span>${stats.count}</span>
-        </div>
-        <div class="history-meta">
-            <span class="history-meta__label">Approx size</span>
-            <span>${approxSize}</span>
-        </div>
-        <div class="history-meta">
-            <span class="history-meta__label">Last save</span>
-            <span>${lastSaved}</span>
-        </div>
-        <div class="history-meta">
-            <span class="history-meta__label">Latest label</span>
-            <span>${latestLabel}</span>
-        </div>
-        <div class="history-actions-row">
-            <button class="btn btn-secondary btn-sm" data-history-action="snapshot">Manual snapshot</button>
-            <button class="btn btn-secondary btn-sm" data-history-action="export">Copy history JSON</button>
-            <button class="btn btn-danger btn-sm" data-history-action="clear">Clear history</button>
-        </div>
-    `;
+        statsContainer.innerHTML = `
+            <div class="history-meta">
+                <span class="history-meta__label">Snapshots</span>
+                <span>${stats.count}</span>
+            </div>
+            <div class="history-meta">
+                <span class="history-meta__label">Approx size</span>
+                <span>${approxSize}</span>
+            </div>
+            <div class="history-meta">
+                <span class="history-meta__label">Last save</span>
+                <span>${lastSaved}</span>
+            </div>
+            <div class="history-meta">
+                <span class="history-meta__label">Latest label</span>
+                <span>${latestLabel}</span>
+            </div>
+            <div class="history-actions-row">
+                <button class="btn btn-secondary btn-sm" data-history-action="snapshot">Manual snapshot</button>
+                <button class="btn btn-secondary btn-sm" data-history-action="export">Copy history JSON</button>
+                <button class="btn btn-danger btn-sm" data-history-action="clear">Clear history</button>
+            </div>
+        `;
 
-    if (!statsContainer.dataset.bound) {
-        statsContainer.dataset.bound = 'true';
-        statsContainer.addEventListener('click', async (event) => {
-            const actionButton = event.target instanceof HTMLElement ? event.target.closest('[data-history-action]') : null;
-            if (!actionButton) {
-                return;
-            }
-
-            event.preventDefault();
-            const action = actionButton.dataset.historyAction;
-
-            if (action === 'snapshot') {
-                initializer.recordHistorySnapshot('Manual snapshot', { label: 'Manual snapshot', manual: true, force: true });
-                initializer.refreshHistoryUI({ force: true });
-                return;
-            }
-
-            if (action === 'export') {
-                const payload = {
-                    exportedAt: new Date().toISOString(),
-                    count: stats.count,
-                    entries: initializer.getHistoryEntries({ newestFirst: false }).map(entry => ({
-                        id: entry.id,
-                        timestamp: entry.timestamp,
-                        label: entry.label,
-                        reason: entry.meta?.reason,
-                        occurrences: entry.meta?.occurrences || 1,
-                        firstRecordedAt: entry.meta?.firstRecordedAt,
-                        lastRecordedAt: entry.meta?.lastRecordedAt,
-                        size: entry.byteSize,
-                        content: entry.content
-                    }))
-                };
-
-                const success = await copyTextToClipboard(JSON.stringify(payload, null, 2));
-                initializer.showNotification(success ? 'History copied to clipboard' : 'Failed to copy history', success ? 'success' : 'error');
-                return;
-            }
-
-            if (action === 'clear') {
-                const confirmed = typeof window.confirm === 'function'
-                    ? window.confirm('Clear history snapshots? The current document will remain as the first entry.')
-                    : true;
-                if (confirmed) {
-                    initializer.clearHistory({ keepLatest: true, label: 'Current document' });
+        if (!statsContainer.dataset.bound) {
+            statsContainer.dataset.bound = 'true';
+            statsContainer.addEventListener('click', async (event) => {
+                const actionButton = event.target instanceof HTMLElement ? event.target.closest('[data-history-action]') : null;
+                if (!actionButton) {
+                    return;
                 }
-            }
-        });
-    }
 
-    if (options.statsOnly) {
-        initializer.markHistoryRendered();
-        return;
-    }
-
-    const entries = initializer.getHistoryEntries({ newestFirst: true });
-    const currentId = initializer.getCurrentHistoryEntryId();
-
-    list.innerHTML = '';
-
-    if (!entries.length) {
-        const empty = document.createElement('div');
-        empty.className = 'history-empty';
-        empty.innerHTML = '<p>No history yet</p><small>Changes are tracked automatically – edit the document or create a manual snapshot.</small>';
-        list.appendChild(empty);
-        initializer.markHistoryRendered();
-        return;
-    }
-
-    entries.forEach((entry) => {
-        const item = document.createElement('article');
-        item.className = 'history-item';
-        item.dataset.entryId = entry.id;
-        if (entry.id === currentId) {
-            item.classList.add('current');
-        }
-
-        const header = document.createElement('div');
-        header.className = 'history-header';
-
-        const title = document.createElement('div');
-        title.className = 'history-title';
-        title.textContent = entry.label || 'Snapshot';
-
-        const time = document.createElement('div');
-        time.className = 'history-time';
-        time.textContent = `${formatRelativeTime(entry.timestamp)} · ${new Date(entry.timestamp).toLocaleString()}`;
-
-        header.appendChild(title);
-        header.appendChild(time);
-
-        const preview = document.createElement('pre');
-        preview.className = 'history-preview';
-        preview.textContent = entry.preview || '';
-
-        const metaRow = document.createElement('div');
-        metaRow.className = 'history-meta';
-        const reason = entry.meta?.reason || 'edit';
-
-        const reasonSpan = document.createElement('span');
-        reasonSpan.textContent = `Reason: ${reason}`;
-        metaRow.appendChild(reasonSpan);
-
-        const occurrenceCount = entry.meta?.occurrences || 1;
-        if (occurrenceCount > 1) {
-            const occurrenceSpan = document.createElement('span');
-            occurrenceSpan.className = 'history-meta__occurrences';
-            const lastSeen = entry.meta?.lastRecordedAt
-                ? new Date(entry.meta.lastRecordedAt).toLocaleString()
-                : new Date(entry.timestamp).toLocaleString();
-            occurrenceSpan.textContent = `Saved ${occurrenceCount}×`;
-            occurrenceSpan.title = `Captured ${occurrenceCount} times (last at ${lastSeen})`;
-            metaRow.appendChild(occurrenceSpan);
-        }
-
-        const sizeSpan = document.createElement('span');
-        sizeSpan.textContent = entry.sizeLabel;
-        metaRow.appendChild(sizeSpan);
-
-        const buttonsRow = document.createElement('div');
-        buttonsRow.className = 'history-action-buttons';
-
-        const restoreButton = document.createElement('button');
-        restoreButton.type = 'button';
-        restoreButton.className = entry.id === currentId ? 'btn btn-secondary btn-sm' : 'btn btn-primary btn-sm';
-        restoreButton.textContent = entry.id === currentId ? 'Current version' : 'Restore';
-        restoreButton.disabled = entry.id === currentId;
-        restoreButton.addEventListener('click', (event) => {
-            event.stopPropagation();
-            initializer.restoreHistoryEntry(entry.id, { forceRestore: false });
-        });
-
-        const copyButton = document.createElement('button');
-        copyButton.type = 'button';
-        copyButton.className = 'btn btn-secondary btn-sm';
-        copyButton.textContent = 'Copy JSON';
-        copyButton.addEventListener('click', async (event) => {
-            event.stopPropagation();
-            const success = await copyTextToClipboard(entry.content);
-            initializer.showNotification(success ? 'Snapshot copied to clipboard' : 'Failed to copy snapshot', success ? 'success' : 'error');
-        });
-
-        buttonsRow.appendChild(restoreButton);
-        buttonsRow.appendChild(copyButton);
-
-        item.appendChild(header);
-        item.appendChild(preview);
-        item.appendChild(metaRow);
-        item.appendChild(buttonsRow);
-
-        item.addEventListener('click', () => {
-            if (entry.id !== currentId) {
-                initializer.restoreHistoryEntry(entry.id, { forceRestore: false });
-            }
-        });
-
-        item.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter') {
                 event.preventDefault();
-                if (entry.id !== currentId) {
-                    initializer.restoreHistoryEntry(entry.id, { forceRestore: false });
+                const action = actionButton.dataset.historyAction;
+
+                if (action === 'snapshot') {
+                    await initializer.recordHistorySnapshot('Manual snapshot', { label: 'Manual snapshot', manual: true, force: true });
+                    await initializer.refreshHistoryUI({ force: true });
+                    return;
                 }
+
+                if (action === 'export') {
+                    const historyEntries = await initializer.getHistoryEntries({ newestFirst: false });
+                    const payload = {
+                        exportedAt: new Date().toISOString(),
+                        count: stats.count,
+                        entries: historyEntries.map(entry => ({
+                            id: entry.id,
+                            timestamp: entry.timestamp,
+                            label: entry.label,
+                            reason: entry.meta?.reason,
+                            occurrences: entry.meta?.occurrences || 1,
+                            firstRecordedAt: entry.meta?.firstRecordedAt,
+                            lastRecordedAt: entry.meta?.lastRecordedAt,
+                            size: entry.byteSize,
+                            content: entry.content
+                        }))
+                    };
+
+                    const success = await copyTextToClipboard(JSON.stringify(payload, null, 2));
+                    initializer.showNotification(success ? 'History copied to clipboard' : 'Failed to copy history', success ? 'success' : 'error');
+                    return;
+                }
+
+                if (action === 'clear') {
+                    const confirmed = typeof window.confirm === 'function'
+                        ? window.confirm('Clear history snapshots? The current document will remain as the first entry.')
+                        : true;
+                    if (confirmed) {
+                        await initializer.clearHistory({ keepLatest: true, label: 'Current document' });
+                    }
+                }
+            });
+        }
+
+        if (options.statsOnly) {
+            initializer.markHistoryRendered();
+            return;
+        }
+
+        const entries = await initializer.getHistoryEntries({ newestFirst: true });
+        const currentId = initializer.getCurrentHistoryEntryId();
+
+        list.innerHTML = '';
+
+        if (!entries.length) {
+            const empty = document.createElement('div');
+            empty.className = 'history-empty';
+            empty.innerHTML = '<p>No history yet</p><small>Changes are tracked automatically – edit the document or create a manual snapshot.</small>';
+            list.appendChild(empty);
+            initializer.markHistoryRendered();
+            return;
+        }
+
+        entries.forEach((entry, index) => {
+            const item = document.createElement('article');
+            item.className = 'history-item';
+            item.dataset.entryId = entry.id;
+            if (entry.id === currentId) {
+                item.classList.add('current');
             }
+
+            const previousEntry = entries[index + 1] || null;
+
+            const header = document.createElement('div');
+            header.className = 'history-header';
+
+            const title = document.createElement('div');
+            title.className = 'history-title';
+            title.textContent = entry.label || 'Snapshot';
+
+            const time = document.createElement('div');
+            time.className = 'history-time';
+            time.textContent = `${formatRelativeTime(entry.timestamp)} · ${new Date(entry.timestamp).toLocaleString()}`;
+
+            header.appendChild(title);
+            header.appendChild(time);
+
+            const preview = document.createElement('pre');
+            preview.className = 'history-preview is-clickable';
+            preview.textContent = summarizeHistoryChanges(entry.content, previousEntry ? previousEntry.content : null);
+            preview.title = 'View full snapshot';
+            preview.setAttribute('role', 'button');
+            preview.tabIndex = 0;
+            preview.addEventListener('click', (event) => {
+                event.stopPropagation();
+                openHistoryPreview(entry, previousEntry);
+            });
+            preview.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    openHistoryPreview(entry, previousEntry);
+                }
+            });
+
+            const metaRow = document.createElement('div');
+            metaRow.className = 'history-meta';
+            const reason = entry.meta?.reason || 'edit';
+
+            const reasonSpan = document.createElement('span');
+            reasonSpan.textContent = `Reason: ${reason}`;
+            metaRow.appendChild(reasonSpan);
+
+            const occurrenceCount = entry.meta?.occurrences || 1;
+            if (occurrenceCount > 1) {
+                const occurrenceSpan = document.createElement('span');
+                occurrenceSpan.className = 'history-meta__occurrences';
+                const lastSeen = entry.meta?.lastRecordedAt
+                    ? new Date(entry.meta.lastRecordedAt).toLocaleString()
+                    : new Date(entry.timestamp).toLocaleString();
+                occurrenceSpan.textContent = `Saved ${occurrenceCount}×`;
+                occurrenceSpan.title = `Captured ${occurrenceCount} times (last at ${lastSeen})`;
+                metaRow.appendChild(occurrenceSpan);
+            }
+
+            const sizeSpan = document.createElement('span');
+            sizeSpan.textContent = entry.sizeLabel;
+            metaRow.appendChild(sizeSpan);
+
+            const buttonsRow = document.createElement('div');
+            buttonsRow.className = 'history-action-buttons';
+
+            const restoreButton = document.createElement('button');
+            restoreButton.type = 'button';
+            restoreButton.className = entry.id === currentId ? 'btn btn-secondary btn-sm' : 'btn btn-primary btn-sm';
+            restoreButton.textContent = entry.id === currentId ? 'Current version' : 'Restore';
+            restoreButton.disabled = entry.id === currentId;
+            restoreButton.addEventListener('click', (event) => {
+                event.stopPropagation();
+                void initializer.restoreHistoryEntry(entry.id, { forceRestore: false, requireConfirm: true })
+                    .catch((error) => console.error('[HISTORY] Failed to restore entry', error));
+            });
+
+            const copyButton = document.createElement('button');
+            copyButton.type = 'button';
+            copyButton.className = 'btn btn-secondary btn-sm';
+            copyButton.textContent = 'Copy JSON';
+            copyButton.addEventListener('click', async (event) => {
+                event.stopPropagation();
+                const success = await copyTextToClipboard(entry.content);
+                initializer.showNotification(success ? 'Snapshot copied to clipboard' : 'Failed to copy snapshot', success ? 'success' : 'error');
+            });
+
+            buttonsRow.appendChild(restoreButton);
+            buttonsRow.appendChild(copyButton);
+
+            item.appendChild(header);
+            item.appendChild(preview);
+            item.appendChild(metaRow);
+            item.appendChild(buttonsRow);
+
+            list.appendChild(item);
         });
 
-        list.appendChild(item);
-    });
-
-    initializer.markHistoryRendered();
+        initializer.markHistoryRendered();
+    } catch (error) {
+        console.error('[HISTORY] Failed to render history modal', error);
+    }
 }
 
 // Enhanced Monaco Editor initialization with WireMock Editor integration
@@ -1216,6 +2173,59 @@ class MonacoInitializer {
         this.historyDebounce = null;
         this.suspendHistoryRecording = false;
         this.historyNeedsRender = true;
+        this.monacoSources = this.resolveMonacoSources();
+        this.activeMonacoSource = null;
+        this.pendingReadOnlyRestore = null;
+        this.editorReadOnlyLocked = false;
+        this.pendingMappingLoadId = null;
+    }
+
+    resolveMonacoSources() {
+        const defaults = [
+            { label: 'jsDelivr', baseUrl: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs' },
+            { label: 'cdnjs', baseUrl: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' },
+            { label: 'unpkg', baseUrl: 'https://unpkg.com/monaco-editor@0.44.0/min/vs' }
+        ];
+
+        const configured = typeof window !== 'undefined' && Array.isArray(window.MONACO_CDN_SOURCES) && window.MONACO_CDN_SOURCES.length
+            ? window.MONACO_CDN_SOURCES
+            : defaults;
+
+        const normalize = (entry) => {
+            if (!entry) return null;
+            if (typeof entry === 'string') {
+                return { label: entry, baseUrl: entry };
+            }
+            if (entry.baseUrl) {
+                return { label: entry.label || entry.baseUrl, baseUrl: entry.baseUrl };
+            }
+            if (entry.url) {
+                return { label: entry.label || entry.url, baseUrl: entry.url };
+            }
+            return null;
+        };
+
+        const normalized = configured
+            .map(normalize)
+            .filter((item) => item && item.baseUrl);
+
+        const unique = [];
+        const seen = new Set();
+        for (const item of normalized) {
+            const baseUrl = item.baseUrl.replace(/\/+$/, '');
+            if (seen.has(baseUrl)) continue;
+            seen.add(baseUrl);
+            unique.push({ label: item.label || baseUrl, baseUrl });
+        }
+
+        if (unique.length) {
+            return unique;
+        }
+
+        return defaults.map((item) => ({
+            label: item.label,
+            baseUrl: item.baseUrl.replace(/\/+$/, '')
+        }));
     }
 
     async initialize() {
@@ -1225,7 +2235,7 @@ class MonacoInitializer {
             await this.loadMonaco();
             this.setupWireMockSchema();
             this.setupOptimizations();
-            this.createEditors();
+            await this.createEditors();
             this.setupEventHandlers();
             this.isInitialized = true;
             console.log('✅ Monaco Editor initialized with WireMock integration');
@@ -1236,9 +2246,167 @@ class MonacoInitializer {
     }
 
     async loadMonaco() {
+        await this.waitForMonacoLoader();
+
+        const attempts = [];
+        for (const source of this.monacoSources) {
+            this.configureMonacoLoader(source);
+
+            try {
+                await this.requireMonacoModule();
+                this.activeMonacoSource = source.baseUrl;
+                console.log(`🎯 Monaco loaded from ${source.label || source.baseUrl}`);
+                return;
+            } catch (error) {
+                const normalized = this.normalizeMonacoLoadError(error, source);
+                attempts.push({ source, error: normalized });
+                console.warn(normalized.message);
+                this.invalidateFailedMonacoLoad(source);
+            }
+        }
+
+        const attemptMessages = attempts.map(({ error }) => error.message).join('; ');
+        const failure = new Error(`Monaco Editor could not be loaded from any configured source. Attempts: ${attemptMessages || 'none'}`);
+        failure.attempts = attempts;
+        throw failure;
+    }
+
+    async waitForMonacoLoader(timeoutMs = 10000) {
+        const start = Date.now();
+        while (!this.isMonacoLoaderAvailable()) {
+            if (Date.now() - start > timeoutMs) {
+                throw new Error('Monaco AMD loader did not become available');
+            }
+            await MonacoInitializer.sleep(50);
+        }
+    }
+
+    isMonacoLoaderAvailable() {
+        const loader = typeof require === 'function'
+            ? require
+            : (typeof window !== 'undefined' ? window.require : undefined);
+        return typeof loader === 'function' && typeof loader.config === 'function';
+    }
+
+    configureMonacoLoader(source) {
+        const baseUrl = source.baseUrl.replace(/\/+$/, '');
+        const loader = typeof require === 'function'
+            ? require
+            : (typeof window !== 'undefined' ? window.require : undefined);
+
+        if (loader && typeof loader.config === 'function') {
+            loader.config({ paths: { vs: baseUrl } });
+        } else {
+            if (typeof window !== 'undefined') {
+                window.require = window.require || {};
+                window.require.paths = Object.assign({}, window.require.paths || {}, { vs: baseUrl });
+            }
+        }
+
+        if (typeof window !== 'undefined') {
+            window.MONACO_BASE_URL = baseUrl;
+        }
+    }
+
+    requireMonacoModule() {
+        const loader = typeof require === 'function'
+            ? require
+            : (typeof window !== 'undefined' ? window.require : undefined);
         return new Promise((resolve, reject) => {
-            require(['vs/editor/editor.main'], resolve, reject);
+            try {
+                if (typeof loader !== 'function') {
+                    reject(new Error('Monaco AMD loader is not available'));
+                    return;
+                }
+                loader(['vs/editor/editor.main'], resolve, (error) => reject(error));
+            } catch (error) {
+                reject(error);
+            }
         });
+    }
+
+    normalizeMonacoLoadError(error, source) {
+        const label = source.label || source.baseUrl;
+
+        if (!error) {
+            return new Error(`[${label}] Unknown error while loading Monaco Editor`);
+        }
+
+        if (error instanceof Event) {
+            const target = error.target;
+            const scriptSrc = target && target.src ? target.src : null;
+            const message = scriptSrc
+                ? `[${label}] Network error while loading ${scriptSrc}`
+                : `[${label}] Network error while loading Monaco Editor`;
+            const normalized = new Error(message);
+            normalized.cause = error;
+            normalized.script = scriptSrc;
+            return normalized;
+        }
+
+        if (typeof error === 'string') {
+            return new Error(`[${label}] ${error}`);
+        }
+
+        if (error && error.message) {
+            const normalized = new Error(`[${label}] ${error.message}`);
+            normalized.cause = error;
+            return normalized;
+        }
+
+        const normalized = new Error(`[${label}] ${String(error)}`);
+        normalized.cause = error;
+        return normalized;
+    }
+
+    invalidateFailedMonacoLoad(source) {
+        const baseUrl = source.baseUrl.replace(/\/+$/, '');
+        const loader = typeof require === 'function'
+            ? require
+            : (typeof window !== 'undefined' ? window.require : undefined);
+
+        if (loader && typeof loader.undef === 'function') {
+            try {
+                loader.undef('vs/editor/editor.main');
+            } catch (error) {
+                if (console && typeof console.debug === 'function') {
+                    console.debug('Monaco loader undef failed', error);
+                }
+            }
+        }
+
+        const context = loader && loader.s && loader.s.contexts && loader.s.contexts._;
+        if (context) {
+            if (context.urlFetched) {
+                for (const url of Object.keys(context.urlFetched)) {
+                    if (url && url.startsWith(baseUrl)) {
+                        delete context.urlFetched[url];
+                    }
+                }
+            }
+            if (context.defined) {
+                for (const key of Object.keys(context.defined)) {
+                    if (key && key.startsWith('vs/')) {
+                        delete context.defined[key];
+                    }
+                }
+            }
+        }
+
+        if (typeof document !== 'undefined') {
+            const scripts = document.querySelectorAll('script[src]');
+            scripts.forEach((script) => {
+                const src = script.getAttribute('src');
+                if (!src) return;
+                if (src.startsWith(`${baseUrl}/`) && /\/vs\//.test(src) && !/loader\.js$/i.test(src)) {
+                    script.remove();
+                }
+            });
+        }
+    }
+
+    static sleep(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
     }
 
     setupWireMockSchema() {
@@ -1360,15 +2528,13 @@ class MonacoInitializer {
         }
     }
 
-    createEditors() {
+    async createEditors() {
         const theme = document.body.dataset.theme === 'dark' ? 'vs-dark' : 'vs';
 
-        // Check if we have a mappingId in URL - if so, show loading message instead of default stub
+        // Check if we have a mappingId in URL - if so, keep editor empty until mapping loads
         const urlParams = new URLSearchParams(window.location.search);
         const mappingId = urlParams.get('mappingId');
-        const initialValue = mappingId
-            ? `{\n  "_status": "Loading mapping ${mappingId}..."\n}`
-            : this.getDefaultStub();
+        const initialValue = mappingId ? '' : this.getDefaultStub();
 
         // Main editor
         const mainContainer = document.getElementById('jsonEditor');
@@ -1387,8 +2553,81 @@ class MonacoInitializer {
             });
 
             this.editors.set('main', window.editor);
-            this.initializeHistory(initialValue);
+            await this.initializeHistory(initialValue);
         }
+    }
+
+    prepareEditorForMappingLoad(mappingId) {
+        const editor = this.getActiveEditor();
+        if (!editor) {
+            return;
+        }
+
+        let wasReadOnly = false;
+        try {
+            if (typeof monaco !== 'undefined' && monaco.editor && monaco.editor.EditorOption) {
+                wasReadOnly = Boolean(editor.getOption(monaco.editor.EditorOption.readOnly));
+            } else if (typeof editor.getRawOptions === 'function') {
+                const rawOptions = editor.getRawOptions();
+                wasReadOnly = Boolean(rawOptions && rawOptions.readOnly);
+            }
+        } catch (error) {
+            console.debug('[EDITOR] Unable to detect current readOnly state', error);
+        }
+
+        this.pendingReadOnlyRestore = wasReadOnly;
+
+        if (!wasReadOnly) {
+            try {
+                editor.updateOptions({ readOnly: true });
+                this.editorReadOnlyLocked = true;
+            } catch (error) {
+                console.debug('[EDITOR] Failed to toggle readOnly before load', error);
+                this.editorReadOnlyLocked = false;
+            }
+        } else {
+            this.editorReadOnlyLocked = false;
+        }
+
+        this.suspendHistoryRecording = true;
+        try {
+            editor.setValue('');
+        } finally {
+            this.suspendHistoryRecording = false;
+        }
+
+        if (this.historyDebounce) {
+            clearTimeout(this.historyDebounce);
+            this.historyDebounce = null;
+        }
+
+        if (mappingId) {
+            this.pendingMappingLoadId = mappingId;
+        }
+    }
+
+    finalizeEditorMappingLoad() {
+        const editor = this.getActiveEditor();
+
+        if (editor) {
+            if (this.editorReadOnlyLocked) {
+                try {
+                    editor.updateOptions({ readOnly: false });
+                } catch (error) {
+                    console.debug('[EDITOR] Failed to restore readOnly after load', error);
+                }
+            } else if (typeof this.pendingReadOnlyRestore === 'boolean') {
+                try {
+                    editor.updateOptions({ readOnly: this.pendingReadOnlyRestore });
+                } catch (error) {
+                    console.debug('[EDITOR] Failed to reset readOnly flag', error);
+                }
+            }
+        }
+
+        this.editorReadOnlyLocked = false;
+        this.pendingReadOnlyRestore = null;
+        this.pendingMappingLoadId = null;
     }
 
     createEditor(container, options) {
@@ -1418,15 +2657,15 @@ class MonacoInitializer {
         return editor;
     }
 
-    initializeHistory(initialContent = '') {
+    async initializeHistory(initialContent = '') {
         const normalized = typeof initialContent === 'string' ? initialContent : '';
         if (!this.history) {
             this.history = new EditorHistory(60);
         }
 
-        this.history.reset(normalized, { label: 'Initial document', reason: 'Initial snapshot' });
+        await this.history.reset(normalized, { label: 'Initial document', reason: 'Initial snapshot' });
         this.historyNeedsRender = true;
-        this.refreshHistoryUI({ statsOnly: true });
+        await this.refreshHistoryUI({ statsOnly: true });
     }
 
     markHistoryRendered() {
@@ -1435,7 +2674,7 @@ class MonacoInitializer {
 
     getHistoryEntries(options = {}) {
         if (!this.history) {
-            return [];
+            return Promise.resolve([]);
         }
 
         return this.history.getEntries(options);
@@ -1443,7 +2682,7 @@ class MonacoInitializer {
 
     getHistoryStats() {
         if (!this.history) {
-            return { count: 0, byteSize: 0, latestTimestamp: null };
+            return Promise.resolve({ count: 0, byteSize: 0, latestTimestamp: null });
         }
 
         return this.history.getStats();
@@ -1453,7 +2692,7 @@ class MonacoInitializer {
         return this.history ? this.history.getCurrentId() : null;
     }
 
-    recordHistorySnapshot(reason = 'Edit', options = {}) {
+    async recordHistorySnapshot(reason = 'Edit', options = {}) {
         if (!this.history) {
             return null;
         }
@@ -1494,16 +2733,16 @@ class MonacoInitializer {
             force: Boolean(options.force)
         };
 
-        const result = this.history.record(content, meta);
+        const result = await this.history.record(content, meta);
         if (result && result.recorded) {
             this.historyNeedsRender = true;
-            this.refreshHistoryUI({ statsOnly: options.statsOnly === true });
+            await this.refreshHistoryUI({ statsOnly: options.statsOnly === true });
         }
 
         return result;
     }
 
-    refreshHistoryUI(options = {}) {
+    async refreshHistoryUI(options = {}) {
         if (typeof window.renderHistoryModal !== 'function') {
             return;
         }
@@ -1511,7 +2750,7 @@ class MonacoInitializer {
         const modal = document.getElementById('historyModal');
         const isOpen = modal && (modal.classList.contains('show') || modal.getAttribute('aria-hidden') === 'false');
         if (options.force || isOpen) {
-            window.renderHistoryModal({
+            await window.renderHistoryModal({
                 statsOnly: Boolean(options.statsOnly)
             });
             this.historyNeedsRender = false;
@@ -1521,7 +2760,7 @@ class MonacoInitializer {
         if (options.statsOnly) {
             const statsElement = document.getElementById('historyStats');
             if (statsElement) {
-                window.renderHistoryModal({ statsOnly: true });
+                await window.renderHistoryModal({ statsOnly: true });
                 this.historyNeedsRender = false;
             }
         }
@@ -1531,13 +2770,13 @@ class MonacoInitializer {
         return this.historyNeedsRender;
     }
 
-    restoreHistoryEntry(entryId, options = {}) {
+    async restoreHistoryEntry(entryId, options = {}) {
         if (!this.history) {
             this.showNotification('History is unavailable', 'warning');
             return false;
         }
 
-        const entry = this.history.getEntryById(entryId);
+        const entry = await this.history.getEntryById(entryId);
         if (!entry) {
             this.showNotification('History entry not found', 'warning');
             return false;
@@ -1552,9 +2791,18 @@ class MonacoInitializer {
         const currentValue = editor.getValue ? editor.getValue() : '';
         if (currentValue === entry.content && !options.forceRestore) {
             this.history.markCurrent(entry.id);
-            this.refreshHistoryUI({ force: true });
+            await this.refreshHistoryUI({ force: true });
             this.showNotification('Already on this version', 'info');
             return true;
+        }
+
+        if (!options.forceRestore && options.requireConfirm !== false) {
+            const label = entry.label || 'snapshot';
+            const message = `Restore snapshot "${label.length > 80 ? `${label.slice(0, 77)}…` : label}"? Current editor content will be replaced.`;
+            const confirmed = typeof window.confirm === 'function' ? window.confirm(message) : true;
+            if (!confirmed) {
+                return false;
+            }
         }
 
         this.suspendHistoryRecording = true;
@@ -1563,26 +2811,46 @@ class MonacoInitializer {
 
         this.history.markCurrent(entry.id);
         this.historyNeedsRender = true;
-        this.refreshHistoryUI({ force: true });
+        await this.refreshHistoryUI({ force: true });
         this.showNotification(`Restored snapshot: ${entry.label}`, 'success');
+
+        if (typeof document !== 'undefined') {
+            const openModals = Array.from(document.querySelectorAll('.modal.show, .modal[aria-hidden="false"]'));
+            if (openModals.length) {
+                for (const modal of openModals) {
+                    const isElement = typeof HTMLElement === 'undefined' ? true : modal instanceof HTMLElement;
+                    if (!isElement || !modal || !modal.id) {
+                        continue;
+                    }
+                    if (typeof window.closeModal === 'function') {
+                        window.closeModal(modal.id);
+                    } else {
+                        modal.classList.remove('show');
+                        modal.classList.add('hidden');
+                        modal.style.display = 'none';
+                        modal.setAttribute('aria-hidden', 'true');
+                    }
+                }
+            }
+        }
 
         return true;
     }
 
-    clearHistory(options = {}) {
+    async clearHistory(options = {}) {
         if (!this.history) {
             return;
         }
 
         const editor = this.getActiveEditor();
         const currentContent = editor && typeof editor.getValue === 'function' ? editor.getValue() : '';
-        this.history.clear({
+        await this.history.clear({
             keepLatest: options.keepLatest !== false,
             latestContent: currentContent,
             label: options.label || 'Current document'
         });
         this.historyNeedsRender = true;
-        this.refreshHistoryUI({ force: true });
+        await this.refreshHistoryUI({ force: true });
     }
 
     getTemplateLibrary() {
@@ -1636,11 +2904,13 @@ class MonacoInitializer {
         editor.setValue(nextValue);
         this.suspendHistoryRecording = false;
 
-        this.recordHistorySnapshot('Template applied', {
+        void this.recordHistorySnapshot('Template applied', {
             label: template.title,
             manual: true,
             force: true,
             statsOnly: false
+        }).catch((error) => {
+            console.debug('[HISTORY] Failed to record template snapshot', error);
         });
 
         this.showNotification(`Template "${template.title}" applied`, 'success');
@@ -1722,7 +2992,9 @@ class MonacoInitializer {
         }
 
         this.historyDebounce = setTimeout(() => {
-            this.recordHistorySnapshot('Auto snapshot', { statsOnly: true, allowInvalid: false });
+            void this.recordHistorySnapshot('Auto snapshot', { statsOnly: true, allowInvalid: false }).catch((error) => {
+                console.debug('[HISTORY] Failed to record auto snapshot', error);
+            });
         }, 1500);
     }
 
@@ -2000,6 +3272,13 @@ class MonacoInitializer {
         if (editor && mappingData) {
             const formatted = JSON.stringify(mappingData, null, 2);
             editor.setValue(formatted);
+
+            this.finalizeEditorMappingLoad();
+
+            if (typeof window !== 'undefined' && typeof window.rememberEditorMappingId === 'function') {
+                const candidateId = mappingData && (mappingData.id || mappingData.uuid);
+                window.rememberEditorMappingId(candidateId);
+            }
             this.showNotification('Mapping loaded', 'success');
         }
     }
@@ -2007,10 +3286,15 @@ class MonacoInitializer {
     getMappingFromEditor() {
         const editor = this.getActiveEditor();
         if (!editor) return null;
-        
+
         try {
             const content = editor.getValue();
-            return JSON.parse(content);
+            const parsed = JSON.parse(content);
+            if (typeof window !== 'undefined' && typeof window.rememberEditorMappingId === 'function') {
+                const candidateId = parsed && (parsed.id || parsed.uuid);
+                window.rememberEditorMappingId(candidateId);
+            }
+            return parsed;
         } catch (error) {
             this.showNotification('Invalid JSON in editor', 'error');
             return null;

@@ -17,6 +17,10 @@
     backdrop-filter: blur(10px);
 }
 
+.modal--stacked {
+    z-index: 1100;
+}
+
 .modal.show,
 .modal:not(.hidden) {
     display: flex !important;
