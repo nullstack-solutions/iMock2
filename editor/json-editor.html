@@ -234,9 +234,26 @@
          * Save to history (editor-specific implementation)
          */
         function saveToHistory(content, action) {
-            console.log(`[HISTORY] ${action}: ${content.substring(0, 100)}...`);
-            // In editor context, we don't need to save history
-            // This is just a stub to prevent errors
+            try {
+                if (!window.monacoInitializer || typeof window.monacoInitializer.recordHistorySnapshot !== 'function') {
+                    console.log(`[HISTORY] ${action || 'snapshot'}: history service unavailable`);
+                    return;
+                }
+
+                const serialized = typeof content === 'string'
+                    ? content
+                    : JSON.stringify(content, null, 2);
+
+                window.monacoInitializer.recordHistorySnapshot(action || 'Manual snapshot', {
+                    label: action || 'Manual snapshot',
+                    manual: true,
+                    force: true,
+                    contentOverride: serialized
+                });
+                window.monacoInitializer.refreshHistoryUI({ force: true });
+            } catch (error) {
+                console.warn('History save failed:', error);
+            }
         }
 
         /**
@@ -524,6 +541,14 @@
             if (!modal) {
                 console.warn(`Modal with id "${modalId}" not found`);
                 return;
+            }
+
+            if (modalId === 'fullscreenModal' && typeof window.renderTemplateLibrary === 'function') {
+                window.renderTemplateLibrary();
+            }
+
+            if (modalId === 'historyModal' && typeof window.renderHistoryModal === 'function') {
+                window.renderHistoryModal();
             }
 
             setModalVisibility(modal, true);
