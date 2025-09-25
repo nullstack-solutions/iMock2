@@ -52,39 +52,128 @@ function setupMappingFormListeners() {
  * Set up editor mode handlers
  */
 function setupEditorModeHandlers() {
-    // Show notification about form mode being temporarily disabled
-    showNotification('Form mode is temporarily disabled due to bugs. Using JSON mode only.', 'warning');
-    
-    // Mode switcher buttons
+    initializeJsonEditorAutoResize();
+
     document.addEventListener('click', (e) => {
-        if (e.target.matches('[data-editor-mode]')) {
-            // Prevent switching to form mode
-            if (e.target.dataset.editorMode === EDITOR_MODES.FORM) {
-                showNotification('Form mode is temporarily disabled due to bugs. Please use JSON mode.', 'warning');
-                return;
-            }
-            const mode = e.target.dataset.editorMode;
-            switchEditorMode(mode);
-        }
-        
         if (e.target.matches('[data-action="validate-json"]')) {
             validateCurrentJSON();
         }
-        
+
         if (e.target.matches('[data-action="format-json"]')) {
             formatCurrentJSON();
         }
-        
+
         if (e.target.matches('[data-action="minify-json"]')) {
             minifyCurrentJSON();
         }
     });
-    
+
     // Auto-save on input changes
     document.addEventListener('input', (e) => {
         if (e.target.matches('.editor-field') || e.target.id === 'json-editor') {
             editorState.isDirty = true;
             updateDirtyIndicator();
+        }
+    });
+}
+
+let jsonEditorResizeObserver = null;
+let jsonEditorResizeFrame = null;
+let jsonEditorWindowResizeHandler = null;
+
+function setButtonLoadingState(button, isLoading, loadingLabel) {
+    if (!button) return;
+
+    const labelEl = button.querySelector('.btn-label');
+    if (isLoading) {
+        button.classList.add('is-loading');
+        button.disabled = true;
+        button.setAttribute('aria-busy', 'true');
+
+        if (labelEl) {
+            if (!labelEl.dataset.originalText) {
+                labelEl.dataset.originalText = labelEl.textContent;
+            }
+            if (loadingLabel) {
+                labelEl.textContent = loadingLabel;
+            }
+        }
+
+    } else {
+        button.classList.remove('is-loading');
+        button.disabled = false;
+        button.removeAttribute('aria-busy');
+
+        if (labelEl && labelEl.dataset.originalText) {
+            labelEl.textContent = labelEl.dataset.originalText;
+            delete labelEl.dataset.originalText;
+        }
+
+    }
+}
+
+window.setMappingEditorBusyState = (isLoading, loadingLabel) => {
+    const updateButton = document.getElementById('update-mapping-btn');
+    if (!updateButton) return;
+    setButtonLoadingState(updateButton, isLoading, loadingLabel);
+};
+
+function initializeJsonEditorAutoResize() {
+    const jsonEditor = document.getElementById('json-editor');
+    const container = document.getElementById('json-editor-container');
+
+    if (!jsonEditor || !container) return;
+
+    const computedMinHeight = parseInt(window.getComputedStyle(jsonEditor).minHeight, 10);
+    if (!Number.isNaN(computedMinHeight)) {
+        jsonEditor.dataset.minHeight = computedMinHeight;
+    }
+
+    if (jsonEditorResizeObserver) {
+        jsonEditorResizeObserver.disconnect();
+        jsonEditorResizeObserver = null;
+    }
+
+    if (typeof ResizeObserver !== 'undefined') {
+        jsonEditorResizeObserver = new ResizeObserver(() => adjustJsonEditorHeight());
+        jsonEditorResizeObserver.observe(container);
+    }
+
+    if (jsonEditorWindowResizeHandler) {
+        window.removeEventListener('resize', jsonEditorWindowResizeHandler);
+    }
+
+    jsonEditorWindowResizeHandler = () => adjustJsonEditorHeight();
+    window.addEventListener('resize', jsonEditorWindowResizeHandler);
+
+    adjustJsonEditorHeight(true);
+}
+
+function adjustJsonEditorHeight(scrollToTop = false) {
+    const jsonEditor = document.getElementById('json-editor');
+    const container = document.getElementById('json-editor-container');
+
+    if (!jsonEditor || !container) return;
+
+    if (jsonEditorResizeFrame) {
+        cancelAnimationFrame(jsonEditorResizeFrame);
+    }
+
+    jsonEditorResizeFrame = requestAnimationFrame(() => {
+        jsonEditorResizeFrame = null;
+
+        const toolbar = container.querySelector('.json-editor-toolbar');
+        const toolbarHeight = toolbar ? toolbar.offsetHeight : 0;
+        const minHeight = parseInt(jsonEditor.dataset.minHeight || '0', 10) || 320;
+        const availableHeight = Math.max(container.clientHeight - toolbarHeight, minHeight);
+
+        jsonEditor.style.height = `${availableHeight}px`;
+        jsonEditor.style.overflowY = 'auto';
+        jsonEditor.style.overflowX = 'auto';
+
+        if (scrollToTop) {
+            jsonEditor.scrollTop = 0;
+            jsonEditor.scrollLeft = 0;
         }
     });
 }
@@ -260,8 +349,10 @@ async function saveMapping() {
  */
 window.updateMapping = async () => {
     console.log('updateMapping called');
-    
+
     try {
+        window.setMappingEditorBusyState(true, 'Updating…');
+
         // Save current state based on active mode FIRST
         if (editorState.mode === EDITOR_MODES.JSON) {
             saveFromJSONMode();
@@ -342,12 +433,14 @@ window.updateMapping = async () => {
         if (hasActiveFilters) {
             FilterManager.applyMappingFilters();
         }
-        
+
         console.log('updateMapping completed successfully');
-        
+
     } catch (e) {
         console.error('Error in updateMapping:', e);
         NotificationManager.error(`Update failed: ${e.message}`);
+    } finally {
+        window.setMappingEditorBusyState(false);
     }
 };
 
@@ -482,27 +575,14 @@ function populateFormFields(mapping) {
 /**
  * Switch editor mode
  */
-function switchEditorMode(mode) {
-    console.log('🟠 [MODE DEBUG] switchEditorMode called');
-    console.log('🟠 [MODE DEBUG] Previous mode:', editorState.mode);
-    console.log('🟠 [MODE DEBUG] New mode:', mode);
-    console.log('🟠 [MODE DEBUG] Current mapping ID before switch:', editorState.currentMapping?.id);
-    
-    const previousMode = editorState.mode;
-    
+function switchEditorMode() {
+    console.log('🟠 [MODE DEBUG] switchEditorMode forced to JSON');
+
     try {
-        // Always load JSON mode
+        editorState.mode = EDITOR_MODES.JSON;
         loadJSONMode();
-        
-        // Update UI
-        updateEditorUI(mode);
-        
-        // Update mode indicator
-        updateModeIndicator(mode);
-        
-        // Show notification about form mode being disabled
-        showNotification('Form mode is temporarily disabled. Using JSON mode only.', 'warning');
-        
+        updateEditorUI();
+        updateModeIndicator(EDITOR_MODES.JSON);
     } catch (error) {
         console.error('Error in editor mode:', error);
         showNotification(`Error: ${error.message}`, 'error');
@@ -512,35 +592,17 @@ function switchEditorMode(mode) {
 /**
  * Update editor UI based on mode
  */
-function updateEditorUI(mode) {
+function updateEditorUI() {
     const formContainer = document.getElementById('form-editor-container');
     const jsonContainer = document.getElementById('json-editor-container');
-    
-    // Hide all containers
+
     if (formContainer) formContainer.style.display = 'none';
-    if (jsonContainer) jsonContainer.style.display = 'none';
-    
-    // Show relevant container
-    switch (mode) {
-        case EDITOR_MODES.FORM:
-            if (formContainer) formContainer.style.display = 'block';
-            break;
-        case EDITOR_MODES.JSON:
-            if (jsonContainer) jsonContainer.style.display = 'block';
-            break;
-    }
-    
-    // Update mode buttons
+    if (jsonContainer) jsonContainer.style.display = 'block';
+
     document.querySelectorAll('[data-editor-mode]').forEach(btn => {
-        btn.classList.remove('active');
-        if (btn.dataset.editorMode === mode) {
-            btn.classList.add('active');
-        }
-        // Disable form mode button
-        if (btn.dataset.editorMode === EDITOR_MODES.FORM) {
-            btn.disabled = true;
-            btn.title = 'Form mode is temporarily disabled due to bugs';
-        }
+        btn.classList.toggle('active', btn.dataset.editorMode === EDITOR_MODES.JSON);
+        btn.disabled = btn.dataset.editorMode !== EDITOR_MODES.JSON;
+        btn.removeAttribute('title');
     });
 }
 
@@ -604,7 +666,8 @@ function loadJSONMode() {
     
     const formattedJSON = JSON.stringify(editorState.currentMapping, null, 2);
     jsonEditor.value = formattedJSON;
-    
+    adjustJsonEditorHeight(true);
+
     console.log('🟡 [JSON DEBUG] JSON editor populated with mapping ID:', editorState.currentMapping?.id);
     console.log('🟡 [JSON DEBUG] JSON content length:', formattedJSON.length);
 }
@@ -755,6 +818,7 @@ function formatCurrentJSON() {
     try {
         const parsed = JSON.parse(jsonEditor.value);
         jsonEditor.value = JSON.stringify(parsed, null, 2);
+        adjustJsonEditorHeight(true);
         showNotification('JSON formatted', 'success');
     } catch (error) {
         showNotification('Formatting failed: ' + error.message, 'error');
@@ -771,6 +835,7 @@ function minifyCurrentJSON() {
     try {
         const parsed = JSON.parse(jsonEditor.value);
         jsonEditor.value = JSON.stringify(parsed);
+        adjustJsonEditorHeight(true);
         showNotification('JSON minified', 'success');
     } catch (error) {
         showNotification('Minification failed: ' + error.message, 'error');

@@ -612,9 +612,16 @@ window.FilterManager = {
             }
 
             if (status) {
-                filtered = filtered.filter(request =>
-                    (request.response?.status || '').toString().includes(status)
-                );
+                if (status === 'matched') {
+                    filtered = filtered.filter(request => request.wasMatched !== false);
+                } else if (status === 'unmatched') {
+                    filtered = filtered.filter(request => request.wasMatched === false);
+                } else {
+                    filtered = filtered.filter(request => {
+                        const responseStatus = request.response?.status ?? request.responseDefinition?.status ?? '';
+                        return responseStatus.toString().includes(status);
+                    });
+                }
             }
 
             if (url) {
