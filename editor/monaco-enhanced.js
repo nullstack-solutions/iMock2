@@ -1834,6 +1834,56 @@ class MonacoInitializer {
         this.historyDebounce = null;
         this.suspendHistoryRecording = false;
         this.historyNeedsRender = true;
+        this.monacoSources = this.resolveMonacoSources();
+        this.activeMonacoSource = null;
+    }
+
+    resolveMonacoSources() {
+        const defaults = [
+            { label: 'jsDelivr', baseUrl: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs' },
+            { label: 'cdnjs', baseUrl: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' },
+            { label: 'unpkg', baseUrl: 'https://unpkg.com/monaco-editor@0.44.0/min/vs' }
+        ];
+
+        const configured = typeof window !== 'undefined' && Array.isArray(window.MONACO_CDN_SOURCES) && window.MONACO_CDN_SOURCES.length
+            ? window.MONACO_CDN_SOURCES
+            : defaults;
+
+        const normalize = (entry) => {
+            if (!entry) return null;
+            if (typeof entry === 'string') {
+                return { label: entry, baseUrl: entry };
+            }
+            if (entry.baseUrl) {
+                return { label: entry.label || entry.baseUrl, baseUrl: entry.baseUrl };
+            }
+            if (entry.url) {
+                return { label: entry.label || entry.url, baseUrl: entry.url };
+            }
+            return null;
+        };
+
+        const normalized = configured
+            .map(normalize)
+            .filter((item) => item && item.baseUrl);
+
+        const unique = [];
+        const seen = new Set();
+        for (const item of normalized) {
+            const baseUrl = item.baseUrl.replace(/\/+$/, '');
+            if (seen.has(baseUrl)) continue;
+            seen.add(baseUrl);
+            unique.push({ label: item.label || baseUrl, baseUrl });
+        }
+
+        if (unique.length) {
+            return unique;
+        }
+
+        return defaults.map((item) => ({
+            label: item.label,
+            baseUrl: item.baseUrl.replace(/\/+$/, '')
+        }));
     }
 
     async initialize() {
@@ -1854,9 +1904,167 @@ class MonacoInitializer {
     }
 
     async loadMonaco() {
+        await this.waitForMonacoLoader();
+
+        const attempts = [];
+        for (const source of this.monacoSources) {
+            this.configureMonacoLoader(source);
+
+            try {
+                await this.requireMonacoModule();
+                this.activeMonacoSource = source.baseUrl;
+                console.log(`🎯 Monaco loaded from ${source.label || source.baseUrl}`);
+                return;
+            } catch (error) {
+                const normalized = this.normalizeMonacoLoadError(error, source);
+                attempts.push({ source, error: normalized });
+                console.warn(normalized.message);
+                this.invalidateFailedMonacoLoad(source);
+            }
+        }
+
+        const attemptMessages = attempts.map(({ error }) => error.message).join('; ');
+        const failure = new Error(`Monaco Editor could not be loaded from any configured source. Attempts: ${attemptMessages || 'none'}`);
+        failure.attempts = attempts;
+        throw failure;
+    }
+
+    async waitForMonacoLoader(timeoutMs = 10000) {
+        const start = Date.now();
+        while (!this.isMonacoLoaderAvailable()) {
+            if (Date.now() - start > timeoutMs) {
+                throw new Error('Monaco AMD loader did not become available');
+            }
+            await MonacoInitializer.sleep(50);
+        }
+    }
+
+    isMonacoLoaderAvailable() {
+        const loader = typeof require === 'function'
+            ? require
+            : (typeof window !== 'undefined' ? window.require : undefined);
+        return typeof loader === 'function' && typeof loader.config === 'function';
+    }
+
+    configureMonacoLoader(source) {
+        const baseUrl = source.baseUrl.replace(/\/+$/, '');
+        const loader = typeof require === 'function'
+            ? require
+            : (typeof window !== 'undefined' ? window.require : undefined);
+
+        if (loader && typeof loader.config === 'function') {
+            loader.config({ paths: { vs: baseUrl } });
+        } else {
+            if (typeof window !== 'undefined') {
+                window.require = window.require || {};
+                window.require.paths = Object.assign({}, window.require.paths || {}, { vs: baseUrl });
+            }
+        }
+
+        if (typeof window !== 'undefined') {
+            window.MONACO_BASE_URL = baseUrl;
+        }
+    }
+
+    requireMonacoModule() {
+        const loader = typeof require === 'function'
+            ? require
+            : (typeof window !== 'undefined' ? window.require : undefined);
         return new Promise((resolve, reject) => {
-            require(['vs/editor/editor.main'], resolve, reject);
+            try {
+                if (typeof loader !== 'function') {
+                    reject(new Error('Monaco AMD loader is not available'));
+                    return;
+                }
+                loader(['vs/editor/editor.main'], resolve, (error) => reject(error));
+            } catch (error) {
+                reject(error);
+            }
         });
+    }
+
+    normalizeMonacoLoadError(error, source) {
+        const label = source.label || source.baseUrl;
+
+        if (!error) {
+            return new Error(`[${label}] Unknown error while loading Monaco Editor`);
+        }
+
+        if (error instanceof Event) {
+            const target = error.target;
+            const scriptSrc = target && target.src ? target.src : null;
+            const message = scriptSrc
+                ? `[${label}] Network error while loading ${scriptSrc}`
+                : `[${label}] Network error while loading Monaco Editor`;
+            const normalized = new Error(message);
+            normalized.cause = error;
+            normalized.script = scriptSrc;
+            return normalized;
+        }
+
+        if (typeof error === 'string') {
+            return new Error(`[${label}] ${error}`);
+        }
+
+        if (error && error.message) {
+            const normalized = new Error(`[${label}] ${error.message}`);
+            normalized.cause = error;
+            return normalized;
+        }
+
+        const normalized = new Error(`[${label}] ${String(error)}`);
+        normalized.cause = error;
+        return normalized;
+    }
+
+    invalidateFailedMonacoLoad(source) {
+        const baseUrl = source.baseUrl.replace(/\/+$/, '');
+        const loader = typeof require === 'function'
+            ? require
+            : (typeof window !== 'undefined' ? window.require : undefined);
+
+        if (loader && typeof loader.undef === 'function') {
+            try {
+                loader.undef('vs/editor/editor.main');
+            } catch (error) {
+                if (console && typeof console.debug === 'function') {
+                    console.debug('Monaco loader undef failed', error);
+                }
+            }
+        }
+
+        const context = loader && loader.s && loader.s.contexts && loader.s.contexts._;
+        if (context) {
+            if (context.urlFetched) {
+                for (const url of Object.keys(context.urlFetched)) {
+                    if (url && url.startsWith(baseUrl)) {
+                        delete context.urlFetched[url];
+                    }
+                }
+            }
+            if (context.defined) {
+                for (const key of Object.keys(context.defined)) {
+                    if (key && key.startsWith('vs/')) {
+                        delete context.defined[key];
+                    }
+                }
+            }
+        }
+
+        if (typeof document !== 'undefined') {
+            const scripts = document.querySelectorAll('script[src]');
+            scripts.forEach((script) => {
+                const src = script.getAttribute('src');
+                if (!src) return;
+                if (src.startsWith(`${baseUrl}/`) && /\/vs\//.test(src) && !/loader\.js$/i.test(src)) {
+                    script.remove();
+                }
+            });
+        }
+    }
+
+    static sleep(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
     }
 
     setupWireMockSchema() {

@@ -205,12 +205,71 @@
     
     <!-- Monaco Editor Loader (must be loaded first) -->
     <script>
+        window.MONACO_CDN_SOURCES = [
+            { label: 'jsDelivr', baseUrl: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs' },
+            { label: 'cdnjs', baseUrl: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' },
+            { label: 'unpkg', baseUrl: 'https://unpkg.com/monaco-editor@0.44.0/min/vs' }
+        ];
+
+        const primaryMonacoSource = window.MONACO_CDN_SOURCES[0];
+        const primaryMonacoBase = primaryMonacoSource && primaryMonacoSource.baseUrl
+            ? primaryMonacoSource.baseUrl
+            : 'https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs';
+
         window.require = window.require || {};
         window.require.paths = Object.assign({}, window.require.paths || {}, {
-            'vs': 'https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs'
+            vs: primaryMonacoBase.replace(/\/+$/, '')
         });
     </script>
-    <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs/loader.js"></script>
+    <script id="monaco-loader-script" src="https://cdn.jsdelivr.net/npm/monaco-editor@0.44.0/min/vs/loader.js"></script>
+    <script>
+        (function setupMonacoLoaderFallback() {
+            const loaderScript = document.getElementById('monaco-loader-script');
+            if (!loaderScript) {
+                return;
+            }
+
+            const sources = Array.isArray(window.MONACO_CDN_SOURCES)
+                ? window.MONACO_CDN_SOURCES.slice(1)
+                : [];
+
+            if (!sources.length) {
+                return;
+            }
+
+            let attemptIndex = 0;
+
+            const tryNext = () => {
+                if (attemptIndex >= sources.length) {
+                    console.error('Failed to load Monaco loader from all configured sources');
+                    return;
+                }
+
+                const source = sources[attemptIndex++];
+                if (!source || !source.baseUrl) {
+                    tryNext();
+                    return;
+                }
+
+                const baseUrl = source.baseUrl.replace(/\/+$/, '');
+                window.require = window.require || {};
+                window.require.paths = Object.assign({}, window.require.paths || {}, { vs: baseUrl });
+
+                const fallbackScript = document.createElement('script');
+                fallbackScript.src = `${baseUrl}/loader.js`;
+                fallbackScript.async = false;
+                fallbackScript.dataset.monacoLoader = source.label || baseUrl;
+                fallbackScript.onerror = tryNext;
+
+                document.head.appendChild(fallbackScript);
+            };
+
+            loaderScript.onerror = () => {
+                loaderScript.onerror = null;
+                tryNext();
+            };
+        })();
+    </script>
     
     <!-- WireMock URL Initialization - перенесено в initializeFromURL -->
 
