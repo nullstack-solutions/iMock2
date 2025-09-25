@@ -272,12 +272,19 @@ window.connectToWireMock = async () => {
         // Load data in parallel while leveraging the Cache Service
         const useCache = (JSON.parse(localStorage.getItem('wiremock-settings') || '{}').cacheEnabled) === true
             || !!document.getElementById('cache-enabled')?.checked;
-        await Promise.all([
+        const [mappingsLoaded, requestsLoaded] = await Promise.all([
             fetchAndRenderMappings(null, { useCache }),
             fetchAndRenderRequests()
         ]);
-        
-        NotificationManager.success('Connected to WireMock successfully!');
+
+        if (mappingsLoaded && requestsLoaded) {
+            NotificationManager.success('Connected to WireMock successfully!');
+        } else {
+            console.warn('Connected to WireMock, but some resources failed to load', {
+                mappingsLoaded,
+                requestsLoaded
+            });
+        }
         
     } catch (error) {
         console.error('Connection error:', error);
@@ -626,7 +633,7 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
 
     if (!container || !emptyState || !loadingState) {
         console.error('Required DOM elements not found for mappings rendering');
-        return;
+        return false;
     }
 
     let renderSource = 'unknown';
@@ -772,7 +779,7 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
             emptyState.classList.remove('hidden');
             container.style.display = 'none';
             updateMappingsCounter();
-            return;
+            return true;
         }
         
         emptyState.classList.add('hidden');
@@ -807,16 +814,17 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
             if (hasFilters && typeof FilterManager !== 'undefined' && FilterManager.applyMappingFilters) {
                 FilterManager.applyMappingFilters();
                 console.log('[FILTERS] Mapping filters re-applied after refresh');
-                try { NotificationManager && NotificationManager.show('Filters applied', NotificationManager.TYPES.INFO, 1200); } catch {}
             }
         } catch {}
-        
+
+        return true;
     } catch (error) {
         console.error('Error in fetchAndRenderMappings:', error);
         NotificationManager.error(`Failed to load mappings: ${error.message}`);
         loadingState.classList.add('hidden');
         emptyState.classList.remove('hidden');
         container.style.display = 'none';
+        return false;
     }
 };
 
@@ -1109,7 +1117,7 @@ window.fetchAndRenderRequests = async (requestsToRender = null) => {
     
     if (!container || !emptyState || !loadingState) {
         console.error('Required DOM elements not found for requests rendering');
-        return;
+        return false;
     }
     
     try {
@@ -1133,7 +1141,7 @@ window.fetchAndRenderRequests = async (requestsToRender = null) => {
             emptyState.classList.remove('hidden');
             container.style.display = 'none';
             updateRequestsCounter();
-            return;
+            return true;
         }
         
         emptyState.classList.add('hidden');
@@ -1147,13 +1155,15 @@ window.fetchAndRenderRequests = async (requestsToRender = null) => {
         // Source indicator + log, mirroring mappings
         if (typeof updateRequestsSourceIndicator === 'function') updateRequestsSourceIndicator(reqSource);
         console.log(`📦 Requests render from: ${reqSource} — ${window.allRequests.length} items`);
-        
+
+        return true;
     } catch (error) {
         console.error('Error in fetchAndRenderRequests:', error);
         NotificationManager.error(`Failed to load requests: ${error.message}`);
         loadingState.classList.add('hidden');
         emptyState.classList.remove('hidden');
         container.style.display = 'none';
+        return false;
     }
 };
 
@@ -1420,7 +1430,6 @@ window.refreshRequests = async () => {
     if (hasActiveFilters) {
         FilterManager.applyRequestFilters();
         console.log('[FILTERS] Request filters re-applied after refresh');
-        try { NotificationManager && NotificationManager.show('Filters applied', NotificationManager.TYPES.INFO, 1200); } catch {}
     }
 };
 
@@ -1819,21 +1828,6 @@ window.handleEditSuccess = async (mapping) => {
     setTimeout(() => {
         window.cacheManager.confirmOptimisticUpdate(id);
     }, 1000);
-};
-
-// Force synchronization function (used by the Force Refresh button)
-window.forceRefreshCache = async () => {
-    try {
-        // Clear all optimistic updates
-        window.cacheManager.optimisticQueue.length = 0;
-
-        // Trigger a full cache rebuild
-        await window.cacheManager.rebuildCache();
-
-        NotificationManager.success('Cache fully refreshed!');
-    } catch (error) {
-        NotificationManager.error(`Cache refresh failed: ${error.message}`);
-    }
 };
 
 console.log('✅ Features.js loaded - Business functions for mappings, requests, scenarios + WireMock 3.9.1+ API fixes');
@@ -2713,8 +2707,10 @@ window.refreshMappings = async () => {
     try {
         const settings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
         const useCache = !!settings.cacheEnabled;
-        await fetchAndRenderMappings(null, { useCache });
-        NotificationManager.success('Mappings refreshed!');
+        const refreshed = await fetchAndRenderMappings(null, { useCache });
+        if (refreshed) {
+            NotificationManager.success('Mappings refreshed!');
+        }
     } catch (error) {
         NotificationManager.error(`Failed to refresh mappings: ${error.message}`);
     }
@@ -2731,8 +2727,10 @@ window.forceRefreshCache = async () => {
 
         if (typeof window.refreshImockCache === 'function') {
             await window.refreshImockCache();
-            await fetchAndRenderMappings(null, { useCache: true });
-            NotificationManager.success('Cache rebuilt and mappings refreshed!');
+            const refreshed = await fetchAndRenderMappings(null, { useCache: true });
+            if (refreshed) {
+                NotificationManager.success('Cache rebuilt and mappings refreshed!');
+            }
         } else {
             NotificationManager.error('Cache service not available');
         }
