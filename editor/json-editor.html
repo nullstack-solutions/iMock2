@@ -330,6 +330,37 @@
         }
 
         /**
+         * Toggle the editor loading overlay
+         */
+        function setEditorLoadingState(isLoading, label) {
+            const overlay = document.getElementById('loadingOverlay');
+            if (!overlay) {
+                return;
+            }
+
+            const spinner = overlay.querySelector('.loading-spinner');
+            if (isLoading) {
+                overlay.classList.add('show');
+                overlay.setAttribute('aria-hidden', 'false');
+                overlay.setAttribute('aria-busy', 'true');
+                if (spinner) {
+                    if (label) {
+                        spinner.setAttribute('aria-label', label);
+                    } else {
+                        spinner.removeAttribute('aria-label');
+                    }
+                }
+            } else {
+                overlay.classList.remove('show');
+                overlay.setAttribute('aria-hidden', 'true');
+                overlay.removeAttribute('aria-busy');
+                if (spinner) {
+                    spinner.removeAttribute('aria-label');
+                }
+            }
+        }
+
+        /**
          * Save to history (editor-specific implementation)
          */
         function saveToHistory(content, action) {
@@ -1460,7 +1491,7 @@
                 console.log('🔍 Current window.wiremockBaseUrl:', window.wiremockBaseUrl);
                 console.log('🔍 window.getMappingById available:', typeof window.getMappingById);
 
-                showNotification('Loading mapping...', 'info');
+                setEditorLoadingState(true, mappingId ? `Loading mapping ${mappingId}` : 'Loading mapping');
 
                 // Clear any existing content while the mapping loads without polluting history
                 if (window.monacoInitializer && typeof window.monacoInitializer.prepareEditorForMappingLoad === 'function') {
@@ -1511,7 +1542,7 @@
                     if (window.monacoInitializer && typeof window.monacoInitializer.loadMappingIntoEditor === 'function') {
                         window.monacoInitializer.loadMappingIntoEditor(mapping);
                         showNotification(`Mapping "${mapping.name || mappingId}" loaded successfully`, 'success');
-                        
+
                         // Update page title
                         document.title = `JSON Editor - ${mapping.name || mappingId}`;
                     } else {
@@ -1569,6 +1600,8 @@
                         }
                     }, 1000);
                 }
+            } finally {
+                setEditorLoadingState(false);
             }
         }
         
