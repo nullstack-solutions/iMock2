@@ -3188,6 +3188,10 @@ class MonacoInitializer {
         if (editor && mappingData) {
             const formatted = JSON.stringify(mappingData, null, 2);
             editor.setValue(formatted);
+            if (typeof window !== 'undefined' && typeof window.rememberEditorMappingId === 'function') {
+                const candidateId = mappingData && (mappingData.id || mappingData.uuid);
+                window.rememberEditorMappingId(candidateId);
+            }
             this.showNotification('Mapping loaded', 'success');
         }
     }
@@ -3195,10 +3199,15 @@ class MonacoInitializer {
     getMappingFromEditor() {
         const editor = this.getActiveEditor();
         if (!editor) return null;
-        
+
         try {
             const content = editor.getValue();
-            return JSON.parse(content);
+            const parsed = JSON.parse(content);
+            if (typeof window !== 'undefined' && typeof window.rememberEditorMappingId === 'function') {
+                const candidateId = parsed && (parsed.id || parsed.uuid);
+                window.rememberEditorMappingId(candidateId);
+            }
+            return parsed;
         } catch (error) {
             this.showNotification('Invalid JSON in editor', 'error');
             return null;

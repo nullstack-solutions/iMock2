@@ -301,6 +301,35 @@
     <script src="monaco-enhanced.js"></script>
 
     <script>
+        const editorUrlParams = new URLSearchParams(window.location.search);
+        const initialMappingId = (editorUrlParams.get('mappingId') || '').trim() || null;
+
+        const editorMappingContext = {
+            initialMappingId,
+            lastKnownId: initialMappingId,
+            getFallbackId() {
+                return this.lastKnownId || this.initialMappingId || null;
+            },
+            remember(id) {
+                if (!id) return;
+                const trimmed = String(id).trim();
+                if (!trimmed) return;
+                this.lastKnownId = trimmed;
+            }
+        };
+
+        window.editorMappingContext = editorMappingContext;
+        window.rememberEditorMappingId = (id) => editorMappingContext.remember(id);
+
+        function resolveMappingIdentifier(mapping) {
+            if (!mapping || typeof mapping !== 'object') {
+                return null;
+            }
+
+            const id = mapping.id || mapping.uuid;
+            return id && String(id).trim() ? String(id).trim() : null;
+        }
+
         /**
          * Show notification
          */
@@ -973,6 +1002,51 @@
                     if (!jsonData) {
                         showNotification('No valid JSON to save', 'warning');
                         return;
+                    }
+
+                    const resolvedId = resolveMappingIdentifier(jsonData);
+                    if (resolvedId) {
+                        editorMappingContext.remember(resolvedId);
+                    } else {
+                        const fallbackId = editorMappingContext.getFallbackId();
+                        if (fallbackId) {
+                            const wantsUpdate = window.confirm(
+                                `В JSON отсутствует поле id.\nНажмите OK, чтобы обновить маппинг ${fallbackId}, или Cancel, чтобы создать новый.`
+                            );
+
+                            if (wantsUpdate) {
+                                jsonData.id = fallbackId;
+                                if (!jsonData.uuid) {
+                                    jsonData.uuid = fallbackId;
+                                }
+                                editorMappingContext.remember(fallbackId);
+                                showNotification(`ID ${fallbackId} будет использован для обновления маппинга`, 'info');
+                            } else {
+                                delete jsonData.id;
+                                delete jsonData.uuid;
+                            }
+                        }
+                    }
+
+                    if (jsonData.id && typeof jsonData.id === 'string') {
+                        jsonData.id = jsonData.id.trim();
+                        if (!jsonData.id) {
+                            delete jsonData.id;
+                        }
+                    }
+
+                    if (jsonData.uuid && typeof jsonData.uuid === 'string') {
+                        const trimmedUuid = jsonData.uuid.trim();
+                        if (trimmedUuid) {
+                            jsonData.uuid = trimmedUuid;
+                        } else {
+                            delete jsonData.uuid;
+                        }
+                    }
+
+                    const canonicalId = resolveMappingIdentifier(jsonData);
+                    if (canonicalId) {
+                        editorMappingContext.remember(canonicalId);
                     }
 
                     // Блокируем редактор на время сохранения
