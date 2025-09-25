@@ -2165,6 +2165,9 @@ class MonacoInitializer {
         this.historyNeedsRender = true;
         this.monacoSources = this.resolveMonacoSources();
         this.activeMonacoSource = null;
+        this.pendingReadOnlyRestore = null;
+        this.editorReadOnlyLocked = false;
+        this.pendingMappingLoadId = null;
     }
 
     resolveMonacoSources() {
@@ -2518,12 +2521,10 @@ class MonacoInitializer {
     async createEditors() {
         const theme = document.body.dataset.theme === 'dark' ? 'vs-dark' : 'vs';
 
-        // Check if we have a mappingId in URL - if so, show loading message instead of default stub
+        // Check if we have a mappingId in URL - if so, keep editor empty until mapping loads
         const urlParams = new URLSearchParams(window.location.search);
         const mappingId = urlParams.get('mappingId');
-        const initialValue = mappingId
-            ? `{\n  "_status": "Loading mapping ${mappingId}..."\n}`
-            : this.getDefaultStub();
+        const initialValue = mappingId ? '' : this.getDefaultStub();
 
         // Main editor
         const mainContainer = document.getElementById('jsonEditor');
@@ -2544,6 +2545,79 @@ class MonacoInitializer {
             this.editors.set('main', window.editor);
             await this.initializeHistory(initialValue);
         }
+    }
+
+    prepareEditorForMappingLoad(mappingId) {
+        const editor = this.getActiveEditor();
+        if (!editor) {
+            return;
+        }
+
+        let wasReadOnly = false;
+        try {
+            if (typeof monaco !== 'undefined' && monaco.editor && monaco.editor.EditorOption) {
+                wasReadOnly = Boolean(editor.getOption(monaco.editor.EditorOption.readOnly));
+            } else if (typeof editor.getRawOptions === 'function') {
+                const rawOptions = editor.getRawOptions();
+                wasReadOnly = Boolean(rawOptions && rawOptions.readOnly);
+            }
+        } catch (error) {
+            console.debug('[EDITOR] Unable to detect current readOnly state', error);
+        }
+
+        this.pendingReadOnlyRestore = wasReadOnly;
+
+        if (!wasReadOnly) {
+            try {
+                editor.updateOptions({ readOnly: true });
+                this.editorReadOnlyLocked = true;
+            } catch (error) {
+                console.debug('[EDITOR] Failed to toggle readOnly before load', error);
+                this.editorReadOnlyLocked = false;
+            }
+        } else {
+            this.editorReadOnlyLocked = false;
+        }
+
+        this.suspendHistoryRecording = true;
+        try {
+            editor.setValue('');
+        } finally {
+            this.suspendHistoryRecording = false;
+        }
+
+        if (this.historyDebounce) {
+            clearTimeout(this.historyDebounce);
+            this.historyDebounce = null;
+        }
+
+        if (mappingId) {
+            this.pendingMappingLoadId = mappingId;
+        }
+    }
+
+    finalizeEditorMappingLoad() {
+        const editor = this.getActiveEditor();
+
+        if (editor) {
+            if (this.editorReadOnlyLocked) {
+                try {
+                    editor.updateOptions({ readOnly: false });
+                } catch (error) {
+                    console.debug('[EDITOR] Failed to restore readOnly after load', error);
+                }
+            } else if (typeof this.pendingReadOnlyRestore === 'boolean') {
+                try {
+                    editor.updateOptions({ readOnly: this.pendingReadOnlyRestore });
+                } catch (error) {
+                    console.debug('[EDITOR] Failed to reset readOnly flag', error);
+                }
+            }
+        }
+
+        this.editorReadOnlyLocked = false;
+        this.pendingReadOnlyRestore = null;
+        this.pendingMappingLoadId = null;
     }
 
     createEditor(container, options) {
@@ -3188,6 +3262,9 @@ class MonacoInitializer {
         if (editor && mappingData) {
             const formatted = JSON.stringify(mappingData, null, 2);
             editor.setValue(formatted);
+
+            this.finalizeEditorMappingLoad();
+
             if (typeof window !== 'undefined' && typeof window.rememberEditorMappingId === 'function') {
                 const candidateId = mappingData && (mappingData.id || mappingData.uuid);
                 window.rememberEditorMappingId(candidateId);

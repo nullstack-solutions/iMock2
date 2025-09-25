@@ -1542,11 +1542,23 @@
 
                 showNotification('Loading mapping...', 'info');
 
-                // Clear any existing content and show loading message
-                if (window.monacoInitializer && window.monacoInitializer.isInitialized) {
+                // Clear any existing content while the mapping loads without polluting history
+                if (window.monacoInitializer && typeof window.monacoInitializer.prepareEditorForMappingLoad === 'function') {
+                    window.monacoInitializer.prepareEditorForMappingLoad(mappingId);
+                } else if (window.monacoInitializer && window.monacoInitializer.isInitialized) {
                     const editor = window.monacoInitializer.getActiveEditor();
                     if (editor) {
-                        editor.setValue(`{\n  "_status": "Loading mapping ${mappingId}..."\n}`);
+                        const previousFlag = window.monacoInitializer.suspendHistoryRecording;
+                        window.monacoInitializer.suspendHistoryRecording = true;
+                        try {
+                            editor.setValue('');
+                        } finally {
+                            window.monacoInitializer.suspendHistoryRecording = previousFlag;
+                        }
+                        if (window.monacoInitializer.historyDebounce) {
+                            clearTimeout(window.monacoInitializer.historyDebounce);
+                            window.monacoInitializer.historyDebounce = null;
+                        }
                     }
                 }
 
@@ -1597,6 +1609,10 @@
                     wiremockUrl: window.wiremockBaseUrl
                 });
                 showNotification(`Failed to load mapping: ${error.message}`, 'error');
+
+                if (window.monacoInitializer && typeof window.monacoInitializer.finalizeEditorMappingLoad === 'function') {
+                    window.monacoInitializer.finalizeEditorMappingLoad();
+                }
 
                 // Show error in editor as comment
                 const errorContent = `{
