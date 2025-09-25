@@ -704,21 +704,25 @@ function renderTemplateLibrary() {
         highlight.className = 'template-highlight';
         highlight.textContent = getTemplateHeadline(template);
 
+        const featuresContainer = document.createElement('div');
+        featuresContainer.className = 'template-features';
+
         const featureData = getTemplateFeature(template);
-        const feature = document.createElement('div');
-        feature.className = 'template-feature';
         if (featureData) {
-            const key = document.createElement('span');
+            const feature = document.createElement('div');
+            feature.className = 'template-feature';
+
+            const key = document.createElement('div');
             key.className = 'template-feature__key';
             key.textContent = featureData.label;
 
-            const value = document.createElement('span');
+            const value = document.createElement('div');
             value.className = 'template-feature__value';
             value.textContent = featureData.value;
 
             feature.appendChild(key);
-            feature.appendChild(document.createTextNode(' = '));
             feature.appendChild(value);
+            featuresContainer.appendChild(feature);
         }
 
         const preview = document.createElement('pre');
@@ -768,8 +772,8 @@ function renderTemplateLibrary() {
         if (highlight.textContent) {
             card.appendChild(highlight);
         }
-        if (feature.childNodes.length) {
-            card.appendChild(feature);
+        if (featuresContainer.childNodes.length) {
+            card.appendChild(featuresContainer);
         }
         card.appendChild(preview);
         card.appendChild(actions);

@@ -481,6 +481,14 @@ body.modal-open {
     gap: var(--space-3);
     transition: transform var(--transition-fast), box-shadow var(--transition-fast);
     cursor: pointer;
+    overflow: hidden;
+}
+
+.template-card .template-features {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    overflow: hidden;
 }
 
 .template-card:hover {
@@ -512,15 +520,19 @@ body.modal-open {
 .template-highlight {
     font-size: var(--font-size-xs);
     font-weight: 700;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.05em;
     text-transform: uppercase;
     color: var(--text-tertiary);
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .template-feature {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
     font-family: var(--font-mono);
     font-size: var(--font-size-xs);
     background: var(--bg-primary);
@@ -528,6 +540,8 @@ body.modal-open {
     border-radius: var(--radius-lg);
     padding: var(--space-2) var(--space-3);
     color: var(--text-secondary);
+    max-width: 100%;
+    overflow: hidden;
 }
 
 [data-theme="dark"] .template-feature {
@@ -537,6 +551,10 @@ body.modal-open {
 .template-feature__key {
     color: var(--primary-600);
     font-weight: 600;
+    font-size: 0.7em;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    opacity: 0.8;
 }
 
 [data-theme="dark"] .template-feature__key {
@@ -546,6 +564,9 @@ body.modal-open {
 .template-feature__value {
     color: var(--text-primary);
     font-weight: 500;
+    word-break: break-all;
+    line-height: 1.3;
+    font-size: 0.8em;
 }
 
 .template-actions {
