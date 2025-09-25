@@ -71,6 +71,59 @@ const TEMPLATE_LIBRARY = [
         }
     },
     {
+        id: 'webhook-callback',
+        title: 'Webhook callback',
+        description: 'Illustrates WireMock\'s webhook post-serve action to notify downstream services after a match.',
+        category: 'integration',
+        highlight: 'POST · /api/orders · webhook',
+        content: {
+            name: 'Order accepted with webhook callback',
+            request: {
+                method: 'POST',
+                urlPath: '/api/orders',
+                headers: {
+                    'Content-Type': {
+                        contains: 'application/json'
+                    }
+                },
+                bodyPatterns: [
+                    {
+                        matchesJsonPath: '$.orderId'
+                    }
+                ]
+            },
+            response: {
+                status: 202,
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                jsonBody: {
+                    status: 'QUEUED',
+                    message: 'Order accepted and will trigger fulfillment webhook.',
+                    callback: 'https://webhook.site/your-endpoint'
+                }
+            },
+            postServeActions: {
+                webhook: {
+                    method: 'POST',
+                    url: 'https://example.org/webhooks/order-events',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-WireMock-Source': 'json-studio'
+                    },
+                    body: JSON.stringify({
+                        type: 'ORDER_ACCEPTED',
+                        orderId: "{{jsonPath request.body '$.orderId'}}",
+                        occurredAt: "{{now offset='0' pattern=\"yyyy-MM-dd'T'HH:mm:ssXXX\"}}"
+                    })
+                }
+            },
+            metadata: {
+                tags: ['webhook', 'postServeActions']
+            }
+        }
+    },
+    {
         id: 'regex-url',
         title: 'Regex URL matcher',
         description: 'Use `urlPathPattern` to handle numeric identifiers without enumerating every path.',
@@ -130,13 +183,42 @@ const TEMPLATE_LIBRARY = [
                 severity: 'high'
             }
         }
+    },
+    {
+        id: 'proxy-pass-through',
+        title: 'Proxy pass-through with overrides',
+        description: 'Forward requests to an upstream service while tweaking headers and enabling recording.',
+        category: 'proxy',
+        highlight: 'ANY · /external/* → proxy',
+        content: {
+            name: 'External proxy passthrough',
+            priority: 10,
+            request: {
+                urlPattern: '/external/.*'
+            },
+            response: {
+                proxyBaseUrl: 'https://api.upstream.example.com',
+                additionalProxyRequestHeaders: {
+                    'X-Trace-Id': 'wm-{{randomValue type="UUID"}}'
+                },
+                additionalProxyResponseHeaders: {
+                    'X-Proxied-By': 'WireMock JSON Studio'
+                }
+            },
+            persistent: true,
+            metadata: {
+                tags: ['proxy', 'passthrough']
+            }
+        }
     }
 ];
 
 const TEMPLATE_CATEGORY_LABELS = {
     basic: 'Basic',
     advanced: 'Advanced',
-    testing: 'Testing'
+    testing: 'Testing',
+    integration: 'Integration',
+    proxy: 'Proxy'
 };
 
 function formatRelativeTime(timestamp) {
@@ -457,6 +539,19 @@ function renderTemplateLibrary() {
         : TEMPLATE_LIBRARY.slice();
 
     container.innerHTML = '';
+
+    const infoPanel = document.createElement('section');
+    infoPanel.className = 'template-info';
+    infoPanel.innerHTML = `
+        <p class="template-info__lead">Browse ready-made WireMock snippets or treat this gallery as a quick reference:</p>
+        <ul>
+            <li><strong>Use template</strong> drops the JSON straight into the editor.</li>
+            <li><strong>Copy JSON</strong> copies the snippet so you can adapt it manually.</li>
+            <li>Each card highlights key features like matchers, templating, webhooks, or proxy settings.</li>
+        </ul>
+        <p>It’s perfectly fine to just read through these examples—no need to apply a template if you only need guidance.</p>
+    `;
+    container.appendChild(infoPanel);
 
     if (!templates.length) {
         const empty = document.createElement('div');
