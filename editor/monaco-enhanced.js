@@ -321,6 +321,14 @@ const LARGE_DIGEST_THRESHOLD = 1_000_000;
 const HEADER_PARENT_KEYS = new Set(['headers']);
 const IGNORED_KEYS = new Set(['id', 'uuid', 'updatedAt', 'insertionIndex']);
 
+function isInsideJsonBody(context) {
+    if (!context || !Array.isArray(context.path)) {
+        return false;
+    }
+
+    return context.path.includes('jsonBody');
+}
+
 function detectHistoryBudget() {
     if (typeof navigator === 'undefined') {
         return DEFAULT_HISTORY_BUDGET;
@@ -422,21 +430,23 @@ function canonicalizeValue(value, context = { path: [] }) {
 
     if (value && typeof value === 'object') {
         const entries = [];
+        const preserveOrder = isInsideJsonBody(context);
         for (const [rawKey, rawValue] of Object.entries(value)) {
-            if (IGNORED_KEYS.has(rawKey)) {
+            if (IGNORED_KEYS.has(rawKey) && !preserveOrder) {
                 continue;
             }
 
             const parentKey = context.path[context.path.length - 1];
-            const key = parentKey && HEADER_PARENT_KEYS.has(parentKey) ? rawKey.toLowerCase() : rawKey;
+            const keyNeedsLowercase = parentKey && HEADER_PARENT_KEYS.has(parentKey) && !preserveOrder;
+            const key = keyNeedsLowercase ? rawKey.toLowerCase() : rawKey;
             const nextContext = { path: [...context.path, key] };
             const canonicalValue = canonicalizeValue(rawValue, nextContext);
             entries.push([key, canonicalValue]);
         }
 
-        entries.sort((a, b) => a[0].localeCompare(b[0]));
         const out = {};
-        for (const [key, val] of entries) {
+        const sourceEntries = preserveOrder ? entries : entries.sort((a, b) => a[0].localeCompare(b[0]));
+        for (const [key, val] of sourceEntries) {
             out[key] = val;
         }
         return out;

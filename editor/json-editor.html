@@ -31,9 +31,17 @@
                             <span class="icon" aria-hidden="true">📥</span>
                             <span class="btn-label">Load</span>
                         </button>
-                        <button class="btn btn-primary" onclick="saveFile()" title="Save (Ctrl+S)" data-tooltip="Save JSON locally (Ctrl+S)">
+                        <button class="btn btn-secondary" onclick="downloadCurrentMapping()" title="Download (Ctrl+S)" data-tooltip="Download JSON (Ctrl+S)">
                             <span class="icon" aria-hidden="true">💾</span>
-                            <span class="btn-label">Save</span>
+                            <span class="btn-label">Download</span>
+                        </button>
+                        <button class="btn btn-primary" onclick="updateMappingOnServer()" title="Update mapping" data-tooltip="Update existing mapping in WireMock">
+                            <span class="icon" aria-hidden="true">🔁</span>
+                            <span class="btn-label">Update</span>
+                        </button>
+                        <button class="btn btn-secondary" onclick="createMappingOnServer()" title="Create mapping" data-tooltip="Create new mapping in WireMock">
+                            <span class="icon" aria-hidden="true">✨</span>
+                            <span class="btn-label">Create</span>
                         </button>
                     </div>
                     <div class="btn-group" id="compareControls" role="group" aria-label="Compare actions" style="display: none;">
@@ -990,298 +998,243 @@
         }
 
         /**
-         * Save file
+         * Download current editor content
          */
-        async function saveFile() {
+        function downloadCurrentMapping() {
             try {
-                if (window.monacoInitializer && typeof window.monacoInitializer.getMappingFromEditor === 'function') {
-                    // Захватываем состояние сразу
-                    const jsonData = window.monacoInitializer.getMappingFromEditor();
-                    const timestamp = Date.now();
-
-                    if (!jsonData) {
-                        showNotification('No valid JSON to save', 'warning');
-                        return;
-                    }
-
-                    const resolvedId = resolveMappingIdentifier(jsonData);
-                    if (resolvedId) {
-                        editorMappingContext.remember(resolvedId);
-                    } else {
-                        const fallbackId = editorMappingContext.getFallbackId();
-                        if (fallbackId) {
-                            const wantsUpdate = window.confirm(
-                                `В JSON отсутствует поле id.\nНажмите OK, чтобы обновить маппинг ${fallbackId}, или Cancel, чтобы создать новый.`
-                            );
-
-                            if (wantsUpdate) {
-                                jsonData.id = fallbackId;
-                                if (!jsonData.uuid) {
-                                    jsonData.uuid = fallbackId;
-                                }
-                                editorMappingContext.remember(fallbackId);
-                                showNotification(`ID ${fallbackId} будет использован для обновления маппинга`, 'info');
-                            } else {
-                                delete jsonData.id;
-                                delete jsonData.uuid;
-                            }
-                        }
-                    }
-
-                    if (jsonData.id && typeof jsonData.id === 'string') {
-                        jsonData.id = jsonData.id.trim();
-                        if (!jsonData.id) {
-                            delete jsonData.id;
-                        }
-                    }
-
-                    if (jsonData.uuid && typeof jsonData.uuid === 'string') {
-                        const trimmedUuid = jsonData.uuid.trim();
-                        if (trimmedUuid) {
-                            jsonData.uuid = trimmedUuid;
-                        } else {
-                            delete jsonData.uuid;
-                        }
-                    }
-
-                    const canonicalId = resolveMappingIdentifier(jsonData);
-                    if (canonicalId) {
-                        editorMappingContext.remember(canonicalId);
-                    }
-
-                    // Блокируем редактор на время сохранения
-                    if (window.monacoInitializer && window.monacoInitializer.getActiveEditor) {
-                        const editor = window.monacoInitializer.getActiveEditor();
-                        if (editor) {
-                            editor.updateOptions({ readOnly: true });
-                        }
-                    }
-
-                    // Initialize metadata before saving
-                    if (!jsonData.metadata) {
-                        jsonData.metadata = {};
-                        console.log('📅 [METADATA] Initialized metadata object (JSON Editor)');
-                    }
-
-                    // Set created timestamp if not exists (first save)
-                    if (!jsonData.metadata.created) {
-                        jsonData.metadata.created = new Date().toISOString();
-                        console.log('📅 [METADATA] Set created timestamp:', jsonData.metadata.created);
-                    }
-
-                    // Always update edited timestamp and source
-                    jsonData.metadata.edited = new Date().toISOString();
-                    jsonData.metadata.source = 'editor';
-
-                    console.log('📅 [METADATA] Updated edited timestamp:', jsonData.metadata.edited);
-                    console.log('📅 [METADATA] Set source: editor');
-
-                    // Асинхронное сохранение с разблокировкой в finally
-                    const savePromise = (async () => {
-                        try {
-                            // Try WireMock integration first using direct apiFetch
-                            if (window.wiremockBaseUrl && window.apiFetch) {
-                                // Send to WireMock server
-                                const sendToWireMock = async () => {
-                                    const hasId = jsonData.id && jsonData.id.trim() !== '';
-
-                                    if (hasId) {
-                                        // If mapping has an ID, it's likely an existing mapping - try PUT first
-                                        console.log('Mapping has ID, trying PUT (update) first');
-                                        try {
-                                            const response = await window.apiFetch(`/mappings/${jsonData.id}`, {
-                                                method: 'PUT',
-                                                headers: { 'Content-Type': 'application/json' },
-                                                body: JSON.stringify(jsonData)
-                                            });
-
-                                            // Use server response for optimistic update - it contains authoritative data
-                                            const updatedMapping = response?.mapping || response;
-                                            showNotification('Mapping updated in WireMock successfully', 'success');
-                                            console.log('💾 [SAVE] Mapping updated successfully, using server response for optimistic updates:', updatedMapping);
-
-                                            // First: Apply optimistic update to show changes immediately
-                                            const optimisticResult = applyOptimisticMappingUpdateLocally(updatedMapping);
-                                            console.log('💾 [SAVE] Optimistic update result:', optimisticResult);
-
-                                            // Send optimistic update to main window immediately
-                                            if (window.opener && typeof window.opener.applyOptimisticMappingUpdate === 'function') {
-                                                try {
-                                                    console.log('🎯 [SAVE] Sending optimistic update to main window...');
-                                                    window.opener.applyOptimisticMappingUpdate(updatedMapping);
-                                                    console.log('🎯 [SAVE] Optimistic update sent to main window');
-                                                } catch (e) {
-                                                    console.warn('🎯 [SAVE] Failed to send optimistic update to main window:', e);
-                                                }
-                                            } else {
-                                                // Fallback: try postMessage
-                                                if (window.opener) {
-                                                    try {
-                                                        window.opener.postMessage({
-                                                            type: 'imock-optimistic-mapping-update',
-                                                            mapping: updatedMapping,
-                                                            source: 'json-editor-save',
-                                                            timestamp: Date.now()
-                                                        }, '*');
-                                                        console.log('🎯 [SAVE] Optimistic update sent via postMessage');
-                                                    } catch (e) {
-                                                        console.warn('🎯 [SAVE] postMessage failed:', e);
-                                                    }
-                                                }
-                                            }
-
-                                            // Skip cache refresh to avoid race conditions - let it happen naturally
-                                            return;
-                                        } catch (putError) {
-                                            console.warn('PUT failed, trying POST (create new):', putError);
-                                            // Fall through to POST attempt
-                                        }
-                                    }
-
-                                    try {
-                                        // Try POST (create new mapping) - either no ID or PUT failed
-                                        const response = await window.apiFetch('/mappings', {
-                                            method: 'POST',
-                                            headers: { 'Content-Type': 'application/json' },
-                                            body: JSON.stringify(jsonData)
-                                        });
-
-                                        // Use server response for optimistic update - it contains the created mapping
-                                        const createdMapping = response?.mapping || response;
-                                        showNotification('Mapping saved to WireMock successfully', 'success');
-                                        console.log('💾 [SAVE] New mapping saved successfully, using server response for optimistic updates:', createdMapping);
-
-                                        // First: Apply optimistic update to show changes immediately
-                                        const optimisticResult = applyOptimisticMappingUpdateLocally(createdMapping);
-                                        console.log('💾 [SAVE] Optimistic update result:', optimisticResult);
-
-                                        // Send optimistic update to main window immediately
-                                        if (window.opener && typeof window.opener.applyOptimisticMappingUpdate === 'function') {
-                                            try {
-                                                console.log('🎯 [SAVE] Sending optimistic update to main window...');
-                                                window.opener.applyOptimisticMappingUpdate(createdMapping);
-                                                console.log('🎯 [SAVE] Optimistic update sent to main window');
-                                            } catch (e) {
-                                                console.warn('🎯 [SAVE] Failed to send optimistic update to main window:', e);
-                                            }
-                                        } else {
-                                            // Fallback: try postMessage
-                                            if (window.opener) {
-                                                try {
-                                                    window.opener.postMessage({
-                                                        type: 'imock-optimistic-mapping-update',
-                                                        mapping: jsonData,
-                                                        source: 'json-editor-save',
-                                                        timestamp: Date.now()
-                                                    }, '*');
-                                                    console.log('🎯 [SAVE] Optimistic update sent via postMessage');
-                                                } catch (e) {
-                                                    console.warn('🎯 [SAVE] postMessage failed:', e);
-                                                }
-                                            }
-                                        }
-
-                                        // Skip cache refresh to avoid race conditions
-                                    } catch (postError) {
-                                        console.warn('POST failed:', postError);
-
-                                        // If we haven't tried PUT yet (no ID case), try PUT as fallback
-                                        if (!hasId && jsonData.id) {
-                                            try {
-                                                console.log('Trying PUT as fallback');
-                                                const response = await window.apiFetch(`/mappings/${jsonData.id}`, {
-                                                    method: 'PUT',
-                                                    headers: { 'Content-Type': 'application/json' },
-                                                    body: JSON.stringify(jsonData)
-                                                });
-
-                                                // Use server response for optimistic update
-                                                const updatedMapping = response?.mapping || response;
-                                                showNotification('Mapping updated in WireMock successfully', 'success');
-                                                console.log('💾 [SAVE] Mapping updated via PUT fallback, using server response for optimistic updates:', updatedMapping);
-
-                                                // First: Apply optimistic update to show changes immediately
-                                                const optimisticResult = applyOptimisticMappingUpdateLocally(updatedMapping);
-                                                console.log('💾 [SAVE] Optimistic update result:', optimisticResult);
-
-                                                // Send optimistic update to main window immediately
-                                                if (window.opener && typeof window.opener.applyOptimisticMappingUpdate === 'function') {
-                                                    try {
-                                                        console.log('🎯 [SAVE] Sending optimistic update to main window...');
-                                                        window.opener.applyOptimisticMappingUpdate(updatedMapping);
-                                                        console.log('🎯 [SAVE] Optimistic update sent to main window');
-                                                    } catch (e) {
-                                                        console.warn('🎯 [SAVE] Failed to send optimistic update to main window:', e);
-                                                    }
-                                                } else {
-                                                    // Fallback: try postMessage
-                                                    if (window.opener) {
-                                                        try {
-                                                            window.opener.postMessage({
-                                                                type: 'imock-optimistic-mapping-update',
-                                                                mapping: jsonData,
-                                                                source: 'json-editor-save',
-                                                                timestamp: Date.now()
-                                                            }, '*');
-                                                            console.log('🎯 [SAVE] Optimistic update sent via postMessage');
-                                                        } catch (e) {
-                                                            console.warn('🎯 [SAVE] postMessage failed:', e);
-                                                        }
-                                                    }
-                                                }
-
-                                                // Skip cache refresh to avoid race conditions
-                                                return;
-                                            } catch (putError) {
-                                                console.error('Both POST and PUT failed:', { postError, putError });
-                                                throw new Error('Failed to save to WireMock');
-                                            }
-                                        } else {
-                                            throw postError;
-                                        }
-                                    }
-                                };
-
-                                sendToWireMock().catch(error => {
-                                    console.error('WireMock save failed:', error);
-                                    // Fall back to download
-                                    const content = JSON.stringify(jsonData, null, 2);
-                                    downloadFile(content, 'wiremock-mapping.json', 'application/json');
-                                    saveToHistory(content, 'Saved as download (WireMock unavailable)');
-                                    showNotification('WireMock unavailable, file downloaded instead', 'warning');
-                                });
-                            } else {
-                                // Fall back to download
-                                const content = JSON.stringify(jsonData, null, 2);
-                                downloadFile(content, 'wiremock-mapping.json', 'application/json');
-                                saveToHistory(content, 'Saved document');
-                                showNotification('File saved successfully', 'success');
-                            }
-                        } finally {
-                            // Разблокируем редактор
-                            if (window.monacoInitializer && window.monacoInitializer.getActiveEditor) {
-                                const editor = window.monacoInitializer.getActiveEditor();
-                                if (editor) {
-                                    editor.updateOptions({ readOnly: false });
-                                }
-                            }
-                        }
-                    })();
-
-                    return savePromise;
-                } else {
-                    showNotification('Editor not ready for save', 'error');
+                if (window.monacoInitializer && typeof window.monacoInitializer.saveFile === 'function') {
+                    window.monacoInitializer.saveFile();
+                    return;
                 }
+
+                const editor = window.monacoInitializer && typeof window.monacoInitializer.getActiveEditor === 'function'
+                    ? window.monacoInitializer.getActiveEditor()
+                    : null;
+                const content = editor && typeof editor.getValue === 'function' ? editor.getValue() : '';
+
+                if (!content) {
+                    showNotification('No content available for download', 'warning');
+                    return;
+                }
+
+                downloadFile(content, 'wiremock-mapping.json', 'application/json');
+                showNotification('File downloaded', 'success');
             } catch (error) {
-                console.error('Save error:', error);
-                showNotification('Save error: ' + error.message, 'error');
-                // Разблокируем редактор в случае ошибки
-                if (window.monacoInitializer && window.monacoInitializer.getActiveEditor) {
-                    const editor = window.monacoInitializer.getActiveEditor();
-                    if (editor) {
-                        editor.updateOptions({ readOnly: false });
-                    }
+                console.error('Download error:', error);
+                showNotification('Download error: ' + error.message, 'error');
+            }
+        }
+
+        function getMappingFromEditorSnapshot() {
+            if (!window.monacoInitializer || typeof window.monacoInitializer.getMappingFromEditor !== 'function') {
+                showNotification('Editor not ready for mapping operations', 'error');
+                return null;
+            }
+
+            const mapping = window.monacoInitializer.getMappingFromEditor();
+            if (!mapping) {
+                showNotification('No valid JSON to process', 'warning');
+                return null;
+            }
+
+            return mapping;
+        }
+
+        function normalizeMappingIdentifiers(mapping) {
+            if (!mapping || typeof mapping !== 'object') {
+                return;
+            }
+
+            if (typeof mapping.id === 'string') {
+                const trimmed = mapping.id.trim();
+                if (trimmed) {
+                    mapping.id = trimmed;
+                } else {
+                    delete mapping.id;
                 }
+            }
+
+            if (typeof mapping.uuid === 'string') {
+                const trimmed = mapping.uuid.trim();
+                if (trimmed) {
+                    mapping.uuid = trimmed;
+                } else {
+                    delete mapping.uuid;
+                }
+            }
+        }
+
+        function ensureMappingMetadata(mapping, { isCreate } = {}) {
+            if (!mapping || typeof mapping !== 'object') {
+                return;
+            }
+
+            const nowIso = new Date().toISOString();
+            if (!mapping.metadata || typeof mapping.metadata !== 'object') {
+                mapping.metadata = {};
+            }
+
+            if (isCreate && !mapping.metadata.created) {
+                mapping.metadata.created = nowIso;
+            } else if (!mapping.metadata.created) {
+                mapping.metadata.created = nowIso;
+            }
+
+            mapping.metadata.edited = nowIso;
+            mapping.metadata.source = 'editor';
+        }
+
+        function propagateMappingUpdate(mappingData) {
+            if (!mappingData) {
+                return;
+            }
+
+            applyOptimisticMappingUpdateLocally(mappingData);
+
+            if (window.opener && typeof window.opener.applyOptimisticMappingUpdate === 'function') {
+                try {
+                    window.opener.applyOptimisticMappingUpdate(mappingData);
+                } catch (error) {
+                    console.warn('Failed to push optimistic update to opener:', error);
+                }
+            } else if (window.opener) {
+                try {
+                    window.opener.postMessage({
+                        type: 'imock-optimistic-mapping-update',
+                        mapping: mappingData,
+                        source: 'json-editor-save',
+                        timestamp: Date.now()
+                    }, '*');
+                } catch (error) {
+                    console.warn('Failed to postMessage optimistic update to opener:', error);
+                }
+            }
+        }
+
+        function buildDownloadFilename(mapping, suffix = 'wiremock-mapping') {
+            const base = mapping && mapping.name ? String(mapping.name) : suffix;
+            const normalized = base.toLowerCase().replace(/[^a-z0-9-_]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+            return (normalized || suffix) + '.json';
+        }
+
+        async function executeWireMockOperation(mapping, { mode, targetId }) {
+            const editor = window.monacoInitializer && typeof window.monacoInitializer.getActiveEditor === 'function'
+                ? window.monacoInitializer.getActiveEditor()
+                : null;
+
+            if (editor) {
+                editor.updateOptions({ readOnly: true });
+            }
+
+            const serialized = JSON.stringify(mapping, null, 2);
+
+            try {
+                if (!window.apiFetch || !window.wiremockBaseUrl) {
+                    throw new Error('WireMock is not connected');
+                }
+
+                const endpoint = mode === 'update' ? `/mappings/${encodeURIComponent(targetId)}` : '/mappings';
+                const method = mode === 'update' ? 'PUT' : 'POST';
+                const response = await window.apiFetch(endpoint, {
+                    method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: serialized
+                });
+
+                const payload = response?.mapping || response;
+                const successMessage = mode === 'update'
+                    ? `Mapping ${targetId || payload?.id} updated successfully`
+                    : `Mapping ${payload?.id || mapping.name || 'new mapping'} created successfully`;
+
+                showNotification(successMessage, 'success');
+                propagateMappingUpdate(payload || mapping);
+
+                const rememberedId = resolveMappingIdentifier(payload) || resolveMappingIdentifier(mapping);
+                if (rememberedId) {
+                    editorMappingContext.remember(rememberedId);
+                }
+
+                return payload;
+            } catch (error) {
+                console.error('WireMock operation failed:', error);
+                const filename = buildDownloadFilename(mapping, mode === 'update' ? 'wiremock-update' : 'wiremock-create');
+                downloadFile(serialized, filename, 'application/json');
+                saveToHistory(serialized, mode === 'update' ? 'Saved as download (update fallback)' : 'Saved as download (create fallback)');
+                showNotification('WireMock unavailable, mapping downloaded instead', 'warning');
+                return null;
+            } finally {
+                if (editor) {
+                    editor.updateOptions({ readOnly: false });
+                }
+            }
+        }
+
+        async function updateMappingOnServer() {
+            const mapping = getMappingFromEditorSnapshot();
+            if (!mapping) {
+                return;
+            }
+
+            normalizeMappingIdentifiers(mapping);
+
+            let targetId = resolveMappingIdentifier(mapping);
+            if (targetId) {
+                const confirmed = window.confirm(`Update mapping ${targetId}? Current data on the server will be replaced.`);
+                if (!confirmed) {
+                    showNotification('Update cancelled', 'info');
+                    return;
+                }
+            } else {
+                const fallbackId = editorMappingContext.getFallbackId();
+                if (!fallbackId) {
+                    showNotification('Cannot update mapping: no identifier available', 'error');
+                    return;
+                }
+
+                const confirmed = window.confirm(`The JSON does not contain an id. Use cached id ${fallbackId} for update?`);
+                if (!confirmed) {
+                    showNotification('Update cancelled', 'info');
+                    return;
+                }
+
+                mapping.id = fallbackId;
+                if (!mapping.uuid) {
+                    mapping.uuid = fallbackId;
+                }
+                targetId = fallbackId;
+            }
+
+            if (mapping.uuid && !mapping.id) {
+                mapping.id = mapping.uuid;
+            }
+
+            ensureMappingMetadata(mapping, { isCreate: false });
+            editorMappingContext.remember(targetId);
+
+            await executeWireMockOperation(mapping, { mode: 'update', targetId });
+        }
+
+        async function createMappingOnServer() {
+            const mapping = getMappingFromEditorSnapshot();
+            if (!mapping) {
+                return;
+            }
+
+            normalizeMappingIdentifiers(mapping);
+
+            const label = mapping.name || mapping.request?.url || mapping.request?.urlPath || 'new mapping';
+            const confirmed = window.confirm(`Create a new mapping "${label}" in WireMock?`);
+            if (!confirmed) {
+                showNotification('Creation cancelled', 'info');
+                return;
+            }
+
+            ensureMappingMetadata(mapping, { isCreate: true });
+
+            const result = await executeWireMockOperation(mapping, { mode: 'create' });
+            const rememberedId = resolveMappingIdentifier(result) || resolveMappingIdentifier(mapping);
+            if (rememberedId) {
+                editorMappingContext.remember(rememberedId);
             }
         }
 
