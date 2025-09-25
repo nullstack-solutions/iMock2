@@ -359,7 +359,8 @@ function waitForTransaction(tx) {
 
 function openHistoryDatabase() {
     if (typeof indexedDB === 'undefined') {
-        throw new Error('IndexedDB is not available');
+        console.info('[HISTORY] IndexedDB is not available; history persistence disabled');
+        return Promise.resolve(null);
     }
 
     return new Promise((resolve, reject) => {
@@ -574,7 +575,14 @@ function delay(ms) {
 class EditorHistory {
     constructor(limit = 50) {
         this.limit = Math.max(5, limit);
-        this.dbPromise = openHistoryDatabase();
+        this.supported = typeof indexedDB !== 'undefined';
+        this.dbPromise = this.supported
+            ? openHistoryDatabase().catch((error) => {
+                console.warn('[HISTORY] Failed to open history database, disabling persistence', error);
+                this.supported = false;
+                return null;
+            })
+            : Promise.resolve(null);
         this.cache = new Map();
         this.cacheLimit = 5;
         this.currentId = null;
@@ -590,8 +598,17 @@ class EditorHistory {
     }
 
     async initialiseState() {
+        if (!this.supported) {
+            return;
+        }
+
         try {
             const db = await this.dbPromise;
+            if (!db) {
+                this.supported = false;
+                console.info('[HISTORY] History persistence disabled (database unavailable)');
+                return;
+            }
             const entries = await this.readAllFrames(db);
             if (entries.length) {
                 const latest = entries[entries.length - 1];
@@ -622,12 +639,25 @@ class EditorHistory {
                 latestLabel
             };
         } catch (error) {
+            this.supported = false;
             console.warn('[HISTORY] Failed to initialise history', error);
         }
     }
 
     async reset(initialContent = '', meta = {}) {
         await this.ready;
+        if (!this.supported) {
+            this.cache.clear();
+            this.currentId = null;
+            this.lastEntry = null;
+            this.stats = {
+                count: 0,
+                byteSize: 0,
+                latestTimestamp: null,
+                latestLabel: null
+            };
+            return;
+        }
         const normalized = typeof initialContent === 'string' ? initialContent : '';
         await this.withLock(async () => {
             const db = await this.dbPromise;
@@ -657,6 +687,9 @@ class EditorHistory {
     }
 
     async readAllFrames(db) {
+        if (!db) {
+            return [];
+        }
         return new Promise((resolve, reject) => {
             const tx = db.transaction(HISTORY_FRAMES_STORE, 'readonly');
             const store = tx.objectStore(HISTORY_FRAMES_STORE);
@@ -796,6 +829,9 @@ class EditorHistory {
 
     async record(content, meta = {}) {
         await this.ready;
+        if (!this.supported) {
+            return { recorded: false, reason: 'unsupported', entry: null };
+        }
         const normalized = typeof content === 'string' ? content : '';
         const timestamp = Date.now();
         const manual = Boolean(meta.manual);
@@ -918,6 +954,9 @@ class EditorHistory {
 
     async getEntries(options = {}) {
         await this.ready;
+        if (!this.supported) {
+            return [];
+        }
         const newestFirst = options.newestFirst === true;
         const db = await this.dbPromise;
         const entries = await this.readAllFrames(db);
@@ -940,6 +979,9 @@ class EditorHistory {
 
     async getEntryById(id) {
         await this.ready;
+        if (!this.supported) {
+            return null;
+        }
         const db = await this.dbPromise;
         return new Promise((resolve, reject) => {
             const tx = db.transaction(HISTORY_FRAMES_STORE, 'readonly');
@@ -959,6 +1001,18 @@ class EditorHistory {
 
     async clear(options = {}) {
         await this.ready;
+        if (!this.supported) {
+            this.cache.clear();
+            this.currentId = null;
+            this.lastEntry = null;
+            this.stats = {
+                count: 0,
+                byteSize: 0,
+                latestTimestamp: null,
+                latestLabel: null
+            };
+            return;
+        }
         const keepLatest = options.keepLatest !== false;
         const latestContent = options.latestContent || '';
         const label = options.label || 'Current document';
@@ -1006,6 +1060,9 @@ class EditorHistory {
 
     async enforceBudget(options = {}) {
         await this.ready;
+        if (!this.supported) {
+            return;
+        }
         if (this.stats.byteSize <= this.budgetBytes) {
             return;
         }
