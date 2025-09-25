@@ -8,7 +8,7 @@ on:
 
 # Устанавливаем необходимые разрешения для GITHUB_TOKEN для корректной работы с GitHub Pages
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
