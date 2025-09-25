@@ -127,14 +127,7 @@
                         </div>
                         <div class="form-group">
                             <label class="form-label">Status</label>
-                            <select class="form-select" id="filter-status" onchange="applyFilters()">
-                                <option value="">All Statuses</option>
-                                <option value="200">200 OK</option>
-                                <option value="201">201 Created</option>
-                                <option value="400">400 Bad Request</option>
-                                <option value="404">404 Not Found</option>
-                                <option value="500">500 Internal Error</option>
-                            </select>
+                            <input type="number" class="form-input" id="filter-status" placeholder="e.g., 200" min="100" max="599" oninput="applyFilters()">
                         </div>
                         <div class="form-group">
                             <button class="btn btn-secondary" onclick="clearMappingFilters()">Clear Filters</button>
@@ -557,17 +550,18 @@
     <div id="edit-mapping-modal" class="modal hidden">
         <div class="modal-content">
             <div class="modal-header">
-                <button type="button" class="btn btn-primary" onclick="updateMapping()">Update Mapping</button>
-                <h3 id="edit-modal-title">Edit Mapping</h3>
-                <button class="modal-close" onclick="hideModal('edit-mapping-modal')">&times;</button>
-            </div>
-            
-            <!-- Editor Mode Switcher -->
-            <div class="editor-mode-switcher">
-                <button type="button" class="mode-btn" data-editor-mode="json">📄 JSON</button>
-                <div class="editor-status">
-                    <span id="editor-mode-indicator">Mode: JSON</span>
-                    <span id="editor-dirty-indicator" class="dirty-indicator" style="display: none;">●</span>
+                <div class="modal-header-main">
+                    <h3 id="edit-modal-title">Edit Mapping</h3>
+                    <span id="editor-dirty-indicator" class="dirty-indicator" style="display: none;">● Unsaved changes</span>
+                </div>
+                <div class="modal-header-actions">
+                    <button type="button" class="btn btn-secondary btn-sm" data-action="format-json">🎨 Format</button>
+                    <button type="button" class="btn btn-secondary btn-sm" data-action="minify-json">📦 Minify</button>
+                    <button type="button" class="btn btn-primary" id="update-mapping-btn" onclick="updateMapping()">
+                        <span class="btn-label">Update Mapping</span>
+                        <span class="btn-spinner loading-spinner" aria-hidden="true"></span>
+                    </button>
+                    <button class="modal-close" onclick="hideModal('edit-mapping-modal')">&times;</button>
                 </div>
             </div>
             
@@ -642,12 +636,8 @@
             </div>
             
             <!-- JSON Editor Container -->
-            <div id="json-editor-container">
-                <div class="editor-toolbar">
-                    <button type="button" class="btn btn-sm" data-action="format-json">🎨 Format</button>
-                    <button type="button" class="btn btn-sm" data-action="minify-json">📦 Minify</button>
-                </div>
-                <textarea id="json-editor" class="json-editor" rows="50" placeholder="{
+            <div id="json-editor-container" class="json-editor-wrapper">
+                <textarea id="json-editor" class="json-editor" rows="1" placeholder="{
   \"name\": \"My Mapping\",
   \"request\": {
     \"method\": \"GET\",

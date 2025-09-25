@@ -121,6 +121,50 @@ body {
     transition: background-color var(--transition-normal), color var(--transition-normal);
 }
 
+/* ===== GLOBAL SCROLLBARS ===== */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--primary-300) var(--bg-secondary);
+}
+
+*::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+    background: var(--bg-secondary);
+    border-radius: var(--radius-md);
+}
+
+*::-webkit-scrollbar-thumb {
+    background: var(--primary-300);
+    border-radius: var(--radius-md);
+    border: 2px solid transparent;
+    background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+    background: var(--primary-400);
+    background-clip: content-box;
+}
+
+[data-theme="dark"] * {
+    scrollbar-color: var(--primary-500) var(--bg-tertiary);
+}
+
+[data-theme="dark"] *::-webkit-scrollbar-track {
+    background: var(--bg-tertiary);
+}
+
+[data-theme="dark"] *::-webkit-scrollbar-thumb {
+    background: var(--primary-500);
+}
+
+[data-theme="dark"] *::-webkit-scrollbar-thumb:hover {
+    background: var(--primary-400);
+}
+
 /* ===== LAYOUT COMPONENTS ===== */
 .header {
     background: var(--bg-primary);
