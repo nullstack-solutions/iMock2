@@ -9,6 +9,10 @@ const TEMPLATE_LIBRARY = [
         description: 'Static JSON response for a GET endpoint – perfect starting point for simple mocks.',
         category: 'basic',
         highlight: 'GET · /api/example',
+        feature: {
+            path: ['response', 'jsonBody', 'message'],
+            label: 'response.jsonBody.message'
+        },
         content: {
             name: 'Basic GET stub',
             request: {
@@ -33,6 +37,10 @@ const TEMPLATE_LIBRARY = [
         description: 'Matches on POST payload using JSONPath and echoes selected fields back in the response.',
         category: 'advanced',
         highlight: 'POST · /api/orders',
+        feature: {
+            path: ['request', 'bodyPatterns', 0, 'matchesJsonPath'],
+            label: 'request.bodyPatterns[0].matchesJsonPath'
+        },
         content: {
             name: 'POST order matcher',
             request: {
@@ -76,6 +84,10 @@ const TEMPLATE_LIBRARY = [
         description: 'Illustrates WireMock\'s webhook post-serve action to notify downstream services after a match.',
         category: 'integration',
         highlight: 'POST · /api/orders · webhook',
+        feature: {
+            path: ['postServeActions', 'webhook', 'url'],
+            label: 'postServeActions.webhook.url'
+        },
         content: {
             name: 'Order accepted with webhook callback',
             request: {
@@ -129,6 +141,10 @@ const TEMPLATE_LIBRARY = [
         description: 'Use `urlPathPattern` to handle numeric identifiers without enumerating every path.',
         category: 'advanced',
         highlight: 'GET · /api/items/{id}',
+        feature: {
+            path: ['request', 'urlPathPattern'],
+            label: 'request.urlPathPattern'
+        },
         content: {
             name: 'Item lookup (regex)',
             request: {
@@ -161,6 +177,10 @@ const TEMPLATE_LIBRARY = [
         description: 'Simulate backend failures with delayed responses and WireMock faults to test resiliency.',
         category: 'testing',
         highlight: 'GET · /api/internal/report',
+        feature: {
+            path: ['response', 'fault'],
+            label: 'response.fault'
+        },
         content: {
             name: 'Fault injection stub',
             request: {
@@ -190,6 +210,10 @@ const TEMPLATE_LIBRARY = [
         description: 'Forward requests to an upstream service while tweaking headers and enabling recording.',
         category: 'proxy',
         highlight: 'ANY · /external/* → proxy',
+        feature: {
+            path: ['response', 'proxyBaseUrl'],
+            label: 'response.proxyBaseUrl'
+        },
         content: {
             name: 'External proxy passthrough',
             priority: 10,
@@ -482,6 +506,93 @@ class EditorHistory {
     }
 }
 
+function resolveTemplatePath(source, path) {
+    if (!source || !path) {
+        return undefined;
+    }
+
+    const segments = Array.isArray(path)
+        ? path
+        : String(path)
+            .replace(/\[(\d+)\]/g, '.$1')
+            .split('.');
+
+    return segments.reduce((acc, segment) => {
+        if (acc == null) {
+            return undefined;
+        }
+
+        if (Array.isArray(acc)) {
+            const index = Number(segment);
+            return Number.isInteger(index) ? acc[index] : undefined;
+        }
+
+        return acc[segment];
+    }, source);
+}
+
+function formatFeatureValue(value) {
+    if (value == null) {
+        return '';
+    }
+
+    if (typeof value === 'string') {
+        return value.length > 80 ? `${value.slice(0, 77)}…` : value;
+    }
+
+    if (typeof value === 'number' || typeof value === 'boolean') {
+        return String(value);
+    }
+
+    try {
+        const serialized = JSON.stringify(value);
+        return serialized.length > 80 ? `${serialized.slice(0, 77)}…` : serialized;
+    } catch (error) {
+        console.warn('Failed to serialise feature value', error);
+        return '';
+    }
+}
+
+function getTemplateFeature(template) {
+    if (!template || !template.feature) {
+        return null;
+    }
+
+    const featurePath = template.feature.path || template.feature;
+    const label = template.feature.label
+        || (Array.isArray(featurePath) ? featurePath.join('.') : String(featurePath));
+    const rawValue = resolveTemplatePath(template.content, featurePath);
+
+    if (typeof rawValue === 'undefined') {
+        return null;
+    }
+
+    return {
+        label,
+        value: formatFeatureValue(rawValue)
+    };
+}
+
+function getTemplateHeadline(template) {
+    if (!template) {
+        return '';
+    }
+
+    if (template.highlight) {
+        return template.highlight;
+    }
+
+    const info = [];
+    if (template.content?.request?.method) {
+        info.push(template.content.request.method);
+    }
+    if (template.content?.request?.url || template.content?.request?.urlPath) {
+        info.push(template.content.request.url || template.content.request.urlPath);
+    }
+
+    return info.join(' · ');
+}
+
 function buildTemplatePreview(template) {
     try {
         const payload = template && template.content ? template.content : {};
@@ -540,6 +651,8 @@ function renderTemplateLibrary() {
 
     container.innerHTML = '';
 
+    ensureTemplatePreviewHandlers();
+
     const infoPanel = document.createElement('section');
     infoPanel.className = 'template-info';
     infoPanel.innerHTML = `
@@ -588,18 +701,24 @@ function renderTemplateLibrary() {
         description.textContent = template.description || 'Ready-to-use WireMock template.';
 
         const highlight = document.createElement('span');
-        highlight.className = 'history-actions';
-        if (template.highlight) {
-            highlight.textContent = template.highlight;
-        } else {
-            const info = [];
-            if (template.content?.request?.method) {
-                info.push(template.content.request.method);
-            }
-            if (template.content?.request?.url || template.content?.request?.urlPath) {
-                info.push(template.content.request.url || template.content.request.urlPath);
-            }
-            highlight.textContent = info.join(' · ');
+        highlight.className = 'template-highlight';
+        highlight.textContent = getTemplateHeadline(template);
+
+        const featureData = getTemplateFeature(template);
+        const feature = document.createElement('div');
+        feature.className = 'template-feature';
+        if (featureData) {
+            const key = document.createElement('span');
+            key.className = 'template-feature__key';
+            key.textContent = featureData.label;
+
+            const value = document.createElement('span');
+            value.className = 'template-feature__value';
+            value.textContent = featureData.value;
+
+            feature.appendChild(key);
+            feature.appendChild(document.createTextNode(' = '));
+            feature.appendChild(value);
         }
 
         const preview = document.createElement('pre');
@@ -636,11 +755,11 @@ function renderTemplateLibrary() {
         actions.appendChild(useButton);
         actions.appendChild(copyButton);
 
-        card.addEventListener('click', () => applyTemplateFromCard(template));
+        card.addEventListener('click', () => showTemplatePreview(template));
         card.addEventListener('keydown', (event) => {
             if (event.key === 'Enter' || event.key === ' ') {
                 event.preventDefault();
-                applyTemplateFromCard(template);
+                showTemplatePreview(template);
             }
         });
 
@@ -649,11 +768,162 @@ function renderTemplateLibrary() {
         if (highlight.textContent) {
             card.appendChild(highlight);
         }
+        if (feature.childNodes.length) {
+            card.appendChild(feature);
+        }
         card.appendChild(preview);
         card.appendChild(actions);
 
         container.appendChild(card);
     });
+}
+
+function ensureTemplatePreviewHandlers() {
+    const modal = document.getElementById('templatePreviewModal');
+    if (!modal || modal.dataset.previewBound === 'true') {
+        return;
+    }
+
+    modal.dataset.previewBound = 'true';
+
+    const actions = modal.querySelector('#templatePreviewActions');
+    if (actions) {
+        actions.addEventListener('click', async (event) => {
+            const button = event.target instanceof HTMLElement
+                ? event.target.closest('[data-template-action]')
+                : null;
+            if (!button) {
+                return;
+            }
+
+            event.preventDefault();
+
+            const action = button.dataset.templateAction;
+            if (!action) {
+                return;
+            }
+
+            const template = getTemplateById(modal.dataset.templateId);
+            if (!template) {
+                return;
+            }
+
+            if (action === 'apply') {
+                applyTemplateFromCard(template);
+                return;
+            }
+
+            if (action === 'copy') {
+                const json = typeof template.content === 'string'
+                    ? template.content
+                    : JSON.stringify(template.content, null, 2);
+                const success = await copyTextToClipboard(json);
+                const initializer = window.monacoInitializer;
+                if (initializer && typeof initializer.showNotification === 'function') {
+                    initializer.showNotification(success ? `Template "${template.title}" copied` : 'Clipboard copy failed', success ? 'success' : 'error');
+                }
+                return;
+            }
+
+            if (action === 'close') {
+                if (typeof window.closeModal === 'function') {
+                    window.closeModal('templatePreviewModal');
+                }
+            }
+        });
+    }
+}
+
+function getTemplateById(templateId) {
+    if (!templateId) {
+        return null;
+    }
+
+    const initializer = window.monacoInitializer;
+    const templates = initializer && typeof initializer.getTemplateLibrary === 'function'
+        ? initializer.getTemplateLibrary()
+        : TEMPLATE_LIBRARY.slice();
+
+    return templates.find((item) => item.id === templateId) || null;
+}
+
+function showTemplatePreview(template) {
+    if (!template || !template.id) {
+        return;
+    }
+
+    const modal = document.getElementById('templatePreviewModal');
+    if (!modal) {
+        return;
+    }
+
+    modal.dataset.templateId = template.id;
+
+    const title = modal.querySelector('#modal-title-template-preview');
+    if (title) {
+        title.textContent = template.title || 'Template preview';
+    }
+
+    const description = modal.querySelector('#templatePreviewDescription');
+    if (description) {
+        description.textContent = template.description || '';
+        description.style.display = template.description ? '' : 'none';
+    }
+
+    const meta = modal.querySelector('#templatePreviewMeta');
+    if (meta) {
+        const headline = getTemplateHeadline(template) || '—';
+        const feature = getTemplateFeature(template);
+
+        meta.innerHTML = '';
+
+        const endpointRow = document.createElement('div');
+        endpointRow.className = 'template-preview-meta__row';
+
+        const endpointLabel = document.createElement('span');
+        endpointLabel.className = 'template-preview-meta__label';
+        endpointLabel.textContent = 'Endpoint';
+
+        const endpointValue = document.createElement('span');
+        endpointValue.className = 'template-preview-meta__value';
+        endpointValue.textContent = headline;
+
+        endpointRow.appendChild(endpointLabel);
+        endpointRow.appendChild(endpointValue);
+        meta.appendChild(endpointRow);
+
+        if (feature) {
+            const featureRow = document.createElement('div');
+            featureRow.className = 'template-preview-meta__row';
+
+            const featureLabel = document.createElement('span');
+            featureLabel.className = 'template-preview-meta__label';
+            featureLabel.textContent = 'Highlight';
+
+            const featureCode = document.createElement('code');
+            featureCode.className = 'template-preview-meta__code';
+            featureCode.textContent = `${feature.label} = ${feature.value}`;
+
+            featureRow.appendChild(featureLabel);
+            featureRow.appendChild(featureCode);
+            meta.appendChild(featureRow);
+        }
+    }
+
+    const code = modal.querySelector('#templatePreviewCode');
+    if (code) {
+        const payload = template && template.content ? template.content : {};
+        const json = typeof payload === 'string'
+            ? payload
+            : JSON.stringify(payload, null, 2);
+        code.textContent = json;
+    }
+
+    ensureTemplatePreviewHandlers();
+
+    if (typeof window.openModal === 'function') {
+        window.openModal('templatePreviewModal');
+    }
 }
 
 function applyTemplateFromCard(template) {
@@ -670,6 +940,7 @@ function applyTemplateFromCard(template) {
     }
 
     if (applied && typeof window.closeModal === 'function') {
+        window.closeModal('templatePreviewModal');
         window.closeModal('fullscreenModal');
     }
 }

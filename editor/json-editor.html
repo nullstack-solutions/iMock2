@@ -163,6 +163,24 @@
         </div>
     </div>
 
+    <div class="modal hidden" id="templatePreviewModal" role="dialog" aria-modal="true" aria-labelledby="modal-title-template-preview" aria-hidden="true">
+        <div class="modal-content modal-content--wide">
+            <div class="modal-header">
+                <h2 id="modal-title-template-preview">Template preview</h2>
+                <button class="btn btn-icon" onclick="closeModal('templatePreviewModal')" aria-label="Close template preview">&times;</button>
+            </div>
+            <div class="modal-body template-preview-body">
+                <p class="template-preview-description" id="templatePreviewDescription"></p>
+                <div class="template-preview-meta" id="templatePreviewMeta"></div>
+                <pre class="template-preview-code" id="templatePreviewCode"></pre>
+                <div class="template-preview-actions" id="templatePreviewActions">
+                    <button class="btn btn-primary btn-sm" type="button" data-template-action="apply">Use template</button>
+                    <button class="btn btn-secondary btn-sm" type="button" data-template-action="copy">Copy JSON</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- History Modal -->
     <div class="modal hidden" id="historyModal" role="dialog" aria-modal="true" aria-labelledby="modal-title-history" aria-hidden="true">
         <div class="modal-content">
