@@ -1,5 +1,1143 @@
 'use strict';
 
+// ---- Template library & history helpers ----
+
+const TEMPLATE_LIBRARY = [
+    {
+        id: 'basic-get',
+        title: 'Basic GET stub',
+        description: 'Static JSON response for a GET endpoint – perfect starting point for simple mocks.',
+        category: 'basic',
+        highlight: 'GET · /api/example',
+        feature: {
+            path: ['response', 'jsonBody', 'message'],
+            label: 'response.jsonBody.message'
+        },
+        content: {
+            name: 'Basic GET stub',
+            request: {
+                method: 'GET',
+                urlPath: '/api/example'
+            },
+            response: {
+                status: 200,
+                jsonBody: {
+                    message: 'Hello from WireMock!',
+                    timestamp: new Date().toISOString()
+                },
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            }
+        }
+    },
+    {
+        id: 'post-body-pattern',
+        title: 'POST with JSON body match',
+        description: 'Matches on POST payload using JSONPath and echoes selected fields back in the response.',
+        category: 'advanced',
+        highlight: 'POST · /api/orders',
+        feature: {
+            path: ['request', 'bodyPatterns', 0, 'matchesJsonPath'],
+            label: 'request.bodyPatterns[0].matchesJsonPath'
+        },
+        content: {
+            name: 'POST order matcher',
+            request: {
+                method: 'POST',
+                url: '/api/orders',
+                headers: {
+                    'Content-Type': {
+                        contains: 'application/json'
+                    }
+                },
+                bodyPatterns: [
+                    {
+                        matchesJsonPath: '$.type',
+                        expression: "$[?(@.type == 'priority')]"
+                    },
+                    {
+                        matchesJsonPath: '$.items[*]'
+                    }
+                ]
+            },
+            response: {
+                status: 201,
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                jsonBody: {
+                    id: "{{randomValue length=8 type='string'}}",
+                    status: 'ACCEPTED',
+                    receivedAt: "{{now offset='0' pattern=\"yyyy-MM-dd'T'HH:mm:ssXXX\"}}"
+                },
+                transformers: ['response-template']
+            },
+            metadata: {
+                tags: ['orders', 'priority']
+            }
+        }
+    },
+    {
+        id: 'webhook-callback',
+        title: 'Webhook callback',
+        description: 'Illustrates WireMock\'s webhook post-serve action to notify downstream services after a match.',
+        category: 'integration',
+        highlight: 'POST · /api/orders · webhook',
+        feature: {
+            path: ['postServeActions', 'webhook', 'url'],
+            label: 'postServeActions.webhook.url'
+        },
+        content: {
+            name: 'Order accepted with webhook callback',
+            request: {
+                method: 'POST',
+                urlPath: '/api/orders',
+                headers: {
+                    'Content-Type': {
+                        contains: 'application/json'
+                    }
+                },
+                bodyPatterns: [
+                    {
+                        matchesJsonPath: '$.orderId'
+                    }
+                ]
+            },
+            response: {
+                status: 202,
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                jsonBody: {
+                    status: 'QUEUED',
+                    message: 'Order accepted and will trigger fulfillment webhook.',
+                    callback: 'https://webhook.site/your-endpoint'
+                }
+            },
+            postServeActions: {
+                webhook: {
+                    method: 'POST',
+                    url: 'https://example.org/webhooks/order-events',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-WireMock-Source': 'json-studio'
+                    },
+                    body: JSON.stringify({
+                        type: 'ORDER_ACCEPTED',
+                        orderId: "{{jsonPath request.body '$.orderId'}}",
+                        occurredAt: "{{now offset='0' pattern=\"yyyy-MM-dd'T'HH:mm:ssXXX\"}}"
+                    })
+                }
+            },
+            metadata: {
+                tags: ['webhook', 'postServeActions']
+            }
+        }
+    },
+    {
+        id: 'regex-url',
+        title: 'Regex URL matcher',
+        description: 'Use `urlPathPattern` to handle numeric identifiers without enumerating every path.',
+        category: 'advanced',
+        highlight: 'GET · /api/items/{id}',
+        feature: {
+            path: ['request', 'urlPathPattern'],
+            label: 'request.urlPathPattern'
+        },
+        content: {
+            name: 'Item lookup (regex)',
+            request: {
+                method: 'GET',
+                urlPathPattern: '/api/items/([0-9]+)',
+                queryParameters: {
+                    locale: {
+                        matches: '^[a-z]{2}-[A-Z]{2}$'
+                    }
+                }
+            },
+            response: {
+                status: 200,
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                jsonBody: {
+                    id: '{{request.pathSegments.[2]}}',
+                    locale: '{{request.query.locale}}',
+                    name: 'Example item',
+                    price: 12.5
+                },
+                transformers: ['response-template']
+            }
+        }
+    },
+    {
+        id: 'fault-injection',
+        title: 'Fault injection',
+        description: 'Simulate backend failures with delayed responses and WireMock faults to test resiliency.',
+        category: 'testing',
+        highlight: 'GET · /api/internal/report',
+        feature: {
+            path: ['response', 'fault'],
+            label: 'response.fault'
+        },
+        content: {
+            name: 'Fault injection stub',
+            request: {
+                method: 'GET',
+                urlPath: '/api/internal/report',
+                headers: {
+                    'X-Debug-Scenario': {
+                        equalTo: 'fault-test'
+                    }
+                }
+            },
+            response: {
+                fixedDelayMilliseconds: 1500,
+                fault: 'CONNECTION_RESET_BY_PEER',
+                headers: {
+                    'Cache-Control': 'no-cache'
+                }
+            },
+            metadata: {
+                severity: 'high'
+            }
+        }
+    },
+    {
+        id: 'proxy-pass-through',
+        title: 'Proxy pass-through with overrides',
+        description: 'Forward requests to an upstream service while tweaking headers and enabling recording.',
+        category: 'proxy',
+        highlight: 'ANY · /external/* → proxy',
+        feature: {
+            path: ['response', 'proxyBaseUrl'],
+            label: 'response.proxyBaseUrl'
+        },
+        content: {
+            name: 'External proxy passthrough',
+            priority: 10,
+            request: {
+                urlPattern: '/external/.*'
+            },
+            response: {
+                proxyBaseUrl: 'https://api.upstream.example.com',
+                additionalProxyRequestHeaders: {
+                    'X-Trace-Id': 'wm-{{randomValue type="UUID"}}'
+                },
+                additionalProxyResponseHeaders: {
+                    'X-Proxied-By': 'WireMock JSON Studio'
+                }
+            },
+            persistent: true,
+            metadata: {
+                tags: ['proxy', 'passthrough']
+            }
+        }
+    }
+];
+
+const TEMPLATE_CATEGORY_LABELS = {
+    basic: 'Basic',
+    advanced: 'Advanced',
+    testing: 'Testing',
+    integration: 'Integration',
+    proxy: 'Proxy'
+};
+
+function formatRelativeTime(timestamp) {
+    if (!timestamp) {
+        return '—';
+    }
+
+    const now = Date.now();
+    const diff = timestamp - now;
+    const absDiff = Math.abs(diff);
+
+    const units = [
+        { limit: 60 * 1000, divisor: 1000, unit: 'second' },
+        { limit: 60 * 60 * 1000, divisor: 60 * 1000, unit: 'minute' },
+        { limit: 24 * 60 * 60 * 1000, divisor: 60 * 60 * 1000, unit: 'hour' },
+        { limit: 7 * 24 * 60 * 60 * 1000, divisor: 24 * 60 * 60 * 1000, unit: 'day' },
+        { limit: 30 * 24 * 60 * 60 * 1000, divisor: 7 * 24 * 60 * 60 * 1000, unit: 'week' },
+        { limit: Infinity, divisor: 30 * 24 * 60 * 60 * 1000, unit: 'month' }
+    ];
+
+    const formatter = typeof Intl !== 'undefined' && Intl.RelativeTimeFormat
+        ? new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' })
+        : null;
+
+    for (const { limit, divisor, unit } of units) {
+        if (absDiff < limit) {
+            const value = Math.round(diff / divisor);
+            if (formatter) {
+                return formatter.format(value, unit);
+            }
+            const suffix = value < 0 ? 'ago' : 'from now';
+            return `${Math.abs(value)} ${unit}${Math.abs(value) !== 1 ? 's' : ''} ${suffix}`;
+        }
+    }
+
+    return new Date(timestamp).toLocaleString();
+}
+
+function formatBytes(bytes) {
+    if (!Number.isFinite(bytes) || bytes <= 0) {
+        return '0 B';
+    }
+
+    const thresholds = [
+        { limit: 1024, suffix: 'B', divisor: 1 },
+        { limit: 1024 * 1024, suffix: 'KB', divisor: 1024 },
+        { limit: 1024 * 1024 * 1024, suffix: 'MB', divisor: 1024 * 1024 }
+    ];
+
+    for (const { limit, suffix, divisor } of thresholds) {
+        if (bytes < limit) {
+            const value = bytes / divisor;
+            if (suffix === 'B') {
+                return `${Math.round(value)} ${suffix}`;
+            }
+            const formatted = value >= 100 ? Math.round(value) : value.toFixed(1);
+            return `${formatted} ${suffix}`;
+        }
+    }
+
+    const value = bytes / (1024 * 1024 * 1024);
+    return `${value.toFixed(2)} GB`;
+}
+
+class EditorHistory {
+    constructor(limit = 50) {
+        this.limit = Math.max(5, limit);
+        this.entries = [];
+        this.currentId = null;
+    }
+
+    reset(initialContent = '', meta = {}) {
+        this.entries = [];
+        this.currentId = null;
+        const normalized = typeof initialContent === 'string' ? initialContent : '';
+        if (normalized.length > 0 || meta.forceInitial) {
+            this.record(normalized, {
+                ...meta,
+                reason: meta.reason || 'Initial snapshot',
+                label: meta.label || 'Initial document',
+                force: true
+            });
+        }
+    }
+
+    record(content, meta = {}) {
+        const normalized = typeof content === 'string' ? content : '';
+        const timestamp = Date.now();
+        const lastEntry = this.entries[this.entries.length - 1];
+        const forceRecord = Boolean(meta.force);
+
+        if (!forceRecord && lastEntry && lastEntry.content === normalized) {
+            lastEntry.timestamp = timestamp;
+            lastEntry.meta = { ...lastEntry.meta, ...this.cleanMeta(meta) };
+            this.currentId = lastEntry.id;
+            return { recorded: false, entry: lastEntry, reason: 'unchanged' };
+        }
+
+        const entry = this.createEntry(normalized, this.cleanMeta(meta), timestamp);
+        this.entries.push(entry);
+
+        if (this.entries.length > this.limit) {
+            this.entries.splice(0, this.entries.length - this.limit);
+        }
+
+        this.currentId = entry.id;
+        return { recorded: true, entry };
+    }
+
+    cleanMeta(meta) {
+        if (!meta || typeof meta !== 'object') {
+            return {};
+        }
+
+        const clone = { ...meta };
+        delete clone.force;
+        delete clone.contentOverride;
+        delete clone.editor;
+        delete clone.labelGenerated;
+        return clone;
+    }
+
+    createEntry(content, meta, timestamp) {
+        const encoder = typeof TextEncoder !== 'undefined' ? new TextEncoder() : null;
+        const byteSize = encoder ? encoder.encode(content).length : content.length;
+        const label = meta && meta.label ? meta.label : this.deriveLabel(content, meta);
+        const reason = meta && meta.reason ? meta.reason : (meta && meta.action ? meta.action : 'Edit');
+
+        return {
+            id: `hist-${timestamp}-${Math.random().toString(36).slice(2, 8)}`,
+            timestamp,
+            content,
+            label,
+            preview: this.buildPreview(content),
+            byteSize,
+            sizeLabel: formatBytes(byteSize),
+            meta: {
+                ...meta,
+                label,
+                reason,
+                recordedAt: new Date(timestamp).toISOString()
+            }
+        };
+    }
+
+    deriveLabel(content, meta = {}) {
+        const fallback = meta && meta.action ? meta.action : 'Snapshot';
+
+        const trimmed = typeof content === 'string' ? content.trim() : '';
+        if (!trimmed) {
+            return fallback;
+        }
+
+        try {
+            const data = JSON.parse(trimmed);
+            if (data && typeof data === 'object') {
+                if (data.name) {
+                    return data.name;
+                }
+
+                const request = data.request || {};
+                const method = request.method || '';
+                const url = request.url || request.urlPath || request.urlPattern || request.urlPathPattern || '';
+                const parts = [];
+                if (method) parts.push(method);
+                if (url) parts.push(url);
+                if (parts.length) {
+                    return parts.join(' · ');
+                }
+            }
+        } catch (error) {
+            // Parsing failed – fall back to raw string
+        }
+
+        const firstLine = trimmed.split('\n')[0];
+        return firstLine.length > 60 ? `${firstLine.slice(0, 57)}…` : firstLine || fallback;
+    }
+
+    buildPreview(content) {
+        if (typeof content !== 'string' || content.trim().length === 0) {
+            return '(empty document)';
+        }
+
+        try {
+            const parsed = JSON.parse(content);
+            const pretty = JSON.stringify(parsed, null, 2);
+            return this.truncatePreview(pretty);
+        } catch (error) {
+            return this.truncatePreview(content);
+        }
+    }
+
+    truncatePreview(text, maxLines = 8, maxChars = 400) {
+        const lines = text.split('\n').slice(0, maxLines);
+        let preview = lines.join('\n');
+        if (preview.length > maxChars) {
+            preview = `${preview.slice(0, maxChars - 1)}…`;
+        }
+        return preview;
+    }
+
+    getEntries(options = {}) {
+        const newestFirst = options && options.newestFirst !== undefined ? options.newestFirst : true;
+        const entries = [...this.entries];
+        return newestFirst ? entries.reverse() : entries;
+    }
+
+    getEntryById(entryId) {
+        return this.entries.find(entry => entry.id === entryId) || null;
+    }
+
+    markCurrent(entryId) {
+        if (!entryId) {
+            return;
+        }
+        const entry = this.getEntryById(entryId);
+        if (entry) {
+            this.currentId = entry.id;
+        }
+    }
+
+    getCurrentId() {
+        return this.currentId;
+    }
+
+    clear(options = {}) {
+        const keepLatest = options && options.keepLatest !== undefined ? options.keepLatest : true;
+        const label = options && options.label ? options.label : 'Current document';
+        const content = typeof options.latestContent === 'string' ? options.latestContent : '';
+
+        this.entries = [];
+        this.currentId = null;
+
+        if (keepLatest && content) {
+            this.record(content, {
+                reason: 'History cleared',
+                label,
+                force: true
+            });
+        }
+    }
+
+    getStats() {
+        if (!this.entries.length) {
+            return {
+                count: 0,
+                byteSize: 0,
+                latestTimestamp: null
+            };
+        }
+
+        const totalBytes = this.entries.reduce((acc, entry) => acc + (entry.byteSize || 0), 0);
+        const latest = this.entries[this.entries.length - 1];
+
+        return {
+            count: this.entries.length,
+            byteSize: totalBytes,
+            latestTimestamp: latest ? latest.timestamp : null,
+            latestLabel: latest ? latest.label : null
+        };
+    }
+}
+
+function resolveTemplatePath(source, path) {
+    if (!source || !path) {
+        return undefined;
+    }
+
+    const segments = Array.isArray(path)
+        ? path
+        : String(path)
+            .replace(/\[(\d+)\]/g, '.$1')
+            .split('.');
+
+    return segments.reduce((acc, segment) => {
+        if (acc == null) {
+            return undefined;
+        }
+
+        if (Array.isArray(acc)) {
+            const index = Number(segment);
+            return Number.isInteger(index) ? acc[index] : undefined;
+        }
+
+        return acc[segment];
+    }, source);
+}
+
+function formatFeatureValue(value) {
+    if (value == null) {
+        return '';
+    }
+
+    if (typeof value === 'string') {
+        return value.length > 80 ? `${value.slice(0, 77)}…` : value;
+    }
+
+    if (typeof value === 'number' || typeof value === 'boolean') {
+        return String(value);
+    }
+
+    try {
+        const serialized = JSON.stringify(value);
+        return serialized.length > 80 ? `${serialized.slice(0, 77)}…` : serialized;
+    } catch (error) {
+        console.warn('Failed to serialise feature value', error);
+        return '';
+    }
+}
+
+function getTemplateFeature(template) {
+    if (!template || !template.feature) {
+        return null;
+    }
+
+    const featurePath = template.feature.path || template.feature;
+    const label = template.feature.label
+        || (Array.isArray(featurePath) ? featurePath.join('.') : String(featurePath));
+    const rawValue = resolveTemplatePath(template.content, featurePath);
+
+    if (typeof rawValue === 'undefined') {
+        return null;
+    }
+
+    return {
+        label,
+        value: formatFeatureValue(rawValue)
+    };
+}
+
+function getTemplateHeadline(template) {
+    if (!template) {
+        return '';
+    }
+
+    if (template.highlight) {
+        return template.highlight;
+    }
+
+    const info = [];
+    if (template.content?.request?.method) {
+        info.push(template.content.request.method);
+    }
+    if (template.content?.request?.url || template.content?.request?.urlPath) {
+        info.push(template.content.request.url || template.content.request.urlPath);
+    }
+
+    return info.join(' · ');
+}
+
+function buildTemplatePreview(template) {
+    try {
+        const payload = template && template.content ? template.content : {};
+        if (typeof payload === 'string') {
+            return payload;
+        }
+        const pretty = JSON.stringify(payload, null, 2);
+        const lines = pretty.split('\n').slice(0, 8);
+        const preview = lines.join('\n');
+        return preview.length > 320 ? `${preview.slice(0, 319)}…` : preview;
+    } catch (error) {
+        return '[unavailable template preview]';
+    }
+}
+
+function copyTextToClipboard(text) {
+    if (typeof text !== 'string') {
+        text = String(text ?? '');
+    }
+
+    if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        return navigator.clipboard.writeText(text).then(() => true).catch(() => fallbackCopy(text));
+    }
+
+    return Promise.resolve(fallbackCopy(text));
+
+    function fallbackCopy(value) {
+        try {
+            const textarea = document.createElement('textarea');
+            textarea.value = value;
+            textarea.setAttribute('readonly', '');
+            textarea.style.position = 'absolute';
+            textarea.style.left = '-9999px';
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+            return true;
+        } catch (error) {
+            console.warn('Clipboard fallback failed:', error);
+            return false;
+        }
+    }
+}
+
+function renderTemplateLibrary() {
+    const container = document.getElementById('templateGrid');
+    if (!container) {
+        return;
+    }
+
+    const initializer = window.monacoInitializer;
+    const templates = initializer && typeof initializer.getTemplateLibrary === 'function'
+        ? initializer.getTemplateLibrary()
+        : TEMPLATE_LIBRARY.slice();
+
+    container.innerHTML = '';
+
+    ensureTemplatePreviewHandlers();
+
+    const infoPanel = document.createElement('section');
+    infoPanel.className = 'template-info';
+    infoPanel.innerHTML = `
+        <p class="template-info__lead">Browse ready-made WireMock snippets or treat this gallery as a quick reference:</p>
+        <ul>
+            <li><strong>Use template</strong> drops the JSON straight into the editor.</li>
+            <li><strong>Copy JSON</strong> copies the snippet so you can adapt it manually.</li>
+            <li>Each card highlights key features like matchers, templating, webhooks, or proxy settings.</li>
+        </ul>
+        <p>It’s perfectly fine to just read through these examples—no need to apply a template if you only need guidance.</p>
+    `;
+    container.appendChild(infoPanel);
+
+    if (!templates.length) {
+        const empty = document.createElement('div');
+        empty.className = 'history-empty';
+        empty.innerHTML = '<p>No templates available</p><small>Add templates to TEMPLATE_LIBRARY to populate this view.</small>';
+        container.appendChild(empty);
+        return;
+    }
+
+    templates.forEach((template) => {
+        const card = document.createElement('article');
+        card.className = 'template-card';
+        card.dataset.templateId = template.id;
+        card.setAttribute('role', 'button');
+        card.setAttribute('tabindex', '0');
+
+        const header = document.createElement('div');
+        header.className = 'template-header';
+
+        const title = document.createElement('h3');
+        title.textContent = template.title;
+        header.appendChild(title);
+
+        const badge = document.createElement('span');
+        const badgeCategory = template.category && TEMPLATE_CATEGORY_LABELS[template.category]
+            ? template.category
+            : 'basic';
+        badge.className = `badge ${badgeCategory}`;
+        badge.textContent = TEMPLATE_CATEGORY_LABELS[badgeCategory] || 'Template';
+        header.appendChild(badge);
+
+        const description = document.createElement('p');
+        description.className = 'template-description';
+        description.textContent = template.description || 'Ready-to-use WireMock template.';
+
+        const highlight = document.createElement('span');
+        highlight.className = 'template-highlight';
+        highlight.textContent = getTemplateHeadline(template);
+
+        const featuresContainer = document.createElement('div');
+        featuresContainer.className = 'template-features';
+
+        const featureData = getTemplateFeature(template);
+        if (featureData) {
+            const feature = document.createElement('div');
+            feature.className = 'template-feature';
+
+            const key = document.createElement('div');
+            key.className = 'template-feature__key';
+            key.textContent = featureData.label;
+
+            const value = document.createElement('div');
+            value.className = 'template-feature__value';
+            value.textContent = featureData.value;
+
+            feature.appendChild(key);
+            feature.appendChild(value);
+            featuresContainer.appendChild(feature);
+        }
+
+        const preview = document.createElement('pre');
+        preview.className = 'history-preview';
+        preview.textContent = buildTemplatePreview(template);
+
+        const actions = document.createElement('div');
+        actions.className = 'template-actions';
+
+        const useButton = document.createElement('button');
+        useButton.className = 'btn btn-primary btn-sm';
+        useButton.type = 'button';
+        useButton.textContent = 'Use template';
+        useButton.addEventListener('click', (event) => {
+            event.stopPropagation();
+            applyTemplateFromCard(template);
+        });
+
+        const copyButton = document.createElement('button');
+        copyButton.className = 'btn btn-secondary btn-sm';
+        copyButton.type = 'button';
+        copyButton.textContent = 'Copy JSON';
+        copyButton.addEventListener('click', async (event) => {
+            event.stopPropagation();
+            const json = template && template.content && typeof template.content === 'string'
+                ? template.content
+                : JSON.stringify(template.content, null, 2);
+            const success = await copyTextToClipboard(json);
+            if (initializer && typeof initializer.showNotification === 'function') {
+                initializer.showNotification(success ? `Template "${template.title}" copied` : 'Clipboard copy failed', success ? 'success' : 'error');
+            }
+        });
+
+        actions.appendChild(useButton);
+        actions.appendChild(copyButton);
+
+        card.addEventListener('click', () => showTemplatePreview(template));
+        card.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                showTemplatePreview(template);
+            }
+        });
+
+        card.appendChild(header);
+        card.appendChild(description);
+        if (highlight.textContent) {
+            card.appendChild(highlight);
+        }
+        if (featuresContainer.childNodes.length) {
+            card.appendChild(featuresContainer);
+        }
+        card.appendChild(preview);
+        card.appendChild(actions);
+
+        container.appendChild(card);
+    });
+}
+
+function ensureTemplatePreviewHandlers() {
+    const modal = document.getElementById('templatePreviewModal');
+    if (!modal || modal.dataset.previewBound === 'true') {
+        return;
+    }
+
+    modal.dataset.previewBound = 'true';
+
+    const actions = modal.querySelector('#templatePreviewActions');
+    if (actions) {
+        actions.addEventListener('click', async (event) => {
+            const button = event.target instanceof HTMLElement
+                ? event.target.closest('[data-template-action]')
+                : null;
+            if (!button) {
+                return;
+            }
+
+            event.preventDefault();
+
+            const action = button.dataset.templateAction;
+            if (!action) {
+                return;
+            }
+
+            const template = getTemplateById(modal.dataset.templateId);
+            if (!template) {
+                return;
+            }
+
+            if (action === 'apply') {
+                applyTemplateFromCard(template);
+                return;
+            }
+
+            if (action === 'copy') {
+                const json = typeof template.content === 'string'
+                    ? template.content
+                    : JSON.stringify(template.content, null, 2);
+                const success = await copyTextToClipboard(json);
+                const initializer = window.monacoInitializer;
+                if (initializer && typeof initializer.showNotification === 'function') {
+                    initializer.showNotification(success ? `Template "${template.title}" copied` : 'Clipboard copy failed', success ? 'success' : 'error');
+                }
+                return;
+            }
+
+            if (action === 'close') {
+                if (typeof window.closeModal === 'function') {
+                    window.closeModal('templatePreviewModal');
+                }
+            }
+        });
+    }
+}
+
+function getTemplateById(templateId) {
+    if (!templateId) {
+        return null;
+    }
+
+    const initializer = window.monacoInitializer;
+    const templates = initializer && typeof initializer.getTemplateLibrary === 'function'
+        ? initializer.getTemplateLibrary()
+        : TEMPLATE_LIBRARY.slice();
+
+    return templates.find((item) => item.id === templateId) || null;
+}
+
+function showTemplatePreview(template) {
+    if (!template || !template.id) {
+        return;
+    }
+
+    const modal = document.getElementById('templatePreviewModal');
+    if (!modal) {
+        return;
+    }
+
+    modal.dataset.templateId = template.id;
+
+    const title = modal.querySelector('#modal-title-template-preview');
+    if (title) {
+        title.textContent = template.title || 'Template preview';
+    }
+
+    const description = modal.querySelector('#templatePreviewDescription');
+    if (description) {
+        description.textContent = template.description || '';
+        description.style.display = template.description ? '' : 'none';
+    }
+
+    const meta = modal.querySelector('#templatePreviewMeta');
+    if (meta) {
+        const headline = getTemplateHeadline(template) || '—';
+        const feature = getTemplateFeature(template);
+
+        meta.innerHTML = '';
+
+        const endpointRow = document.createElement('div');
+        endpointRow.className = 'template-preview-meta__row';
+
+        const endpointLabel = document.createElement('span');
+        endpointLabel.className = 'template-preview-meta__label';
+        endpointLabel.textContent = 'Endpoint';
+
+        const endpointValue = document.createElement('span');
+        endpointValue.className = 'template-preview-meta__value';
+        endpointValue.textContent = headline;
+
+        endpointRow.appendChild(endpointLabel);
+        endpointRow.appendChild(endpointValue);
+        meta.appendChild(endpointRow);
+
+        if (feature) {
+            const featureRow = document.createElement('div');
+            featureRow.className = 'template-preview-meta__row';
+
+            const featureLabel = document.createElement('span');
+            featureLabel.className = 'template-preview-meta__label';
+            featureLabel.textContent = 'Highlight';
+
+            const featureCode = document.createElement('code');
+            featureCode.className = 'template-preview-meta__code';
+            featureCode.textContent = `${feature.label} = ${feature.value}`;
+
+            featureRow.appendChild(featureLabel);
+            featureRow.appendChild(featureCode);
+            meta.appendChild(featureRow);
+        }
+    }
+
+    const code = modal.querySelector('#templatePreviewCode');
+    if (code) {
+        const payload = template && template.content ? template.content : {};
+        const json = typeof payload === 'string'
+            ? payload
+            : JSON.stringify(payload, null, 2);
+        code.textContent = json;
+    }
+
+    ensureTemplatePreviewHandlers();
+
+    if (typeof window.openModal === 'function') {
+        window.openModal('templatePreviewModal');
+    }
+}
+
+function applyTemplateFromCard(template) {
+    const initializer = window.monacoInitializer;
+    if (!initializer) {
+        return;
+    }
+
+    let applied = false;
+    if (typeof initializer.applyTemplate === 'function') {
+        applied = initializer.applyTemplate(template);
+    } else if (typeof initializer.applyTemplateById === 'function') {
+        applied = initializer.applyTemplateById(template.id);
+    }
+
+    if (applied && typeof window.closeModal === 'function') {
+        window.closeModal('templatePreviewModal');
+        window.closeModal('fullscreenModal');
+    }
+}
+
+function renderHistoryModal(options = {}) {
+    const modal = document.getElementById('historyModal');
+    if (!modal) {
+        return;
+    }
+
+    const initializer = window.monacoInitializer;
+    if (!initializer) {
+        return;
+    }
+
+    const modalBody = modal.querySelector('.modal-body');
+    const list = modalBody ? modalBody.querySelector('#historyList') : null;
+    if (!modalBody || !list) {
+        return;
+    }
+
+    let statsContainer = modalBody.querySelector('#historyStats');
+    if (!statsContainer) {
+        statsContainer = document.createElement('div');
+        statsContainer.id = 'historyStats';
+        statsContainer.className = 'history-stats';
+        modalBody.insertBefore(statsContainer, modalBody.firstChild);
+    }
+
+    const stats = initializer.getHistoryStats();
+    const approxSize = formatBytes(stats.byteSize);
+    const lastSaved = stats.latestTimestamp ? `${formatRelativeTime(stats.latestTimestamp)} (${new Date(stats.latestTimestamp).toLocaleString()})` : '—';
+
+    statsContainer.innerHTML = `
+        <div class="stats-row"><span>Snapshots</span><span>${stats.count}</span></div>
+        <div class="stats-row"><span>Approx size</span><span>${approxSize}</span></div>
+        <div class="stats-row"><span>Last save</span><span>${lastSaved}</span></div>
+        <div class="history-actions-row">
+            <button class="btn btn-secondary btn-sm" data-history-action="snapshot">Manual snapshot</button>
+            <button class="btn btn-secondary btn-sm" data-history-action="export">Copy history JSON</button>
+            <button class="btn btn-danger btn-sm" data-history-action="clear">Clear history</button>
+        </div>
+    `;
+
+    if (!statsContainer.dataset.bound) {
+        statsContainer.dataset.bound = 'true';
+        statsContainer.addEventListener('click', async (event) => {
+            const actionButton = event.target instanceof HTMLElement ? event.target.closest('[data-history-action]') : null;
+            if (!actionButton) {
+                return;
+            }
+
+            event.preventDefault();
+            const action = actionButton.dataset.historyAction;
+
+            if (action === 'snapshot') {
+                initializer.recordHistorySnapshot('Manual snapshot', { label: 'Manual snapshot', manual: true, force: true });
+                initializer.refreshHistoryUI({ force: true });
+                return;
+            }
+
+            if (action === 'export') {
+                const payload = {
+                    exportedAt: new Date().toISOString(),
+                    count: stats.count,
+                    entries: initializer.getHistoryEntries({ newestFirst: false }).map(entry => ({
+                        id: entry.id,
+                        timestamp: entry.timestamp,
+                        label: entry.label,
+                        reason: entry.meta?.reason,
+                        size: entry.byteSize,
+                        content: entry.content
+                    }))
+                };
+
+                const success = await copyTextToClipboard(JSON.stringify(payload, null, 2));
+                initializer.showNotification(success ? 'History copied to clipboard' : 'Failed to copy history', success ? 'success' : 'error');
+                return;
+            }
+
+            if (action === 'clear') {
+                const confirmed = typeof window.confirm === 'function'
+                    ? window.confirm('Clear history snapshots? The current document will remain as the first entry.')
+                    : true;
+                if (confirmed) {
+                    initializer.clearHistory({ keepLatest: true, label: 'Current document' });
+                }
+            }
+        });
+    }
+
+    if (options.statsOnly) {
+        initializer.markHistoryRendered();
+        return;
+    }
+
+    const entries = initializer.getHistoryEntries({ newestFirst: true });
+    const currentId = initializer.getCurrentHistoryEntryId();
+
+    list.innerHTML = '';
+
+    if (!entries.length) {
+        const empty = document.createElement('div');
+        empty.className = 'history-empty';
+        empty.innerHTML = '<p>No history yet</p><small>Changes are tracked automatically – edit the document or create a manual snapshot.</small>';
+        list.appendChild(empty);
+        initializer.markHistoryRendered();
+        return;
+    }
+
+    entries.forEach((entry) => {
+        const item = document.createElement('article');
+        item.className = 'history-item';
+        item.dataset.entryId = entry.id;
+        if (entry.id === currentId) {
+            item.classList.add('current');
+        }
+
+        const header = document.createElement('div');
+        header.className = 'history-header';
+
+        const title = document.createElement('div');
+        title.className = 'history-title';
+        title.textContent = entry.label || 'Snapshot';
+
+        const time = document.createElement('div');
+        time.className = 'history-time';
+        time.textContent = `${formatRelativeTime(entry.timestamp)} · ${new Date(entry.timestamp).toLocaleString()}`;
+
+        header.appendChild(title);
+        header.appendChild(time);
+
+        const preview = document.createElement('pre');
+        preview.className = 'history-preview';
+        preview.textContent = entry.preview || '';
+
+        const metaRow = document.createElement('div');
+        metaRow.className = 'history-meta';
+        const reason = entry.meta?.reason || 'edit';
+        metaRow.innerHTML = `<span>Reason: ${reason}</span><span>${entry.sizeLabel}</span>`;
+
+        const buttonsRow = document.createElement('div');
+        buttonsRow.className = 'history-action-buttons';
+
+        const restoreButton = document.createElement('button');
+        restoreButton.type = 'button';
+        restoreButton.className = entry.id === currentId ? 'btn btn-secondary btn-sm' : 'btn btn-primary btn-sm';
+        restoreButton.textContent = entry.id === currentId ? 'Current version' : 'Restore';
+        restoreButton.disabled = entry.id === currentId;
+        restoreButton.addEventListener('click', (event) => {
+            event.stopPropagation();
+            initializer.restoreHistoryEntry(entry.id, { forceRestore: false });
+        });
+
+        const copyButton = document.createElement('button');
+        copyButton.type = 'button';
+        copyButton.className = 'btn btn-secondary btn-sm';
+        copyButton.textContent = 'Copy JSON';
+        copyButton.addEventListener('click', async (event) => {
+            event.stopPropagation();
+            const success = await copyTextToClipboard(entry.content);
+            initializer.showNotification(success ? 'Snapshot copied to clipboard' : 'Failed to copy snapshot', success ? 'success' : 'error');
+        });
+
+        buttonsRow.appendChild(restoreButton);
+        buttonsRow.appendChild(copyButton);
+
+        item.appendChild(header);
+        item.appendChild(preview);
+        item.appendChild(metaRow);
+        item.appendChild(buttonsRow);
+
+        item.addEventListener('click', () => {
+            if (entry.id !== currentId) {
+                initializer.restoreHistoryEntry(entry.id, { forceRestore: false });
+            }
+        });
+
+        item.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                if (entry.id !== currentId) {
+                    initializer.restoreHistoryEntry(entry.id, { forceRestore: false });
+                }
+            }
+        });
+
+        list.appendChild(item);
+    });
+
+    initializer.markHistoryRendered();
+}
+
 // Enhanced Monaco Editor initialization with WireMock Editor integration
 // This file provides optimized Monaco Editor setup with JSON schema validation
 
@@ -38,6 +1176,10 @@ class MonacoInitializer {
         this.lastJSONPathQuery = '';
         this.jsonPathSearchRequestId = 0;
         this.findWidgetIntegration = null;
+        this.history = new EditorHistory(60);
+        this.historyDebounce = null;
+        this.suspendHistoryRecording = false;
+        this.historyNeedsRender = true;
     }
 
     async initialize() {
@@ -207,8 +1349,9 @@ class MonacoInitializer {
                 formatOnType: true,
                 folding: true
             });
-            
+
             this.editors.set('main', window.editor);
+            this.initializeHistory(initialValue);
         }
     }
 
@@ -237,6 +1380,223 @@ class MonacoInitializer {
         });
 
         return editor;
+    }
+
+    initializeHistory(initialContent = '') {
+        const normalized = typeof initialContent === 'string' ? initialContent : '';
+        if (!this.history) {
+            this.history = new EditorHistory(60);
+        }
+
+        this.history.reset(normalized, { label: 'Initial document', reason: 'Initial snapshot' });
+        this.historyNeedsRender = true;
+        this.refreshHistoryUI({ statsOnly: true });
+    }
+
+    markHistoryRendered() {
+        this.historyNeedsRender = false;
+    }
+
+    getHistoryEntries(options = {}) {
+        if (!this.history) {
+            return [];
+        }
+
+        return this.history.getEntries(options);
+    }
+
+    getHistoryStats() {
+        if (!this.history) {
+            return { count: 0, byteSize: 0, latestTimestamp: null };
+        }
+
+        return this.history.getStats();
+    }
+
+    getCurrentHistoryEntryId() {
+        return this.history ? this.history.getCurrentId() : null;
+    }
+
+    recordHistorySnapshot(reason = 'Edit', options = {}) {
+        if (!this.history) {
+            return null;
+        }
+
+        const editor = options.editor || this.getActiveEditor();
+        if (!editor) {
+            return null;
+        }
+
+        let content;
+        if (typeof options.contentOverride === 'string') {
+            content = options.contentOverride;
+        } else if (editor.virtualRenderer && typeof editor.virtualRenderer.getFullContent === 'function') {
+            content = editor.virtualRenderer.getFullContent();
+        } else if (typeof editor.getValue === 'function') {
+            content = editor.getValue();
+        } else {
+            content = '';
+        }
+
+        const meta = {
+            reason,
+            label: options.label,
+            manual: Boolean(options.manual),
+            action: reason,
+            force: Boolean(options.force)
+        };
+
+        const result = this.history.record(content, meta);
+        if (result && result.recorded) {
+            this.historyNeedsRender = true;
+            this.refreshHistoryUI({ statsOnly: options.statsOnly === true });
+        }
+
+        return result;
+    }
+
+    refreshHistoryUI(options = {}) {
+        if (typeof window.renderHistoryModal !== 'function') {
+            return;
+        }
+
+        const modal = document.getElementById('historyModal');
+        const isOpen = modal && (modal.classList.contains('show') || modal.getAttribute('aria-hidden') === 'false');
+        if (options.force || isOpen) {
+            window.renderHistoryModal({
+                statsOnly: Boolean(options.statsOnly)
+            });
+            this.historyNeedsRender = false;
+            return;
+        }
+
+        if (options.statsOnly) {
+            const statsElement = document.getElementById('historyStats');
+            if (statsElement) {
+                window.renderHistoryModal({ statsOnly: true });
+                this.historyNeedsRender = false;
+            }
+        }
+    }
+
+    shouldRenderHistory() {
+        return this.historyNeedsRender;
+    }
+
+    restoreHistoryEntry(entryId, options = {}) {
+        if (!this.history) {
+            this.showNotification('History is unavailable', 'warning');
+            return false;
+        }
+
+        const entry = this.history.getEntryById(entryId);
+        if (!entry) {
+            this.showNotification('History entry not found', 'warning');
+            return false;
+        }
+
+        const editor = this.getActiveEditor();
+        if (!editor) {
+            this.showNotification('No active editor to restore into', 'warning');
+            return false;
+        }
+
+        const currentValue = editor.getValue ? editor.getValue() : '';
+        if (currentValue === entry.content && !options.forceRestore) {
+            this.history.markCurrent(entry.id);
+            this.refreshHistoryUI({ force: true });
+            this.showNotification('Already on this version', 'info');
+            return true;
+        }
+
+        this.suspendHistoryRecording = true;
+        editor.setValue(entry.content);
+        this.suspendHistoryRecording = false;
+
+        this.history.markCurrent(entry.id);
+        this.historyNeedsRender = true;
+        this.refreshHistoryUI({ force: true });
+        this.showNotification(`Restored snapshot: ${entry.label}`, 'success');
+
+        return true;
+    }
+
+    clearHistory(options = {}) {
+        if (!this.history) {
+            return;
+        }
+
+        const editor = this.getActiveEditor();
+        const currentContent = editor && typeof editor.getValue === 'function' ? editor.getValue() : '';
+        this.history.clear({
+            keepLatest: options.keepLatest !== false,
+            latestContent: currentContent,
+            label: options.label || 'Current document'
+        });
+        this.historyNeedsRender = true;
+        this.refreshHistoryUI({ force: true });
+    }
+
+    getTemplateLibrary() {
+        return TEMPLATE_LIBRARY.slice();
+    }
+
+    applyTemplateById(templateId, options = {}) {
+        const template = this.getTemplateLibrary().find(item => item.id === templateId);
+        if (!template) {
+            this.showNotification('Template not found', 'error');
+            return false;
+        }
+
+        return this.applyTemplate(template, options);
+    }
+
+    applyTemplate(template, options = {}) {
+        const editor = this.getActiveEditor();
+        if (!editor) {
+            this.showNotification('No active editor to apply template', 'warning');
+            return false;
+        }
+
+        const contentObject = template && template.content ? template.content : {};
+        let templateContent = typeof contentObject === 'string'
+            ? contentObject
+            : JSON.stringify(contentObject, null, 2);
+
+        if (typeof options.transform === 'function') {
+            templateContent = options.transform(templateContent, template) || templateContent;
+        }
+
+        const currentValue = editor.getValue ? editor.getValue() : '';
+        const shouldReplace = options.replace !== false;
+        let nextValue = templateContent;
+
+        if (!shouldReplace && currentValue) {
+            nextValue = `${currentValue.trimEnd()}\n\n${templateContent}`;
+        }
+
+        if (shouldReplace && currentValue && !options.silent && options.confirm !== false) {
+            const confirmReplace = typeof window.confirm === 'function'
+                ? window.confirm(`Replace current document with "${template.title}" template?`)
+                : true;
+            if (!confirmReplace) {
+                return false;
+            }
+        }
+
+        this.suspendHistoryRecording = true;
+        editor.setValue(nextValue);
+        this.suspendHistoryRecording = false;
+
+        this.recordHistorySnapshot('Template applied', {
+            label: template.title,
+            manual: true,
+            force: true,
+            statsOnly: false
+        });
+
+        this.showNotification(`Template "${template.title}" applied`, 'success');
+        return true;
     }
 
     setupEventHandlers() {
@@ -288,21 +1648,34 @@ class MonacoInitializer {
 
     onContentChange(editor) {
         // Content change handling
-        const content = editor.virtualRenderer ? 
-            editor.virtualRenderer.getFullContent() : 
+        const content = editor.virtualRenderer ?
+            editor.virtualRenderer.getFullContent() :
             editor.getValue();
-            
+
         // Update search index
         if (this.searchIndex && typeof this.searchIndex.buildIndex === 'function') {
             this.searchIndex.buildIndex(content);
         } else if (this.searchIndex && typeof this.searchIndex.updateIndex === 'function') {
             this.searchIndex.updateIndex(content);
         }
-        
+
         // Update virtualized renderer if content is large
         if (editor.virtualRenderer && content.split('\n').length > 5000) {
             editor.virtualRenderer.setContent(content);
         }
+
+        if (this.suspendHistoryRecording) {
+            return;
+        }
+
+        this.historyNeedsRender = true;
+        if (this.historyDebounce) {
+            clearTimeout(this.historyDebounce);
+        }
+
+        this.historyDebounce = setTimeout(() => {
+            this.recordHistorySnapshot('Auto snapshot', { statsOnly: true });
+        }, 1500);
     }
 
     getDefaultStub() {
@@ -3106,4 +4479,6 @@ if (document.readyState === 'loading') {
 // Export for use in other modules
 if (typeof window !== 'undefined') {
     window.monacoInitializer = monacoInitializer;
+    window.renderTemplateLibrary = renderTemplateLibrary;
+    window.renderHistoryModal = renderHistoryModal;
 }
