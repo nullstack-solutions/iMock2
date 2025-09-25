@@ -14,27 +14,66 @@
     <div class="editor-app">
         <section class="editor-toolbar card" aria-label="Editor controls">
             <div class="toolbar-row toolbar-row--primary">
-                <div class="toolbar-brand">
-                    <span class="logo-badge" aria-hidden="true">WM</span>
-                    <div class="toolbar-text">
-                        <h1 class="toolbar-title">JSON Studio</h1>
-                        <p class="toolbar-caption">Mapping workspace</p>
+                <div class="toolbar-side toolbar-side--left">
+                    <div class="toolbar-brand">
+                        <span class="logo-badge" aria-hidden="true">WM</span>
+                        <div class="toolbar-text">
+                        </div>
+                    </div>
+                    <div class="search-container" role="toolbar" aria-label="Editor utilities">
+                        <div class="search-actions" role="group" aria-label="Editor utilities">
+                            <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="openTextFindWidget()" title="Find (Ctrl+F)" data-tooltip="Open find (Ctrl+F)">
+                                <span class="icon" aria-hidden="true">🔍</span>
+                                <span class="sr-only">Open find widget</span>
+                            </button>
+                            <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="openJSONPathWidget()" title="JSONPath (Alt+J)" data-tooltip="Open JSONPath mode (Alt+J)">
+                                <span class="icon" aria-hidden="true">$.</span>
+                                <span class="sr-only">Open JSONPath find widget</span>
+                            </button>
+                            <span class="search-actions__divider" role="presentation" aria-hidden="true"></span>
+                            <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="formatJSON()" title="Format JSON" data-tooltip="Pretty print JSON">
+                                <span class="icon" aria-hidden="true">{ }</span>
+                                <span class="sr-only">Format JSON</span>
+                            </button>
+                            <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="minifyJSON()" title="Minify JSON" data-tooltip="Minify JSON">
+                                <span class="icon" aria-hidden="true">➖</span>
+                                <span class="sr-only">Minify JSON</span>
+                            </button>
+                            <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="sortJSONKeys()" title="Sort keys (Ctrl+Alt+S)" data-tooltip="Sort keys alphabetically (Ctrl+Alt+S)">
+                                <span class="icon" aria-hidden="true">🔤</span>
+                                <span class="sr-only">Sort JSON keys</span>
+                            </button>
+                            <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="collapseAllJSON()" title="Collapse all (Ctrl+Shift+[)" data-tooltip="Collapse all blocks (Ctrl+Shift+[)">
+                                <span class="icon" aria-hidden="true">📕</span>
+                                <span class="sr-only">Collapse all JSON blocks</span>
+                            </button>
+                            <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="expandAllJSON()" title="Expand all (Ctrl+Shift+])" data-tooltip="Expand all blocks (Ctrl+Shift+])">
+                                <span class="icon" aria-hidden="true">📖</span>
+                                <span class="sr-only">Expand all JSON blocks</span>
+                            </button>
+                            <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="validateJSON()" title="Validate JSON" data-tooltip="Validate JSON">
+                                <span class="icon" aria-hidden="true">✔️</span>
+                                <span class="sr-only">Validate JSON</span>
+                            </button>
+                            <span class="search-actions__divider" role="presentation" aria-hidden="true"></span>
+                            <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="openModal()" title="WireMock Templates" data-tooltip="WireMock templates">
+                                <span class="icon" aria-hidden="true">🧩</span>
+                                <span class="sr-only">WireMock templates</span>
+                            </button>
+                            <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="openHistoryModal()" title="History" data-tooltip="Show history">
+                                <span class="icon" aria-hidden="true">🕒</span>
+                                <span class="sr-only">History</span>
+                            </button>
+                            <span class="search-actions__divider" role="presentation" aria-hidden="true"></span>
+                            <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="exportAsYAML()" title="Export as YAML" data-tooltip="Export YAML">
+                                <span class="icon" aria-hidden="true">📤</span>
+                                <span class="sr-only">Export as YAML</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
-                <div class="toolbar-row__actions">
+                <div class="toolbar-side toolbar-side--right">
                     <div class="btn-group" id="editorControls" role="group" aria-label="Workspace actions">
-                        <button class="btn btn-secondary" onclick="newDocument()" title="New (Ctrl+N)" data-tooltip="New document (Ctrl+N)">
-                            <span class="icon" aria-hidden="true">📄</span>
-                            <span class="btn-label">New</span>
-                        </button>
-                        <button class="btn btn-secondary" onclick="loadFile()" title="Load (Ctrl+O)" data-tooltip="Load JSON from file (Ctrl+O)">
-                            <span class="icon" aria-hidden="true">📥</span>
-                            <span class="btn-label">Load</span>
-                        </button>
-                        <button class="btn btn-secondary" onclick="downloadCurrentMapping()" title="Download (Ctrl+S)" data-tooltip="Download JSON (Ctrl+S)">
-                            <span class="icon" aria-hidden="true">💾</span>
-                            <span class="btn-label">Download</span>
-                        </button>
                         <button class="btn btn-primary" onclick="updateMappingOnServer()" title="Update mapping" data-tooltip="Update existing mapping in WireMock">
                             <span class="icon" aria-hidden="true">🔁</span>
                             <span class="btn-label">Update</span>
@@ -43,96 +82,23 @@
                             <span class="icon" aria-hidden="true">✨</span>
                             <span class="btn-label">Create</span>
                         </button>
-                    </div>
-                    <div class="btn-group" id="compareControls" role="group" aria-label="Compare actions" style="display: none;">
-                        <button class="btn btn-secondary" onclick="loadCompareFile('left')" title="Load File (Left)" data-tooltip="Load left file">
-                            <span class="icon" aria-hidden="true">⬅️</span>
-                            <span class="btn-label">Load Left</span>
+                        <button class="btn btn-secondary" onclick="newDocument()" title="Blank (Ctrl+N)" data-tooltip="New document (Ctrl+N)">
+                            <span class="icon" aria-hidden="true">📄</span>
+                            <span class="btn-label">Blank</span>
                         </button>
-                        <button class="btn btn-secondary" onclick="loadCompareFile('right')" title="Load File (Right)" data-tooltip="Load right file">
-                            <span class="icon" aria-hidden="true">➡️</span>
-                            <span class="btn-label">Load Right</span>
+                        <button class="btn btn-secondary" onclick="loadFile()" title="Upload (Ctrl+O)" data-tooltip="Upload JSON from file (Ctrl+O)">
+                            <span class="icon" aria-hidden="true">📥</span>
+                            <span class="btn-label">Upload</span>
                         </button>
-                        <button class="btn btn-secondary" onclick="clearComparePanel('left')" title="Clear Left" data-tooltip="Clear left panel">
-                            <span class="icon" aria-hidden="true">✖️</span>
-                            <span class="btn-label">Clear Left</span>
-                        </button>
-                        <button class="btn btn-secondary" onclick="clearComparePanel('right')" title="Clear Right" data-tooltip="Clear right panel">
-                            <span class="icon" aria-hidden="true">✖️</span>
-                            <span class="btn-label">Clear Right</span>
-                        </button>
-                    </div>
-                    <div class="btn-group mode-tabs" role="tablist" aria-label="Editor modes">
-                        <button class="btn btn-secondary mode-tab active" data-mode="editor" onclick="switchMode('editor')" role="tab" aria-selected="true" data-tooltip="Single document mode">
-                            <span class="icon" aria-hidden="true">✏️</span>
-                            <span class="btn-label">Editor</span>
-                        </button>
-                        <button class="btn btn-secondary mode-tab" data-mode="compare" onclick="switchMode('compare')" role="tab" aria-selected="false" data-tooltip="Compare two files">
-                            <span class="icon" aria-hidden="true">🔀</span>
-                            <span class="btn-label">Compare</span>
+                        <button class="btn btn-secondary" onclick="downloadCurrentMapping()" title="Download (Ctrl+S)" data-tooltip="Download JSON (Ctrl+S)">
+                            <span class="icon" aria-hidden="true">💾</span>
+                            <span class="btn-label">Download</span>
                         </button>
                     </div>
                     <button class="btn btn-icon btn-secondary btn-icon-compact toolbar-theme-toggle" onclick="toggleTheme()" title="Toggle theme" data-tooltip="Toggle theme">
                         <span class="theme-icon" aria-hidden="true">🌙</span>
                         <span class="sr-only">Toggle theme</span>
                     </button>
-                </div>
-            </div>
-            <div class="toolbar-row toolbar-row--search">
-                <div class="search-container" role="toolbar" aria-label="Editor utilities">
-                    <div class="search-actions" role="group" aria-label="Editor utilities">
-                        <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="openTextFindWidget()" title="Find (Ctrl+F)" data-tooltip="Open find (Ctrl+F)">
-                            <span class="icon" aria-hidden="true">🔍</span>
-                            <span class="sr-only">Open find widget</span>
-                        </button>
-                        <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="openJSONPathWidget()" title="JSONPath (Alt+J)" data-tooltip="Open JSONPath mode (Alt+J)">
-                            <span class="icon" aria-hidden="true">$.</span>
-                            <span class="sr-only">Open JSONPath find widget</span>
-                        </button>
-                        <span class="search-actions__divider" role="presentation" aria-hidden="true"></span>
-                        <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="formatJSON()" title="Format JSON" data-tooltip="Pretty print JSON">
-                            <span class="icon" aria-hidden="true">{ }</span>
-                            <span class="sr-only">Format JSON</span>
-                        </button>
-                        <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="minifyJSON()" title="Minify JSON" data-tooltip="Minify JSON">
-                            <span class="icon" aria-hidden="true">➖</span>
-                            <span class="sr-only">Minify JSON</span>
-                        </button>
-                        <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="sortJSONKeys()" title="Sort keys (Ctrl+Alt+S)" data-tooltip="Sort keys alphabetically (Ctrl+Alt+S)">
-                            <span class="icon" aria-hidden="true">🔤</span>
-                            <span class="sr-only">Sort JSON keys</span>
-                        </button>
-                        <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="collapseAllJSON()" title="Collapse all (Ctrl+Shift+[)" data-tooltip="Collapse all blocks (Ctrl+Shift+[)">
-                            <span class="icon" aria-hidden="true">📕</span>
-                            <span class="sr-only">Collapse all JSON blocks</span>
-                        </button>
-                        <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="expandAllJSON()" title="Expand all (Ctrl+Shift+])" data-tooltip="Expand all blocks (Ctrl+Shift+])">
-                            <span class="icon" aria-hidden="true">📖</span>
-                            <span class="sr-only">Expand all JSON blocks</span>
-                        </button>
-                        <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="validateJSON()" title="Validate JSON" data-tooltip="Validate JSON">
-                            <span class="icon" aria-hidden="true">✔️</span>
-                            <span class="sr-only">Validate JSON</span>
-                        </button>
-                        <span class="search-actions__divider" role="presentation" aria-hidden="true"></span>
-                        <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="openModal()" title="WireMock Templates" data-tooltip="WireMock templates">
-                            <span class="icon" aria-hidden="true">🧩</span>
-                            <span class="sr-only">WireMock templates</span>
-                        </button>
-                        <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="openHistoryModal()" title="History" data-tooltip="Show history">
-                            <span class="icon" aria-hidden="true">🕒</span>
-                            <span class="sr-only">History</span>
-                        </button>
-                        <span class="search-actions__divider" role="presentation" aria-hidden="true"></span>
-                        <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="exportAsYAML()" title="Export as YAML" data-tooltip="Export YAML">
-                            <span class="icon" aria-hidden="true">📤</span>
-                            <span class="sr-only">Export as YAML</span>
-                        </button>
-                        <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="togglePerformanceMonitoring()" title="Performance Monitor" data-tooltip="Toggle performance monitor">
-                            <span class="icon" aria-hidden="true">📈</span>
-                            <span class="sr-only">Toggle performance monitor</span>
-                        </button>
-                    </div>
                 </div>
             </div>
         </section>

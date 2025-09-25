@@ -8,6 +8,7 @@
 :root {
     --editor-grid-min: 280px;
     --font-mono: 'JetBrains Mono', 'Fira Code', 'SFMono-Regular', Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
+    --toolbar-sides-gap: var(--space-4);
 }
 
 /* ===== BASE LAYOUT ===== */
@@ -58,7 +59,44 @@ body.modal-open {
 }
 
 .toolbar-row--primary {
+    justify-content: space-between;
     gap: var(--space-5);
+}
+
+.toolbar-side {
+    display: flex;
+    align-items: center;
+    gap: var(--toolbar-sides-gap);
+    min-width: 0;
+}
+
+.toolbar-side--left {
+    flex: 1 1 auto;
+}
+
+.toolbar-side--right {
+    flex: 0 0 auto;
+    justify-content: flex-end;
+    gap: var(--toolbar-sides-gap);
+}
+
+.toolbar-side--left .toolbar-brand {
+    flex: 0 0 auto;
+}
+
+.toolbar-side--left .search-container {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.toolbar-side--right .btn-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+}
+
+.toolbar-theme-toggle {
+    margin-left: 0;
 }
 
 .toolbar-brand {
@@ -92,23 +130,8 @@ body.modal-open {
     color: var(--text-tertiary);
 }
 
-.toolbar-row__actions {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-    flex-wrap: wrap;
-    margin-left: auto;
-    justify-content: flex-end;
-}
-
-.toolbar-row__actions > .btn-group {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-3);
-}
-
 .toolbar-theme-toggle {
-    margin-left: auto;
+    margin-left: 0;
 }
 
 .btn-icon-compact {
@@ -189,7 +212,7 @@ body.modal-open {
     flex-wrap: wrap;
     align-items: center;
     gap: var(--space-3);
-    padding: 1.15rem 1.25rem;
+    padding: 1.5rem 1.25rem;
     background: var(--bg-secondary);
     border: 1px solid var(--border-primary);
     border-radius: var(--radius-2xl);

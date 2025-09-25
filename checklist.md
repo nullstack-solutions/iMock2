@@ -1,4 +1,4 @@
-# iMock status checklist *(Updated: 2025-09-24)*
+# iMock status checklist *(Updated: 2025-09-25)*
 
 ## Dashboard
 | Status | Area | Details |
@@ -23,7 +23,7 @@
 | ✅ | Monaco initialisation | `MonacoInitializer` loads Monaco, applies the WireMock schema, and spins up the main and diff editors with automatic layout support.【F:editor/monaco-enhanced.js†L1-L118】【F:editor/json-editor.html†L12-L158】 |
 | ✅ | JSON tooling | Worker-backed helpers format, minify, validate, and diff JSON with a graceful fallback when workers are unavailable.【F:editor/monaco-enhanced.js†L94-L158】【F:editor/performance-optimizations.js†L1-L120】 |
 | ✅ | Toolbar & compare mode | Toolbar controls switch between Editor/Compare, load files per side, export YAML, and surface performance toggles for cache-aware edits.【F:editor/json-editor.html†L20-L158】【F:editor/performance-optimizations.js†L122-L240】 |
-| ⚠️ | Templates & history modals | Markup exposes the modals, but no script populates `templateGrid` or `historyList`, so both remain empty placeholders.【F:editor/json-editor.html†L166-L215】 |
+| ✅ | Templates & history modals | `renderTemplateLibrary` and `renderHistoryModal` hydrate the modals, support preview/apply/copy, snapshot export, and restore flows with dedupe-aware history rolling.【F:editor/monaco-enhanced.js†L630-L1180】【F:editor/json-editor.html†L151-L215】 |
 | ⚠️ | Offline worker pool | `WorkerPool` skips instantiation on `file://`, so heavy JSON operations fall back to the main thread when the editor runs directly from disk.【F:editor/performance-optimizations.js†L121-L214】 |
 
 ## Backlog highlights
@@ -31,7 +31,7 @@
 - Implement Import/Export handlers or hide the buttons until the workflows exist.【F:index.html†L120-L211】【F:js/features.js†L2686-L2727】
 - Add a functional Demo Mode data loader for offline demos.【F:js/features.js†L2728-L2738】
 - Surface near-miss helper outputs in the dashboard for unmatched triage.【F:js/features.js†L1708-L1760】
-- Populate JSON editor templates/history with actual data and controls.【F:editor/json-editor.html†L166-L215】
+- Harden history hashing (swap 32-bit FNV for 64-bit or `crypto.subtle.digest`) and consider optional diff storage to shrink exports.【F:editor/monaco-enhanced.js†L40-L360】
 - Expose cache health (source indicator, optimistic queue depth) directly in the UI while the cache pipeline matures.【F:js/features.js†L2480-L2662】
 
 ## Testing
