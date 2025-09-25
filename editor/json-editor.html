@@ -220,6 +220,9 @@
     <script src="../js/managers.js"></script>
     <script src="../js/features.js"></script>
 
+    <!-- Shared history utilities used by main thread and workers -->
+    <script src="history-shared.js"></script>
+
     <!-- Monaco Enhanced (our main editor) -->
     <script src="monaco-enhanced.js"></script>
 
@@ -251,7 +254,7 @@
         /**
          * Save to history (editor-specific implementation)
          */
-        function saveToHistory(content, action) {
+        async function saveToHistory(content, action) {
             try {
                 if (!window.monacoInitializer || typeof window.monacoInitializer.recordHistorySnapshot !== 'function') {
                     console.log(`[HISTORY] ${action || 'snapshot'}: history service unavailable`);
@@ -262,10 +265,11 @@
                     ? content
                     : JSON.stringify(content, null, 2);
 
-                window.monacoInitializer.recordHistorySnapshot(action || 'Manual snapshot', {
+                await window.monacoInitializer.recordHistorySnapshot(action || 'Manual snapshot', {
                     label: action || 'Manual snapshot',
                     manual: true,
                     force: true,
+                    forceKeyframe: true,
                     contentOverride: serialized
                 });
                 window.monacoInitializer.refreshHistoryUI({ force: true });

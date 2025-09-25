@@ -307,49 +307,443 @@ function formatBytes(bytes) {
     return `${value.toFixed(2)} GB`;
 }
 
+function detectSafari(userAgent) {
+    const ua = userAgent || (typeof navigator !== 'undefined' ? navigator.userAgent : '');
+    if (!ua) {
+        return false;
+    }
+    return ua.includes('Safari')
+        && !ua.includes('Chrome')
+        && !ua.includes('Chromium')
+        && !ua.includes('Android')
+        && !ua.includes('Edg');
+}
+
+class HistorySnapshotLock {
+    constructor(name, options = {}) {
+        this.key = `imock-history-lock:${name}`;
+        this.ttl = options.ttl || 3000;
+        this.token = null;
+        this.memoryLocked = false;
+        this.memoryExpires = 0;
+        this.hasStorage = this.checkStorage();
+        this.channel = null;
+        this.storageListener = null;
+
+        if (typeof BroadcastChannel !== 'undefined') {
+            try {
+                this.channel = new BroadcastChannel(this.key);
+                this.channel.addEventListener('message', (event) => {
+                    if (event && event.data && event.data.type === 'release' && event.data.token === this.token) {
+                        this.token = null;
+                    }
+                });
+            } catch (error) {
+                this.channel = null;
+            }
+        }
+
+        if (!this.channel && typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+            this.storageListener = (event) => {
+                if (event && event.key === this.key && !event.newValue) {
+                    this.token = null;
+                }
+            };
+            try {
+                window.addEventListener('storage', this.storageListener);
+            } catch (error) {
+                this.storageListener = null;
+            }
+        }
+    }
+
+    checkStorage() {
+        try {
+            if (typeof localStorage === 'undefined') {
+                return false;
+            }
+            const testKey = `${this.key}:test`;
+            localStorage.setItem(testKey, '1');
+            localStorage.removeItem(testKey);
+            return true;
+        } catch (error) {
+            return false;
+        }
+    }
+
+    readLock() {
+        if (!this.hasStorage) {
+            return null;
+        }
+        try {
+            const raw = localStorage.getItem(this.key);
+            if (!raw) {
+                return null;
+            }
+            const record = JSON.parse(raw);
+            if (record && typeof record === 'object' && record.expires && record.expires < Date.now()) {
+                localStorage.removeItem(this.key);
+                return null;
+            }
+            return record;
+        } catch (error) {
+            this.hasStorage = false;
+            return null;
+        }
+    }
+
+    writeLock(record) {
+        if (!this.hasStorage) {
+            return;
+        }
+        try {
+            localStorage.setItem(this.key, JSON.stringify(record));
+        } catch (error) {
+            this.hasStorage = false;
+        }
+    }
+
+    async acquire() {
+        const now = Date.now();
+        const expires = now + this.ttl;
+        const newToken = `${now}-${Math.random().toString(16).slice(2)}`;
+
+        if (this.hasStorage) {
+            const existing = this.readLock();
+            if (existing && existing.expires > now && existing.token !== this.token) {
+                return false;
+            }
+            const tokenToUse = existing && existing.token === this.token ? this.token : newToken;
+            this.writeLock({ token: tokenToUse, expires });
+            this.token = tokenToUse;
+            return true;
+        }
+
+        if (this.memoryLocked && this.memoryExpires > now) {
+            return false;
+        }
+
+        this.memoryLocked = true;
+        this.memoryExpires = expires;
+        this.token = newToken;
+        return true;
+    }
+
+    release() {
+        if (!this.token) {
+            return;
+        }
+
+        if (this.hasStorage) {
+            const record = this.readLock();
+            if (record && record.token === this.token) {
+                try {
+                    localStorage.removeItem(this.key);
+                } catch (error) {
+                    // ignore
+                }
+            }
+            if (this.channel) {
+                try {
+                    this.channel.postMessage({ type: 'release', token: this.token });
+                } catch (error) {
+                    // ignore
+                }
+            }
+        }
+
+        this.memoryLocked = false;
+        this.memoryExpires = 0;
+        this.token = null;
+    }
+}
+
+class HistoryWorkerBridge {
+    constructor(workerScript = 'history-worker.js') {
+        this.workerScript = workerScript;
+        this.pending = new Map();
+        this.taskId = 0;
+        this.worker = null;
+        this.lastSnapshot = null;
+        this.env = this.detectEnv();
+        const hasLocation = typeof location !== 'undefined';
+        this.supportsWorkers = typeof Worker !== 'undefined' && (!hasLocation || location.protocol !== 'file:');
+        this.fallback = false;
+
+        if (this.supportsWorkers) {
+            try {
+                this.worker = new Worker(workerScript);
+                this.worker.onmessage = this.handleMessage.bind(this);
+                this.worker.onerror = this.handleWorkerError.bind(this);
+                if (typeof this.worker.addEventListener === 'function') {
+                    this.worker.addEventListener('messageerror', (event) => {
+                        console.warn('History worker message error', event);
+                    });
+                }
+            } catch (error) {
+                console.warn('Failed to create history worker, falling back to main thread', error);
+                this.worker = null;
+                this.fallback = true;
+            }
+        } else {
+            this.fallback = true;
+        }
+    }
+
+    detectEnv() {
+        const globalObj = typeof window !== 'undefined' ? window : (typeof self !== 'undefined' ? self : {});
+        const protocol = globalObj.location ? globalObj.location.protocol : 'https:';
+        const isSecureContext = typeof globalObj.isSecureContext === 'boolean' ? globalObj.isSecureContext : protocol === 'https:';
+        const ua = typeof navigator !== 'undefined' && navigator.userAgent ? navigator.userAgent : '';
+        const isSafari = detectSafari(ua);
+        const allowWebCrypto = isSecureContext && typeof globalObj.crypto !== 'undefined' && globalObj.crypto && globalObj.crypto.subtle;
+        return { protocol, isSecureContext, isSafari, allowWebCrypto };
+    }
+
+    handleMessage(event) {
+        const data = event.data || {};
+        const taskId = data.id;
+        if (!taskId || !this.pending.has(taskId)) {
+            return;
+        }
+        const task = this.pending.get(taskId);
+        this.pending.delete(taskId);
+        if (data.error) {
+            task.reject(new Error(data.error));
+            return;
+        }
+        if (task.type === 'snapshot') {
+            this.lastSnapshot = { hash: data.result.hash, canonical: data.result.canonical };
+        }
+        task.resolve(data.result);
+    }
+
+    handleWorkerError(error) {
+        console.warn('History worker failed – switching to fallback mode', error);
+        if (this.worker) {
+            try {
+                this.worker.terminate();
+            } catch (terminateError) {
+                // ignore
+            }
+            this.worker = null;
+        }
+        this.supportsWorkers = false;
+        this.fallback = true;
+        for (const [, task] of this.pending) {
+            task.reject(error);
+        }
+        this.pending.clear();
+    }
+
+    callWorker(type, payload) {
+        if (!this.worker) {
+            return Promise.reject(new Error('History worker unavailable'));
+        }
+        const taskId = ++this.taskId;
+        const message = { id: taskId, type, payload };
+        const promise = new Promise((resolve, reject) => {
+            this.pending.set(taskId, { resolve, reject, type });
+        });
+        this.worker.postMessage(message);
+        return promise;
+    }
+
+    async prepareSnapshot(payload) {
+        const message = {
+            content: payload.content,
+            previousSnapshot: payload.previousSnapshot || this.lastSnapshot,
+            options: {
+                keyframeByteThreshold: payload.keyframeByteThreshold,
+                maxOps: payload.maxOps,
+                diffTimeoutMs: payload.diffTimeoutMs,
+                forceKeyframe: Boolean(payload.forceKeyframe)
+            },
+            env: this.env
+        };
+
+        if (this.worker && !this.fallback) {
+            const result = await this.callWorker('snapshot', message);
+            this.lastSnapshot = { hash: result.hash, canonical: result.canonical };
+            return result;
+        }
+
+        return this.processFallback(message);
+    }
+
+    async processFallback(message) {
+        const previous = message.previousSnapshot || this.lastSnapshot;
+        const options = Object.assign({}, message.options || {}, { emitNormalized: true });
+        const result = await HistoryShared.generateSnapshot(message.content, previous, options, message.env || this.env);
+        this.lastSnapshot = { hash: result.hash, canonical: result.canonical, normalized: result.normalized };
+        const { normalized, ...publicResult } = result;
+        return publicResult;
+    }
+
+    async resetCache() {
+        this.lastSnapshot = null;
+        if (this.worker && !this.fallback) {
+            try {
+                await this.callWorker('reset-cache', {});
+            } catch (error) {
+                this.handleWorkerError(error);
+            }
+        }
+    }
+}
+
 class EditorHistory {
-    constructor(limit = 50) {
+    constructor(limit = 50, options = {}) {
         this.limit = Math.max(5, limit);
         this.entries = [];
         this.currentId = null;
+        this.totalBytes = 0;
+        this.cacheLimit = options.cacheLimit || 5;
+        this.canonicalCache = new Map();
+        this.stateCache = new Map();
+        this.workerBridge = new HistoryWorkerBridge(options.workerScript || 'history-worker.js');
+        this.snapshotLock = new HistorySnapshotLock('imock-history', { ttl: 3000 });
+        const isSafari = this.workerBridge.env.isSafari;
+        const baseBudget = isSafari ? 30 * 1024 * 1024 : 50 * 1024 * 1024;
+        this.budgetBytes = options.budgetBytes || baseBudget;
+        this.keyframeByteThreshold = options.keyframeByteThreshold || HistoryShared.DEFAULT_KEYFRAME_THRESHOLD;
+        this.maxDiffOperations = options.maxDiffOperations || HistoryShared.DEFAULT_MAX_OPS;
+        this.diffTimeoutMs = options.diffTimeoutMs || HistoryShared.DEFAULT_DIFF_TIMEOUT;
+        this.notify = typeof options.notify === 'function' ? options.notify : null;
+        this.lastWorkerSnapshot = null;
+
+        if (!this.workerBridge.supportsWorkers && this.notify) {
+            this.notify('History worker unavailable – heavy operations will run on the main thread.', 'warning');
+        }
+
+        if (!this.workerBridge.env.allowWebCrypto && this.workerBridge.env.isSafari && this.notify) {
+            this.notify('Secure context required for fast history hashing in Safari. Falling back to slower SHA-256.', 'warning');
+        }
     }
 
-    reset(initialContent = '', meta = {}) {
+    async reset(initialContent = '', meta = {}) {
         this.entries = [];
         this.currentId = null;
+        this.totalBytes = 0;
+        this.lastWorkerSnapshot = null;
+        this.canonicalCache.clear();
+        this.stateCache.clear();
+        await this.workerBridge.resetCache();
+
         const normalized = typeof initialContent === 'string' ? initialContent : '';
         if (normalized.length > 0 || meta.forceInitial) {
-            this.record(normalized, {
+            await this.record(normalized, {
                 ...meta,
                 reason: meta.reason || 'Initial snapshot',
                 label: meta.label || 'Initial document',
-                force: true
+                force: true,
+                forceKeyframe: true
             });
         }
     }
 
-    record(content, meta = {}) {
+    async record(content, meta = {}) {
         const normalized = typeof content === 'string' ? content : '';
         const timestamp = Date.now();
         const lastEntry = this.entries[this.entries.length - 1];
         const forceRecord = Boolean(meta.force);
+        const cleanMeta = this.cleanMeta(meta);
 
         if (!forceRecord && lastEntry && lastEntry.content === normalized) {
             lastEntry.timestamp = timestamp;
-            lastEntry.meta = { ...lastEntry.meta, ...this.cleanMeta(meta) };
+            lastEntry.meta = { ...lastEntry.meta, ...cleanMeta };
             this.currentId = lastEntry.id;
             return { recorded: false, entry: lastEntry, reason: 'unchanged' };
         }
 
-        const entry = this.createEntry(normalized, this.cleanMeta(meta), timestamp);
-        this.entries.push(entry);
-
-        if (this.entries.length > this.limit) {
-            this.entries.splice(0, this.entries.length - this.limit);
+        const lockAcquired = await this.snapshotLock.acquire();
+        if (!lockAcquired) {
+            return { recorded: false, reason: 'locked' };
         }
 
-        this.currentId = entry.id;
-        return { recorded: true, entry };
+        try {
+            const workerPayload = {
+                content: normalized,
+                previousSnapshot: this.lastWorkerSnapshot,
+                keyframeByteThreshold: this.keyframeByteThreshold,
+                maxOps: this.maxDiffOperations,
+                diffTimeoutMs: this.diffTimeoutMs,
+                forceKeyframe: Boolean(meta.forceKeyframe || meta.manual || meta.force)
+            };
+
+            const result = await this.workerBridge.prepareSnapshot(workerPayload);
+
+            if (result.snapshotType === 'unchanged' && !forceRecord) {
+                if (lastEntry) {
+                    lastEntry.timestamp = timestamp;
+                    lastEntry.meta = { ...lastEntry.meta, ...cleanMeta };
+                    this.currentId = lastEntry.id;
+                }
+                return { recorded: false, entry: lastEntry || null, reason: 'unchanged' };
+            }
+
+            const entry = this.createEntry(normalized, cleanMeta, timestamp, result);
+            this.entries.push(entry);
+            this.currentId = entry.id;
+            this.totalBytes += entry.byteSize;
+            this.cacheCanonical(entry);
+            this.enforceLimit();
+            this.enforceBudget();
+
+            this.lastWorkerSnapshot = { hash: result.hash, canonical: result.canonical };
+
+            return { recorded: true, entry };
+        } catch (error) {
+            if (this.notify) {
+                this.notify(`History snapshot failed: ${error.message || error}`, 'error');
+            } else {
+                console.warn('History snapshot failed', error);
+            }
+            return { recorded: false, error };
+        } finally {
+            this.snapshotLock.release();
+        }
+    }
+
+    cacheCanonical(entry) {
+        this.canonicalCache.set(entry.id, entry.canonical);
+        this.stateCache.set(entry.id, entry.content);
+        while (this.canonicalCache.size > this.cacheLimit) {
+            const key = this.canonicalCache.keys().next().value;
+            this.canonicalCache.delete(key);
+        }
+        while (this.stateCache.size > this.cacheLimit) {
+            const key = this.stateCache.keys().next().value;
+            this.stateCache.delete(key);
+        }
+    }
+
+    enforceLimit() {
+        if (this.entries.length <= this.limit) {
+            return;
+        }
+        const excess = this.entries.length - this.limit;
+        const removed = this.entries.splice(0, excess);
+        removed.forEach((entry) => {
+            this.totalBytes -= entry.byteSize || 0;
+            this.canonicalCache.delete(entry.id);
+            this.stateCache.delete(entry.id);
+        });
+    }
+
+    enforceBudget() {
+        while (this.totalBytes > this.budgetBytes && this.entries.length > 1) {
+            const removableIndex = this.entries.findIndex(entry => !entry.meta || !entry.meta.manual);
+            if (removableIndex === -1) {
+                break;
+            }
+            const removed = this.entries.splice(removableIndex, 1)[0];
+            if (removed) {
+                this.totalBytes -= removed.byteSize || 0;
+                this.canonicalCache.delete(removed.id);
+                this.stateCache.delete(removed.id);
+            }
+        }
     }
 
     cleanMeta(meta) {
@@ -362,16 +756,16 @@ class EditorHistory {
         delete clone.contentOverride;
         delete clone.editor;
         delete clone.labelGenerated;
+        delete clone.forceKeyframe;
         return clone;
     }
 
-    createEntry(content, meta, timestamp) {
-        const encoder = typeof TextEncoder !== 'undefined' ? new TextEncoder() : null;
-        const byteSize = encoder ? encoder.encode(content).length : content.length;
+    createEntry(content, meta, timestamp, workerResult) {
+        const byteSize = workerResult.byteSize || (content ? HistoryShared.encodeUtf8(content).length : 0);
         const label = meta && meta.label ? meta.label : this.deriveLabel(content, meta);
         const reason = meta && meta.reason ? meta.reason : (meta && meta.action ? meta.action : 'Edit');
 
-        return {
+        const entry = {
             id: `hist-${timestamp}-${Math.random().toString(36).slice(2, 8)}`,
             timestamp,
             content,
@@ -379,13 +773,21 @@ class EditorHistory {
             preview: this.buildPreview(content),
             byteSize,
             sizeLabel: formatBytes(byteSize),
+            hash: workerResult.hash,
+            canonical: workerResult.canonical,
+            snapshotType: workerResult.snapshotType || 'keyframe',
+            diff: workerResult.diff || null,
             meta: {
                 ...meta,
                 label,
                 reason,
-                recordedAt: new Date(timestamp).toISOString()
+                snapshotType: workerResult.snapshotType || 'keyframe',
+                recordedAt: new Date(timestamp).toISOString(),
+                keyframeReason: workerResult.meta && workerResult.meta.keyframeReason ? workerResult.meta.keyframeReason : undefined
             }
         };
+
+        return entry;
     }
 
     deriveLabel(content, meta = {}) {
@@ -455,32 +857,36 @@ class EditorHistory {
     }
 
     markCurrent(entryId) {
-        if (!entryId) {
-            return;
-        }
-        const entry = this.getEntryById(entryId);
-        if (entry) {
-            this.currentId = entry.id;
-        }
+        this.currentId = entryId || null;
+        this.entries.forEach((entry) => {
+            entry.meta = entry.meta || {};
+            entry.meta.current = entry.id === this.currentId;
+        });
     }
 
     getCurrentId() {
         return this.currentId;
     }
 
-    clear(options = {}) {
+    async clear(options = {}) {
         const keepLatest = options && options.keepLatest !== undefined ? options.keepLatest : true;
         const label = options && options.label ? options.label : 'Current document';
         const content = typeof options.latestContent === 'string' ? options.latestContent : '';
 
         this.entries = [];
         this.currentId = null;
+        this.totalBytes = 0;
+        this.lastWorkerSnapshot = null;
+        this.canonicalCache.clear();
+        this.stateCache.clear();
+        await this.workerBridge.resetCache();
 
         if (keepLatest && content) {
-            this.record(content, {
+            await this.record(content, {
                 reason: 'History cleared',
                 label,
-                force: true
+                force: true,
+                forceKeyframe: true
             });
         }
     }
@@ -490,18 +896,20 @@ class EditorHistory {
             return {
                 count: 0,
                 byteSize: 0,
-                latestTimestamp: null
+                latestTimestamp: null,
+                latestLabel: null,
+                budgetBytes: this.budgetBytes
             };
         }
 
-        const totalBytes = this.entries.reduce((acc, entry) => acc + (entry.byteSize || 0), 0);
         const latest = this.entries[this.entries.length - 1];
 
         return {
             count: this.entries.length,
-            byteSize: totalBytes,
+            byteSize: this.totalBytes,
             latestTimestamp: latest ? latest.timestamp : null,
-            latestLabel: latest ? latest.label : null
+            latestLabel: latest ? latest.label : null,
+            budgetBytes: this.budgetBytes
         };
     }
 }
@@ -976,6 +1384,8 @@ function renderHistoryModal(options = {}) {
 
     const stats = initializer.getHistoryStats();
     const approxSize = formatBytes(stats.byteSize);
+    const budgetSize = stats.budgetBytes ? formatBytes(stats.budgetBytes) : null;
+    const sizeLabel = budgetSize ? `${approxSize} / ${budgetSize}` : approxSize;
     const lastSaved = stats.latestTimestamp ? `${formatRelativeTime(stats.latestTimestamp)} (${new Date(stats.latestTimestamp).toLocaleString()})` : '—';
     const latestLabel = stats.latestLabel || '—';
 
@@ -986,7 +1396,7 @@ function renderHistoryModal(options = {}) {
         </div>
         <div class="history-meta">
             <span class="history-meta__label">Approx size</span>
-            <span>${approxSize}</span>
+            <span>${sizeLabel}</span>
         </div>
         <div class="history-meta">
             <span class="history-meta__label">Last save</span>
@@ -1015,7 +1425,7 @@ function renderHistoryModal(options = {}) {
             const action = actionButton.dataset.historyAction;
 
             if (action === 'snapshot') {
-                initializer.recordHistorySnapshot('Manual snapshot', { label: 'Manual snapshot', manual: true, force: true });
+                await initializer.recordHistorySnapshot('Manual snapshot', { label: 'Manual snapshot', manual: true, force: true, forceKeyframe: true });
                 initializer.refreshHistoryUI({ force: true });
                 return;
             }
@@ -1047,7 +1457,7 @@ function renderHistoryModal(options = {}) {
                     ? window.confirm('Clear history snapshots? The current document will remain as the first entry.')
                     : true;
                 if (confirmed) {
-                    initializer.clearHistory({ keepLatest: true, label: 'Current document' });
+                    await initializer.clearHistory({ keepLatest: true, label: 'Current document' });
                 }
             }
         });
@@ -1212,7 +1622,9 @@ class MonacoInitializer {
         this.lastJSONPathQuery = '';
         this.jsonPathSearchRequestId = 0;
         this.findWidgetIntegration = null;
-        this.history = new EditorHistory(60);
+        this.history = new EditorHistory(60, {
+            notify: (message, level) => this.showNotification(message, level)
+        });
         this.historyDebounce = null;
         this.suspendHistoryRecording = false;
         this.historyNeedsRender = true;
@@ -1225,7 +1637,7 @@ class MonacoInitializer {
             await this.loadMonaco();
             this.setupWireMockSchema();
             this.setupOptimizations();
-            this.createEditors();
+            await this.createEditors();
             this.setupEventHandlers();
             this.isInitialized = true;
             console.log('✅ Monaco Editor initialized with WireMock integration');
@@ -1360,7 +1772,7 @@ class MonacoInitializer {
         }
     }
 
-    createEditors() {
+    async createEditors() {
         const theme = document.body.dataset.theme === 'dark' ? 'vs-dark' : 'vs';
 
         // Check if we have a mappingId in URL - if so, show loading message instead of default stub
@@ -1387,7 +1799,7 @@ class MonacoInitializer {
             });
 
             this.editors.set('main', window.editor);
-            this.initializeHistory(initialValue);
+            await this.initializeHistory(initialValue);
         }
     }
 
@@ -1418,13 +1830,15 @@ class MonacoInitializer {
         return editor;
     }
 
-    initializeHistory(initialContent = '') {
+    async initializeHistory(initialContent = '') {
         const normalized = typeof initialContent === 'string' ? initialContent : '';
         if (!this.history) {
-            this.history = new EditorHistory(60);
+            this.history = new EditorHistory(60, {
+                notify: (message, level) => this.showNotification(message, level)
+            });
         }
 
-        this.history.reset(normalized, { label: 'Initial document', reason: 'Initial snapshot' });
+        await this.history.reset(normalized, { label: 'Initial document', reason: 'Initial snapshot' });
         this.historyNeedsRender = true;
         this.refreshHistoryUI({ statsOnly: true });
     }
@@ -1453,14 +1867,14 @@ class MonacoInitializer {
         return this.history ? this.history.getCurrentId() : null;
     }
 
-    recordHistorySnapshot(reason = 'Edit', options = {}) {
+    async recordHistorySnapshot(reason = 'Edit', options = {}) {
         if (!this.history) {
-            return null;
+            return { recorded: false, reason: 'history-unavailable' };
         }
 
         const editor = options.editor || this.getActiveEditor();
         if (!editor) {
-            return null;
+            return { recorded: false, reason: 'no-editor' };
         }
 
         let content;
@@ -1491,16 +1905,21 @@ class MonacoInitializer {
             label: options.label,
             manual: Boolean(options.manual),
             action: reason,
-            force: Boolean(options.force)
+            force: Boolean(options.force),
+            forceKeyframe: Boolean(options.forceKeyframe)
         };
 
-        const result = this.history.record(content, meta);
-        if (result && result.recorded) {
-            this.historyNeedsRender = true;
-            this.refreshHistoryUI({ statsOnly: options.statsOnly === true });
+        try {
+            const result = await this.history.record(content, meta);
+            if (result && result.recorded) {
+                this.historyNeedsRender = true;
+                this.refreshHistoryUI({ statsOnly: options.statsOnly === true });
+            }
+            return result;
+        } catch (error) {
+            console.warn('History snapshot failed:', error);
+            return { recorded: false, error };
         }
-
-        return result;
     }
 
     refreshHistoryUI(options = {}) {
@@ -1569,14 +1988,14 @@ class MonacoInitializer {
         return true;
     }
 
-    clearHistory(options = {}) {
+    async clearHistory(options = {}) {
         if (!this.history) {
             return;
         }
 
         const editor = this.getActiveEditor();
         const currentContent = editor && typeof editor.getValue === 'function' ? editor.getValue() : '';
-        this.history.clear({
+        await this.history.clear({
             keepLatest: options.keepLatest !== false,
             latestContent: currentContent,
             label: options.label || 'Current document'
@@ -1640,6 +2059,7 @@ class MonacoInitializer {
             label: template.title,
             manual: true,
             force: true,
+            forceKeyframe: true,
             statsOnly: false
         });
 
@@ -1722,8 +2142,9 @@ class MonacoInitializer {
         }
 
         this.historyDebounce = setTimeout(() => {
-            this.recordHistorySnapshot('Auto snapshot', { statsOnly: true, allowInvalid: false });
-        }, 1500);
+            this.recordHistorySnapshot('Auto snapshot', { statsOnly: true, allowInvalid: false })
+                .catch(error => console.debug('[HISTORY] Auto snapshot failed', error));
+        }, 10000);
     }
 
     getDefaultStub() {
