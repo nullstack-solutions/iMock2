@@ -513,7 +513,11 @@ class HistoryWorkerBridge {
             return;
         }
         if (task.type === 'snapshot') {
-            this.lastSnapshot = { hash: data.result.hash, canonical: data.result.canonical };
+            this.lastSnapshot = {
+                hash: data.result.hash,
+                canonical: data.result.canonical,
+                format: data.result.meta && data.result.meta.format ? data.result.meta.format : undefined
+            };
         }
         task.resolve(data.result);
     }
@@ -564,7 +568,11 @@ class HistoryWorkerBridge {
 
         if (this.worker && !this.fallback) {
             const result = await this.callWorker('snapshot', message);
-            this.lastSnapshot = { hash: result.hash, canonical: result.canonical };
+            this.lastSnapshot = {
+                hash: result.hash,
+                canonical: result.canonical,
+                format: result.meta && result.meta.format ? result.meta.format : undefined
+            };
             return result;
         }
 
@@ -572,10 +580,22 @@ class HistoryWorkerBridge {
     }
 
     async processFallback(message) {
-        const previous = message.previousSnapshot || this.lastSnapshot;
+        let previous = message.previousSnapshot || this.lastSnapshot;
+        if (previous && (!previous.normalized || !previous.format) && this.lastSnapshot && this.lastSnapshot.hash === previous.hash) {
+            previous = {
+                ...previous,
+                normalized: previous.normalized || this.lastSnapshot.normalized,
+                format: previous.format || this.lastSnapshot.format
+            };
+        }
         const options = Object.assign({}, message.options || {}, { emitNormalized: true });
         const result = await HistoryShared.generateSnapshot(message.content, previous, options, message.env || this.env);
-        this.lastSnapshot = { hash: result.hash, canonical: result.canonical, normalized: result.normalized };
+        this.lastSnapshot = {
+            hash: result.hash,
+            canonical: result.canonical,
+            normalized: result.normalized,
+            format: result.meta && result.meta.format ? result.meta.format : undefined
+        };
         const { normalized, ...publicResult } = result;
         return publicResult;
     }
@@ -690,7 +710,11 @@ class EditorHistory {
             this.enforceLimit();
             this.enforceBudget();
 
-            this.lastWorkerSnapshot = { hash: result.hash, canonical: result.canonical };
+            this.lastWorkerSnapshot = {
+                hash: result.hash,
+                canonical: result.canonical,
+                format: result.meta && result.meta.format ? result.meta.format : undefined
+            };
 
             return { recorded: true, entry };
         } catch (error) {
@@ -765,6 +789,7 @@ class EditorHistory {
         const label = meta && meta.label ? meta.label : this.deriveLabel(content, meta);
         const reason = meta && meta.reason ? meta.reason : (meta && meta.action ? meta.action : 'Edit');
 
+        const metaFormat = workerResult.meta && workerResult.meta.format ? workerResult.meta.format : 'json';
         const entry = {
             id: `hist-${timestamp}-${Math.random().toString(36).slice(2, 8)}`,
             timestamp,
@@ -777,13 +802,16 @@ class EditorHistory {
             canonical: workerResult.canonical,
             snapshotType: workerResult.snapshotType || 'keyframe',
             diff: workerResult.diff || null,
+            format: metaFormat,
             meta: {
                 ...meta,
                 label,
                 reason,
                 snapshotType: workerResult.snapshotType || 'keyframe',
                 recordedAt: new Date(timestamp).toISOString(),
-                keyframeReason: workerResult.meta && workerResult.meta.keyframeReason ? workerResult.meta.keyframeReason : undefined
+                keyframeReason: workerResult.meta && workerResult.meta.keyframeReason ? workerResult.meta.keyframeReason : undefined,
+                format: metaFormat,
+                parseError: workerResult.meta && workerResult.meta.parseError ? workerResult.meta.parseError : undefined
             }
         };
 

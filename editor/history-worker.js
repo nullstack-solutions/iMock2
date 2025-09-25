@@ -16,7 +16,11 @@ self.onmessage = async (event) => {
             const previous = payload.previousSnapshot || null;
             let snapshotInput = previous;
             if (snapshotInput && lastSnapshotCache && lastSnapshotCache.hash === snapshotInput.hash) {
-                snapshotInput = { ...snapshotInput, normalized: lastSnapshotCache.normalized };
+                snapshotInput = {
+                    ...snapshotInput,
+                    normalized: lastSnapshotCache.normalized,
+                    format: lastSnapshotCache.format
+                };
             }
 
             const options = Object.assign({}, payload.options || {}, { emitNormalized: true });
@@ -25,7 +29,8 @@ self.onmessage = async (event) => {
             lastSnapshotCache = {
                 hash: result.hash,
                 canonical: result.canonical,
-                normalized: result.normalized
+                normalized: result.normalized,
+                format: result.meta && result.meta.format ? result.meta.format : undefined
             };
 
             const { normalized, ...publicResult } = result;

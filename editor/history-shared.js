@@ -148,12 +148,47 @@
 
     function parseContent(content) {
         if (typeof content === 'string') {
-            return JSON.parse(content);
+            const normalized = normalizeLineEndings(content);
+            try {
+                return {
+                    format: 'json',
+                    value: JSON.parse(normalized),
+                    raw: normalized,
+                    error: null
+                };
+            } catch (error) {
+                return {
+                    format: 'text',
+                    value: normalized,
+                    raw: normalized,
+                    error
+                };
+            }
         }
+
         if (content && typeof content === 'object') {
-            return content;
+            let raw = '{}';
+            try {
+                raw = JSON.stringify(content);
+            } catch (error) {
+                raw = '{}';
+            }
+            return {
+                format: 'json',
+                value: content,
+                raw,
+                error: null
+            };
         }
-        return {};
+
+        const fallback = content == null ? '' : String(content);
+        const normalizedFallback = normalizeLineEndings(fallback);
+        return {
+            format: 'text',
+            value: normalizedFallback,
+            raw: normalizedFallback,
+            error: null
+        };
     }
 
     function stableStringify(root) {
@@ -450,11 +485,20 @@
 
     function prepareCanonical(content, options = {}) {
         const parsed = parseContent(content);
-        const normalized = normalizeNode(parsed, []);
-        const canonical = stableStringify(normalized);
+        let normalized;
+        let canonical;
+
+        if (parsed.format === 'json') {
+            normalized = normalizeNode(parsed.value, []);
+            canonical = stableStringify(normalized);
+        } else {
+            normalized = parsed.value;
+            canonical = typeof normalized === 'string' ? normalized : String(normalized || '');
+        }
+
         const canonicalBytes = encodeUtf8(canonical);
-        const rawBytes = encodeUtf8(typeof content === 'string' ? content : JSON.stringify(content));
-        return { normalized, canonical, canonicalBytes, rawBytes };
+        const rawBytes = encodeUtf8(parsed.raw);
+        return { normalized, canonical, canonicalBytes, rawBytes, format: parsed.format, parseError: parsed.error };
     }
 
     async function generateSnapshot(content, previousSnapshot, options = {}, env = {}) {
@@ -479,10 +523,15 @@
             diff: null,
             meta: {
                 keyframeReason: previousSnapshot ? 'forced' : 'initial',
-                timedOut: false
+                timedOut: false,
+                format: canonicalData.format
             },
             normalized: settings.emitNormalized ? canonicalData.normalized : undefined
         };
+
+        if (canonicalData.parseError) {
+            result.meta.parseError = canonicalData.parseError.message || String(canonicalData.parseError);
+        }
 
         if (previousSnapshot && previousSnapshot.hash === hash && !settings.forceKeyframe) {
             result.snapshotType = 'unchanged';
@@ -490,37 +539,55 @@
         }
 
         if (previousSnapshot && !settings.forceKeyframe) {
-            if (result.byteSize > settings.keyframeByteThreshold) {
+            const previousFormat = previousSnapshot.format || (previousSnapshot.meta && previousSnapshot.meta.format) || 'json';
+            const currentFormat = canonicalData.format;
+
+            if (currentFormat !== 'json') {
+                result.meta.keyframeReason = canonicalData.parseError ? 'invalid-json' : 'non-json';
+            } else if (previousFormat !== 'json') {
+                result.meta.keyframeReason = 'prior-non-json';
+            } else if (result.byteSize > settings.keyframeByteThreshold) {
                 result.meta.keyframeReason = 'size-threshold';
             } else {
                 let baseNormalized = previousSnapshot.normalized;
                 if (!baseNormalized) {
-                    baseNormalized = JSON.parse(previousSnapshot.canonical);
-                }
-                const diffResult = diffDocuments(baseNormalized, canonicalData.normalized, {
-                    maxOps: settings.maxOps,
-                    maxDurationMs: settings.diffTimeoutMs
-                });
-
-                if (diffResult.opCount === 0) {
-                    result.snapshotType = 'unchanged';
-                    return result;
+                    try {
+                        baseNormalized = JSON.parse(previousSnapshot.canonical);
+                    } catch (error) {
+                        baseNormalized = null;
+                    }
                 }
 
-                if (diffResult.timedOut) {
-                    result.meta.keyframeReason = 'diff-timeout';
-                } else if (diffResult.truncated || diffResult.opCount > settings.maxOps) {
-                    result.meta.keyframeReason = 'diff-op-threshold';
+                if (!baseNormalized || typeof baseNormalized !== 'object') {
+                    result.meta.keyframeReason = 'diff-base-invalid';
+                } else if (!canonicalData.normalized || typeof canonicalData.normalized !== 'object') {
+                    result.meta.keyframeReason = 'diff-target-invalid';
                 } else {
-                    result.snapshotType = 'patch';
-                    result.meta.keyframeReason = 'diff';
-                    result.diff = {
-                        operations: diffResult.operations,
-                        opCount: diffResult.opCount,
-                        patchByteSize: encodeUtf8(JSON.stringify(diffResult.operations)).length,
-                        timedOut: diffResult.timedOut,
-                        truncated: diffResult.truncated
-                    };
+                    const diffResult = diffDocuments(baseNormalized, canonicalData.normalized, {
+                        maxOps: settings.maxOps,
+                        maxDurationMs: settings.diffTimeoutMs
+                    });
+
+                    if (diffResult.opCount === 0) {
+                        result.snapshotType = 'unchanged';
+                        return result;
+                    }
+
+                    if (diffResult.timedOut) {
+                        result.meta.keyframeReason = 'diff-timeout';
+                    } else if (diffResult.truncated || diffResult.opCount > settings.maxOps) {
+                        result.meta.keyframeReason = 'diff-op-threshold';
+                    } else {
+                        result.snapshotType = 'patch';
+                        result.meta.keyframeReason = 'diff';
+                        result.diff = {
+                            operations: diffResult.operations,
+                            opCount: diffResult.opCount,
+                            patchByteSize: encodeUtf8(JSON.stringify(diffResult.operations)).length,
+                            timedOut: diffResult.timedOut,
+                            truncated: diffResult.truncated
+                        };
+                    }
                 }
             }
         }
