@@ -81,6 +81,37 @@ let jsonEditorResizeObserver = null;
 let jsonEditorResizeFrame = null;
 let jsonEditorWindowResizeHandler = null;
 
+function setButtonLoadingState(button, isLoading, loadingLabel) {
+    if (!button) return;
+
+    const labelEl = button.querySelector('.btn-label');
+    if (isLoading) {
+        button.classList.add('is-loading');
+        button.disabled = true;
+        button.setAttribute('aria-busy', 'true');
+
+        if (labelEl) {
+            if (!labelEl.dataset.originalText) {
+                labelEl.dataset.originalText = labelEl.textContent;
+            }
+            if (loadingLabel) {
+                labelEl.textContent = loadingLabel;
+            }
+        }
+
+    } else {
+        button.classList.remove('is-loading');
+        button.disabled = false;
+        button.removeAttribute('aria-busy');
+
+        if (labelEl && labelEl.dataset.originalText) {
+            labelEl.textContent = labelEl.dataset.originalText;
+            delete labelEl.dataset.originalText;
+        }
+
+    }
+}
+
 function initializeJsonEditorAutoResize() {
     const jsonEditor = document.getElementById('json-editor');
     const container = document.getElementById('json-editor-container');
@@ -312,8 +343,12 @@ async function saveMapping() {
  */
 window.updateMapping = async () => {
     console.log('updateMapping called');
-    
+
+    const updateButton = document.getElementById('update-mapping-btn');
+
     try {
+        setButtonLoadingState(updateButton, true, 'Updating…');
+
         // Save current state based on active mode FIRST
         if (editorState.mode === EDITOR_MODES.JSON) {
             saveFromJSONMode();
@@ -394,12 +429,14 @@ window.updateMapping = async () => {
         if (hasActiveFilters) {
             FilterManager.applyMappingFilters();
         }
-        
+
         console.log('updateMapping completed successfully');
-        
+
     } catch (e) {
         console.error('Error in updateMapping:', e);
         NotificationManager.error(`Update failed: ${e.message}`);
+    } finally {
+        setButtonLoadingState(updateButton, false);
     }
 };
 

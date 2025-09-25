@@ -481,7 +481,10 @@
     <div id="edit-mapping-modal" class="modal hidden">
         <div class="modal-content">
             <div class="modal-header">
-                <button type="button" class="btn btn-primary" onclick="updateMapping()">Update Mapping</button>
+                <button type="button" class="btn btn-primary" id="update-mapping-btn" onclick="updateMapping()">
+                    <span class="btn-label">Update Mapping</span>
+                    <span class="btn-spinner loading-spinner" aria-hidden="true"></span>
+                </button>
                 <h3 id="edit-modal-title">Edit Mapping</h3>
                 <button class="modal-close" onclick="hideModal('edit-mapping-modal')">&times;</button>
             </div>
