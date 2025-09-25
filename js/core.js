@@ -103,14 +103,20 @@ window.SELECTORS = {
 
     // Recording
     RECORDING: {
-        URL: 'recording-url',
-        CAPTURE_HEADERS: 'capture-headers',
-        CAPTURE_BODY: 'capture-body',
-        URL_FILTER: 'url-filter',
+        TARGET_URL: 'record-target-url',
+        MODE: 'record-mode',
+        URL_PATTERN: 'record-url-pattern',
+        METHOD: 'record-http-method',
+        CAPTURE_HEADERS: 'record-capture-headers',
+        OUTPUT_FORMAT: 'record-output-format',
+        ALLOW_NON_PROXIED: 'record-allow-non-proxied',
+        PERSIST: 'record-persist',
+        REPEATS: 'record-repeats-as-scenarios',
         INDICATOR: 'recording-indicator',
+        STATUS_TEXT: 'recording-status-text',
         TARGET: 'recording-target',
         COUNT: 'recording-count',
-        STOP_BTN: 'stop-recording-btn'
+        LIST: 'recordings-list'
     },
 
     // Settings
