@@ -662,7 +662,7 @@ function renderTemplateLibrary() {
             <li><strong>Copy JSON</strong> copies the snippet so you can adapt it manually.</li>
             <li>Each card highlights key features like matchers, templating, webhooks, or proxy settings.</li>
         </ul>
-        <p>It’s perfectly fine to just read through these examples—no need to apply a template if you only need guidance.</p>
+        <p>It's perfectly fine to just read through these examples—no need to apply a template if you only need guidance.</p>
     `;
     container.appendChild(infoPanel);
 
@@ -977,11 +977,25 @@ function renderHistoryModal(options = {}) {
     const stats = initializer.getHistoryStats();
     const approxSize = formatBytes(stats.byteSize);
     const lastSaved = stats.latestTimestamp ? `${formatRelativeTime(stats.latestTimestamp)} (${new Date(stats.latestTimestamp).toLocaleString()})` : '—';
+    const latestLabel = stats.latestLabel || '—';
 
     statsContainer.innerHTML = `
-        <div class="stats-row"><span>Snapshots</span><span>${stats.count}</span></div>
-        <div class="stats-row"><span>Approx size</span><span>${approxSize}</span></div>
-        <div class="stats-row"><span>Last save</span><span>${lastSaved}</span></div>
+        <div class="history-meta">
+            <span class="history-meta__label">Snapshots</span>
+            <span>${stats.count}</span>
+        </div>
+        <div class="history-meta">
+            <span class="history-meta__label">Approx size</span>
+            <span>${approxSize}</span>
+        </div>
+        <div class="history-meta">
+            <span class="history-meta__label">Last save</span>
+            <span>${lastSaved}</span>
+        </div>
+        <div class="history-meta">
+            <span class="history-meta__label">Latest label</span>
+            <span>${latestLabel}</span>
+        </div>
         <div class="history-actions-row">
             <button class="btn btn-secondary btn-sm" data-history-action="snapshot">Manual snapshot</button>
             <button class="btn btn-secondary btn-sm" data-history-action="export">Copy history JSON</button>
@@ -1015,6 +1029,9 @@ function renderHistoryModal(options = {}) {
                         timestamp: entry.timestamp,
                         label: entry.label,
                         reason: entry.meta?.reason,
+                        occurrences: entry.meta?.occurrences || 1,
+                        firstRecordedAt: entry.meta?.firstRecordedAt,
+                        lastRecordedAt: entry.meta?.lastRecordedAt,
                         size: entry.byteSize,
                         content: entry.content
                     }))
@@ -1084,7 +1101,26 @@ function renderHistoryModal(options = {}) {
         const metaRow = document.createElement('div');
         metaRow.className = 'history-meta';
         const reason = entry.meta?.reason || 'edit';
-        metaRow.innerHTML = `<span>Reason: ${reason}</span><span>${entry.sizeLabel}</span>`;
+
+        const reasonSpan = document.createElement('span');
+        reasonSpan.textContent = `Reason: ${reason}`;
+        metaRow.appendChild(reasonSpan);
+
+        const occurrenceCount = entry.meta?.occurrences || 1;
+        if (occurrenceCount > 1) {
+            const occurrenceSpan = document.createElement('span');
+            occurrenceSpan.className = 'history-meta__occurrences';
+            const lastSeen = entry.meta?.lastRecordedAt
+                ? new Date(entry.meta.lastRecordedAt).toLocaleString()
+                : new Date(entry.timestamp).toLocaleString();
+            occurrenceSpan.textContent = `Saved ${occurrenceCount}×`;
+            occurrenceSpan.title = `Captured ${occurrenceCount} times (last at ${lastSeen})`;
+            metaRow.appendChild(occurrenceSpan);
+        }
+
+        const sizeSpan = document.createElement('span');
+        sizeSpan.textContent = entry.sizeLabel;
+        metaRow.appendChild(sizeSpan);
 
         const buttonsRow = document.createElement('div');
         buttonsRow.className = 'history-action-buttons';
@@ -1438,6 +1474,18 @@ class MonacoInitializer {
             content = '';
         }
 
+        const allowInvalid = options.allowInvalid ?? Boolean(options.manual);
+        if (!allowInvalid) {
+            try {
+                JSON.parse(content);
+            } catch (error) {
+                if (!options.silent) {
+                    console.debug('[HISTORY] Skipped snapshot – invalid JSON', error);
+                }
+                return { recorded: false, skipped: true, reason: 'invalid-json' };
+            }
+        }
+
         const meta = {
             reason,
             label: options.label,
@@ -1674,7 +1722,7 @@ class MonacoInitializer {
         }
 
         this.historyDebounce = setTimeout(() => {
-            this.recordHistorySnapshot('Auto snapshot', { statsOnly: true });
+            this.recordHistorySnapshot('Auto snapshot', { statsOnly: true, allowInvalid: false });
         }, 1500);
     }
 
