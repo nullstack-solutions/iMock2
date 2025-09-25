@@ -1706,9 +1706,9 @@ function summarizeHistoryChanges(currentContent, previousContent, options = {}) 
         const label = key || '(root)';
         let line;
         if (typeof prevValue === 'undefined') {
-            line = `${label}: added ${nextValue}`;
+            line = `${label}: ++ ${nextValue}`;
         } else if (typeof nextValue === 'undefined') {
-            line = `${label}: removed (was ${prevValue})`;
+            line = `${label}: -- ${prevValue}`;
         } else {
             line = `${label}: ${prevValue} → ${nextValue}`;
         }
@@ -2729,6 +2729,26 @@ class MonacoInitializer {
         this.historyNeedsRender = true;
         await this.refreshHistoryUI({ force: true });
         this.showNotification(`Restored snapshot: ${entry.label}`, 'success');
+
+        if (typeof document !== 'undefined') {
+            const openModals = Array.from(document.querySelectorAll('.modal.show, .modal[aria-hidden="false"]'));
+            if (openModals.length) {
+                for (const modal of openModals) {
+                    const isElement = typeof HTMLElement === 'undefined' ? true : modal instanceof HTMLElement;
+                    if (!isElement || !modal || !modal.id) {
+                        continue;
+                    }
+                    if (typeof window.closeModal === 'function') {
+                        window.closeModal(modal.id);
+                    } else {
+                        modal.classList.remove('show');
+                        modal.classList.add('hidden');
+                        modal.style.display = 'none';
+                        modal.setAttribute('aria-hidden', 'true');
+                    }
+                }
+            }
+        }
 
         return true;
     }
