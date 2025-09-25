@@ -264,7 +264,7 @@
         })();
     </script>
     
-    <!-- WireMock URL Initialization - перенесено в initializeFromURL -->
+    <!-- WireMock URL initialization - moved to initializeFromURL -->
 
     <!-- WireMock Integration -->
     <script src="../js/main.js"></script>
@@ -330,6 +330,37 @@
         }
 
         /**
+         * Toggle the editor loading overlay
+         */
+        function setEditorLoadingState(isLoading, label) {
+            const overlay = document.getElementById('loadingOverlay');
+            if (!overlay) {
+                return;
+            }
+
+            const spinner = overlay.querySelector('.loading-spinner');
+            if (isLoading) {
+                overlay.classList.add('show');
+                overlay.setAttribute('aria-hidden', 'false');
+                overlay.setAttribute('aria-busy', 'true');
+                if (spinner) {
+                    if (label) {
+                        spinner.setAttribute('aria-label', label);
+                    } else {
+                        spinner.removeAttribute('aria-label');
+                    }
+                }
+            } else {
+                overlay.classList.remove('show');
+                overlay.setAttribute('aria-hidden', 'true');
+                overlay.removeAttribute('aria-busy');
+                if (spinner) {
+                    spinner.removeAttribute('aria-label');
+                }
+            }
+        }
+
+        /**
          * Save to history (editor-specific implementation)
          */
         function saveToHistory(content, action) {
@@ -377,7 +408,7 @@
                         // drop service cache mapping if ever present
                         if (typeof isImockCacheMapping === 'function' && isImockCacheMapping(m)) return; // never render the service mapping
 
-                        // Обновляем или добавляем в allMappings
+                        // Update or add entry in allMappings
                         const idx = window.allMappings.findIndex(x => (x.id || x.uuid) === (m.id || m.uuid));
                         if (idx >= 0) {
                             window.allMappings[idx] = m;
@@ -385,7 +416,7 @@
                             window.allMappings.unshift(m);
                         }
 
-                        // Обновляем originalMappings тоже для консистентности
+                        // Update originalMappings as well for consistency
                         const origIdx = window.originalMappings.findIndex(x => (x.id || x.uuid) === (m.id || m.uuid));
                         if (origIdx >= 0) {
                             window.originalMappings[origIdx] = m;
@@ -1412,7 +1443,7 @@
             console.log('🚀 Current URL:', window.location.href);
             console.log('🚀 URL search params:', window.location.search);
 
-            // Инициализация WireMock URL - единая точка инициализации
+            // WireMock URL initialization - single entry point
             const urlParams = new URLSearchParams(window.location.search);
             const settingsParam = urlParams.get('settings');
             const settings = settingsParam
@@ -1460,7 +1491,7 @@
                 console.log('🔍 Current window.wiremockBaseUrl:', window.wiremockBaseUrl);
                 console.log('🔍 window.getMappingById available:', typeof window.getMappingById);
 
-                showNotification('Loading mapping...', 'info');
+                setEditorLoadingState(true, mappingId ? `Loading mapping ${mappingId}` : 'Loading mapping');
 
                 // Clear any existing content while the mapping loads without polluting history
                 if (window.monacoInitializer && typeof window.monacoInitializer.prepareEditorForMappingLoad === 'function') {
@@ -1511,7 +1542,7 @@
                     if (window.monacoInitializer && typeof window.monacoInitializer.loadMappingIntoEditor === 'function') {
                         window.monacoInitializer.loadMappingIntoEditor(mapping);
                         showNotification(`Mapping "${mapping.name || mappingId}" loaded successfully`, 'success');
-                        
+
                         // Update page title
                         document.title = `JSON Editor - ${mapping.name || mappingId}`;
                     } else {
@@ -1569,6 +1600,8 @@
                         }
                     }, 1000);
                 }
+            } finally {
+                setEditorLoadingState(false);
             }
         }
         

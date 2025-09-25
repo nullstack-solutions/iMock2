@@ -3267,19 +3267,33 @@ class MonacoInitializer {
         }
     }
 
-    loadMappingIntoEditor(mappingData) {
+    loadMappingIntoEditor(mappingData, options = {}) {
         const editor = this.getActiveEditor();
         if (editor && mappingData) {
+            const normalizedOptions = typeof options === 'boolean'
+                ? { notify: options }
+                : (options && typeof options === 'object') ? options : {};
+
             const formatted = JSON.stringify(mappingData, null, 2);
             editor.setValue(formatted);
 
             this.finalizeEditorMappingLoad();
 
+            const resolved = mappingData && (mappingData.mapping || mappingData);
+            const resolvedId = resolved && (resolved.id || resolved.uuid);
+
             if (typeof window !== 'undefined' && typeof window.rememberEditorMappingId === 'function') {
-                const candidateId = mappingData && (mappingData.id || mappingData.uuid);
-                window.rememberEditorMappingId(candidateId);
+                window.rememberEditorMappingId(resolvedId);
             }
-            this.showNotification('Mapping loaded', 'success');
+
+            if (normalizedOptions.notify) {
+                const name = resolved && (resolved.name || resolvedId);
+                const customMessage = typeof normalizedOptions.message === 'string'
+                    ? normalizedOptions.message.trim()
+                    : '';
+                const message = customMessage || (name ? `Mapping "${name}" loaded` : 'Mapping loaded');
+                this.showNotification(message, 'success');
+            }
         }
     }
 

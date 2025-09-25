@@ -1,11 +1,11 @@
 'use strict';
 
-// ===== CORE.JS - Базовая инфраструктура =====
-// Константы, API клиент, базовые UI функции
+// ===== CORE.JS - Base infrastructure =====
+// Constants, API client, and shared UI helpers
 
-// --- ГЛОБАЛЬНЫЕ КОНСТАНТЫ ДЛЯ СЕЛЕКТОРОВ И ENDPOINTS ---
+// --- GLOBAL CONSTANTS FOR SELECTORS AND ENDPOINTS ---
 window.SELECTORS = {
-    // Страницы
+    // Pages
     PAGES: {
         MAPPINGS: 'mappings-page',
         REQUESTS: 'requests-page',
@@ -14,8 +14,8 @@ window.SELECTORS = {
         RECORDING: 'recording-page',
         SETTINGS: 'settings-page'
     },
-    
-    // Фильтры Request Log
+
+    // Request log filters
     REQUEST_FILTERS: {
         METHOD: 'req-filter-method',
         STATUS: 'req-filter-status',
@@ -24,28 +24,28 @@ window.SELECTORS = {
         DATE_TO: 'req-filter-to',
         QUICK: 'req-filter-quick'
     },
-    
-    // Фильтры Mappings
+
+    // Mapping filters
     MAPPING_FILTERS: {
         METHOD: 'filter-method',
         URL: 'filter-url',
         STATUS: 'filter-status'
     },
-    
-    // Списки данных
+
+    // Data lists
     LISTS: {
         MAPPINGS: 'mappings-list',
         REQUESTS: 'requests-list',
         SCENARIOS: 'scenarios-list'
     },
-    
-    // Пустые состояния
+
+    // Empty states
     EMPTY: {
         MAPPINGS: 'mappings-empty',
         REQUESTS: 'requests-empty'
     },
-    
-    // UI элементы
+
+    // UI elements
     UI: {
         STATS: 'stats',
         SEARCH_FILTERS: 'search-filters',
@@ -53,20 +53,20 @@ window.SELECTORS = {
         DATA_SOURCE_INDICATOR: 'data-source-indicator',
         REQUESTS_SOURCE_INDICATOR: 'requests-source-indicator'
     },
-    
-    // Загрузочные состояния
+
+    // Loading states
     LOADING: {
         MAPPINGS: 'mappings-loading',
         REQUESTS: 'requests-loading'
     },
-    
-    // Счетчики
+
+    // Counters
     COUNTERS: {
         MAPPINGS: 'mappings-count',
         REQUESTS: 'requests-count'
     },
-    
-    // Подключение
+
+    // Connection
     CONNECTION: {
         SETUP: 'connection-setup',
         HOST: 'wiremock-host',
@@ -76,15 +76,15 @@ window.SELECTORS = {
         STATUS_TEXT: 'status-text',
         UPTIME: 'uptime'
     },
-    
-    // Модальное окно
+
+    // Modal
     MODAL: {
         FORM: 'mapping-form',
         ID: 'mapping-id',
         TITLE: 'modal-title'
     },
-    
-    // Поля формы (для совместимости с тестами)
+
+    // Form fields (kept for test compatibility)
     FORM_FIELDS: {
         METHOD: 'mapping-method',
         URL: 'mapping-url',
@@ -94,14 +94,14 @@ window.SELECTORS = {
         PRIORITY: 'mapping-priority',
         NAME: 'mapping-name'
     },
-    
-    // Кнопки
+
+    // Buttons
     BUTTONS: {
         ADD_MAPPING: 'add-mapping-btn',
         START_RECORDING: 'start-recording-btn'
     },
-    
-    // Запись
+
+    // Recording
     RECORDING: {
         URL: 'recording-url',
         CAPTURE_HEADERS: 'capture-headers',
@@ -112,8 +112,8 @@ window.SELECTORS = {
         COUNT: 'recording-count',
         STOP_BTN: 'stop-recording-btn'
     },
-    
-    // Настройки
+
+    // Settings
     SETTINGS: {
         HOST: 'settings-host',
         PORT: 'settings-port',
@@ -123,35 +123,35 @@ window.SELECTORS = {
         AUTH_HEADER: 'auth-header',
         CACHE_ENABLED: 'cache-enabled'
     },
-    
-    // Импорт/Экспорт
+
+    // Import/Export
     IMPORT: {
         FILE: 'import-file',
         DISPLAY: 'file-display',
         ACTIONS: 'import-actions',
         RESULT: 'import-result'
     },
-    
+
     EXPORT: {
         FORMAT: 'export-format'
     },
-    
-    // Статистика
+
+    // Statistics
     STATS: {
         TOTAL_MAPPINGS: 'total-mappings',
         TOTAL_REQUESTS: 'total-requests'
     },
-    
-    // Здоровье
+
+    // Health
     HEALTH: {
         INDICATOR: 'health-indicator'
     },
-    
+
 
 };
 
 window.ENDPOINTS = {
-    // Базовые endpoints
+    // Core endpoints
     HEALTH: '/health',
     MAPPINGS: '/mappings',
     MAPPINGS_RESET: '/mappings/reset',
@@ -159,38 +159,38 @@ window.ENDPOINTS = {
     MAPPINGS_IMPORT: '/mappings/import',
     MAPPINGS_FIND_BY_METADATA: '/mappings/find-by-metadata',
     MAPPINGS_REMOVE_BY_METADATA: '/mappings/remove-by-metadata',
-    MAPPINGS_UNMATCHED: '/mappings/unmatched', // Новый в 3.13.x
-    
-    // Requests endpoints
+    MAPPINGS_UNMATCHED: '/mappings/unmatched', // Added in 3.13.x
+
+    // Request endpoints
     REQUESTS: '/requests',
-    REQUESTS_RESET: '/requests/reset', // DEPRECATED
-    REQUESTS_COUNT: '/requests/count', // POST метод!
+    REQUESTS_RESET: '/requests/reset', // Deprecated
+    REQUESTS_COUNT: '/requests/count', // Requires POST
     REQUESTS_REMOVE: '/requests/remove',
-    REQUESTS_FIND: '/requests/find', // POST метод
+    REQUESTS_FIND: '/requests/find', // Requires POST
     REQUESTS_UNMATCHED: '/requests/unmatched',
     REQUESTS_UNMATCHED_NEAR_MISSES: '/requests/unmatched/near-misses',
-    
-    // Near Misses endpoints (исправлено)
-    NEAR_MISSES_REQUEST: '/near-misses/request', // POST метод
-    NEAR_MISSES_PATTERN: '/near-misses/request-pattern', // POST метод
-    
-    // Recordings endpoints (исправлено)
-    RECORDINGS_START: '/recordings/start', // POST метод
-    RECORDINGS_STOP: '/recordings/stop', // POST метод
-    RECORDINGS_STATUS: '/recordings/status', // GET метод
-    RECORDINGS_SNAPSHOT: '/recordings/snapshot', // POST метод
-    
-    // Scenarios endpoints
+
+    // Near misses endpoints (corrected)
+    NEAR_MISSES_REQUEST: '/near-misses/request', // Requires POST
+    NEAR_MISSES_PATTERN: '/near-misses/request-pattern', // Requires POST
+
+    // Recording endpoints (corrected)
+    RECORDINGS_START: '/recordings/start', // Requires POST
+    RECORDINGS_STOP: '/recordings/stop', // Requires POST
+    RECORDINGS_STATUS: '/recordings/status', // Uses GET
+    RECORDINGS_SNAPSHOT: '/recordings/snapshot', // Requires POST
+
+    // Scenario endpoints
     SCENARIOS: '/scenarios',
     SCENARIOS_RESET: '/scenarios/reset',
     SCENARIOS_SET_STATE: '/scenarios/set-state',
-    
+
     // System endpoints
     SETTINGS: '/settings',
     SHUTDOWN: '/shutdown'
 };
 
-// --- ГЛОБАЛЬНОЕ СОСТОЯНИЕ ---
+// --- GLOBAL STATE ---
 let wiremockBaseUrl = '';
 let requestTimeout = 5000;
 let authHeader = ''; // Authorization header for all API requests
@@ -199,15 +199,15 @@ window.startTime = null; // Make globally accessible for uptime tracking
 window.uptimeInterval = null; // Make globally accessible for uptime tracking
 let autoRefreshInterval = null;
 
-// Глобальные переменные для features
+// Global feature-level state
 window.allMappings = [];
 window.allRequests = [];
 window.allScenarios = [];
 window.isRecording = false;
 window.recordedCount = 0;
 
-// Нормализация базового URL WireMock (учет схемы и порта из ввода пользователя)
-// Примеры ввода и результата:
+// Normalize the WireMock base URL (respect the scheme and port provided by the user)
+// Example inputs and outputs:
 //  - host: "mock.example.com", port: "8080" => "http://mock.example.com:8080/__admin"
 //  - host: "https://mock.example.com", port: "" => "https://mock.example.com:443/__admin"
 //  - host: "https://mock.example.com:8443", port: "" => "https://mock.example.com:8443/__admin"
@@ -221,35 +221,35 @@ window.normalizeWiremockBaseUrl = (hostInput, portInput) => {
     if (!rawHost) rawHost = 'localhost';
 
     try {
-        // Если протокол отсутствует, временно добавим http для корректного парсинга URL
+        // If the protocol is missing, temporarily prepend http for proper parsing
         const url = new URL(rawHost.includes('://') ? rawHost : `http://${rawHost}`);
         scheme = url.protocol.replace(':', '') || 'http';
         hostname = url.hostname;
-        // Если порт не задан отдельно, возьмем из URL (если есть)
+        // If a port is not provided separately, attempt to reuse the port from the URL
         if (!port && url.port) {
             port = url.port;
         }
     } catch (e) {
-        // Фолбэк к простому разбору host:port
+        // Fallback to parsing host:port directly
         const m = rawHost.match(/^([^:/]+)(?::(\d+))?$/);
         if (m) {
             hostname = m[1];
             if (!port && m[2]) port = m[2];
         } else {
-            hostname = rawHost; // как есть
+            hostname = rawHost; // use as-is
         }
     }
 
     if (!hostname) hostname = 'localhost';
     if (!port) {
-        // По умолчанию для https используем 443, иначе 8080 (чтобы сохранять поведение UI)
+        // Default to 443 for HTTPS and 8080 otherwise (to preserve existing UI behavior)
         port = scheme === 'https' ? '443' : '8080';
     }
 
     return `${scheme}://${hostname}:${port}/__admin`;
 };
 
-// --- API-КЛИЕНТ С ТАЙМАУТОМ ---
+// --- API CLIENT WITH TIMEOUT SUPPORT ---
 window.apiFetch = async (endpoint, options = {}) => {
     const controller = new AbortController();
 
@@ -264,7 +264,7 @@ window.apiFetch = async (endpoint, options = {}) => {
     const method = options.method || 'GET';
 
     // Prepare headers with auth header if available
-    // Получать authHeader из настроек каждый раз
+    // Retrieve the authHeader from settings on every request
     const authSettings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
     const currentAuthHeader = authSettings.authHeader || window.authHeader || '';
 
@@ -367,12 +367,12 @@ window.apiFetch = async (endpoint, options = {}) => {
     }
 };
 
-// --- БАЗОВЫЕ UI ФУНКЦИИ ---
+// --- CORE UI HELPERS ---
 
 // NOTE: Uptime functions (updateUptime, stopUptime) have been moved to features.js
 // to provide a single source of truth for uptime logic and avoid conflicts.
 
-// Навигация по страницам
+// Page navigation helpers
 window.showPage = (pageId, element) => {
     document.querySelectorAll('.main-content > div[id$="-page"]').forEach(p => p.classList.add('hidden'));
     
@@ -396,7 +396,7 @@ window.showPage = (pageId, element) => {
     // This prevents unnecessary API calls when switching tabs
 };
 
-// Модальные окна
+// Modal helpers
 const resolveModalElement = (modalId) => {
     if (!modalId) {
         console.warn('Modal ID is required to resolve modal element');
@@ -471,24 +471,24 @@ window.hideModal = (modal) => {
     }
 };
 
-// Управление вкладками
+// Tab management
 window.showTab = (tabName, button) => {
-    // Скрываем все табы
+    // Hide every tab
     document.querySelectorAll('.tab-content').forEach(tab => {
         tab.classList.add('hidden');
     });
     
-    // Убираем активность с кнопок
+    // Remove the active state from all buttons
     document.querySelectorAll('.tab-button').forEach(btn => {
         btn.classList.remove('active');
     });
     
-    // Показываем нужный таб и активируем кнопку
+    // Show the requested tab and activate its button
     document.getElementById(`${tabName}-tab`).classList.remove('hidden');
     button.classList.add('active');
 };
 
-// Устаревшая функция для совместимости
+// Legacy wrapper kept for compatibility
 window.showMessage = (text, type = 'info') => {
     if (window.NotificationManager) {
         NotificationManager.show(text, type);
