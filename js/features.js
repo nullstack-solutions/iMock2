@@ -1,17 +1,17 @@
 'use strict';
 
-// ===== FEATURES.JS - Бизнес-функции =====
-// Все основные функции приложения: mappings, requests, scenarios, recording, import/export, settings
+// ===== FEATURES.JS - Business logic =====
+// Hosts all primary app features: mappings, requests, scenarios, recording, import/export, settings
 // Updated: 2025-09-22 - Added missing HTML compatibility functions
 
-// --- ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ СОСТОЯНИЯ (используем window для межмодульного доступа) ---
-// Переменные определены в core.js
+// --- GLOBAL STATE (shared via window for cross-module access) ---
+// Variables are defined in core.js
 
-// Хранилище оригинальных данных (не изменяется при фильтрации)
-window.originalMappings = []; // Полный список маппингов с сервера
-window.allMappings = []; // Текущий отображаемый список (может быть отфильтрован)
-window.originalRequests = []; // Полный список запросов с сервера
-window.allRequests = []; // Текущий отображаемый список запросов (может быть отфильтрован)
+// Original data stores (never mutated by filters)
+window.originalMappings = []; // Complete mapping list from the server
+window.allMappings = []; // Currently displayed mappings (may be filtered)
+window.originalRequests = []; // Complete request list from the server
+window.allRequests = []; // Currently displayed request list (may be filtered)
 
 // Reliable deletion tracking system
 window.pendingDeletedIds = new Set(); // Track items pending deletion to prevent cache flicker
@@ -47,45 +47,45 @@ async function fetchMappingsFromServer({ force = false } = {}) {
     return requestPromise;
 }
 
-// === УЛУЧШЕННЫЙ МЕХАНИЗМ КЕШИРОВАНИЯ ===
+// === ENHANCED CACHING MECHANISM ===
 
-// Оптимизированная система отслеживания изменений
+// Optimized change tracking system
 window.cacheManager = {
-    // Основной кеш данных
+    // Primary data cache
     cache: new Map(),
 
-    // Очередь optimistic updates с TTL (теперь массив для коалесинга)
+    // Optimistic update queue with TTL (array to allow coalescing)
     optimisticQueue: [],
 
-    // Настройки TTL для optimistic updates (30 секунд по умолчанию)
+    // TTL configuration for optimistic updates (30 seconds by default)
     optimisticTTL: 30000,
 
-    // Счетчик версий для отслеживания изменений
+    // Version counter for change tracking
     version: 0,
 
-    // Флаг синхронизации
+    // Synchronization flag
     isSyncing: false,
 
-    // Инициализация
+    // Initialization
     init() {
-        // Периодическая очистка устаревших optimistic updates
+        // Periodically remove stale optimistic updates
         setInterval(() => this.cleanupStaleOptimisticUpdates(), 5000);
 
-        // Периодическая синхронизация с сервером
+        // Periodically synchronize with the server
         setInterval(() => this.syncWithServer(), 60000);
     },
 
-    // Добавление optimistic update (упрощенная версия)
+    // Add an optimistic update (simplified flow)
     addOptimisticUpdate(m, op) {
         const id = m?.id || m?.uuid;
         if (!id) return;
 
-        // Простая логика - сервер всегда источник правды
+        // Lightweight logic - the server remains the source of truth
         this.optimisticQueue.push({ id, op, payload: m, ts: Date.now() });
         console.log(`🎯 [CACHE] Added optimistic update: ${id}, operation: ${op}`);
     },
 
-    // Удаление optimistic update после подтверждения от сервера
+    // Remove the optimistic update after the server confirms it
     confirmOptimisticUpdate(id) {
         const i = this.optimisticQueue.findIndex(x => x.id === id);
         if (i >= 0) {
@@ -94,7 +94,7 @@ window.cacheManager = {
         }
     },
 
-    // Удаление устаревших optimistic updates
+    // Remove stale optimistic updates
     cleanupStaleOptimisticUpdates() {
         const now = Date.now();
         const initialLength = this.optimisticQueue.length;
@@ -109,12 +109,12 @@ window.cacheManager = {
         const removedCount = initialLength - this.optimisticQueue.length;
         if (removedCount > 0) {
             console.log(`🧹 [CACHE] Cleaned ${removedCount} stale optimistic updates`);
-            // Запускаем обновление UI если были удалены устаревшие updates
+            // Trigger a UI refresh if stale updates were removed
             this.rebuildCache();
         }
     },
 
-    // Удаление конкретного optimistic update
+    // Remove a specific optimistic update
     removeOptimisticUpdate(id) {
         const i = this.optimisticQueue.findIndex(x => x.id === id);
         if (i >= 0) {
@@ -123,7 +123,7 @@ window.cacheManager = {
         }
     },
 
-    // Полная перестройка кеша
+    // Full cache rebuild
     async rebuildCache() {
         if (this.isSyncing) {
             console.log('⏳ [CACHE] Already syncing, skipping rebuild');
@@ -134,14 +134,14 @@ window.cacheManager = {
         console.log('🔄 [CACHE] Starting cache rebuild');
 
         try {
-            // Получаем свежие данные с сервера
+            // Pull the latest data from the server
             const response = await fetchMappingsFromServer({ force: true });
             const serverMappings = response.mappings || [];
 
-            // Очищаем старый кеш
+            // Clear the previous cache snapshot
             this.cache.clear();
 
-            // Заполняем кеш данными с сервера
+            // Populate the cache with server data
             serverMappings.forEach(mapping => {
                 const id = mapping.id || mapping.uuid;
                 if (id && !isImockCacheMapping(mapping)) {
@@ -149,7 +149,7 @@ window.cacheManager = {
                 }
             });
 
-            // Применяем optimistic updates поверх серверных данных
+            // Layer optimistic updates on top of the server payload
             for (const item of this.optimisticQueue) {
                 if (item.op === 'delete') {
                     this.cache.delete(item.id);
@@ -158,13 +158,13 @@ window.cacheManager = {
                 }
             }
 
-            // Обновляем глобальные массивы
+            // Update the global arrays
             window.originalMappings = Array.from(this.cache.values());
             window.allMappings = [...window.originalMappings];
 
             console.log(`✅ [CACHE] Rebuild complete: ${this.cache.size} mappings`);
 
-            // Обновляем UI
+            // Refresh the UI
             if (typeof window.fetchAndRenderMappings === 'function') {
                 window.fetchAndRenderMappings(window.allMappings);
             }
@@ -176,7 +176,7 @@ window.cacheManager = {
         }
     },
 
-    // Синхронизация с сервером
+    // Synchronize with the server
     async syncWithServer() {
         if (this.optimisticQueue.length === 0) {
             console.log('✨ [CACHE] No optimistic updates to sync');
@@ -187,17 +187,17 @@ window.cacheManager = {
         await this.rebuildCache();
     },
 
-    // Получение маппинга из кеша
+    // Retrieve a mapping from the cache
     getMapping(id) {
         return this.cache.get(id);
     },
 
-    // Проверка наличия маппинга
+    // Check if a mapping exists
     hasMapping(id) {
         return this.cache.has(id);
     },
 
-    // Очистка всего кеша
+    // Clear the entire cache
     clear() {
         this.cache.clear();
         this.optimisticQueue.length = 0;
@@ -206,12 +206,12 @@ window.cacheManager = {
     }
 };
 
-// Инициализация менеджера кеша
+// Initialize the cache manager
 window.cacheManager.init();
 
-// --- ОСНОВНЫЕ ФУНКЦИИ ПРИЛОЖЕНИЯ ---
+// --- CORE APPLICATION FUNCTIONS ---
 
-// Улучшенная функция подключения к WireMock серверу с правильной логикой uptime
+// Enhanced WireMock connection routine with accurate uptime handling
 window.connectToWireMock = async () => {
     // Try main page elements first, then fallback to settings page elements
     const hostInput = document.getElementById('wiremock-host') || document.getElementById(SELECTORS.CONNECTION.HOST);
@@ -219,7 +219,7 @@ window.connectToWireMock = async () => {
     
     if (!hostInput || !portInput) {
         console.error('Connection input elements not found');
-        NotificationManager.error('Ошибка: не найдены поля подключения');
+        NotificationManager.error('Error: connection fields not found');
         return;
     }
     
@@ -230,11 +230,11 @@ window.connectToWireMock = async () => {
     // Only use these values for the current connection attempt
     console.log('🔗 Connecting with:', { host, port });
     
-    // Обновляем базовый URL (с корректной нормализацией схемы/порта)
+    // Update the base URL (with proper scheme/port normalization)
     if (typeof window.normalizeWiremockBaseUrl === 'function') {
         window.wiremockBaseUrl = window.normalizeWiremockBaseUrl(host, port);
     } else {
-        // Фолбэк на старое поведение (на случай, если порядок загрузки скриптов изменен)
+        // Fall back to the previous behavior (in case script load order changes)
         const hasScheme = /^(https?:)\/\//i.test(host);
         const scheme = hasScheme ? host.split(':')[0] : 'http';
         const cleanHost = hasScheme ? host.replace(/^(https?:)\/\//i, '') : host;
@@ -244,10 +244,10 @@ window.connectToWireMock = async () => {
     
     try {
         let renderSource = 'unknown';
-        // Первый health check - здесь начинается uptime
+        // The first health check starts uptime tracking
         await checkHealthAndStartUptime();
         
-        // Обновляем UI после успешного подключения
+        // Update the UI after a successful connection
         const statusDot = document.getElementById(SELECTORS.CONNECTION.STATUS_DOT);
         const statusText = document.getElementById(SELECTORS.CONNECTION.STATUS_TEXT);
         const setupDiv = document.getElementById(SELECTORS.CONNECTION.SETUP);
@@ -258,7 +258,7 @@ window.connectToWireMock = async () => {
         if (setupDiv) setupDiv.style.display = 'none';
         if (addButton) addButton.disabled = false;
         
-        // Показываем статистику и фильтры
+        // Reveal statistics and filters
         const statsElement = document.getElementById(SELECTORS.UI.STATS);
         const statsSpacer = document.getElementById('stats-spacer');
         const filtersElement = document.getElementById(SELECTORS.UI.SEARCH_FILTERS);
@@ -266,10 +266,10 @@ window.connectToWireMock = async () => {
         if (statsSpacer) statsSpacer.style.display = 'none';
         if (filtersElement) filtersElement.style.display = 'block';
         
-        // Запускаем периодический health check
+        // Start periodic health checks
         startHealthMonitoring();
         
-        // Загружаем данные параллельно с учетом Cache Service
+        // Load data in parallel while leveraging the Cache Service
         const useCache = (JSON.parse(localStorage.getItem('wiremock-settings') || '{}').cacheEnabled) === true
             || !!document.getElementById('cache-enabled')?.checked;
         await Promise.all([
@@ -277,16 +277,16 @@ window.connectToWireMock = async () => {
             fetchAndRenderRequests()
         ]);
         
-        NotificationManager.success('Подключение к WireMock установлено!');
+        NotificationManager.success('Connected to WireMock successfully!');
         
     } catch (error) {
         console.error('Connection error:', error);
-        NotificationManager.error(`Ошибка подключения: ${error.message}`);
+        NotificationManager.error(`Connection error: ${error.message}`);
         
-        // Останавливаем uptime при ошибке
+        // Stop uptime tracking on failure
         stopUptime();
         
-        // Сбрасываем состояние подключения
+        // Reset connection state
         const statusDot = document.getElementById(SELECTORS.CONNECTION.STATUS_DOT);
         const statusText = document.getElementById(SELECTORS.CONNECTION.STATUS_TEXT);
         if (statusDot) statusDot.className = 'status-dot disconnected';
@@ -294,18 +294,18 @@ window.connectToWireMock = async () => {
     }
 };
 
-// Health monitoring и uptime система
+// Health monitoring and uptime system
 let healthCheckInterval = null;
 
-// Функция первого health check и запуска uptime
+// Perform the first health check and start uptime tracking
 window.checkHealthAndStartUptime = async () => {
     try {
-        // Измеряем время отклика
+        // Measure response time
         const startTime = performance.now();
         let responseTime = 0;
         let isHealthy = false;
 
-        // Пытаемся сначала обратиться к /health (WireMock 3.x), затем делаем фолбэк к /mappings (совместимо с 2.x)
+        // Try /health first (WireMock 3.x) then fall back to /mappings (compatible with 2.x)
         try {
             const response = await apiFetch(ENDPOINTS.HEALTH);
             responseTime = Math.round(performance.now() - startTime);
@@ -315,15 +315,15 @@ window.checkHealthAndStartUptime = async () => {
             );
             console.log('[HEALTH] initial check:', { rawStatus: response?.status, healthyFlag: response?.healthy, isHealthy });
         } catch (primaryError) {
-            // Фолбэк: проверяем доступность основных API через /mappings
+            // Fallback: verify core API availability via /mappings
             const fallback = await fetchMappingsFromServer();
             responseTime = Math.round(performance.now() - startTime);
-            // Если ответ JSON-объект (ожидаемо у WireMock), считаем здоровым
+            // Treat a JSON object response (WireMock default) as healthy
             isHealthy = typeof fallback === 'object';
         }
 
         if (isHealthy) {
-            // Запускаем uptime только при успешном health check
+            // Start uptime only after a successful health check
             window.startTime = Date.now();
             if (window.uptimeInterval) clearInterval(window.uptimeInterval);
             window.uptimeInterval = setInterval(updateUptime, 1000);
@@ -332,7 +332,7 @@ window.checkHealthAndStartUptime = async () => {
                 try { window.applyHealthUI(true, responseTime); } catch (e) { console.warn('applyHealthUI failed:', e); }
             }
             
-            // Обновляем health indicator с временем отклика
+            // Update the health indicator with the measured response time
             // Unified health UI (fallback DOM update remains below)
             if (typeof window.applyHealthUI === 'function') {
                 try { window.applyHealthUI(isHealthy, isHealthy ? responseTime : null); } catch (e) { console.warn('applyHealthUI failed:', e); }
@@ -353,14 +353,14 @@ window.checkHealthAndStartUptime = async () => {
     }
 };
 
-// Функция периодического мониторинга health
+// Periodic health monitoring function
 window.startHealthMonitoring = () => {
-    // Очищаем предыдущий интервал если есть
+    // Clear any previous interval
     if (healthCheckInterval) {
         clearInterval(healthCheckInterval);
     }
-    
-    // Проверяем health каждые 30 секунд
+
+    // Check health every 30 seconds
     healthCheckInterval = setInterval(async () => {
         try {
             const startTime = performance.now();
@@ -376,7 +376,7 @@ window.startHealthMonitoring = () => {
                 );
                 console.log('[HEALTH] periodic check:', { rawStatus: healthResponse?.status, healthyFlag: healthResponse?.healthy, isHealthyNow });
             } catch (primaryError) {
-                // Фолбэк на /mappings
+                // Fallback to /mappings
                 const fallback = await fetchMappingsFromServer();
                 responseTime = Math.round(performance.now() - startTime);
                 isHealthyNow = typeof fallback === 'object';
@@ -388,7 +388,7 @@ window.startHealthMonitoring = () => {
                     healthIndicator.innerHTML = `<span>Response Time: </span><span class="healthy">${responseTime}ms</span>`;
                 } else {
                     healthIndicator.innerHTML = `<span>Response Time: </span><span class="unhealthy">Unhealthy</span>`;
-                    // Останавливаем uptime при первом неудачном health check
+                    // Stop uptime on the first failed health check
                     stopUptime();
                     clearInterval(healthCheckInterval);
                     NotificationManager.warning('WireMock health check failed, uptime stopped');
@@ -396,7 +396,7 @@ window.startHealthMonitoring = () => {
             }
         } catch (error) {
             console.error('Health monitoring failed:', error);
-            // Останавливаем uptime при ошибке health check
+            // Stop uptime when health monitoring throws
             const healthIndicator = document.getElementById(SELECTORS.HEALTH.INDICATOR);
             if (typeof window.applyHealthUI === 'function') {
                 try { window.applyHealthUI(null, null); } catch {}
@@ -407,7 +407,7 @@ window.startHealthMonitoring = () => {
             clearInterval(healthCheckInterval);
             NotificationManager.error('Health monitoring failed, uptime stopped');
         }
-    }, 30000); // 30 секунд
+    }, 30000); // 30 seconds
 };
 
 // ===== UPTIME FUNCTIONS =====
@@ -444,7 +444,7 @@ window.stopUptime = function() {
 };
 
 
-// --- КОМПАКТНЫЕ УТИЛИТЫ (сокращено с ~80 до 20 строк) ---
+// --- COMPACT UTILITIES (trimmed from ~80 to 20 lines) ---
 
 const Utils = {
     escapeHtml: (unsafe) => typeof unsafe !== 'string' ? String(unsafe) : 
@@ -462,10 +462,10 @@ const Utils = {
     },
     
     parseRequestTime: (date) => {
-        if (!date) return new Date().toLocaleString('ru-RU');
+        if (!date) return new Date().toLocaleString('en-US');
         try {
             const d = new Date(typeof date === 'number' ? (date > 1e12 ? date : date * 1000) : date);
-            return isNaN(d.getTime()) ? `Invalid: ${date}` : d.toLocaleString('ru-RU');
+            return isNaN(d.getTime()) ? `Invalid: ${date}` : d.toLocaleString('en-US');
         } catch { return `Invalid: ${date}`; }
     },
     
@@ -479,16 +479,16 @@ const Utils = {
     }
 };
 
-// Обратная совместимость для существующего кода
+// Backward compatibility for existing code
 const escapeHtml = Utils.escapeHtml;
 const formatJson = Utils.formatJson;
 const parseRequestTime = Utils.parseRequestTime;
 const getStatusClass = Utils.getStatusClass;
 
-// --- УНИВЕРСАЛЬНЫЕ UI КОМПОНЕНТЫ (сократить ~100 строк дублирования) ---
+// --- UNIVERSAL UI COMPONENTS (replace ~100 lines of duplication) ---
 
 const UIComponents = {
-    // Базовый компонент карточки - заменяет renderMappingCard и renderRequestCard
+    // Base card component replacing renderMappingCard and renderRequestCard
     createCard: (type, data, actions = []) => {
         const { id, method, url, status, name, time, extras = {} } = data;
         return `
@@ -616,9 +616,9 @@ const UIComponents = {
 window.toggleFullContent = UIComponents.toggleFullContent;
 window.toggleDetails = UIComponents.toggleDetails;
 
-// --- ЗАГРУЗКА И ОТОБРАЖЕНИЕ ДАННЫХ ---
+// --- DATA LOADING AND PRESENTATION ---
 
-// Компактная функция загрузки маппингов (временно возвращена старая версия до создания DataManager)
+// Compact mapping loader (reusing the previous implementation until DataManager ships)
 window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) => {
     const container = document.getElementById(SELECTORS.LISTS.MAPPINGS);
     const emptyState = document.getElementById(SELECTORS.EMPTY.MAPPINGS);
@@ -781,7 +781,7 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
         // Invalidate cache before re-rendering to ensure fresh DOM references
         window.invalidateElementCache(SELECTORS.LISTS.MAPPINGS);
 
-        // Сортировка маппингов
+        // Sort mappings
         const sortedMappings = [...window.allMappings].sort((a, b) => {
             const priorityA = a.priority || 1;
             const priorityB = b.priority || 1;
@@ -813,7 +813,7 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
         
     } catch (error) {
         console.error('Error in fetchAndRenderMappings:', error);
-        NotificationManager.error(`Ошибка загрузки маппингов: ${error.message}`);
+        NotificationManager.error(`Failed to load mappings: ${error.message}`);
         loadingState.classList.add('hidden');
         emptyState.classList.remove('hidden');
         container.style.display = 'none';
@@ -873,7 +873,7 @@ window.getMappingById = async (mappingId) => {
     }
 };
 
-// Обновленная функция applyOptimisticMappingUpdate
+// Updated applyOptimisticMappingUpdate helper
 window.applyOptimisticMappingUpdate = (mappingLike) => {
     try {
         if (!mappingLike) {
@@ -888,7 +888,7 @@ window.applyOptimisticMappingUpdate = (mappingLike) => {
             return;
         }
 
-        // Проверяем, не является ли это служебным маппингом кеша
+        // Ignore synthetic cache service mappings
         if (isImockCacheMapping(mapping)) {
             console.log('🎯 [OPTIMISTIC] Skipping cache mapping update');
             return;
@@ -973,7 +973,7 @@ window.backgroundRefreshMappings = async (useCache = false) => {
     }
 };
 
-// Компактная функция рендеринга маппинга через UIComponents (сокращено с ~67 до 15 строк)
+// Compact mapping renderer through UIComponents (shortened from ~67 to 15 lines)
 window.renderMappingCard = function(mapping) {
     if (!mapping || !mapping.id) {
         console.warn('Invalid mapping data:', mapping);
@@ -982,8 +982,8 @@ window.renderMappingCard = function(mapping) {
     
     const actions = [
         { class: 'secondary', handler: 'editMapping', title: 'Edit in Editor', icon: '📝' },
-        { class: 'primary', handler: 'openEditModal', title: 'Редактировать', icon: '✏️' },
-        { class: 'danger', handler: 'deleteMapping', title: 'Удалить', icon: '🗑️' }
+        { class: 'primary', handler: 'openEditModal', title: 'Edit', icon: '✏️' },
+        { class: 'danger', handler: 'deleteMapping', title: 'Delete', icon: '🗑️' }
     ];
     
     const data = {
@@ -1031,7 +1031,7 @@ window.renderMappingCard = function(mapping) {
     return UIComponents.createCard('mapping', data, actions);
 }
 
-// Обновляем счетчик маппингов
+// Update the mapping counter
 window.updateMappingsCounter = function() {
     const counter = document.getElementById(SELECTORS.COUNTERS.MAPPINGS);
     if (counter) {
@@ -1039,7 +1039,7 @@ window.updateMappingsCounter = function() {
     }
 }
 
-// Обновление UI-индикатора источника данных (cache/remote/direct)
+// Update the data-source indicator (cache/remote/direct)
 function updateDataSourceIndicator(source) {
     const el = document.getElementById('data-source-indicator');
     if (!el) return;
@@ -1097,11 +1097,11 @@ function updateRequestsSourceIndicator(source) {
     el.className = cls;
 }
 
-// Компактные функции переключения деталей через UIComponents
+// Compact detail toggles via UIComponents
 window.toggleMappingDetails = (mappingId) => UIComponents.toggleDetails(mappingId, 'mapping');
 window.toggleRequestDetails = (requestId) => UIComponents.toggleDetails(requestId, 'request');
 
-// Компактная функция загрузки запросов (временно возвращена старая версия до создания DataManager)
+// Compact request loader (temporary reuse until DataManager exists)
 window.fetchAndRenderRequests = async (requestsToRender = null) => {
     const container = document.getElementById(SELECTORS.LISTS.REQUESTS);
     const emptyState = document.getElementById(SELECTORS.EMPTY.REQUESTS);
@@ -1150,14 +1150,14 @@ window.fetchAndRenderRequests = async (requestsToRender = null) => {
         
     } catch (error) {
         console.error('Error in fetchAndRenderRequests:', error);
-        NotificationManager.error(`Ошибка загрузки запросов: ${error.message}`);
+        NotificationManager.error(`Failed to load requests: ${error.message}`);
         loadingState.classList.add('hidden');
         emptyState.classList.remove('hidden');
         container.style.display = 'none';
     }
 };
 
-// Компактная функция рендеринга запроса через UIComponents (сокращено с ~62 до 18 строк)
+// Compact request renderer through UIComponents (shortened from ~62 to 18 lines)
 window.renderRequestCard = function(request) {
     if (!request) {
         console.warn('Invalid request data:', request);
@@ -1196,7 +1196,7 @@ window.renderRequestCard = function(request) {
     return UIComponents.createCard('request', data, []);
 }
 
-// Обновляем счетчик запросов
+// Update the requests counter
 function updateRequestsCounter() {
     const counter = document.getElementById(SELECTORS.COUNTERS.REQUESTS);
     if (counter) {
@@ -1204,22 +1204,22 @@ function updateRequestsCounter() {
     }
 }
 
-// --- ОБРАБОТЧИКИ ДЕЙСТВИЙ (удалена дублированная connectToWireMock) ---
+// --- ACTION HANDLERS (deduplicated connectToWireMock) ---
 
 window.openEditModal = async (id) => {
-    // Безопасная проверка наличия маппингов
+    // Guard against missing mappings
     if (!window.allMappings || !Array.isArray(window.allMappings)) {
-        NotificationManager.show('Маппинги не загружены', NotificationManager.TYPES.ERROR);
+        NotificationManager.show('Mappings are not loaded', NotificationManager.TYPES.ERROR);
         return;
     }
     
     const mapping = window.allMappings.find(m => m.id === id);
     if (!mapping) {
-        NotificationManager.show('Маппинг не найден', NotificationManager.TYPES.ERROR);
+        NotificationManager.show('Mapping not found', NotificationManager.TYPES.ERROR);
         return;
     }
     
-    // Показываем модальное окно сначала
+    // Show the modal first
     if (typeof window.showModal === 'function') {
         window.showModal('edit-mapping-modal');
     } else {
@@ -1230,7 +1230,7 @@ window.openEditModal = async (id) => {
     console.log('🔴 [OPEN MODAL DEBUG] openEditModal called for mapping ID:', id);
     console.log('🔴 [OPEN MODAL DEBUG] Found mapping (cached):', mapping);
     
-    // Сначала заполняем форму кэшированной версией, чтобы UI отобразился сразу
+    // Prefill the form with cached data to render the UI instantly
     if (typeof window.populateEditMappingForm === 'function') {
         window.populateEditMappingForm(mapping);
     } else {
@@ -1238,14 +1238,14 @@ window.openEditModal = async (id) => {
         return;
     }
     
-    // Затем пытаемся получить самую свежую версию маппинга по UUID
+    // Then fetch the latest mapping version by UUID
     try {
         const latest = await apiFetch(`/mappings/${id}`);
-        const latestMapping = latest?.mapping || latest; // поддержка разных форматов ответа
+        const latestMapping = latest?.mapping || latest; // support multiple response formats
         if (latestMapping && latestMapping.id) {
             console.log('🔵 [OPEN MODAL DEBUG] Loaded latest mapping from server:', latestMapping);
             window.populateEditMappingForm(latestMapping);
-            // Обновим ссылку в allMappings, чтобы список и дальнейшие операции были консистентны
+            // Update the reference in allMappings to keep lists and operations consistent
             const idx = window.allMappings.findIndex(m => m.id === id);
             if (idx !== -1) window.allMappings[idx] = latestMapping;
         } else {
@@ -1255,7 +1255,7 @@ window.openEditModal = async (id) => {
         console.warn('Failed to load latest mapping, using cached version.', e);
     }
     
-    // Обновляем заголовок модального окна
+    // Update the modal title
     const modalTitleElement = document.getElementById(SELECTORS.MODAL.TITLE);
     if (modalTitleElement) modalTitleElement.textContent = 'Edit Mapping';
     
@@ -1265,47 +1265,47 @@ window.openEditModal = async (id) => {
 // REMOVED: updateMapping function moved to editor.js
 
 window.deleteMapping = async (id) => {
-    if (!confirm('Удалить этот маппинг?')) return;
+    if (!confirm('Delete this mapping?')) return;
 
     try {
         // API call FIRST
         await apiFetch(`/mappings/${id}`, { method: 'DELETE' });
 
-        NotificationManager.success('Маппинг удален!');
+        NotificationManager.success('Mapping deleted!');
 
         // Update cache and UI with server confirmation
         updateOptimisticCache({ id }, 'delete');
 
     } catch (e) {
-        // Если ошибка 404, маппинг уже удален
+        // Handle 404: mapping already deleted
         if (e.message.includes('404')) {
             console.log('🗑️ [DELETE] Mapping already deleted from server (404), updating cache locally');
             updateOptimisticCache({ id }, 'delete');
-            NotificationManager.success('Маппинг уже был удален');
+            NotificationManager.success('Mapping was already deleted');
         } else {
-            NotificationManager.error(`Ошибка удаления: ${e.message}`);
+            NotificationManager.error(`Delete failed: ${e.message}`);
         }
     }
 };
 
 window.clearRequests = async () => {
-    if (!confirm('Очистить все запросы?')) return;
+    if (!confirm('Clear all requests?')) return;
     
     try {
         await apiFetch('/requests', { method: 'DELETE' });
-        NotificationManager.success('Запросы очищены!');
+        NotificationManager.success('Requests cleared!');
         await fetchAndRenderRequests();
     } catch (e) {
-        NotificationManager.error(`Ошибка очистки: ${e.message}`);
+        NotificationManager.error(`Clear failed: ${e.message}`);
     }
 };
 
-// --- УДАЛЕНО: дублированная функция applyFilters (используется FilterManager) ---
+// --- REMOVED: duplicated applyFilters (FilterManager covers it) ---
 
-// --- УНИВЕРСАЛЬНЫЙ МЕНЕДЖЕР ФИЛЬТРАЦИИ (устранить дублирование ~90 строк) ---
+// --- UNIVERSAL FILTER MANAGER (eliminate ~90 lines of duplication) ---
 
 
-// Компактные функции фильтрации через FilterManager
+// Compact filtering helpers via FilterManager
 window.applyFilters = () => FilterManager.applyMappingFilters();
 window.clearMappingFilters = () => {
     document.getElementById(SELECTORS.MAPPING_FILTERS.METHOD).value = '';
@@ -1401,16 +1401,16 @@ window.clearRequestFilters = () => {
     FilterManager.applyRequestFilters();
 };
 
-// --- ДОПОЛНИТЕЛЬНЫЕ ФУНКЦИИ УПРАВЛЕНИЯ ---
+// --- ADDITIONAL MANAGEMENT HELPERS ---
 
-// Устаревшие функции-обертки (оставлены для совместимости с HTML)
+// Legacy wrappers kept for HTML compatibility
 window.clearFilters = () => {
     window.clearMappingFilters();
 };
 
 window.refreshRequests = async () => {
     await fetchAndRenderRequests();
-    // Применяем фильтры автоматически после обновления
+    // Apply filters automatically after an update
     const hasActiveFilters = document.getElementById(SELECTORS.REQUEST_FILTERS.METHOD)?.value ||
                           document.getElementById(SELECTORS.REQUEST_FILTERS.URL)?.value ||
                           document.getElementById(SELECTORS.REQUEST_FILTERS.STATUS)?.value ||
@@ -1424,13 +1424,13 @@ window.refreshRequests = async () => {
     }
 };
 
-// Функция быстрого применения временного фильтра (исправлено для Request Log)
+// Quick helper to apply a temporary filter (fixed for Request Log)
 window.applyQuickTimeFilter = () => {
-    // Устанавливаем фильтр на последние 24 часа
+    // Set the filter to the last 24 hours
     const now = new Date();
     const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     
-    // Исправлено: используем правильные селекторы для Request Log
+    // Use the correct selectors for Request Log
     const dateFromInput = document.getElementById(SELECTORS.REQUEST_FILTERS.DATE_FROM);
     const dateToInput = document.getElementById(SELECTORS.REQUEST_FILTERS.DATE_TO);
     
@@ -1451,13 +1451,13 @@ window.applyQuickTimeFilter = () => {
         dateToInput.value = formatDateTime(now);
     }
     
-    // Применяем фильтры
+    // Apply filters
     FilterManager.applyRequestFilters();
 };
 
-// --- ОЧИСТКА РЕСУРСОВ ---
+// --- RESOURCE CLEANUP ---
 
-// Очистка незакрытых таймаутов при навигации
+// Clear dangling timeouts on navigation
 window.cleanupPendingDeletions = () => {
     for (const [id, timeout] of window.deletionTimeouts) {
         clearTimeout(timeout);
@@ -1466,10 +1466,10 @@ window.cleanupPendingDeletions = () => {
     window.pendingDeletedIds.clear();
 };
 
-// Вызывать при закрытии страницы
+// Invoke when the page is closed
 window.addEventListener('beforeunload', window.cleanupPendingDeletions);
 
-// --- ПРЕВЬЮ ---
+// --- PREVIEW ---
 
 window.togglePreview = (mappingId) => {
     const preview = document.getElementById(`preview-${mappingId}`);
@@ -1489,7 +1489,7 @@ window.toggleRequestPreview = (requestId) => {
     }
 };
 
-// --- СЦЕНАРИИ ---
+// --- SCENARIOS ---
 
 window.loadScenarios = async () => {
     try {
@@ -1506,14 +1506,14 @@ window.refreshScenarios = async () => {
 };
 
 window.resetAllScenarios = async () => {
-    if (!confirm('Сбросить все сценарии в начальное состояние?')) return;
+    if (!confirm('Reset all scenarios to the initial state?')) return;
     
     try {
         await apiFetch('/scenarios/reset', { method: 'POST' });
-        NotificationManager.success('Все сценарии сброшены!');
+        NotificationManager.success('All scenarios have been reset!');
         await loadScenarios();
     } catch (e) {
-        NotificationManager.error(`Ошибка сброса сценариев: ${e.message}`);
+        NotificationManager.error(`Scenario reset failed: ${e.message}`);
     }
 };
 
@@ -1528,11 +1528,11 @@ window.setScenarioState = async (scenarioName, newState) => {
             })
         });
         
-        NotificationManager.success(`Сценарий "${scenarioName}" переведен в состояние "${newState}"`);
+        NotificationManager.success(`Scenario "${scenarioName}" switched to state "${newState}"`);
         await loadScenarios();
     } catch (e) {
         console.error('Change scenario state error:', e);
-        NotificationManager.error(`Ошибка изменения состояния сценария: ${e.message}`);
+        NotificationManager.error(`Scenario state change failed: ${e.message}`);
     }
 };
 
@@ -1540,7 +1540,7 @@ window.renderScenarios = () => {
     const container = document.getElementById(SELECTORS.LISTS.SCENARIOS);
     
     if (allScenarios.length === 0) {
-        container.innerHTML = '<div class="loading-message">Сценарии не найдены</div>';
+        container.innerHTML = '<div class="loading-message">Scenarios not found</div>';
         return;
     }
     
@@ -1568,9 +1568,9 @@ window.renderScenarios = () => {
     `).join('');
 };
 
-// --- ИСПРАВЛЕННЫЕ ФУНКЦИИ ДЛЯ WIREMOCK 3.9.1+ API ---
+// --- FIXED FUNCTIONS FOR WIREMOCK 3.9.1+ API ---
 
-// Исправленная функция подсчета запросов (требует POST с JSON)
+// Corrected request count function (requires JSON POST)
 window.getRequestCount = async (criteria = {}) => {
     try {
         const response = await apiFetch(ENDPOINTS.REQUESTS_COUNT, {
@@ -1581,12 +1581,12 @@ window.getRequestCount = async (criteria = {}) => {
         return response.count || 0;
     } catch (error) {
         console.error('Request count error:', error);
-        NotificationManager.error(`Ошибка подсчета запросов: ${error.message}`);
+        NotificationManager.error(`Request count failed: ${error.message}`);
         return 0;
     }
 };
 
-// Новая функция поиска запросов
+// New request search function
 window.findRequests = async (criteria) => {
     try {
         const response = await apiFetch(ENDPOINTS.REQUESTS_FIND, {
@@ -1597,12 +1597,12 @@ window.findRequests = async (criteria) => {
         return response.requests || [];
     } catch (error) {
         console.error('Find requests error:', error);
-        NotificationManager.error(`Ошибка поиска запросов: ${error.message}`);
+        NotificationManager.error(`Request search failed: ${error.message}`);
         return [];
     }
 };
 
-// Получение несопоставленных запросов
+// Fetch unmatched requests
 window.getUnmatchedRequests = async () => {
     try {
         const response = await apiFetch(ENDPOINTS.REQUESTS_UNMATCHED);
@@ -1613,9 +1613,9 @@ window.getUnmatchedRequests = async () => {
     }
 };
 
-// --- ИСПРАВЛЕННЫЕ ФУНКЦИИ ЗАПИСИ ---
+// --- UPDATED RECORDING HELPERS ---
 
-// Начать запись
+// Start recording
 window.startRecording = async (config = {}) => {
     try {
         const defaultConfig = {
@@ -1641,20 +1641,20 @@ window.startRecording = async (config = {}) => {
             body: JSON.stringify(recordingConfig)
         });
         
-        NotificationManager.success('Запись начата!');
+        NotificationManager.success('Recording started!');
         window.isRecording = true;
         
-        // Обновляем UI
+        // Refresh the UI
         const indicator = document.getElementById(SELECTORS.RECORDING.INDICATOR);
         if (indicator) indicator.style.display = 'block';
         
     } catch (error) {
         console.error('Start recording error:', error);
-        NotificationManager.error(`Ошибка начала записи: ${error.message}`);
+        NotificationManager.error(`Failed to start recording: ${error.message}`);
     }
 };
 
-// Остановить запись
+// Stop recording
 window.stopRecording = async () => {
     try {
         const response = await apiFetch(ENDPOINTS.RECORDINGS_STOP, {
@@ -1664,25 +1664,25 @@ window.stopRecording = async () => {
         window.isRecording = false;
         window.recordedCount = 0;
         
-        // Обновляем UI
+        // Refresh the UI
         const indicator = document.getElementById(SELECTORS.RECORDING.INDICATOR);
         if (indicator) indicator.style.display = 'none';
         
         const count = response.mappings ? response.mappings.length : 0;
-        NotificationManager.success(`Запись остановлена! Записано ${count} маппингов`);
+        NotificationManager.success(`Recording stopped! Captured ${count} mappings`);
         
-        // Обновляем список маппингов
+        // Refresh the mappings list
         await fetchAndRenderMappings();
         
         return response.mappings || [];
     } catch (error) {
         console.error('Stop recording error:', error);
-        NotificationManager.error(`Ошибка остановки записи: ${error.message}`);
+        NotificationManager.error(`Failed to stop recording: ${error.message}`);
         return [];
     }
 };
 
-// Получить статус записи
+// Get recording status
 window.getRecordingStatus = async () => {
     try {
         const response = await apiFetch(ENDPOINTS.RECORDINGS_STATUS);
@@ -1693,7 +1693,7 @@ window.getRecordingStatus = async () => {
     }
 };
 
-// Создать снимок записи
+// Create a recording snapshot
 window.takeRecordingSnapshot = async (config = {}) => {
     try {
         const response = await apiFetch(ENDPOINTS.RECORDINGS_SNAPSHOT, {
@@ -1703,19 +1703,19 @@ window.takeRecordingSnapshot = async (config = {}) => {
         });
         
         const count = response.mappings ? response.mappings.length : 0;
-        NotificationManager.success(`Снимок создан! Записано ${count} маппингов`);
+        NotificationManager.success(`Snapshot created! Captured ${count} mappings`);
         
         return response.mappings || [];
     } catch (error) {
         console.error('Recording snapshot error:', error);
-        NotificationManager.error(`Ошибка создания снимка: ${error.message}`);
+        NotificationManager.error(`Snapshot failed: ${error.message}`);
         return [];
     }
 };
 
-// --- ФУНКЦИИ NEAR MISSES ---
+// --- NEAR MISSES FUNCTIONS ---
 
-// Поиск близких совпадений для запроса
+// Find near matches for a request
 window.findNearMissesForRequest = async (request) => {
     try {
         const response = await apiFetch(ENDPOINTS.NEAR_MISSES_REQUEST, {
@@ -1730,7 +1730,7 @@ window.findNearMissesForRequest = async (request) => {
     }
 };
 
-// Поиск близких совпадений для паттерна
+// Find near matches for a pattern
 window.findNearMissesForPattern = async (pattern) => {
     try {
         const response = await apiFetch(ENDPOINTS.NEAR_MISSES_PATTERN, {
@@ -1745,7 +1745,7 @@ window.findNearMissesForPattern = async (pattern) => {
     }
 };
 
-// Получить близкие совпадения для несопоставленных запросов
+// Get near matches for unmatched requests
 window.getNearMissesForUnmatched = async () => {
     try {
         const response = await apiFetch(ENDPOINTS.REQUESTS_UNMATCHED_NEAR_MISSES);
@@ -1756,9 +1756,9 @@ window.getNearMissesForUnmatched = async () => {
     }
 };
 
-// --- НОВЫЕ ФУНКЦИИ ДЛЯ WIREMOCK 3.13.x ---
+// --- NEW FUNCTIONS FOR WIREMOCK 3.13.x ---
 
-// Получить неиспользуемые маппинги
+// Fetch unused mappings
 window.getUnmatchedMappings = async () => {
     try {
         const response = await apiFetch(ENDPOINTS.MAPPINGS_UNMATCHED);
@@ -1769,7 +1769,7 @@ window.getUnmatchedMappings = async () => {
     }
 };
 
-// Удалить неиспользуемые маппинги
+// Remove unused mappings
 window.removeUnmatchedMappings = async () => {
     try {
         const response = await apiFetch(ENDPOINTS.MAPPINGS_UNMATCHED, {
@@ -1777,20 +1777,20 @@ window.removeUnmatchedMappings = async () => {
         });
         
         const count = response.mappings ? response.mappings.length : 0;
-        NotificationManager.success(`Удалено ${count} неиспользуемых маппингов`);
+        NotificationManager.success(`Removed ${count} unused mappings`);
         
-        // Обновляем список маппингов
+        // Refresh the mappings list
         await fetchAndRenderMappings();
         
         return response.mappings || [];
     } catch (error) {
         console.error('Remove unmatched mappings error:', error);
-        NotificationManager.error(`Ошибка удаления неиспользуемых маппингов: ${error.message}`);
+        NotificationManager.error(`Failed to remove unused mappings: ${error.message}`);
         return [];
     }
 };
 
-// Поиск маппингов по метаданным
+// Search mappings by metadata
 window.findMappingsByMetadata = async (metadata) => {
     try {
         const response = await apiFetch(ENDPOINTS.MAPPINGS_FIND_BY_METADATA, {
@@ -1805,34 +1805,34 @@ window.findMappingsByMetadata = async (metadata) => {
     }
 };
 
-// Обновленная функция для обработки результатов редактирования
+// Updated handler for edit results
 window.handleEditSuccess = async (mapping) => {
     const id = mapping.id || mapping.uuid;
 
-    // Добавляем optimistic update
+    // Add optimistic update
     window.cacheManager.addOptimisticUpdate(mapping, 'update');
 
-    // Обновляем UI сразу
+    // Refresh the UI immediately
     window.applyOptimisticMappingUpdate(mapping);
 
-    // Через небольшую задержку подтверждаем update
+    // Confirm the update after a short delay
     setTimeout(() => {
         window.cacheManager.confirmOptimisticUpdate(id);
     }, 1000);
 };
 
-// Функция принудительной синхронизации (для кнопки Force Refresh)
+// Force synchronization function (used by the Force Refresh button)
 window.forceRefreshCache = async () => {
     try {
-        // Очищаем все optimistic updates
+        // Clear all optimistic updates
         window.cacheManager.optimisticQueue.length = 0;
 
-        // Полная перестройка кеша
+        // Trigger a full cache rebuild
         await window.cacheManager.rebuildCache();
 
-        NotificationManager.success('Кеш полностью обновлен!');
+        NotificationManager.success('Cache fully refreshed!');
     } catch (error) {
-        NotificationManager.error(`Ошибка обновления кеша: ${error.message}`);
+        NotificationManager.error(`Cache refresh failed: ${error.message}`);
     }
 };
 
@@ -2522,7 +2522,7 @@ function updateOptimisticCache(mapping, operation, options = {}) {
     }
 }
 
-// простой дебаунс ребилда кеша, использует существующий refreshImockCache
+// Simple debounce for cache rebuilds that leverages the existing refreshImockCache
 let _cacheRebuildTimer;
 function scheduleCacheRebuild() {
   try {
@@ -2551,7 +2551,7 @@ function scheduleCacheRebuild() {
   }
 }
 
-// Защита от бесконечного цикла optimistic update in progress
+// Guard against an infinite optimistic update loop in progress
 let optimisticInProgress = false;
 let optimisticDelayRetries = 0;
 

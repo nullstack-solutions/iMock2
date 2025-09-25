@@ -2,7 +2,7 @@
 
 console.log('✅ All required modules loaded successfully');
     
-// === ФУНКЦИИ ДЛЯ ИНТЕГРАЦИИ С РЕДАКТОРОМ ===
+// === FUNCTIONS FOR EDITOR INTEGRATION ===
     
 window.editMapping = (mappingId) => {
     console.log('🔧 Opening editor for mapping:', mappingId);
@@ -35,7 +35,7 @@ window.editMapping = (mappingId) => {
         
     NotificationManager.info(`Editor opened for mapping ${mappingId}`);
         
-    // Отслеживаем закрытие окна для обновления счетчиков
+    // Track window closure to refresh counters
     const checkClosed = setInterval(() => {
         if (editorWindow.closed) {
             clearInterval(checkClosed);
@@ -226,7 +226,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await new Promise(resolve => requestAnimationFrame(resolve));
     loadSettings();
     loadConnectionSettings();
-    // Убедимся что настройки загружены перед любыми операциями
+    // Ensure settings are loaded before any operations
     console.log('🔧 [main.js] Page loaded, settings initialized, ready for user interaction');
 });
 

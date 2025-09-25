@@ -566,7 +566,7 @@ window.FilterManager = {
                     return urlA.localeCompare(urlB);
                 });
 
-                // В managers.js добавьте проверку перед использованием:
+                // Add a safety check before using renderMappingCard:
                 if (typeof window.renderMappingCard === 'function') {
                     container.innerHTML = sortedMappings.map(mapping => window.renderMappingCard(mapping)).join('');
                 }
@@ -644,7 +644,7 @@ window.FilterManager = {
             // Re-render requests
             const container = document.getElementById(SELECTORS.LISTS.REQUESTS);
             if (container) {
-                // В managers.js добавьте проверку перед использованием:
+                // Add a safety check before using renderRequestCard:
                 if (typeof window.renderRequestCard === 'function') {
                     container.innerHTML = window.allRequests.map(request => window.renderRequestCard(request)).join('');
                 }

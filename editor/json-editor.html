@@ -264,7 +264,7 @@
         })();
     </script>
     
-    <!-- WireMock URL Initialization - перенесено в initializeFromURL -->
+    <!-- WireMock URL initialization - moved to initializeFromURL -->
 
     <!-- WireMock Integration -->
     <script src="../js/main.js"></script>
@@ -377,7 +377,7 @@
                         // drop service cache mapping if ever present
                         if (typeof isImockCacheMapping === 'function' && isImockCacheMapping(m)) return; // never render the service mapping
 
-                        // Обновляем или добавляем в allMappings
+                        // Update or add entry in allMappings
                         const idx = window.allMappings.findIndex(x => (x.id || x.uuid) === (m.id || m.uuid));
                         if (idx >= 0) {
                             window.allMappings[idx] = m;
@@ -385,7 +385,7 @@
                             window.allMappings.unshift(m);
                         }
 
-                        // Обновляем originalMappings тоже для консистентности
+                        // Update originalMappings as well for consistency
                         const origIdx = window.originalMappings.findIndex(x => (x.id || x.uuid) === (m.id || m.uuid));
                         if (origIdx >= 0) {
                             window.originalMappings[origIdx] = m;
@@ -1412,7 +1412,7 @@
             console.log('🚀 Current URL:', window.location.href);
             console.log('🚀 URL search params:', window.location.search);
 
-            // Инициализация WireMock URL - единая точка инициализации
+            // WireMock URL initialization - single entry point
             const urlParams = new URLSearchParams(window.location.search);
             const settingsParam = urlParams.get('settings');
             const settings = settingsParam

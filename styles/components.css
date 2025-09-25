@@ -545,7 +545,7 @@
     text-transform: uppercase;
     letter-spacing: 0.5px;
     font-size: var(--font-size-xs);
-    border-radius: var(--radius-md); /* Добавлено скругление */
+    border-radius: var(--radius-md); /* Added rounded corners */
 }
 
 .method-get, .get { 
@@ -576,34 +576,34 @@
     border: 1px solid rgba(255, 255, 255, 0.3);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
     padding: var(--space-1) var(--space-2);
-    border-radius: var(--radius-md); /* Добавлено скругление */
+    border-radius: var(--radius-md); /* Added rounded corners */
     font-size: var(--font-size-xs);
     margin: 0 var(--space-2);
 }
 
-.status-2xx { background: #10b981; } /* Улучшенный цвет */
+.status-2xx { background: #10b981; } /* Improved color */
 .status-3xx { background: #f59e0b; }
 .status-4xx { background: #ef4444; }
-.status-5xx { background: #8b5cf6; } /* Улучшенный цвет */
+.status-5xx { background: #8b5cf6; } /* Improved color */
 
 /* Specific status codes */
 .status-200, .status-201 { 
-    background: #10b981; /* Улучшенный цвет */
+    background: #10b981; /* Improved color */
     color: white; 
     border: 1px solid rgba(255, 255, 255, 0.2);
 }
 .status-400 { 
-    background: #f59e0b; /* Улучшенный цвет */
+    background: #f59e0b; /* Improved color */
     color: white; 
     border: 1px solid rgba(255, 255, 255, 0.2);
 }
 .status-404 { 
-    background: #ef4444; /* Улучшенный цвет */
+    background: #ef4444; /* Improved color */
     color: white; 
     border: 1px solid rgba(255, 255, 255, 0.2);
 }
 .status-500 { 
-    background: #8b5cf6; /* Улучшенный цвет */
+    background: #8b5cf6; /* Improved color */
     color: white; 
     border: 1px solid rgba(255, 255, 255, 0.2);
 }

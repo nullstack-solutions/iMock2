@@ -116,14 +116,14 @@ async function saveMapping() {
     
     if (!form) {
         console.error('Form not found: mapping-form');
-        NotificationManager.error('Форма создания маппинга не найдена');
+        NotificationManager.error('Mapping creation form not found');
         return;
     }
     
     const id = idElement ? idElement.value : null;
     console.log('Mapping ID:', id);
     
-    // Собираем данные из формы
+    // Collect data from the form
     const mappingData = {
         name: document.getElementById('mapping-name')?.value || 'Unnamed Mapping',
         request: {
@@ -174,7 +174,7 @@ async function saveMapping() {
             });
             const updatedMapping = response?.mapping || response;
 
-            NotificationManager.success('Маппинг обновлен!');
+            NotificationManager.success('Mapping updated!');
 
             // NEW SEQUENCE: API → Cache → UI (reuse same flow as create)
             try {
@@ -219,7 +219,7 @@ async function saveMapping() {
                 body: JSON.stringify(mappingData)
             });
             const createdMapping = response?.mapping || response;
-            NotificationManager.success('Маппинг создан!');
+            NotificationManager.success('Mapping created!');
 
             // NEW SEQUENCE: API → Optimistic Cache → UI
             try {
@@ -240,7 +240,7 @@ async function saveMapping() {
         hideModal('add-mapping-modal');
         // Optimistic cache update already done - no need for additional cache rebuild
         
-        // Применяем фильтры после обновления мапингов
+        // Reapply filters after updating mappings
         const hasActiveFilters = document.getElementById(SELECTORS.MAPPING_FILTERS.METHOD)?.value ||
                                document.getElementById(SELECTORS.MAPPING_FILTERS.URL)?.value ||
                                document.getElementById(SELECTORS.MAPPING_FILTERS.STATUS)?.value;
@@ -251,7 +251,7 @@ async function saveMapping() {
         
     } catch (e) {
         console.error('Error in saveMapping:', e);
-        NotificationManager.error(`Ошибка сохранения: ${e.message}`);
+        NotificationManager.error(`Save failed: ${e.message}`);
     }
 }
 
@@ -273,7 +273,7 @@ window.updateMapping = async () => {
         const id = mappingData?.id;
 
         if (!id) {
-            NotificationManager.error('ID маппинга не найден');
+            NotificationManager.error('Mapping ID not found');
             return;
         }
 
@@ -317,7 +317,7 @@ window.updateMapping = async () => {
         const updatedMapping = response?.mapping || response;
         console.log('Mapping updated successfully, using server response for optimistic updates:', updatedMapping);
 
-        NotificationManager.success('Маппинг обновлен!');
+        NotificationManager.success('Mapping updated!');
 
         // Update cache and UI with server response
         try {
@@ -334,7 +334,7 @@ window.updateMapping = async () => {
 
         // No more immediate cache rebuild - optimistic cache handles it
         
-        // Применяем фильтры после обновления мапингов
+        // Reapply filters after updating mappings
         const hasActiveFilters = document.getElementById(SELECTORS.MAPPING_FILTERS.METHOD)?.value ||
                                document.getElementById(SELECTORS.MAPPING_FILTERS.URL)?.value ||
                                document.getElementById(SELECTORS.MAPPING_FILTERS.STATUS)?.value;
@@ -347,7 +347,7 @@ window.updateMapping = async () => {
         
     } catch (e) {
         console.error('Error in updateMapping:', e);
-        NotificationManager.error(`Ошибка обновления: ${e.message}`);
+        NotificationManager.error(`Update failed: ${e.message}`);
     }
 };
 
@@ -423,7 +423,7 @@ function populateFormFields(mapping) {
     if (methodElement) methodElement.value = mapping.request?.method || 'GET';
     if (urlPatternElement) urlPatternElement.value = mapping.request?.urlPattern || mapping.request?.urlPath || '';
     
-    // Заполняем заголовки запроса с оптимизацией
+    // Populate request headers with optimizations
     if (requestHeadersElement && mapping.request?.headers) {
         const headersJson = JSON.stringify(mapping.request.headers, null, 2);
         requestHeadersElement.value = headersJson.length > 5000 ? 
@@ -431,7 +431,7 @@ function populateFormFields(mapping) {
             headersJson;
     }
     
-    // Заполняем тело запроса с оптимизацией
+    // Populate request body with optimizations
     if (requestBodyElement && mapping.request?.bodyPatterns) {
         const bodyJson = JSON.stringify(mapping.request.bodyPatterns, null, 2);
         requestBodyElement.value = bodyJson.length > 5000 ? 
@@ -444,11 +444,11 @@ function populateFormFields(mapping) {
             body;
     }
     
-    // Заполняем ответ
+    // Populate the response block
     if (responseStatusElement) responseStatusElement.value = mapping.response?.status || 200;
     if (responseDelayElement) responseDelayElement.value = mapping.response?.fixedDelayMilliseconds || 0;
     
-    // Заполняем заголовки ответа с оптимизацией
+    // Populate response headers with optimizations
     if (responseHeadersElement && mapping.response?.headers) {
         const headersJson = JSON.stringify(mapping.response.headers, null, 2);
         responseHeadersElement.value = headersJson.length > 5000 ? 
@@ -456,7 +456,7 @@ function populateFormFields(mapping) {
             headersJson;
     }
     
-    // Заполняем тело ответа с оптимизацией
+    // Populate response body with optimizations
     if (responseBodyElement) {
         if (mapping.response?.body) {
             const body = mapping.response.body;
@@ -471,7 +471,7 @@ function populateFormFields(mapping) {
         }
     }
     
-    // Заполняем расширенные поля
+    // Populate advanced fields
     if (priorityElement) priorityElement.value = mapping.priority || 1;
     if (scenarioElement) scenarioElement.value = mapping.scenarioName || '';
     if (mappingNameElement) mappingNameElement.value = mapping.name || mapping.metadata?.name || '';
@@ -571,7 +571,7 @@ function saveFromJSONMode() {
         console.log('🟢 [SAVE DEBUG] Updated currentMapping ID:', editorState.currentMapping?.id);
     } catch (error) {
         console.log('🔴 [SAVE DEBUG] JSON parse error:', error.message);
-        throw new Error('Некорректный JSON: ' + error.message);
+        throw new Error('Invalid JSON: ' + error.message);
     }
 }
 
@@ -733,15 +733,15 @@ function validateCurrentJSON() {
     const jsonText = jsonEditor.value;
     
     if (!jsonText.trim()) {
-        validationResult.innerHTML = '<div class="validation-warning">JSON пуст</div>';
+        validationResult.innerHTML = '<div class="validation-warning">JSON is empty</div>';
         return;
     }
     
     try {
         JSON.parse(jsonText);
-        validationResult.innerHTML = '<div class="validation-success">✓ JSON корректен</div>';
+        validationResult.innerHTML = '<div class="validation-success">✓ JSON is valid</div>';
     } catch (error) {
-        validationResult.innerHTML = `<div class="validation-error">✗ Ошибка JSON: ${error.message}</div>`;
+        validationResult.innerHTML = `<div class="validation-error">✗ JSON error: ${error.message}</div>`;
     }
 }
 
@@ -755,9 +755,9 @@ function formatCurrentJSON() {
     try {
         const parsed = JSON.parse(jsonEditor.value);
         jsonEditor.value = JSON.stringify(parsed, null, 2);
-        showNotification('JSON отформатирован', 'success');
+        showNotification('JSON formatted', 'success');
     } catch (error) {
-        showNotification('Ошибка форматирования: ' + error.message, 'error');
+        showNotification('Formatting failed: ' + error.message, 'error');
     }
 }
 
@@ -771,9 +771,9 @@ function minifyCurrentJSON() {
     try {
         const parsed = JSON.parse(jsonEditor.value);
         jsonEditor.value = JSON.stringify(parsed);
-        showNotification('JSON минимизирован', 'success');
+        showNotification('JSON minified', 'success');
     } catch (error) {
-        showNotification('Ошибка минимизации: ' + error.message, 'error');
+        showNotification('Minification failed: ' + error.message, 'error');
     }
 }
 
