@@ -472,12 +472,14 @@ class HistoryWorkerBridge {
 
         if (this.supportsWorkers) {
             try {
-                this.worker = new Worker(workerScript);
+                const scriptUrl = typeof URL === 'function' ? new URL(workerScript, (typeof location !== 'undefined' && location.href) ? location.href : 'http://localhost/').toString() : workerScript;
+                this.worker = new Worker(scriptUrl);
                 this.worker.onmessage = this.handleMessage.bind(this);
                 this.worker.onerror = this.handleWorkerError.bind(this);
                 if (typeof this.worker.addEventListener === 'function') {
                     this.worker.addEventListener('messageerror', (event) => {
-                        console.warn('History worker message error', event);
+                        console.warn('History worker message error – switching to fallback mode', event);
+                        this.handleWorkerError(new Error('History worker message cloning failed'));
                     });
                 }
             } catch (error) {
@@ -523,7 +525,8 @@ class HistoryWorkerBridge {
     }
 
     handleWorkerError(error) {
-        console.warn('History worker failed – switching to fallback mode', error);
+        const normalizedError = error instanceof Error ? error : new Error(error && error.message ? error.message : 'History worker failed');
+        console.warn('History worker failed – switching to fallback mode', normalizedError);
         if (this.worker) {
             try {
                 this.worker.terminate();
@@ -535,7 +538,7 @@ class HistoryWorkerBridge {
         this.supportsWorkers = false;
         this.fallback = true;
         for (const [, task] of this.pending) {
-            task.reject(error);
+            task.reject(normalizedError);
         }
         this.pending.clear();
     }
@@ -549,8 +552,15 @@ class HistoryWorkerBridge {
         const promise = new Promise((resolve, reject) => {
             this.pending.set(taskId, { resolve, reject, type });
         });
-        this.worker.postMessage(message);
-        return promise;
+        try {
+            this.worker.postMessage(message);
+            return promise;
+        } catch (error) {
+            this.pending.delete(taskId);
+            console.warn('History worker rejected message – switching to fallback mode', error);
+            this.handleWorkerError(error);
+            return Promise.reject(error);
+        }
     }
 
     async prepareSnapshot(payload) {
@@ -567,13 +577,17 @@ class HistoryWorkerBridge {
         };
 
         if (this.worker && !this.fallback) {
-            const result = await this.callWorker('snapshot', message);
-            this.lastSnapshot = {
-                hash: result.hash,
-                canonical: result.canonical,
-                format: result.meta && result.meta.format ? result.meta.format : undefined
-            };
-            return result;
+            try {
+                const result = await this.callWorker('snapshot', message);
+                this.lastSnapshot = {
+                    hash: result.hash,
+                    canonical: result.canonical,
+                    format: result.meta && result.meta.format ? result.meta.format : undefined
+                };
+                return result;
+            } catch (error) {
+                // fall through to fallback processing below
+            }
         }
 
         return this.processFallback(message);
