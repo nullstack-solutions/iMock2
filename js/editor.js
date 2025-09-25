@@ -52,21 +52,9 @@ function setupMappingFormListeners() {
  * Set up editor mode handlers
  */
 function setupEditorModeHandlers() {
-    // Show notification about form mode being temporarily disabled
-    showNotification('Form mode is temporarily disabled due to bugs. Using JSON mode only.', 'warning');
-    
-    // Mode switcher buttons
+    initializeJsonEditorAutoResize();
+
     document.addEventListener('click', (e) => {
-        if (e.target.matches('[data-editor-mode]')) {
-            // Prevent switching to form mode
-            if (e.target.dataset.editorMode === EDITOR_MODES.FORM) {
-                showNotification('Form mode is temporarily disabled due to bugs. Please use JSON mode.', 'warning');
-                return;
-            }
-            const mode = e.target.dataset.editorMode;
-            switchEditorMode(mode);
-        }
-        
         if (e.target.matches('[data-action="validate-json"]')) {
             validateCurrentJSON();
         }
@@ -87,6 +75,35 @@ function setupEditorModeHandlers() {
             updateDirtyIndicator();
         }
     });
+}
+
+function initializeJsonEditorAutoResize() {
+    const jsonEditor = document.getElementById('json-editor');
+    if (!jsonEditor) return;
+
+    const computedMinHeight = parseInt(window.getComputedStyle(jsonEditor).minHeight, 10);
+    if (!Number.isNaN(computedMinHeight)) {
+        jsonEditor.dataset.minHeight = computedMinHeight;
+    }
+
+    const handleResize = () => adjustJsonEditorHeight();
+
+    jsonEditor.addEventListener('input', handleResize);
+    jsonEditor.addEventListener('change', handleResize);
+    window.addEventListener('resize', handleResize);
+
+    adjustJsonEditorHeight();
+}
+
+function adjustJsonEditorHeight() {
+    const jsonEditor = document.getElementById('json-editor');
+    if (!jsonEditor) return;
+
+    const minHeight = parseInt(jsonEditor.dataset.minHeight || '0', 10) || 320;
+
+    jsonEditor.style.height = 'auto';
+    const desiredHeight = Math.max(jsonEditor.scrollHeight, minHeight);
+    jsonEditor.style.height = `${desiredHeight}px`;
 }
 
 /**
@@ -604,7 +621,8 @@ function loadJSONMode() {
     
     const formattedJSON = JSON.stringify(editorState.currentMapping, null, 2);
     jsonEditor.value = formattedJSON;
-    
+    adjustJsonEditorHeight();
+
     console.log('🟡 [JSON DEBUG] JSON editor populated with mapping ID:', editorState.currentMapping?.id);
     console.log('🟡 [JSON DEBUG] JSON content length:', formattedJSON.length);
 }
@@ -755,6 +773,7 @@ function formatCurrentJSON() {
     try {
         const parsed = JSON.parse(jsonEditor.value);
         jsonEditor.value = JSON.stringify(parsed, null, 2);
+        adjustJsonEditorHeight();
         showNotification('JSON formatted', 'success');
     } catch (error) {
         showNotification('Formatting failed: ' + error.message, 'error');
@@ -771,6 +790,7 @@ function minifyCurrentJSON() {
     try {
         const parsed = JSON.parse(jsonEditor.value);
         jsonEditor.value = JSON.stringify(parsed);
+        adjustJsonEditorHeight();
         showNotification('JSON minified', 'success');
     } catch (error) {
         showNotification('Minification failed: ' + error.message, 'error');
