@@ -1548,12 +1548,64 @@ window.resetAllScenarios = async () => {
     }
 };
 
+function updateScenarioStateSuggestions(selectedScenarioName) {
+    const stateOptionsEl = document.getElementById('scenario-state-options');
+    const stateInput = document.getElementById('scenario-state');
+
+    if (!stateOptionsEl) return;
+
+    const scenarios = Array.isArray(allScenarios) ? allScenarios : [];
+    const normalizedName = typeof selectedScenarioName === 'string' ? selectedScenarioName.trim() : '';
+    const selectedScenario = normalizedName
+        ? scenarios.find((scenario) => scenario?.name === normalizedName)
+        : null;
+
+    const states = new Set();
+
+    const harvestStates = (scenario) => {
+        if (!scenario) return;
+        if (scenario.state) states.add(scenario.state);
+        (scenario.possibleStates || []).forEach((state) => {
+            if (state) states.add(state);
+        });
+        (scenario.mappings || []).forEach((mapping) => {
+            if (mapping?.requiredScenarioState) states.add(mapping.requiredScenarioState);
+            if (mapping?.newScenarioState) states.add(mapping.newScenarioState);
+        });
+    };
+
+    if (selectedScenario) {
+        harvestStates(selectedScenario);
+    }
+
+    if (states.size === 0) {
+        scenarios.forEach(harvestStates);
+    }
+
+    const sortedStates = Array.from(states).sort((a, b) => a.localeCompare(b));
+    stateOptionsEl.innerHTML = sortedStates.map((state) => `
+        <option value="${escapeHtml(state)}"></option>
+    `).join('');
+
+    if (stateInput) {
+        if (sortedStates.length > 0) {
+            stateInput.setAttribute('placeholder', `Enter state (e.g. ${sortedStates[0]})`);
+        } else {
+            stateInput.setAttribute('placeholder', 'Enter state name');
+        }
+    }
+}
+
 window.setScenarioState = async (scenarioName, newState) => {
     const scenarioSelect = document.getElementById('scenario-select');
     const scenarioStateInput = document.getElementById('scenario-state');
 
     const inlineScenarioName = typeof scenarioName === 'string' ? scenarioName.trim() : '';
     const inlineState = typeof newState === 'string' ? newState.trim() : '';
+
+    if (inlineScenarioName && scenarioSelect) {
+        scenarioSelect.value = inlineScenarioName;
+    }
 
     const resolvedScenarioName = inlineScenarioName || scenarioSelect?.value?.trim() || '';
     const resolvedState = inlineState || scenarioStateInput?.value?.trim() || '';
@@ -1577,6 +1629,7 @@ window.setScenarioState = async (scenarioName, newState) => {
         if (!inlineState && scenarioStateInput) {
             scenarioStateInput.value = '';
         }
+        updateScenarioStateSuggestions(resolvedScenarioName);
         await loadScenarios();
     } catch (e) {
         console.error('Change scenario state error:', e);
@@ -1627,20 +1680,14 @@ window.renderScenarios = () => {
     }
 
     if (stateOptionsEl) {
-        const uniqueStates = new Set();
-        normalizedScenarios.forEach((scenario) => {
-            if (scenario?.state) {
-                uniqueStates.add(scenario.state);
-            }
-            (scenario?.possibleStates || []).forEach((state) => {
-                if (state) {
-                    uniqueStates.add(state);
-                }
-            });
+        updateScenarioStateSuggestions(selectEl?.value || previousSelection || '');
+    }
+
+    if (selectEl && !selectEl.dataset.scenarioHandlerAttached) {
+        selectEl.addEventListener('change', (event) => {
+            updateScenarioStateSuggestions(event.target.value);
         });
-        stateOptionsEl.innerHTML = Array.from(uniqueStates).map((state) => `
-            <option value="${escapeHtml(state)}"></option>
-        `).join('');
+        selectEl.dataset.scenarioHandlerAttached = '1';
     }
 
     listEl.style.display = '';
