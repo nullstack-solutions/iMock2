@@ -2,8 +2,9 @@
 
 console.log('✅ All required modules loaded successfully');
 
-// === DEFAULT SETTINGS CONFIGURATION ===
-const DEFAULT_SETTINGS = {
+// === CENTRALIZED DEFAULT SETTINGS ===
+// This is the SINGLE SOURCE OF TRUTH for all default values
+window.DEFAULT_SETTINGS = {
     host: 'localhost',
     port: '8080',
     requestTimeout: '69000',
@@ -18,6 +19,9 @@ const DEFAULT_SETTINGS = {
     cacheCountDiffThreshold: '2',
     backgroundFetchDelay: '200'
 };
+
+// Make it available as a module-level constant too for backward compatibility
+const DEFAULT_SETTINGS = window.DEFAULT_SETTINGS;
 
 // === FUNCTIONS FOR EDITOR INTEGRATION ===
     
@@ -221,13 +225,43 @@ if (!window.wiremockBaseUrl) {
     console.log('🔧 [main.js] Initialized default WireMock URL:', window.wiremockBaseUrl);
 }
 
+// Apply default values to HTML form fields from centralized settings
+window.applyDefaultsToForm = () => {
+    console.log('🔧 [applyDefaultsToForm] Setting form defaults from DEFAULT_SETTINGS');
+    
+    // Connection settings
+    const hostInput = document.getElementById('default-host');
+    const portInput = document.getElementById('default-port');
+    const timeoutInput = document.getElementById('request-timeout');
+    const authInput = document.getElementById('auth-header');
+    const cacheInput = document.getElementById('cache-enabled');
+    const autoRefreshInput = document.getElementById('auto-refresh-enabled');
+    const intervalInput = document.getElementById('refresh-interval');
+    
+    if (hostInput && !hostInput.value) hostInput.value = DEFAULT_SETTINGS.host;
+    if (portInput && !portInput.value) portInput.value = DEFAULT_SETTINGS.port;
+    if (timeoutInput && !timeoutInput.value) timeoutInput.value = DEFAULT_SETTINGS.requestTimeout;
+    if (authInput && !authInput.value) authInput.value = DEFAULT_SETTINGS.authHeader;
+    if (cacheInput) cacheInput.checked = DEFAULT_SETTINGS.cacheEnabled;
+    if (autoRefreshInput) autoRefreshInput.checked = DEFAULT_SETTINGS.autoRefreshEnabled;
+    if (intervalInput && !intervalInput.value) intervalInput.value = DEFAULT_SETTINGS.refreshInterval;
+    
+    console.log('🔧 [applyDefaultsToForm] Form defaults applied');
+};
+
 // Load settings when page loads
 document.addEventListener('DOMContentLoaded', async () => {
     await new Promise(resolve => requestAnimationFrame(resolve));
+    
+    // First apply defaults to empty form fields
+    applyDefaultsToForm();
+    
+    // Then load saved settings (will override defaults if settings exist)
     loadSettings();
     loadConnectionSettings();
+    
     // Ensure settings are loaded before any operations
-    console.log('🔧 [main.js] Page loaded, settings initialized, ready for user interaction');
+    console.log('🔧 [main.js] Page loaded, defaults applied, settings initialized, ready for user interaction');
 });
 
 // Listen for settings changes from editor windows or other sources

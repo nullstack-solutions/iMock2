@@ -192,7 +192,8 @@ window.ENDPOINTS = {
 
 // --- GLOBAL STATE ---
 let wiremockBaseUrl = '';
-let requestTimeout = 69000;
+// Use centralized default if available, fallback to hardcoded value
+let requestTimeout = window.DEFAULT_SETTINGS?.requestTimeout ? parseInt(window.DEFAULT_SETTINGS.requestTimeout) : 69000;
 let authHeader = ''; // Authorization header for all API requests
 window.authHeader = authHeader; // Make globally accessible
 window.startTime = null; // Make globally accessible for uptime tracking
@@ -253,10 +254,11 @@ window.normalizeWiremockBaseUrl = (hostInput, portInput) => {
 window.apiFetch = async (endpoint, options = {}) => {
     const controller = new AbortController();
 
-    // Read timeout from settings instead of window variable
+    // Read timeout from settings, fallback to centralized default
     const timeoutSettings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
-    const currentTimeout = timeoutSettings.requestTimeout ? parseInt(timeoutSettings.requestTimeout) : 69000;
-    console.log(`⏱️ [API] Using request timeout: ${currentTimeout}ms (from settings: ${timeoutSettings.requestTimeout || 'default 69000'})`);
+    const defaultTimeout = window.DEFAULT_SETTINGS?.requestTimeout ? parseInt(window.DEFAULT_SETTINGS.requestTimeout) : 69000;
+    const currentTimeout = timeoutSettings.requestTimeout ? parseInt(timeoutSettings.requestTimeout) : defaultTimeout;
+    console.log(`⏱️ [API] Using request timeout: ${currentTimeout}ms (from settings: ${timeoutSettings.requestTimeout || `default ${defaultTimeout}`})`);
     const timeoutId = setTimeout(() => controller.abort(), currentTimeout);
 
     // Always use the latest wiremockBaseUrl from window object
