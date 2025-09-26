@@ -123,11 +123,11 @@ window.resetSettings = () => {
         const defaults = {
             host: 'localhost',
             port: '8080',
-            requestTimeout: '5000',
+            requestTimeout: '69000',
             authHeader: '',
             cacheEnabled: false,
-            autoRefreshEnabled: true,
-            refreshInterval: '30',
+            autoRefreshEnabled: false,
+            refreshInterval: '0',
             // Default cache timing settings
             cacheRebuildDelay: '1000',
             cacheValidationDelay: '1500',
