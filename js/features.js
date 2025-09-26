@@ -1644,27 +1644,72 @@ window.setScenarioState = async (scenarioName, newState) => {
 
     const encodedScenarioName = encodeURIComponent(resolvedScenarioName);
     const stateEndpoint = `${ENDPOINTS.SCENARIOS_SET_STATE}/${encodedScenarioName}/state`;
-
-    try {
-        await apiFetch(stateEndpoint, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                value: resolvedState
-            })
+    const scenarioExists = Array.isArray(allScenarios)
+        && allScenarios.some((scenario) => {
+            const candidate = (scenario?.name || '').trim();
+            const identifier = (scenario?.id || '').trim();
+            return candidate === resolvedScenarioName || identifier === resolvedScenarioName;
         });
 
+    const notifySuccess = async () => {
         NotificationManager.success(`Scenario "${resolvedScenarioName}" switched to state "${resolvedState}"`);
         if (!inlineState && scenarioStateInput) {
             scenarioStateInput.value = '';
         }
         updateScenarioStateSuggestions(resolvedScenarioName);
         await loadScenarios();
-        return true;
-    } catch (e) {
-        console.error('Change scenario state error:', e);
-        NotificationManager.error(`Scenario state change failed: ${e.message}`);
+    };
+
+    const handleFailure = (error) => {
+        console.error('Change scenario state error:', error);
+        const notFound = /HTTP\s+404/.test(error?.message || '');
+        if (notFound && !scenarioExists) {
+            NotificationManager.error(`Scenario "${resolvedScenarioName}" was not found on the server.`);
+        } else {
+            NotificationManager.error(`Scenario state change failed: ${error.message}`);
+        }
         setScenariosLoading(false);
+    };
+
+    const shouldFallbackToLegacy = (error) => {
+        if (!scenarioExists) return false;
+        const message = error?.message || '';
+        return /HTTP\s+404/.test(message) || /HTTP\s+405/.test(message) || /HTTP\s+501/.test(message);
+    };
+
+    try {
+        await apiFetch(stateEndpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                state: resolvedState
+            })
+        });
+
+        await notifySuccess();
+        return true;
+    } catch (primaryError) {
+        if (shouldFallbackToLegacy(primaryError)) {
+            console.warn('Primary scenario state endpoint failed, attempting legacy fallback.', primaryError);
+            try {
+                await apiFetch(ENDPOINTS.SCENARIOS_SET_STATE_LEGACY, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        scenarioName: resolvedScenarioName,
+                        newState: resolvedState
+                    })
+                });
+
+                await notifySuccess();
+                return true;
+            } catch (fallbackError) {
+                handleFailure(fallbackError);
+                return false;
+            }
+        }
+
+        handleFailure(primaryError);
         return false;
     }
 };

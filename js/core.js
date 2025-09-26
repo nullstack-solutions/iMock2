@@ -185,6 +185,7 @@ window.ENDPOINTS = {
     SCENARIOS_RESET: '/scenarios/reset',
     // Base path for scenario state transitions. Append `/NAME/state` when calling.
     SCENARIOS_SET_STATE: '/scenarios',
+    SCENARIOS_SET_STATE_LEGACY: '/scenarios/set-state',
 
     // System endpoints
     SETTINGS: '/settings',
