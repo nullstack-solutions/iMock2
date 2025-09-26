@@ -2791,12 +2791,33 @@ window.updateFileDisplay = () => {
 window.updateImportModeVisibility = () => {
     const select = document.getElementById(SELECTORS.IMPORT.MODE);
     const customContainer = document.getElementById(SELECTORS.IMPORT.MODE_CUSTOM_CONTAINER);
+    const helpText = document.querySelector('.form-help');
+
     if (!customContainer) return;
 
+    // Управление видимостью кастомного поля
     if (select?.value === '__custom__') {
         customContainer.style.display = 'block';
     } else {
         customContainer.style.display = 'none';
+    }
+
+    // Показ предупреждений для опасных режимов
+    if (helpText) {
+        const mode = select?.value;
+        switch (mode) {
+            case 'DELETE_ALL':
+                helpText.innerHTML = '<span style="color: #dc3545; font-weight: bold;">⚠️ DANGER: Will delete ALL existing mappings!</span>';
+                break;
+            case 'OVERWRITE':
+                helpText.innerHTML = '<span style="color: #ffc107; font-weight: bold;">⚠️ WARNING: May overwrite existing mappings with same ID</span>';
+                break;
+            case '__custom__':
+                helpText.innerHTML = '<span style="color: #17a2b8;">Custom mode - use with caution</span>';
+                break;
+            default:
+                helpText.innerHTML = 'Select how WireMock should handle existing mappings during import.';
+        }
     }
 };
 
@@ -2933,6 +2954,38 @@ async function executeImport(importModeOverride = null) {
         setStatusMessage(SELECTORS.IMPORT.RESULT, 'info', 'Processing import file...');
         const rawData = await parseImportFile();
         const mode = resolveImportMode(importModeOverride);
+
+        // ⚠️ Дополнительное подтверждение для опасных режимов
+        if (mode === 'DELETE_ALL') {
+            const confirmed = confirm(
+                '⚠️ DANGER: DELETE_ALL mode will permanently delete ALL existing mappings!\n\n' +
+                'This action cannot be undone. Are you sure you want to continue?'
+            );
+            if (!confirmed) {
+                setStatusMessage(SELECTORS.IMPORT.RESULT, 'info', 'Import cancelled by user.');
+                return;
+            }
+        } else if (mode === 'OVERWRITE') {
+            const confirmed = confirm(
+                '⚠️ WARNING: OVERWRITE mode may replace existing mappings with the same ID.\n\n' +
+                'Existing mappings will be lost. Continue?'
+            );
+            if (!confirmed) {
+                setStatusMessage(SELECTORS.IMPORT.RESULT, 'info', 'Import cancelled by user.');
+                return;
+            }
+        } else if (mode && !['MERGE', 'STANDARD'].includes(mode)) {
+            // Предупреждение для неизвестных/кастомных режимов
+            const confirmed = confirm(
+                `⚠️ WARNING: Using custom import mode "${mode}".\n\n` +
+                'This mode may have unexpected behavior. Continue?'
+            );
+            if (!confirmed) {
+                setStatusMessage(SELECTORS.IMPORT.RESULT, 'info', 'Import cancelled by user.');
+                return;
+            }
+        }
+
         const payload = normalizeImportPayload(rawData, mode);
         payload.importMode = mode;
 
