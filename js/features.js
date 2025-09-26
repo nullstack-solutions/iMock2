@@ -277,6 +277,8 @@ window.connectToWireMock = async () => {
             fetchAndRenderRequests()
         ]);
 
+        await loadScenarios();
+
         if (mappingsLoaded && requestsLoaded) {
             NotificationManager.success('Connected to WireMock successfully!');
         } else {
@@ -1247,9 +1249,13 @@ window.openEditModal = async (id) => {
         console.error('populateEditMappingForm function not found!');
         return;
     }
-    
+
     // Then fetch the latest mapping version by UUID
     try {
+        if (typeof window.setMappingEditorBusyState === 'function') {
+            window.setMappingEditorBusyState(true, 'Loading…');
+        }
+
         const latest = await apiFetch(`/mappings/${id}`);
         const latestMapping = latest?.mapping || latest; // support multiple response formats
         if (latestMapping && latestMapping.id) {
@@ -1263,8 +1269,12 @@ window.openEditModal = async (id) => {
         }
     } catch (e) {
         console.warn('Failed to load latest mapping, using cached version.', e);
+    } finally {
+        if (typeof window.setMappingEditorBusyState === 'function') {
+            window.setMappingEditorBusyState(false);
+        }
     }
-    
+
     // Update the modal title
     const modalTitleElement = document.getElementById(SELECTORS.MODAL.TITLE);
     if (modalTitleElement) modalTitleElement.textContent = 'Edit Mapping';
@@ -1501,12 +1511,24 @@ window.toggleRequestPreview = (requestId) => {
 // --- SCENARIOS ---
 
 window.loadScenarios = async () => {
+    const loadingEl = document.getElementById('scenarios-loading');
+    const listEl = document.getElementById(SELECTORS.LISTS.SCENARIOS);
+    const emptyEl = document.getElementById('scenarios-empty');
+
+    if (loadingEl) loadingEl.classList.remove('hidden');
+    if (emptyEl) emptyEl.classList.add('hidden');
+    if (listEl) listEl.style.display = 'none';
+
     try {
         const data = await apiFetch(ENDPOINTS.SCENARIOS);
-        allScenarios = data.scenarios || [];
-        renderScenarios();
+        allScenarios = Array.isArray(data?.scenarios) ? data.scenarios : [];
     } catch (e) {
+        allScenarios = [];
         console.error('Load scenarios error:', e);
+        NotificationManager.error(`Failed to load scenarios: ${e.message}`);
+    } finally {
+        if (loadingEl) loadingEl.classList.add('hidden');
+        renderScenarios();
     }
 };
 
@@ -1518,7 +1540,7 @@ window.resetAllScenarios = async () => {
     if (!confirm('Reset all scenarios to the initial state?')) return;
     
     try {
-        await apiFetch('/scenarios/reset', { method: 'POST' });
+        await apiFetch(ENDPOINTS.SCENARIOS_RESET, { method: 'POST' });
         NotificationManager.success('All scenarios have been reset!');
         await loadScenarios();
     } catch (e) {
@@ -1527,17 +1549,34 @@ window.resetAllScenarios = async () => {
 };
 
 window.setScenarioState = async (scenarioName, newState) => {
+    const scenarioSelect = document.getElementById('scenario-select');
+    const scenarioStateInput = document.getElementById('scenario-state');
+
+    const inlineScenarioName = typeof scenarioName === 'string' ? scenarioName.trim() : '';
+    const inlineState = typeof newState === 'string' ? newState.trim() : '';
+
+    const resolvedScenarioName = inlineScenarioName || scenarioSelect?.value?.trim() || '';
+    const resolvedState = inlineState || scenarioStateInput?.value?.trim() || '';
+
+    if (!resolvedScenarioName || !resolvedState) {
+        NotificationManager.warning('Please select scenario and enter state');
+        return;
+    }
+
     try {
-        await apiFetch('/scenarios/set-state', {
+        await apiFetch(ENDPOINTS.SCENARIOS_SET_STATE, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                scenarioName: scenarioName,
-                newState: newState
+                scenarioName: resolvedScenarioName,
+                newState: resolvedState
             })
         });
-        
-        NotificationManager.success(`Scenario "${scenarioName}" switched to state "${newState}"`);
+
+        NotificationManager.success(`Scenario "${resolvedScenarioName}" switched to state "${resolvedState}"`);
+        if (!inlineState && scenarioStateInput) {
+            scenarioStateInput.value = '';
+        }
         await loadScenarios();
     } catch (e) {
         console.error('Change scenario state error:', e);
@@ -1546,35 +1585,167 @@ window.setScenarioState = async (scenarioName, newState) => {
 };
 
 window.renderScenarios = () => {
-    const container = document.getElementById(SELECTORS.LISTS.SCENARIOS);
-    
-    if (allScenarios.length === 0) {
-        container.innerHTML = '<div class="loading-message">Scenarios not found</div>';
+    const listEl = document.getElementById(SELECTORS.LISTS.SCENARIOS);
+    const emptyEl = document.getElementById('scenarios-empty');
+    const countEl = document.getElementById('scenarios-count');
+    const selectEl = document.getElementById('scenario-select');
+    const stateOptionsEl = document.getElementById('scenario-state-options');
+
+    if (!listEl) return;
+
+    if (countEl) {
+        countEl.textContent = Array.isArray(allScenarios) ? allScenarios.length : 0;
+    }
+
+    const normalizedScenarios = Array.isArray(allScenarios) ? allScenarios : [];
+
+    if (normalizedScenarios.length === 0) {
+        listEl.innerHTML = '';
+        listEl.style.display = 'none';
+        if (emptyEl) emptyEl.classList.remove('hidden');
+        if (selectEl) {
+            selectEl.innerHTML = '<option value="">Select Scenario</option>';
+        }
+        if (stateOptionsEl) {
+            stateOptionsEl.innerHTML = '';
+        }
         return;
     }
-    
-    container.innerHTML = allScenarios.map(scenario => `
-        <div class="scenario-item">
-            <div class="scenario-header">
-                <div class="scenario-name">${scenario.name}</div>
-                <div class="scenario-state">${scenario.state || 'Started'}</div>
-            </div>
-            <div class="scenario-info">
-                <div class="scenario-description">${scenario.description || 'No description'}</div>
-            </div>
-            <div class="scenario-actions">
-                ${(scenario.possibleStates || []).map(state => 
-                    state !== scenario.state ? 
-                    `<button class="btn btn-sm btn-secondary" onclick="setScenarioState('${scenario.name}', '${state}')">
-                        → ${state}
-                    </button>` : ''
-                ).join('')}
-                <button class="btn btn-sm btn-danger" onclick="setScenarioState('${scenario.name}', 'Started')">
-                    🔄 Reset
+
+    if (emptyEl) emptyEl.classList.add('hidden');
+
+    const previousSelection = selectEl?.value || '';
+    if (selectEl) {
+        const options = ['<option value="">Select Scenario</option>']
+            .concat(normalizedScenarios.map(scenario => `
+                <option value="${escapeHtml(scenario.name)}">${escapeHtml(scenario.name)}</option>
+            `));
+        selectEl.innerHTML = options.join('');
+        if (previousSelection && normalizedScenarios.some(s => s.name === previousSelection)) {
+            selectEl.value = previousSelection;
+        }
+    }
+
+    if (stateOptionsEl) {
+        const uniqueStates = new Set();
+        normalizedScenarios.forEach((scenario) => {
+            if (scenario?.state) {
+                uniqueStates.add(scenario.state);
+            }
+            (scenario?.possibleStates || []).forEach((state) => {
+                if (state) {
+                    uniqueStates.add(state);
+                }
+            });
+        });
+        stateOptionsEl.innerHTML = Array.from(uniqueStates).map((state) => `
+            <option value="${escapeHtml(state)}"></option>
+        `).join('');
+    }
+
+    listEl.style.display = '';
+    listEl.innerHTML = normalizedScenarios.map((scenario) => {
+        const scenarioNameLiteral = JSON.stringify(scenario.name || '');
+        const displayedName = escapeHtml(scenario.name || '');
+        const displayedState = escapeHtml(scenario.state || 'Started');
+        const possibleStates = Array.isArray(scenario.possibleStates) ? scenario.possibleStates.filter(Boolean) : [];
+
+        const actionButtons = possibleStates.map((state) => {
+            if (state === scenario.state) return '';
+            const stateLiteral = JSON.stringify(state || '');
+            const displayedPossibleState = escapeHtml(state || '');
+            return `
+                <button class="btn btn-sm btn-secondary" onclick="setScenarioState(${scenarioNameLiteral}, ${stateLiteral})">
+                    → ${displayedPossibleState}
                 </button>
+            `;
+        }).join('');
+
+        const possibleStatesMarkup = possibleStates.length ? `
+            <div class="scenario-possible-states">
+                <div class="scenario-section-title">Possible states</div>
+                <div class="scenario-state-badges">
+                    ${possibleStates.map((state) => {
+                        const isCurrent = state === scenario.state;
+                        const badgeClass = isCurrent ? 'badge badge-success' : 'badge badge-secondary';
+                        return `<span class="${badgeClass}">${escapeHtml(state)}</span>`;
+                    }).join('')}
+                </div>
             </div>
-        </div>
-    `).join('');
+        ` : '';
+
+        const descriptionMarkup = scenario.description ? `
+            <div class="scenario-info">
+                <div class="scenario-description">${escapeHtml(scenario.description)}</div>
+            </div>
+        ` : '';
+
+        const mappingSummaries = Array.isArray(scenario.mappings) ? scenario.mappings : [];
+        const mappingListMarkup = mappingSummaries.length ? `
+            <ul class="scenario-mapping-list">
+                ${mappingSummaries.map((mapping) => {
+                    const mappingId = mapping?.id || mapping?.uuid || mapping?.stubMappingId || mapping?.stubId || mapping?.mappingId || '';
+                    const mappingIdLiteral = mappingId ? JSON.stringify(mappingId) : '';
+                    const mappingName = escapeHtml(mapping?.name || mappingId || 'Unnamed mapping');
+                    const method = mapping?.request?.method || mapping?.method || mapping?.requestMethod || '';
+                    const url = mapping?.request?.urlPattern || mapping?.request?.urlPath || mapping?.request?.url || mapping?.url || mapping?.requestUrl || '';
+                    const methodLabel = method ? `<span class="scenario-mapping-method">${escapeHtml(method)}</span>` : '';
+                    const urlLabel = url ? `<span class="scenario-mapping-url">${escapeHtml(url)}</span>` : '';
+                    const metaLabel = methodLabel || urlLabel ? `
+                        <div class="scenario-mapping-meta">
+                            ${[methodLabel, urlLabel].filter(Boolean).join(' · ')}
+                        </div>
+                    ` : '';
+                    const requiredState = mapping?.requiredScenarioState || mapping?.requiredState || '';
+                    const newState = mapping?.newScenarioState || mapping?.newState || '';
+                    const transitionMarkup = [
+                        requiredState ? `<span class="badge badge-warning" title="Required scenario state">Requires: ${escapeHtml(requiredState)}</span>` : '',
+                        newState ? `<span class="badge badge-info" title="Next scenario state">→ ${escapeHtml(newState)}</span>` : ''
+                    ].filter(Boolean).join(' ');
+                    const transitions = transitionMarkup ? `
+                        <div class="scenario-mapping-states">${transitionMarkup}</div>
+                    ` : '';
+                    const editButton = mappingId ? `
+                        <div class="scenario-mapping-actions">
+                            <button class="btn btn-sm btn-secondary" onclick="openEditModal(${mappingIdLiteral})">📝 Edit mapping</button>
+                        </div>
+                    ` : '';
+
+                    return `
+                        <li class="scenario-mapping-item">
+                            <div class="scenario-mapping-name">${mappingName}</div>
+                            ${metaLabel}
+                            ${transitions}
+                            ${editButton}
+                        </li>
+                    `;
+                }).join('')}
+            </ul>
+        ` : `
+            <div class="scenario-mapping-empty">No stub mappings are bound to this scenario yet.</div>
+        `;
+
+        return `
+            <div class="scenario-item">
+                <div class="scenario-header">
+                    <div class="scenario-name">${displayedName}</div>
+                    <div class="scenario-state">${displayedState}</div>
+                </div>
+                ${descriptionMarkup}
+                ${possibleStatesMarkup}
+                <div class="scenario-mappings">
+                    <div class="scenario-section-title">Stub mappings</div>
+                    ${mappingListMarkup}
+                </div>
+                <div class="scenario-actions">
+                    ${actionButtons}
+                    <button class="btn btn-sm btn-danger" onclick="setScenarioState(${scenarioNameLiteral}, ${JSON.stringify('Started')})">
+                        🔄 Reset
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
 };
 
 // --- FIXED FUNCTIONS FOR WIREMOCK 3.9.1+ API ---
@@ -2753,8 +2924,8 @@ window.updateScenarioState = async () => {
         return;
     }
 
-    // Call the correct function (not self-recursive)
-    await window.setScenarioState(scenarioSelect.value, scenarioState.value);
+    // Delegate to the scenario state handler which reads from the DOM when arguments are absent
+    await window.setScenarioState();
 };
 
 window.updateFileDisplay = () => {
