@@ -2934,14 +2934,18 @@ function normalizeImportPayload(rawData, importMode) {
         throw new Error('The import file does not contain any mappings.');
     }
 
-    Object.keys(clone).forEach((key) => {
-        if (['mappings', 'mapping', 'importMode'].includes(key)) {
-            return;
-        }
-        if (!Object.prototype.hasOwnProperty.call(payload, key)) {
-            payload[key] = clone[key];
-        }
-    });
+    // Copy additional keys only if clone is an object (not an array)
+    // Arrays don't have meaningful additional keys beyond their indexed elements
+    if (!Array.isArray(clone)) {
+        Object.keys(clone).forEach((key) => {
+            if (['mappings', 'mapping', 'importMode'].includes(key)) {
+                return;
+            }
+            if (!Object.prototype.hasOwnProperty.call(payload, key)) {
+                payload[key] = clone[key];
+            }
+        });
+    }
 
     const mode = importMode || clone.importMode || 'MERGE';
     payload.importMode = mode;
