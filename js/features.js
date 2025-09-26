@@ -1642,13 +1642,15 @@ window.setScenarioState = async (scenarioName, newState) => {
 
     setScenariosLoading(true);
 
+    const encodedScenarioName = encodeURIComponent(resolvedScenarioName);
+    const stateEndpoint = `${ENDPOINTS.SCENARIOS_SET_STATE}/${encodedScenarioName}/state`;
+
     try {
-        await apiFetch(ENDPOINTS.SCENARIOS_SET_STATE, {
-            method: 'PUT',
+        await apiFetch(stateEndpoint, {
+            method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                scenarioName: resolvedScenarioName,
-                newState: resolvedState
+                value: resolvedState
             })
         });
 
