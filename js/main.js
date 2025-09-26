@@ -125,7 +125,7 @@ window.resetSettings = () => {
             port: '8080',
             requestTimeout: '69000',
             authHeader: '',
-            cacheEnabled: false,
+            cacheEnabled: true,
             autoRefreshEnabled: false,
             refreshInterval: '0',
             // Default cache timing settings
