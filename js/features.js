@@ -1510,14 +1510,27 @@ window.toggleRequestPreview = (requestId) => {
 
 // --- SCENARIOS ---
 
-window.loadScenarios = async () => {
-    const loadingEl = document.getElementById('scenarios-loading');
-    const listEl = document.getElementById(SELECTORS.LISTS.SCENARIOS);
-    const emptyEl = document.getElementById('scenarios-empty');
+let scenarioListHandlerAttached = false;
 
-    if (loadingEl) loadingEl.classList.remove('hidden');
+function setScenariosLoading(isLoading) {
+    const loadingEl = document.getElementById('scenarios-loading');
+    if (loadingEl) {
+        loadingEl.classList.toggle('hidden', !isLoading);
+    }
+
+    if (isLoading) {
+        const listEl = document.getElementById(SELECTORS.LISTS.SCENARIOS);
+        if (listEl) {
+            listEl.style.display = 'none';
+        }
+    }
+}
+
+window.loadScenarios = async () => {
+    const emptyEl = document.getElementById('scenarios-empty');
     if (emptyEl) emptyEl.classList.add('hidden');
-    if (listEl) listEl.style.display = 'none';
+
+    setScenariosLoading(true);
 
     try {
         const data = await apiFetch(ENDPOINTS.SCENARIOS);
@@ -1527,7 +1540,7 @@ window.loadScenarios = async () => {
         console.error('Load scenarios error:', e);
         NotificationManager.error(`Failed to load scenarios: ${e.message}`);
     } finally {
-        if (loadingEl) loadingEl.classList.add('hidden');
+        setScenariosLoading(false);
         renderScenarios();
     }
 };
@@ -1538,13 +1551,16 @@ window.refreshScenarios = async () => {
 
 window.resetAllScenarios = async () => {
     if (!confirm('Reset all scenarios to the initial state?')) return;
-    
+
+    setScenariosLoading(true);
+
     try {
         await apiFetch(ENDPOINTS.SCENARIOS_RESET, { method: 'POST' });
         NotificationManager.success('All scenarios have been reset!');
         await loadScenarios();
     } catch (e) {
         NotificationManager.error(`Scenario reset failed: ${e.message}`);
+        setScenariosLoading(false);
     }
 };
 
@@ -1562,15 +1578,23 @@ function updateScenarioStateSuggestions(selectedScenarioName) {
 
     const states = new Set();
 
+    const addState = (state) => {
+        if (typeof state !== 'string') return;
+        const normalized = state.trim();
+        if (normalized) {
+            states.add(normalized);
+        }
+    };
+
+    addState('Started');
+
     const harvestStates = (scenario) => {
         if (!scenario) return;
-        if (scenario.state) states.add(scenario.state);
-        (scenario.possibleStates || []).forEach((state) => {
-            if (state) states.add(state);
-        });
+        addState(scenario.state);
+        (scenario.possibleStates || []).forEach(addState);
         (scenario.mappings || []).forEach((mapping) => {
-            if (mapping?.requiredScenarioState) states.add(mapping.requiredScenarioState);
-            if (mapping?.newScenarioState) states.add(mapping.newScenarioState);
+            addState(mapping?.requiredScenarioState);
+            addState(mapping?.newScenarioState);
         });
     };
 
@@ -1605,6 +1629,7 @@ window.setScenarioState = async (scenarioName, newState) => {
 
     if (inlineScenarioName && scenarioSelect) {
         scenarioSelect.value = inlineScenarioName;
+        updateScenarioStateSuggestions(inlineScenarioName);
     }
 
     const resolvedScenarioName = inlineScenarioName || scenarioSelect?.value?.trim() || '';
@@ -1612,8 +1637,10 @@ window.setScenarioState = async (scenarioName, newState) => {
 
     if (!resolvedScenarioName || !resolvedState) {
         NotificationManager.warning('Please select scenario and enter state');
-        return;
+        return false;
     }
+
+    setScenariosLoading(true);
 
     try {
         await apiFetch(ENDPOINTS.SCENARIOS_SET_STATE, {
@@ -1631,9 +1658,12 @@ window.setScenarioState = async (scenarioName, newState) => {
         }
         updateScenarioStateSuggestions(resolvedScenarioName);
         await loadScenarios();
+        return true;
     } catch (e) {
         console.error('Change scenario state error:', e);
         NotificationManager.error(`Scenario state change failed: ${e.message}`);
+        setScenariosLoading(false);
+        return false;
     }
 };
 
@@ -1662,6 +1692,7 @@ window.renderScenarios = () => {
         if (stateOptionsEl) {
             stateOptionsEl.innerHTML = '';
         }
+        updateScenarioStateSuggestions('');
         return;
     }
 
@@ -1692,17 +1723,23 @@ window.renderScenarios = () => {
 
     listEl.style.display = '';
     listEl.innerHTML = normalizedScenarios.map((scenario) => {
-        const scenarioNameLiteral = JSON.stringify(scenario.name || '');
-        const displayedName = escapeHtml(scenario.name || '');
+        const scenarioName = scenario.name || '';
+        const scenarioNameAttr = escapeHtml(scenarioName);
+        const displayedName = escapeHtml(scenarioName);
         const displayedState = escapeHtml(scenario.state || 'Started');
         const possibleStates = Array.isArray(scenario.possibleStates) ? scenario.possibleStates.filter(Boolean) : [];
 
         const actionButtons = possibleStates.map((state) => {
-            if (state === scenario.state) return '';
-            const stateLiteral = JSON.stringify(state || '');
-            const displayedPossibleState = escapeHtml(state || '');
+            if (!state || state === scenario.state) return '';
+            const stateAttr = escapeHtml(state);
+            const displayedPossibleState = escapeHtml(state);
             return `
-                <button class="btn btn-sm btn-secondary" onclick="setScenarioState(${scenarioNameLiteral}, ${stateLiteral})">
+                <button
+                    class="btn btn-sm btn-secondary"
+                    data-scenario-action="transition"
+                    data-scenario="${scenarioNameAttr}"
+                    data-state="${stateAttr}"
+                >
                     → ${displayedPossibleState}
                 </button>
             `;
@@ -1732,7 +1769,7 @@ window.renderScenarios = () => {
             <ul class="scenario-mapping-list">
                 ${mappingSummaries.map((mapping) => {
                     const mappingId = mapping?.id || mapping?.uuid || mapping?.stubMappingId || mapping?.stubId || mapping?.mappingId || '';
-                    const mappingIdLiteral = mappingId ? JSON.stringify(mappingId) : '';
+                    const mappingIdAttr = mappingId ? escapeHtml(mappingId) : '';
                     const mappingName = escapeHtml(mapping?.name || mappingId || 'Unnamed mapping');
                     const method = mapping?.request?.method || mapping?.method || mapping?.requestMethod || '';
                     const url = mapping?.request?.urlPattern || mapping?.request?.urlPath || mapping?.request?.url || mapping?.url || mapping?.requestUrl || '';
@@ -1754,7 +1791,13 @@ window.renderScenarios = () => {
                     ` : '';
                     const editButton = mappingId ? `
                         <div class="scenario-mapping-actions">
-                            <button class="btn btn-sm btn-secondary" onclick="openEditModal(${mappingIdLiteral})">📝 Edit mapping</button>
+                            <button
+                                class="btn btn-sm btn-secondary"
+                                data-scenario-action="edit-mapping"
+                                data-mapping-id="${mappingIdAttr}"
+                            >
+                                📝 Edit mapping
+                            </button>
                         </div>
                     ` : '';
 
@@ -1786,13 +1829,48 @@ window.renderScenarios = () => {
                 </div>
                 <div class="scenario-actions">
                     ${actionButtons}
-                    <button class="btn btn-sm btn-danger" onclick="setScenarioState(${scenarioNameLiteral}, ${JSON.stringify('Started')})">
+                    <button
+                        class="btn btn-sm btn-danger"
+                        data-scenario-action="transition"
+                        data-scenario="${scenarioNameAttr}"
+                        data-state="Started"
+                    >
                         🔄 Reset
                     </button>
                 </div>
             </div>
         `;
     }).join('');
+
+    if (!scenarioListHandlerAttached) {
+        listEl.addEventListener('click', async (event) => {
+            const button = event.target.closest('button[data-scenario-action]');
+            if (!button) return;
+
+            const action = button.dataset.scenarioAction;
+
+            if (action === 'transition') {
+                const scenarioNameValue = (button.dataset.scenario || '').trim();
+                const targetState = (button.dataset.state || '').trim();
+                if (!scenarioNameValue || !targetState) {
+                    return;
+                }
+
+                button.disabled = true;
+                try {
+                    await setScenarioState(scenarioNameValue, targetState);
+                } finally {
+                    button.disabled = false;
+                }
+            } else if (action === 'edit-mapping') {
+                const mappingIdValue = button.dataset.mappingId;
+                if (mappingIdValue && typeof window.openEditModal === 'function') {
+                    window.openEditModal(mappingIdValue);
+                }
+            }
+        });
+        scenarioListHandlerAttached = true;
+    }
 };
 
 // --- FIXED FUNCTIONS FOR WIREMOCK 3.9.1+ API ---
@@ -2965,14 +3043,24 @@ window.loadMockData = () => {
 window.updateScenarioState = async () => {
     const scenarioSelect = document.getElementById('scenario-select');
     const scenarioState = document.getElementById('scenario-state');
+    const submitButton = document.getElementById('scenario-update-btn');
 
     if (!scenarioSelect?.value || !scenarioState?.value) {
         NotificationManager.warning('Please select scenario and enter state');
         return;
     }
 
-    // Delegate to the scenario state handler which reads from the DOM when arguments are absent
-    await window.setScenarioState();
+    if (submitButton) {
+        submitButton.disabled = true;
+    }
+
+    try {
+        await window.setScenarioState();
+    } finally {
+        if (submitButton) {
+            submitButton.disabled = false;
+        }
+    }
 };
 
 window.updateFileDisplay = () => {
@@ -2984,4 +3072,3 @@ window.updateFileDisplay = () => {
         document.getElementById('import-actions').style.display = 'block';
     }
 };
-
