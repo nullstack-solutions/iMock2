@@ -86,13 +86,16 @@ window.editMapping = (mappingId) => {
 window.saveSettings = () => {
     try {
         // Collect settings from settings form (prioritize settings form values)
+        const cacheCheckbox = document.getElementById('cache-enabled');
+        const autoRefreshCheckbox = document.getElementById('auto-refresh-enabled');
+
         const settings = {
             host: document.getElementById('default-host')?.value || DEFAULT_SETTINGS.host,
             port: document.getElementById('default-port')?.value || DEFAULT_SETTINGS.port,
             requestTimeout: document.getElementById('request-timeout')?.value || DEFAULT_SETTINGS.requestTimeout,
             authHeader: document.getElementById('auth-header')?.value || DEFAULT_SETTINGS.authHeader,
-            cacheEnabled: document.getElementById('cache-enabled')?.checked || DEFAULT_SETTINGS.cacheEnabled,
-            autoRefreshEnabled: document.getElementById('auto-refresh-enabled')?.checked || DEFAULT_SETTINGS.autoRefreshEnabled,
+            cacheEnabled: cacheCheckbox?.checked ?? DEFAULT_SETTINGS.cacheEnabled,
+            autoRefreshEnabled: autoRefreshCheckbox?.checked ?? DEFAULT_SETTINGS.autoRefreshEnabled,
             refreshInterval: document.getElementById('refresh-interval')?.value || DEFAULT_SETTINGS.refreshInterval,
             // Cache timing settings
             cacheRebuildDelay: document.getElementById('cache-rebuild-delay')?.value || DEFAULT_SETTINGS.cacheRebuildDelay,
