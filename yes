@@ -1,0 +1,3 @@
+[33me5942ec[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mcodex/fix-mapping-export-and-import-modes[m[33m)[m fix: prevent copying array indexes into import payload
+[33m38c50af[m[33m ([m[1;31morigin/codex/fix-mapping-export-and-import-modes[m[33m)[m feat: add safety confirmations for dangerous import modes
+[33m8602949[m Merge branch 'main' into codex/fix-mapping-export-and-import-modes
