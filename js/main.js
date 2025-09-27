@@ -1,7 +1,28 @@
 'use strict';
 
 console.log('✅ All required modules loaded successfully');
-    
+
+// === CENTRALIZED DEFAULT SETTINGS ===
+// This is the SINGLE SOURCE OF TRUTH for all default values
+window.DEFAULT_SETTINGS = {
+    host: 'localhost',
+    port: '8080',
+    requestTimeout: '69000',
+    authHeader: '',
+    cacheEnabled: true,
+    autoRefreshEnabled: false,
+    refreshInterval: '0',
+    // Default cache timing settings
+    cacheRebuildDelay: '1000',
+    cacheValidationDelay: '1500',
+    optimisticCacheAgeLimit: '30000',
+    cacheCountDiffThreshold: '2',
+    backgroundFetchDelay: '200'
+};
+
+// Make it available as a module-level constant too for backward compatibility
+const DEFAULT_SETTINGS = window.DEFAULT_SETTINGS;
+
 // === FUNCTIONS FOR EDITOR INTEGRATION ===
     
 window.editMapping = (mappingId) => {
@@ -65,20 +86,23 @@ window.editMapping = (mappingId) => {
 window.saveSettings = () => {
     try {
         // Collect settings from settings form (prioritize settings form values)
+        const cacheCheckbox = document.getElementById('cache-enabled');
+        const autoRefreshCheckbox = document.getElementById('auto-refresh-enabled');
+
         const settings = {
-            host: document.getElementById('default-host')?.value || 'localhost',
-            port: document.getElementById('default-port')?.value || '8080',
-            requestTimeout: document.getElementById('request-timeout')?.value || '5000',
-            authHeader: document.getElementById('auth-header')?.value || '',
-            cacheEnabled: document.getElementById('cache-enabled')?.checked || false,
-            autoRefreshEnabled: document.getElementById('auto-refresh-enabled')?.checked || true,
-            refreshInterval: document.getElementById('refresh-interval')?.value || '30',
+            host: document.getElementById('default-host')?.value || DEFAULT_SETTINGS.host,
+            port: document.getElementById('default-port')?.value || DEFAULT_SETTINGS.port,
+            requestTimeout: document.getElementById('request-timeout')?.value || DEFAULT_SETTINGS.requestTimeout,
+            authHeader: document.getElementById('auth-header')?.value || DEFAULT_SETTINGS.authHeader,
+            cacheEnabled: cacheCheckbox?.checked ?? DEFAULT_SETTINGS.cacheEnabled,
+            autoRefreshEnabled: autoRefreshCheckbox?.checked ?? DEFAULT_SETTINGS.autoRefreshEnabled,
+            refreshInterval: document.getElementById('refresh-interval')?.value || DEFAULT_SETTINGS.refreshInterval,
             // Cache timing settings
-            cacheRebuildDelay: document.getElementById('cache-rebuild-delay')?.value || '1000',
-            cacheValidationDelay: document.getElementById('cache-validation-delay')?.value || '1500',
-            optimisticCacheAgeLimit: document.getElementById('optimistic-cache-age-limit')?.value || '30000',
-            cacheCountDiffThreshold: document.getElementById('cache-count-diff-threshold')?.value || '2',
-            backgroundFetchDelay: document.getElementById('background-fetch-delay')?.value || '200'
+            cacheRebuildDelay: document.getElementById('cache-rebuild-delay')?.value || DEFAULT_SETTINGS.cacheRebuildDelay,
+            cacheValidationDelay: document.getElementById('cache-validation-delay')?.value || DEFAULT_SETTINGS.cacheValidationDelay,
+            optimisticCacheAgeLimit: document.getElementById('optimistic-cache-age-limit')?.value || DEFAULT_SETTINGS.optimisticCacheAgeLimit,
+            cacheCountDiffThreshold: document.getElementById('cache-count-diff-threshold')?.value || DEFAULT_SETTINGS.cacheCountDiffThreshold,
+            backgroundFetchDelay: document.getElementById('background-fetch-delay')?.value || DEFAULT_SETTINGS.backgroundFetchDelay
         };
         
         // Also update the main connection form to reflect the saved settings
@@ -119,43 +143,26 @@ window.resetSettings = () => {
     if (!confirm('Reset all settings to defaults?')) return;
     
     try {
-        // Default settings
-        const defaults = {
-            host: 'localhost',
-            port: '8080',
-            requestTimeout: '5000',
-            authHeader: '',
-            cacheEnabled: false,
-            autoRefreshEnabled: true,
-            refreshInterval: '30',
-            // Default cache timing settings
-            cacheRebuildDelay: '1000',
-            cacheValidationDelay: '1500',
-            optimisticCacheAgeLimit: '30000',
-            cacheCountDiffThreshold: '2',
-            backgroundFetchDelay: '200'
-        };
-        
         // Update form fields
-        if (document.getElementById('default-host')) document.getElementById('default-host').value = defaults.host;
-        if (document.getElementById('default-port')) document.getElementById('default-port').value = defaults.port;
-        if (document.getElementById('request-timeout')) document.getElementById('request-timeout').value = defaults.requestTimeout;
-        if (document.getElementById('auth-header')) document.getElementById('auth-header').value = defaults.authHeader;
-        if (document.getElementById('cache-enabled')) document.getElementById('cache-enabled').checked = defaults.cacheEnabled;
-        if (document.getElementById('auto-refresh-enabled')) document.getElementById('auto-refresh-enabled').checked = defaults.autoRefreshEnabled;
-        if (document.getElementById('refresh-interval')) document.getElementById('refresh-interval').value = defaults.refreshInterval;
-        
+        if (document.getElementById('default-host')) document.getElementById('default-host').value = DEFAULT_SETTINGS.host;
+        if (document.getElementById('default-port')) document.getElementById('default-port').value = DEFAULT_SETTINGS.port;
+        if (document.getElementById('request-timeout')) document.getElementById('request-timeout').value = DEFAULT_SETTINGS.requestTimeout;
+        if (document.getElementById('auth-header')) document.getElementById('auth-header').value = DEFAULT_SETTINGS.authHeader;
+        if (document.getElementById('cache-enabled')) document.getElementById('cache-enabled').checked = DEFAULT_SETTINGS.cacheEnabled;
+        if (document.getElementById('auto-refresh-enabled')) document.getElementById('auto-refresh-enabled').checked = DEFAULT_SETTINGS.autoRefreshEnabled;
+        if (document.getElementById('refresh-interval')) document.getElementById('refresh-interval').value = DEFAULT_SETTINGS.refreshInterval;
+
         // Save defaults
-        localStorage.setItem('wiremock-settings', JSON.stringify(defaults));
-        
+        localStorage.setItem('wiremock-settings', JSON.stringify(DEFAULT_SETTINGS));
+
         // Update global baseUrl
-        window.wiremockBaseUrl = `http://${defaults.host}:${defaults.port}/__admin`;
+        window.wiremockBaseUrl = `http://${DEFAULT_SETTINGS.host}:${DEFAULT_SETTINGS.port}/__admin`;
 
         // Update global auth header
-        window.authHeader = defaults.authHeader || '';
+        window.authHeader = DEFAULT_SETTINGS.authHeader || '';
 
         // Broadcast update
-        broadcastSettingsUpdate(defaults);
+        broadcastSettingsUpdate(DEFAULT_SETTINGS);
         
         NotificationManager.success('Settings reset to defaults!');
         console.log('🔄 Settings reset to defaults');
@@ -173,22 +180,22 @@ window.loadSettings = () => {
         console.log('🔧 [main.js] Loading settings from localStorage:', settings);
 
         // Load into settings form fields if they exist
-        if (document.getElementById('default-host')) document.getElementById('default-host').value = settings.host || 'localhost';
-        if (document.getElementById('default-port')) document.getElementById('default-port').value = settings.port || '8080';
-        if (document.getElementById('request-timeout')) document.getElementById('request-timeout').value = settings.requestTimeout || '5000';
-        if (document.getElementById('auth-header')) document.getElementById('auth-header').value = settings.authHeader || '';
-        if (document.getElementById('cache-enabled')) document.getElementById('cache-enabled').checked = settings.cacheEnabled || false;
-        if (document.getElementById('auto-refresh-enabled')) document.getElementById('auto-refresh-enabled').checked = settings.autoRefreshEnabled !== false;
-        if (document.getElementById('refresh-interval')) document.getElementById('refresh-interval').value = settings.refreshInterval || '30';
+        if (document.getElementById('default-host')) document.getElementById('default-host').value = settings.host || DEFAULT_SETTINGS.host;
+        if (document.getElementById('default-port')) document.getElementById('default-port').value = settings.port || DEFAULT_SETTINGS.port;
+        if (document.getElementById('request-timeout')) document.getElementById('request-timeout').value = settings.requestTimeout || DEFAULT_SETTINGS.requestTimeout;
+        if (document.getElementById('auth-header')) document.getElementById('auth-header').value = settings.authHeader || DEFAULT_SETTINGS.authHeader;
+        if (document.getElementById('cache-enabled')) document.getElementById('cache-enabled').checked = settings.cacheEnabled !== undefined ? settings.cacheEnabled : DEFAULT_SETTINGS.cacheEnabled;
+        if (document.getElementById('auto-refresh-enabled')) document.getElementById('auto-refresh-enabled').checked = settings.autoRefreshEnabled !== undefined ? settings.autoRefreshEnabled : DEFAULT_SETTINGS.autoRefreshEnabled;
+        if (document.getElementById('refresh-interval')) document.getElementById('refresh-interval').value = settings.refreshInterval || DEFAULT_SETTINGS.refreshInterval;
         // Cache timing settings
-        if (document.getElementById('cache-rebuild-delay')) document.getElementById('cache-rebuild-delay').value = settings.cacheRebuildDelay || '1000';
-        if (document.getElementById('cache-validation-delay')) document.getElementById('cache-validation-delay').value = settings.cacheValidationDelay || '1500';
-        if (document.getElementById('optimistic-cache-age-limit')) document.getElementById('optimistic-cache-age-limit').value = settings.optimisticCacheAgeLimit || '30000';
-        if (document.getElementById('cache-count-diff-threshold')) document.getElementById('cache-count-diff-threshold').value = settings.cacheCountDiffThreshold || '2';
-        if (document.getElementById('background-fetch-delay')) document.getElementById('background-fetch-delay').value = settings.backgroundFetchDelay || '200';
+        if (document.getElementById('cache-rebuild-delay')) document.getElementById('cache-rebuild-delay').value = settings.cacheRebuildDelay || DEFAULT_SETTINGS.cacheRebuildDelay;
+        if (document.getElementById('cache-validation-delay')) document.getElementById('cache-validation-delay').value = settings.cacheValidationDelay || DEFAULT_SETTINGS.cacheValidationDelay;
+        if (document.getElementById('optimistic-cache-age-limit')) document.getElementById('optimistic-cache-age-limit').value = settings.optimisticCacheAgeLimit || DEFAULT_SETTINGS.optimisticCacheAgeLimit;
+        if (document.getElementById('cache-count-diff-threshold')) document.getElementById('cache-count-diff-threshold').value = settings.cacheCountDiffThreshold || DEFAULT_SETTINGS.cacheCountDiffThreshold;
+        if (document.getElementById('background-fetch-delay')) document.getElementById('background-fetch-delay').value = settings.backgroundFetchDelay || DEFAULT_SETTINGS.backgroundFetchDelay;
 
         // Update global auth header
-        window.authHeader = settings.authHeader || '';
+        window.authHeader = settings.authHeader || DEFAULT_SETTINGS.authHeader;
 
         console.log('📋 Settings loaded into settings form');
 
@@ -217,20 +224,51 @@ function broadcastSettingsUpdate(settings) {
 
 // Initialize default WireMock URL
 if (!window.wiremockBaseUrl) {
-    window.wiremockBaseUrl = 'http://localhost:8080/__admin';
+    window.wiremockBaseUrl = `http://${DEFAULT_SETTINGS.host}:${DEFAULT_SETTINGS.port}/__admin`;
     console.log('🔧 [main.js] Initialized default WireMock URL:', window.wiremockBaseUrl);
 }
+
+// Apply default values to HTML form fields from centralized settings
+window.applyDefaultsToForm = () => {
+    console.log('🔧 [applyDefaultsToForm] Setting form defaults from DEFAULT_SETTINGS');
+    
+    // Connection settings
+    const hostInput = document.getElementById('default-host');
+    const portInput = document.getElementById('default-port');
+    const timeoutInput = document.getElementById('request-timeout');
+    const authInput = document.getElementById('auth-header');
+    const cacheInput = document.getElementById('cache-enabled');
+    const autoRefreshInput = document.getElementById('auto-refresh-enabled');
+    const intervalInput = document.getElementById('refresh-interval');
+    
+    if (hostInput && !hostInput.value) hostInput.value = DEFAULT_SETTINGS.host;
+    if (portInput && !portInput.value) portInput.value = DEFAULT_SETTINGS.port;
+    if (timeoutInput && !timeoutInput.value) timeoutInput.value = DEFAULT_SETTINGS.requestTimeout;
+    if (authInput && !authInput.value) authInput.value = DEFAULT_SETTINGS.authHeader;
+    if (cacheInput) cacheInput.checked = DEFAULT_SETTINGS.cacheEnabled;
+    if (autoRefreshInput) autoRefreshInput.checked = DEFAULT_SETTINGS.autoRefreshEnabled;
+    if (intervalInput && !intervalInput.value) intervalInput.value = DEFAULT_SETTINGS.refreshInterval;
+    
+    console.log('🔧 [applyDefaultsToForm] Form defaults applied');
+};
 
 // Load settings when page loads
 document.addEventListener('DOMContentLoaded', async () => {
     await new Promise(resolve => requestAnimationFrame(resolve));
+    
+    // First apply defaults to empty form fields
+    applyDefaultsToForm();
+    
+    // Then load saved settings (will override defaults if settings exist)
     loadSettings();
     loadConnectionSettings();
+  
     if (typeof window.initializeRecordingForm === 'function') {
         window.initializeRecordingForm();
     }
+
     // Ensure settings are loaded before any operations
-    console.log('🔧 [main.js] Page loaded, settings initialized, ready for user interaction');
+    console.log('🔧 [main.js] Page loaded, defaults applied, settings initialized, ready for user interaction');
 });
 
 // Listen for settings changes from editor windows or other sources

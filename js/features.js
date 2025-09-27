@@ -278,6 +278,8 @@ window.connectToWireMock = async () => {
             fetchAndRenderRequests()
         ]);
 
+        await loadScenarios();
+
         if (mappingsLoaded && requestsLoaded) {
             NotificationManager.success('Connected to WireMock successfully!');
         } else {
@@ -1217,15 +1219,36 @@ function updateRequestsCounter() {
 
 // --- ACTION HANDLERS (deduplicated connectToWireMock) ---
 
-window.openEditModal = async (id) => {
+window.openEditModal = async (identifier) => {
     // Guard against missing mappings
     if (!window.allMappings || !Array.isArray(window.allMappings)) {
         NotificationManager.show('Mappings are not loaded', NotificationManager.TYPES.ERROR);
         return;
     }
-    
-    const mapping = window.allMappings.find(m => m.id === id);
+
+    const normalizeIdentifier = (value) => {
+        if (typeof value === 'string') return value.trim();
+        if (value === undefined || value === null) return '';
+        return String(value).trim();
+    };
+
+    const collectCandidateIdentifiers = (mapping) => {
+        if (!mapping || typeof mapping !== 'object') return [];
+        return [
+            mapping.id,
+            mapping.uuid,
+            mapping.stubMappingId,
+            mapping.stubId,
+            mapping.mappingId,
+            mapping.metadata?.id
+        ].map(normalizeIdentifier).filter(Boolean);
+    };
+
+    const targetIdentifier = normalizeIdentifier(identifier);
+
+    let mapping = window.allMappings.find((candidate) => collectCandidateIdentifiers(candidate).includes(targetIdentifier));
     if (!mapping) {
+        console.warn('🔍 [OPEN MODAL DEBUG] Mapping not found by identifier lookup. Identifier:', identifier);
         NotificationManager.show('Mapping not found', NotificationManager.TYPES.ERROR);
         return;
     }
@@ -1238,7 +1261,7 @@ window.openEditModal = async (id) => {
         return;
     }
     
-    console.log('🔴 [OPEN MODAL DEBUG] openEditModal called for mapping ID:', id);
+    console.log('🔴 [OPEN MODAL DEBUG] openEditModal called for mapping identifier:', identifier);
     console.log('🔴 [OPEN MODAL DEBUG] Found mapping (cached):', mapping);
     
     // Prefill the form with cached data to render the UI instantly
@@ -1248,29 +1271,45 @@ window.openEditModal = async (id) => {
         console.error('populateEditMappingForm function not found!');
         return;
     }
-    
+
     // Then fetch the latest mapping version by UUID
     try {
-        const latest = await apiFetch(`/mappings/${id}`);
+        if (typeof window.setMappingEditorBusyState === 'function') {
+            window.setMappingEditorBusyState(true, 'Loading…');
+        }
+
+        const mappingIdForFetch = normalizeIdentifier(mapping.id) || normalizeIdentifier(mapping.uuid) || targetIdentifier;
+        const latest = await apiFetch(`/mappings/${encodeURIComponent(mappingIdForFetch)}`);
         const latestMapping = latest?.mapping || latest; // support multiple response formats
         if (latestMapping && latestMapping.id) {
             console.log('🔵 [OPEN MODAL DEBUG] Loaded latest mapping from server:', latestMapping);
             window.populateEditMappingForm(latestMapping);
             // Update the reference in allMappings to keep lists and operations consistent
-            const idx = window.allMappings.findIndex(m => m.id === id);
-            if (idx !== -1) window.allMappings[idx] = latestMapping;
+            const idx = window.allMappings.findIndex((candidate) => candidate === mapping);
+            if (idx !== -1) {
+                window.allMappings[idx] = latestMapping;
+            } else {
+                const fallbackIdx = window.allMappings.findIndex((candidate) => collectCandidateIdentifiers(candidate).includes(targetIdentifier));
+                if (fallbackIdx !== -1) {
+                    window.allMappings[fallbackIdx] = latestMapping;
+                }
+            }
         } else {
             console.warn('Latest mapping response has unexpected shape, keeping cached version.', latest);
         }
     } catch (e) {
         console.warn('Failed to load latest mapping, using cached version.', e);
+    } finally {
+        if (typeof window.setMappingEditorBusyState === 'function') {
+            window.setMappingEditorBusyState(false);
+        }
     }
-    
+
     // Update the modal title
     const modalTitleElement = document.getElementById(SELECTORS.MODAL.TITLE);
     if (modalTitleElement) modalTitleElement.textContent = 'Edit Mapping';
     
-    console.log('🔴 [OPEN MODAL DEBUG] openEditModal completed for mapping ID:', id);
+    console.log('🔴 [OPEN MODAL DEBUG] openEditModal completed for mapping identifier:', identifier);
 };
 
 // REMOVED: updateMapping function moved to editor.js
@@ -1501,13 +1540,66 @@ window.toggleRequestPreview = (requestId) => {
 
 // --- SCENARIOS ---
 
+let scenarioListHandlerAttached = false;
+
+function getScenarioByIdentifier(identifier) {
+    if (typeof identifier !== 'string') {
+        return null;
+    }
+
+    const scenarios = Array.isArray(allScenarios) ? allScenarios : [];
+
+    const directMatch = scenarios.find((scenario) =>
+        (typeof scenario?.id === 'string' && scenario.id === identifier) ||
+        (typeof scenario?.name === 'string' && scenario.name === identifier)
+    );
+
+    if (directMatch) {
+        return directMatch;
+    }
+
+    const trimmedIdentifier = identifier.trim();
+    if (!trimmedIdentifier) {
+        return null;
+    }
+
+    return scenarios.find((scenario) => {
+        const scenarioId = typeof scenario?.id === 'string' ? scenario.id.trim() : '';
+        const scenarioName = typeof scenario?.name === 'string' ? scenario.name.trim() : '';
+        return scenarioId === trimmedIdentifier || scenarioName === trimmedIdentifier;
+    }) || null;
+}
+
+function setScenariosLoading(isLoading) {
+    const loadingEl = document.getElementById('scenarios-loading');
+    if (loadingEl) {
+        loadingEl.classList.toggle('hidden', !isLoading);
+    }
+
+    if (isLoading) {
+        const listEl = document.getElementById(SELECTORS.LISTS.SCENARIOS);
+        if (listEl) {
+            listEl.style.display = 'none';
+        }
+    }
+}
+
 window.loadScenarios = async () => {
+    const emptyEl = document.getElementById('scenarios-empty');
+    if (emptyEl) emptyEl.classList.add('hidden');
+
+    setScenariosLoading(true);
+
     try {
         const data = await apiFetch(ENDPOINTS.SCENARIOS);
-        allScenarios = data.scenarios || [];
-        renderScenarios();
+        allScenarios = Array.isArray(data?.scenarios) ? data.scenarios : [];
     } catch (e) {
+        allScenarios = [];
         console.error('Load scenarios error:', e);
+        NotificationManager.error(`Failed to load scenarios: ${e.message}`);
+    } finally {
+        setScenariosLoading(false);
+        renderScenarios();
     }
 };
 
@@ -1517,65 +1609,370 @@ window.refreshScenarios = async () => {
 
 window.resetAllScenarios = async () => {
     if (!confirm('Reset all scenarios to the initial state?')) return;
-    
+
+    setScenariosLoading(true);
+
     try {
-        await apiFetch('/scenarios/reset', { method: 'POST' });
+        await apiFetch(ENDPOINTS.SCENARIOS_RESET, { method: 'POST' });
         NotificationManager.success('All scenarios have been reset!');
         await loadScenarios();
     } catch (e) {
         NotificationManager.error(`Scenario reset failed: ${e.message}`);
+        setScenariosLoading(false);
     }
 };
 
-window.setScenarioState = async (scenarioName, newState) => {
+function updateScenarioStateSuggestions(selectedScenarioIdentifier) {
+    const stateOptionsEl = document.getElementById('scenario-state-options');
+    const stateInput = document.getElementById('scenario-state');
+
+    if (!stateOptionsEl) return;
+
+    const scenarios = Array.isArray(allScenarios) ? allScenarios : [];
+    const selectedScenario = getScenarioByIdentifier(selectedScenarioIdentifier);
+
+    const states = new Set();
+
+    const addState = (state) => {
+        if (typeof state !== 'string') return;
+        const normalized = state.trim();
+        if (normalized) {
+            states.add(normalized);
+        }
+    };
+
+    addState('Started');
+
+    const harvestStates = (scenario) => {
+        if (!scenario) return;
+        addState(scenario.state);
+        (scenario.possibleStates || []).forEach(addState);
+        (scenario.mappings || []).forEach((mapping) => {
+            addState(mapping?.requiredScenarioState);
+            addState(mapping?.newScenarioState);
+        });
+    };
+
+    if (selectedScenario) {
+        harvestStates(selectedScenario);
+    }
+
+    if (states.size === 0) {
+        scenarios.forEach(harvestStates);
+    }
+
+    const sortedStates = Array.from(states).sort((a, b) => a.localeCompare(b));
+    stateOptionsEl.innerHTML = sortedStates.map((state) => `
+        <option value="${escapeHtml(state)}"></option>
+    `).join('');
+
+    if (stateInput) {
+        if (sortedStates.length > 0) {
+            stateInput.setAttribute('placeholder', `Enter state (e.g. ${sortedStates[0]})`);
+        } else {
+            stateInput.setAttribute('placeholder', 'Enter state name');
+        }
+    }
+}
+
+window.setScenarioState = async (scenarioIdentifier, newState) => {
+    const scenarioSelect = document.getElementById('scenario-select');
+    const scenarioStateInput = document.getElementById('scenario-state');
+
+    const inlineScenarioIdentifier = typeof scenarioIdentifier === 'string' ? scenarioIdentifier : '';
+    const inlineState = typeof newState === 'string' ? newState.trim() : '';
+
+    let candidateIdentifier = inlineScenarioIdentifier;
+    if (!candidateIdentifier && scenarioSelect) {
+        candidateIdentifier = scenarioSelect.value || '';
+    }
+
+    const targetScenario = getScenarioByIdentifier(candidateIdentifier);
+    const endpointIdentifier = typeof targetScenario?.id === 'string'
+        ? targetScenario.id
+        : (typeof targetScenario?.name === 'string' ? targetScenario.name : candidateIdentifier);
+    const displayName = typeof targetScenario?.name === 'string'
+        ? targetScenario.name
+        : (typeof targetScenario?.id === 'string' ? targetScenario.id : candidateIdentifier);
+
+    const resolvedState = inlineState || scenarioStateInput?.value?.trim() || '';
+
+    if (!endpointIdentifier || !endpointIdentifier.trim() || !resolvedState) {
+        NotificationManager.warning('Please select scenario and enter state');
+        return false;
+    }
+
+    const stateEndpointBuilder = typeof window.buildScenarioStateEndpoint === 'function'
+        ? window.buildScenarioStateEndpoint
+        : (name) => `${ENDPOINTS.SCENARIOS}/${encodeURIComponent(name)}/state`;
+    const stateEndpoint = stateEndpointBuilder(endpointIdentifier);
+
+    if (!stateEndpoint) {
+        NotificationManager.error('Unable to determine the scenario state endpoint.');
+        return false;
+    }
+
+    if (scenarioSelect) {
+        const selectValue = typeof targetScenario?.id === 'string'
+            ? targetScenario.id
+            : (typeof targetScenario?.name === 'string' ? targetScenario.name : endpointIdentifier);
+        scenarioSelect.value = selectValue;
+        updateScenarioStateSuggestions(selectValue);
+    } else {
+        updateScenarioStateSuggestions(endpointIdentifier);
+    }
+
+    setScenariosLoading(true);
+
+    const scenarioExists = !!targetScenario;
+
     try {
-        await apiFetch('/scenarios/set-state', {
+        await apiFetch(stateEndpoint, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                scenarioName: scenarioName,
-                newState: newState
-            })
+            body: JSON.stringify({ state: resolvedState })
         });
-        
-        NotificationManager.success(`Scenario "${scenarioName}" switched to state "${newState}"`);
+
+        NotificationManager.success(`Scenario "${displayName}" switched to state "${resolvedState}"`);
+        if (!inlineState && scenarioStateInput) {
+            scenarioStateInput.value = '';
+        }
+        updateScenarioStateSuggestions(endpointIdentifier);
         await loadScenarios();
-    } catch (e) {
-        console.error('Change scenario state error:', e);
-        NotificationManager.error(`Scenario state change failed: ${e.message}`);
+        return true;
+    } catch (error) {
+        console.error('Change scenario state error:', error);
+        const notFound = /HTTP\s+404/.test(error?.message || '');
+        if (notFound && !scenarioExists) {
+            NotificationManager.error(`Scenario "${displayName}" was not found on the server.`);
+        } else {
+            NotificationManager.error(`Scenario state change failed: ${error.message}`);
+        }
+        setScenariosLoading(false);
+        return false;
     }
 };
 
 window.renderScenarios = () => {
-    const container = document.getElementById(SELECTORS.LISTS.SCENARIOS);
-    
-    if (allScenarios.length === 0) {
-        container.innerHTML = '<div class="loading-message">Scenarios not found</div>';
+    const listEl = document.getElementById(SELECTORS.LISTS.SCENARIOS);
+    const emptyEl = document.getElementById('scenarios-empty');
+    const countEl = document.getElementById('scenarios-count');
+    const selectEl = document.getElementById('scenario-select');
+    const stateOptionsEl = document.getElementById('scenario-state-options');
+
+    if (!listEl) return;
+
+    if (countEl) {
+        countEl.textContent = Array.isArray(allScenarios) ? allScenarios.length : 0;
+    }
+
+    const normalizedScenarios = Array.isArray(allScenarios) ? allScenarios : [];
+
+    if (normalizedScenarios.length === 0) {
+        listEl.innerHTML = '';
+        listEl.style.display = 'none';
+        if (emptyEl) emptyEl.classList.remove('hidden');
+        if (selectEl) {
+            selectEl.innerHTML = '<option value="">Select Scenario</option>';
+        }
+        if (stateOptionsEl) {
+            stateOptionsEl.innerHTML = '';
+        }
+        updateScenarioStateSuggestions('');
         return;
     }
-    
-    container.innerHTML = allScenarios.map(scenario => `
-        <div class="scenario-item">
-            <div class="scenario-header">
-                <div class="scenario-name">${scenario.name}</div>
-                <div class="scenario-state">${scenario.state || 'Started'}</div>
-            </div>
-            <div class="scenario-info">
-                <div class="scenario-description">${scenario.description || 'No description'}</div>
-            </div>
-            <div class="scenario-actions">
-                ${(scenario.possibleStates || []).map(state => 
-                    state !== scenario.state ? 
-                    `<button class="btn btn-sm btn-secondary" onclick="setScenarioState('${scenario.name}', '${state}')">
-                        → ${state}
-                    </button>` : ''
-                ).join('')}
-                <button class="btn btn-sm btn-danger" onclick="setScenarioState('${scenario.name}', 'Started')">
-                    🔄 Reset
+
+    if (emptyEl) emptyEl.classList.add('hidden');
+
+    const previousSelection = selectEl?.value || '';
+    if (selectEl) {
+        const options = ['<option value="">Select Scenario</option>']
+            .concat(normalizedScenarios.map(scenario => {
+                const scenarioIdentifier = typeof scenario?.id === 'string'
+                    ? scenario.id
+                    : (typeof scenario?.name === 'string' ? scenario.name : '');
+                const scenarioLabel = typeof scenario?.name === 'string'
+                    ? scenario.name
+                    : (typeof scenario?.id === 'string' ? scenario.id : 'Unnamed scenario');
+                return `
+                <option value="${escapeHtml(scenarioIdentifier)}">${escapeHtml(scenarioLabel)}</option>
+            `;
+            }));
+        selectEl.innerHTML = options.join('');
+        if (previousSelection) {
+            const matchedScenario = getScenarioByIdentifier(previousSelection);
+            if (matchedScenario) {
+                selectEl.value = matchedScenario.id || matchedScenario.name || '';
+            }
+        }
+    }
+
+    if (stateOptionsEl) {
+        updateScenarioStateSuggestions(selectEl?.value || previousSelection || '');
+    }
+
+    if (selectEl && !selectEl.dataset.scenarioHandlerAttached) {
+        selectEl.addEventListener('change', (event) => {
+            updateScenarioStateSuggestions(event.target.value);
+        });
+        selectEl.dataset.scenarioHandlerAttached = '1';
+    }
+
+    listEl.style.display = '';
+    listEl.innerHTML = normalizedScenarios.map((scenario) => {
+        const scenarioIdentifier = typeof scenario?.id === 'string'
+            ? scenario.id
+            : (typeof scenario?.name === 'string' ? scenario.name : '');
+        const scenarioIdentifierAttr = escapeHtml(scenarioIdentifier);
+        const displayLabel = typeof scenario?.name === 'string'
+            ? scenario.name
+            : (typeof scenario?.id === 'string' ? scenario.id : 'Unnamed scenario');
+        const displayedName = escapeHtml(displayLabel);
+        const displayedState = escapeHtml(scenario.state || 'Started');
+        const possibleStates = Array.isArray(scenario.possibleStates) ? scenario.possibleStates.filter(Boolean) : [];
+
+        const actionButtons = possibleStates.map((state) => {
+            if (!state || state === scenario.state) return '';
+            const stateAttr = escapeHtml(state);
+            const displayedPossibleState = escapeHtml(state);
+            return `
+                <button
+                    class="btn btn-sm btn-secondary"
+                    data-scenario-action="transition"
+                    data-scenario="${scenarioIdentifierAttr}"
+                    data-state="${stateAttr}"
+                >
+                    → ${displayedPossibleState}
                 </button>
+            `;
+        }).join('');
+
+        const possibleStatesMarkup = possibleStates.length ? `
+            <div class="scenario-possible-states">
+                <div class="scenario-section-title">Possible states</div>
+                <div class="scenario-state-badges">
+                    ${possibleStates.map((state) => {
+                        const isCurrent = state === scenario.state;
+                        const badgeClass = isCurrent ? 'badge badge-success' : 'badge badge-secondary';
+                        return `<span class="${badgeClass}">${escapeHtml(state)}</span>`;
+                    }).join('')}
+                </div>
             </div>
-        </div>
-    `).join('');
+        ` : '';
+
+        const descriptionMarkup = scenario.description ? `
+            <div class="scenario-info">
+                <div class="scenario-description">${escapeHtml(scenario.description)}</div>
+            </div>
+        ` : '';
+
+        const mappingSummaries = Array.isArray(scenario.mappings) ? scenario.mappings : [];
+        const mappingListMarkup = mappingSummaries.length ? `
+            <ul class="scenario-mapping-list">
+                ${mappingSummaries.map((mapping) => {
+                    const mappingId = mapping?.id || mapping?.uuid || mapping?.stubMappingId || mapping?.stubId || mapping?.mappingId || '';
+                    const mappingIdAttr = mappingId ? escapeHtml(mappingId) : '';
+                    const mappingName = escapeHtml(mapping?.name || mappingId || 'Unnamed mapping');
+                    const method = mapping?.request?.method || mapping?.method || mapping?.requestMethod || '';
+                    const url = mapping?.request?.urlPattern || mapping?.request?.urlPath || mapping?.request?.url || mapping?.url || mapping?.requestUrl || '';
+                    const methodLabel = method ? `<span class="scenario-mapping-method">${escapeHtml(method)}</span>` : '';
+                    const urlLabel = url ? `<span class="scenario-mapping-url">${escapeHtml(url)}</span>` : '';
+                    const metaLabel = methodLabel || urlLabel ? `
+                        <div class="scenario-mapping-meta">
+                            ${[methodLabel, urlLabel].filter(Boolean).join(' · ')}
+                        </div>
+                    ` : '';
+                    const requiredState = mapping?.requiredScenarioState || mapping?.requiredState || '';
+                    const newState = mapping?.newScenarioState || mapping?.newState || '';
+                    const transitionMarkup = [
+                        requiredState ? `<span class="badge badge-warning" title="Required scenario state">Requires: ${escapeHtml(requiredState)}</span>` : '',
+                        newState ? `<span class="badge badge-info" title="Next scenario state">→ ${escapeHtml(newState)}</span>` : ''
+                    ].filter(Boolean).join(' ');
+                    const transitions = transitionMarkup ? `
+                        <div class="scenario-mapping-states">${transitionMarkup}</div>
+                    ` : '';
+                    const editButton = mappingId ? `
+                        <div class="scenario-mapping-actions">
+                            <button
+                                class="btn btn-sm btn-secondary"
+                                data-scenario-action="edit-mapping"
+                                data-mapping-id="${mappingIdAttr}"
+                            >
+                                📝 Edit mapping
+                            </button>
+                        </div>
+                    ` : '';
+
+                    return `
+                        <li class="scenario-mapping-item">
+                            <div class="scenario-mapping-name">${mappingName}</div>
+                            ${metaLabel}
+                            ${transitions}
+                            ${editButton}
+                        </li>
+                    `;
+                }).join('')}
+            </ul>
+        ` : `
+            <div class="scenario-mapping-empty">No stub mappings are bound to this scenario yet.</div>
+        `;
+
+        return `
+            <div class="scenario-item">
+                <div class="scenario-header">
+                    <div class="scenario-name">${displayedName}</div>
+                    <div class="scenario-state">${displayedState}</div>
+                </div>
+                ${descriptionMarkup}
+                ${possibleStatesMarkup}
+                <div class="scenario-mappings">
+                    <div class="scenario-section-title">Stub mappings</div>
+                    ${mappingListMarkup}
+                </div>
+                <div class="scenario-actions">
+                    ${actionButtons}
+                    <button
+                        class="btn btn-sm btn-danger"
+                        data-scenario-action="transition"
+                        data-scenario="${scenarioIdentifierAttr}"
+                        data-state="Started"
+                    >
+                        🔄 Reset
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    if (!scenarioListHandlerAttached) {
+        listEl.addEventListener('click', async (event) => {
+            const button = event.target.closest('button[data-scenario-action]');
+            if (!button) return;
+
+            const action = button.dataset.scenarioAction;
+
+            if (action === 'transition') {
+                const scenarioIdentifierValue = button.dataset.scenario || '';
+                const targetState = button.dataset.state || '';
+                if (!scenarioIdentifierValue.trim() || !targetState.trim()) {
+                    return;
+                }
+
+                button.disabled = true;
+                try {
+                    await setScenarioState(scenarioIdentifierValue, targetState);
+                } finally {
+                    button.disabled = false;
+                }
+            } else if (action === 'edit-mapping') {
+                const mappingIdValue = button.dataset.mappingId;
+                if (mappingIdValue && typeof window.openEditModal === 'function') {
+                    window.openEditModal(mappingIdValue);
+                }
+            }
+        });
+        scenarioListHandlerAttached = true;
+    }
 };
 
 // --- FIXED FUNCTIONS FOR WIREMOCK 3.9.1+ API ---
@@ -3208,14 +3605,24 @@ window.loadMockData = () => {
 window.updateScenarioState = async () => {
     const scenarioSelect = document.getElementById('scenario-select');
     const scenarioState = document.getElementById('scenario-state');
+    const submitButton = document.getElementById('scenario-update-btn');
 
     if (!scenarioSelect?.value || !scenarioState?.value) {
         NotificationManager.warning('Please select scenario and enter state');
         return;
     }
 
-    // Call the correct function (not self-recursive)
-    await window.setScenarioState(scenarioSelect.value, scenarioState.value);
+    if (submitButton) {
+        submitButton.disabled = true;
+    }
+
+    try {
+        await window.setScenarioState();
+    } finally {
+        if (submitButton) {
+            submitButton.disabled = false;
+        }
+    }
 };
 
 window.updateFileDisplay = () => {
@@ -3227,4 +3634,3 @@ window.updateFileDisplay = () => {
         document.getElementById('import-actions').style.display = 'block';
     }
 };
-
