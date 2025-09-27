@@ -185,6 +185,16 @@ body {
     animation: none;
 }
 
+.status-dot.recording-active {
+    background: var(--success);
+    animation: pulse 1.5s infinite;
+}
+
+.status-dot.recording-idle {
+    background: var(--border-accent);
+    animation: none;
+}
+
 .theme-toggle {
     background: none;
     border: 1px solid var(--border-primary);
