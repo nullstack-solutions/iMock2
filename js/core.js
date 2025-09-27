@@ -130,9 +130,7 @@ window.SELECTORS = {
         DISPLAY: 'file-display',
         ACTIONS: 'import-actions',
         RESULT: 'import-result',
-        MODE: 'import-mode',
-        MODE_CUSTOM: 'import-mode-custom',
-        MODE_CUSTOM_CONTAINER: 'import-mode-custom-container'
+        MODE: 'import-mode'
     },
 
     EXPORT: {

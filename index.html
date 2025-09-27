@@ -80,7 +80,10 @@
                     <div style="display: flex; gap: var(--space-3); align-items: center;">
                         <span id="data-source-indicator" class="badge badge-secondary" title="Current data source">Source: direct</span>
                         <button class="btn btn-secondary" onclick="refreshMappings()">🔄 Refresh</button>
-                        <button class="btn btn-secondary" onclick="forceRefreshCache()" title="Rebuild the service cache mapping and reload">⚡ Force Refresh Cache</button>
+                        <button class="btn btn-secondary" onclick="forceRefreshCache()" title="Rebuild the service cache mapping and reload">
+                            <span class="btn-spinner loading-spinner" aria-hidden="true"></span>
+                            <span class="btn-label">⚡ Force Refresh Cache</span>
+                        </button>
                         <button class="btn btn-primary" onclick="openAddMappingModal()" id="add-mapping-btn" disabled>+ Add Mapping</button>
                     </div>
                 </div>
@@ -295,6 +298,8 @@
                             <button class="btn btn-secondary" onclick="exportRequests()">📤 Export Request Log</button>
                         </div>
                         <div id="export-result" style="margin-top: var(--space-4);"></div>
+                        <p class="form-help" style="margin-top: var(--space-3);">
+                            Looking for ready-made mocks? Explore the <a href="https://library.wiremock.org/" target="_blank" rel="noopener">WireMock Templates Library</a> for example mappings you can import or adapt.</p>
                     </div>
                     
                     <!-- Import Section -->
@@ -314,24 +319,19 @@
                         </div>
                         <div class="form-group">
                             <label class="form-label">Import Mode</label>
-                            <select class="form-select" id="import-mode" onchange="updateImportModeVisibility()">
+                            <select class="form-select" id="import-mode">
                                 <option value="MERGE">MERGE (default)</option>
                                 <option value="OVERWRITE">OVERWRITE</option>
                                 <option value="DELETE_ALL">DELETE_ALL</option>
                                 <option value="STANDARD">STANDARD</option>
-                                <option value="__custom__">Custom…</option>
                             </select>
                             <p class="form-help">Select how WireMock should handle existing mappings during import.</p>
                         </div>
-                        <div class="form-group" id="import-mode-custom-container" style="display: none;">
-                            <label class="form-label">Custom Import Mode</label>
-                            <input type="text" class="form-input" id="import-mode-custom" placeholder="Enter custom import mode value" oninput="updateImportModeVisibility()">
-                        </div>
                         <div class="form-group" id="import-actions" style="display: none;">
-                            <div style="display: flex; flex-direction: column; gap: var(--space-3);">
-                                <button class="btn btn-primary" id="import-action-primary" onclick="importMappings()">📥 Import with Selected Mode</button>
-                                <button class="btn btn-danger" id="import-action-delete-all" onclick="importAndReplace()">🧹 Delete All &amp; Import</button>
-                            </div>
+                            <button class="btn btn-primary" id="import-submit-btn" onclick="executeImportFromUi()">
+                                <span class="btn-spinner loading-spinner" aria-hidden="true"></span>
+                                <span class="btn-label">📥 Import</span>
+                            </button>
                         </div>
                         <div id="import-result" style="margin-top: var(--space-4);"></div>
                     </div>
@@ -349,7 +349,8 @@
                         <h3 class="card-title">🎙️ Record API Calls</h3>
                     </div>
                     <p style="margin-bottom: var(--space-4); color: var(--text-secondary);">Configure recording settings to capture real API calls and generate mappings automatically.</p>
-                    
+                    <p class="form-help" style="margin-bottom: var(--space-4);">Need the classic recorder interface? Open <a id="recorder-link" href="" target="_blank" rel="noopener">configure host to enable link</a>.</p>
+
                     <div class="form-row">
                         <div class="form-group">
                             <label class="form-label">Target URL</label>
@@ -363,16 +364,16 @@
                             </select>
                         </div>
                     </div>
-                    
+
                     <div style="display: flex; gap: var(--space-3); margin-top: var(--space-4);">
                         <button class="btn btn-success" onclick="startRecording()">▶️ Start Recording</button>
                         <button class="btn btn-danger" onclick="stopRecording()">⏹️ Stop Recording</button>
                         <button class="btn btn-secondary" onclick="clearRecordings()">🗑️ Clear Recordings</button>
                     </div>
-                    
+
                     <div id="recording-status" style="margin-top: var(--space-4);"></div>
-                </div>
-                
+                    </div>
+
                 <div id="recordings-list" style="margin-top: var(--space-6);">
                     <!-- Recorded mappings will appear here -->
                 </div>

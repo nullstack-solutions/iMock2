@@ -211,8 +211,8 @@ window.cacheManager.init();
 
 function isCacheEnabled() {
     try {
-        const settings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
         const checkbox = document.getElementById('cache-enabled');
+        const settings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
         return (settings.cacheEnabled !== false) && (checkbox ? checkbox.checked : true);
     } catch (error) {
         console.warn('Failed to resolve cache enabled state:', error);
@@ -2767,7 +2767,6 @@ async function fetchExistingCacheMapping() {
 
 async function syncCacheMappingWithServer(mapping, operation) {
     try {
-        const settings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
         if (!isCacheEnabled()) {
             console.log('🧩 [CACHE] Remote cache sync skipped - cache disabled');
             return;
@@ -2930,10 +2929,10 @@ function updateOptimisticCache(mapping, operation, options = {}) {
 let _cacheRebuildTimer;
 function scheduleCacheRebuild() {
   try {
-    const settings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
     if (!isCacheEnabled()) {
       return;
     }
+    const settings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
     const delay = Number(settings.cacheRebuildDelay) || 1000;
     clearTimeout(_cacheRebuildTimer);
     _cacheRebuildTimer = setTimeout(async () => {
@@ -2975,7 +2974,6 @@ async function validateAndRefreshCache() {
     try {
         console.log('🧩 [CACHE] Starting cache validation...');
 
-        const settings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
     if (!isCacheEnabled()) {
             console.log('🧩 [CACHE] Validation skipped - cache disabled');
             return;
@@ -3127,23 +3125,46 @@ window.refreshMappings = async () => {
 // Force refresh cache function for button compatibility
 window.forceRefreshCache = async () => {
     try {
-        const settings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
         if (!isCacheEnabled()) {
             NotificationManager.warning('Cache is not enabled. Enable it in Settings first.');
             return;
         }
 
-        if (typeof window.refreshImockCache === 'function') {
-            await window.refreshImockCache();
-            const refreshed = await fetchAndRenderMappings(null, { useCache: true });
+        if (typeof window.refreshImockCache !== 'function') {
+            NotificationManager.error('Cache service not available');
+            return;
+        }
+
+        const cacheButton = document.querySelector('[onclick="forceRefreshCache()"]');
+        if (cacheButton) {
+            cacheButton.classList.add('is-loading');
+            cacheButton.disabled = true;
+        }
+
+        const result = await window.refreshImockCache();
+        let useCache = true;
+
+        if (result && typeof result === 'object') {
+            if (result.cacheMessage) {
+                setStatusMessage(SELECTORS.IMPORT.RESULT, 'info', result.cacheMessage);
+            }
+            if (typeof result.useCache === 'boolean') {
+                useCache = result.useCache;
+            }
+        }
+
+        const refreshed = await fetchAndRenderMappings(null, { useCache });
             if (refreshed) {
                 NotificationManager.success('Cache rebuilt and mappings refreshed!');
-            }
-        } else {
-            NotificationManager.error('Cache service not available');
         }
     } catch (error) {
         NotificationManager.error(`Failed to rebuild cache: ${error.message}`);
+    } finally {
+        const cacheButton = document.querySelector('[onclick="forceRefreshCache()"]');
+        if (cacheButton) {
+            cacheButton.classList.remove('is-loading');
+            cacheButton.disabled = false;
+        }
     }
 };
 
@@ -3176,98 +3197,64 @@ window.updateScenarioState = async () => {
 };
 
 window.updateFileDisplay = () => {
-    const fileInput = document.getElementById('import-file');
-    const fileDisplay = document.getElementById('file-display');
+    const fileInput = document.getElementById(SELECTORS.IMPORT.FILE);
+    const fileDisplay = document.getElementById(SELECTORS.IMPORT.DISPLAY);
+    const actionContainer = document.getElementById(SELECTORS.IMPORT.ACTIONS);
 
     if (!fileInput || !fileDisplay) {
         console.warn('Import file elements not found.');
         return;
     }
 
-    if (fileInput?.files?.length > 0) {
+    if (fileInput.files?.length > 0) {
         const file = fileInput.files[0];
         const sizeKb = file.size ? ` (${Math.round(file.size / 1024)} KB)` : '';
         fileDisplay.innerHTML = `<strong>${file.name}</strong>${sizeKb}`;
-        const actions = document.getElementById(SELECTORS.IMPORT.ACTIONS);
-        if (actions) actions.style.display = 'block';
-        window.updateImportModeVisibility();
+        if (actionContainer) actionContainer.style.display = 'block';
     } else {
         fileDisplay.innerHTML = '<span class="file-placeholder">No file selected</span>';
-        const actions = document.getElementById(SELECTORS.IMPORT.ACTIONS);
-        if (actions) actions.style.display = 'none';
-        const primaryButton = document.getElementById('import-action-primary');
-        const deleteAllButton = document.getElementById('import-action-delete-all');
-        if (primaryButton) primaryButton.disabled = true;
-        if (deleteAllButton) deleteAllButton.disabled = true;
+        if (actionContainer) actionContainer.style.display = 'none';
     }
 };
 
-// Toggle visibility for custom import mode input
-window.updateImportModeVisibility = () => {
-    const select = document.getElementById(SELECTORS.IMPORT.MODE);
-    const customContainer = document.getElementById(SELECTORS.IMPORT.MODE_CUSTOM_CONTAINER);
-    const customInput = document.getElementById(SELECTORS.IMPORT.MODE_CUSTOM);
-    const primaryButton = document.getElementById('import-action-primary');
-    const deleteAllButton = document.getElementById('import-action-delete-all');
-    if (!customContainer) return;
+window.updateRecorderLink = (host, port) => {
+    try {
+        const recorderLink = document.getElementById('recorder-link');
+        if (!recorderLink) return;
 
-    if (!select) {
-        if (primaryButton) primaryButton.disabled = true;
-        if (deleteAllButton) deleteAllButton.disabled = true;
-        return;
-    }
-
-    let modeValue = select.value || 'MERGE';
-
-    if (modeValue === '__custom__') {
-        customContainer.style.display = 'block';
-        const customValue = customInput?.value?.trim();
-        if (!customValue) {
-            if (primaryButton) primaryButton.disabled = true;
-            if (deleteAllButton) deleteAllButton.disabled = true;
+        const baseHost = (host || '').trim();
+        if (!baseHost) {
+            recorderLink.removeAttribute('href');
+            recorderLink.setAttribute('title', 'Configure host in Settings to enable recorder link');
+            recorderLink.textContent = 'Recorder UI (configure host first)';
             return;
         }
-        modeValue = customValue.toUpperCase();
-    } else {
-        customContainer.style.display = 'none';
-    }
 
-    if (primaryButton) primaryButton.disabled = false;
-    if (deleteAllButton) deleteAllButton.disabled = false;
-
-    if (primaryButton) {
-        const label = modeValue === 'MERGE'
-            ? 'merge with existing'
-            : modeValue === 'OVERWRITE'
-                ? 'overwrite conflicts'
-                : modeValue === 'STANDARD'
-                    ? 'standard mode'
-                    : modeValue === 'DELETE_ALL'
-                        ? 'delete existing first'
-                        : modeValue.toLowerCase();
-        primaryButton.textContent = `📥 Import (${label})`;
-        const hasFile = !!document.getElementById(SELECTORS.IMPORT.FILE)?.files?.length;
-        primaryButton.disabled = !hasFile;
-        if (!hasFile) {
-            primaryButton.setAttribute('title', 'Select a file to enable import');
-        } else {
-            primaryButton.removeAttribute('title');
+        let normalizedHost = baseHost;
+        if (!/^https?:\/\//i.test(normalizedHost)) {
+            normalizedHost = padHostWithProtocol(normalizedHost);
         }
-    }
 
-    if (deleteAllButton) {
-        const shouldHide = modeValue === 'DELETE_ALL';
-        deleteAllButton.style.display = shouldHide ? 'none' : 'block';
-        const hasFile = !!document.getElementById(SELECTORS.IMPORT.FILE)?.files?.length;
-        deleteAllButton.disabled = shouldHide || !hasFile;
-        if (!hasFile && !shouldHide) {
-            deleteAllButton.setAttribute('title', 'Select a file to enable import');
-        } else {
-            deleteAllButton.removeAttribute('title');
+        const url = new URL(normalizedHost);
+        if (port && String(port).trim()) {
+            url.port = String(port).trim();
         }
+        url.pathname = '/__admin/recorder/';
+
+        recorderLink.href = url.toString();
+        recorderLink.textContent = url.toString();
+        recorderLink.removeAttribute('title');
+    } catch (error) {
+        console.warn('Failed to update recorder link:', error);
     }
 };
 
+function padHostWithProtocol(value) {
+    const trimmed = value.trim();
+    if (!trimmed) return 'http://localhost';
+    if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    return `http://${trimmed}`;
+}
 
 function setStatusMessage(elementId, type, message) {
     const el = document.getElementById(elementId);
@@ -3288,6 +3275,33 @@ function downloadFile(filename, content, mimeType) {
     setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
+function findImportButton() {
+    if (window.elementCache?.has(SELECTORS.IMPORT.ACTIONS)) {
+        const cachedContainer = window.elementCache.get(SELECTORS.IMPORT.ACTIONS);
+        if (cachedContainer) {
+            const cachedButton = cachedContainer.querySelector('button');
+            if (cachedButton) return cachedButton;
+        }
+    }
+
+    const container = document.getElementById(SELECTORS.IMPORT.ACTIONS);
+    if (!container) return null;
+
+    const button = container.querySelector('button');
+    if (button && window.elementCache) {
+        window.elementCache.set(SELECTORS.IMPORT.ACTIONS, container);
+    }
+    return button;
+}
+
+function toggleImportButtonState(isLoading) {
+    const button = findImportButton();
+    if (!button) return;
+
+    button.classList.toggle('is-loading', isLoading);
+    button.disabled = isLoading;
+}
+
 function serializeMappingsToYaml(data) {
     if (window.jsyaml?.dump) {
         return window.jsyaml.dump(data, { noRefs: true });
@@ -3306,15 +3320,6 @@ function resolveImportMode(overrideMode = null) {
     const select = document.getElementById(SELECTORS.IMPORT.MODE);
     if (!select) {
         return 'MERGE';
-    }
-
-    if (select.value === '__custom__') {
-        const customInput = document.getElementById(SELECTORS.IMPORT.MODE_CUSTOM);
-        const customValue = customInput?.value?.trim();
-        if (!customValue) {
-            throw new Error('Enter a custom import mode value.');
-        }
-        return customValue.toUpperCase();
     }
 
     return select.value || 'MERGE';
@@ -3399,13 +3404,8 @@ function normalizeImportPayload(rawData, importMode) {
 
 async function executeImport(importModeOverride = null) {
     try {
+        toggleImportButtonState(true);
         setStatusMessage(SELECTORS.IMPORT.RESULT, 'info', 'Processing import file...');
-        const fileInput = document.getElementById(SELECTORS.IMPORT.FILE);
-        if (!fileInput?.files?.length) {
-            NotificationManager.warning('Please select a file first');
-            setStatusMessage(SELECTORS.IMPORT.RESULT, 'error', 'No file selected.');
-            return;
-        }
         const rawData = await parseImportFile();
         const mode = resolveImportMode(importModeOverride);
         const payload = normalizeImportPayload(rawData, mode);
@@ -3417,7 +3417,6 @@ async function executeImport(importModeOverride = null) {
             body: JSON.stringify(payload)
         });
 
-        setStatusMessage(SELECTORS.IMPORT.RESULT, 'success', `Imported ${payload.mappings.length} mapping(s) using mode ${mode}.`);
         NotificationManager.success(`Imported ${payload.mappings.length} mapping(s).`);
 
         const fileInput = document.getElementById(SELECTORS.IMPORT.FILE);
@@ -3431,28 +3430,22 @@ async function executeImport(importModeOverride = null) {
         } catch (refreshError) {
             console.warn('Failed to refresh mappings after import:', refreshError);
         }
+        setStatusMessage(SELECTORS.IMPORT.RESULT, 'success', `Imported ${payload.mappings.length} mapping(s) using mode ${mode}.`);
     } catch (error) {
         console.error('Import failed:', error);
         setStatusMessage(SELECTORS.IMPORT.RESULT, 'error', error.message || 'Import failed.');
         NotificationManager.error(`Import failed: ${error.message}`);
         throw error;
+    } finally {
+        toggleImportButtonState(false);
     }
 }
 
-window.importMappings = async () => {
+window.executeImportFromUi = async () => {
     try {
         await executeImport();
     } catch (_) {
         // error handling performed inside executeImport
-    }
-};
-
-window.importAndReplace = async () => {
-    try {
-        await executeImport('DELETE_ALL');
-        setStatusMessage(SELECTORS.IMPORT.RESULT, 'success', 'All existing mappings replaced.');
-    } catch (_) {
-        // handled inside executeImport
     }
 };
 

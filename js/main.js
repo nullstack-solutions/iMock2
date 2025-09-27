@@ -199,6 +199,14 @@ window.loadSettings = () => {
 
         console.log('📋 Settings loaded into settings form');
 
+        if (typeof window.updateRecorderLink === 'function') {
+            try {
+                window.updateRecorderLink(settings.host, settings.port);
+            } catch (linkError) {
+                console.warn('Failed to update recorder link:', linkError);
+            }
+        }
+
     } catch (error) {
         console.error('Error loading settings:', error);
     }
