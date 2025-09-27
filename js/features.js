@@ -3246,24 +3246,28 @@ window.updateImportModeVisibility = () => {
                         ? 'delete existing first'
                         : modeValue.toLowerCase();
         primaryButton.textContent = `📥 Import (${label})`;
-        primaryButton.disabled = !document.getElementById(SELECTORS.IMPORT.FILE)?.files?.length;
+        const hasFile = !!document.getElementById(SELECTORS.IMPORT.FILE)?.files?.length;
+        primaryButton.disabled = !hasFile;
+        if (!hasFile) {
+            primaryButton.setAttribute('title', 'Select a file to enable import');
+        } else {
+            primaryButton.removeAttribute('title');
+        }
     }
 
     if (deleteAllButton) {
         const shouldHide = modeValue === 'DELETE_ALL';
         deleteAllButton.style.display = shouldHide ? 'none' : 'block';
-        deleteAllButton.disabled = shouldHide || !document.getElementById(SELECTORS.IMPORT.FILE)?.files?.length;
+        const hasFile = !!document.getElementById(SELECTORS.IMPORT.FILE)?.files?.length;
+        deleteAllButton.disabled = shouldHide || !hasFile;
+        if (!hasFile && !shouldHide) {
+            deleteAllButton.setAttribute('title', 'Select a file to enable import');
+        } else {
+            deleteAllButton.removeAttribute('title');
+        }
     }
 };
 
-document.addEventListener('DOMContentLoaded', () => {
-    try {
-        window.updateFileDisplay();
-        window.updateImportModeVisibility();
-    } catch (error) {
-        console.warn('Failed to initialize import/export controls:', error);
-    }
-});
 
 function setStatusMessage(elementId, type, message) {
     const el = document.getElementById(elementId);
