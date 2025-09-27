@@ -325,12 +325,12 @@
                         </div>
                         <div class="form-group" id="import-mode-custom-container" style="display: none;">
                             <label class="form-label">Custom Import Mode</label>
-                            <input type="text" class="form-input" id="import-mode-custom" placeholder="Enter custom import mode value">
+                            <input type="text" class="form-input" id="import-mode-custom" placeholder="Enter custom import mode value" oninput="updateImportModeVisibility()">
                         </div>
                         <div class="form-group" id="import-actions" style="display: none;">
                             <div style="display: flex; flex-direction: column; gap: var(--space-3);">
-                                <button class="btn btn-primary" onclick="importMappings()">📥 Import with Selected Mode</button>
-                                <button class="btn btn-danger" onclick="importAndReplace()">🧹 Delete All &amp; Import</button>
+                                <button class="btn btn-primary" id="import-action-primary" onclick="importMappings()">📥 Import with Selected Mode</button>
+                                <button class="btn btn-danger" id="import-action-delete-all" onclick="importAndReplace()">🧹 Delete All &amp; Import</button>
                             </div>
                         </div>
                         <div id="import-result" style="margin-top: var(--space-4);"></div>

@@ -3032,7 +3032,6 @@ window.refreshImockCache = async () => {
         console.log('🔄 [CACHE] Set cache rebuilding flag');
 
         try {
-            const settings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
             if (isCacheEnabled()) {
                 updateDataSourceIndicator('cache_rebuilding');
                 console.log('🔄 [CACHE] Updated UI indicator to rebuilding');
@@ -3072,7 +3071,6 @@ window.refreshImockCache = async () => {
         optimisticInProgress = false;
         optimisticDelayRetries = 0;
         try {
-            const settings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
             if (isCacheEnabled()) {
                 updateDataSourceIndicator('cache');
                 console.log('🔄 [CACHE] Updated UI indicator to cache');
@@ -3192,10 +3190,15 @@ window.updateFileDisplay = () => {
         fileDisplay.innerHTML = `<strong>${file.name}</strong>${sizeKb}`;
         const actions = document.getElementById(SELECTORS.IMPORT.ACTIONS);
         if (actions) actions.style.display = 'block';
+        window.updateImportModeVisibility();
     } else {
         fileDisplay.innerHTML = '<span class="file-placeholder">No file selected</span>';
         const actions = document.getElementById(SELECTORS.IMPORT.ACTIONS);
         if (actions) actions.style.display = 'none';
+        const primaryButton = document.getElementById('import-action-primary');
+        const deleteAllButton = document.getElementById('import-action-delete-all');
+        if (primaryButton) primaryButton.disabled = true;
+        if (deleteAllButton) deleteAllButton.disabled = true;
     }
 };
 
@@ -3203,14 +3206,64 @@ window.updateFileDisplay = () => {
 window.updateImportModeVisibility = () => {
     const select = document.getElementById(SELECTORS.IMPORT.MODE);
     const customContainer = document.getElementById(SELECTORS.IMPORT.MODE_CUSTOM_CONTAINER);
+    const customInput = document.getElementById(SELECTORS.IMPORT.MODE_CUSTOM);
+    const primaryButton = document.getElementById('import-action-primary');
+    const deleteAllButton = document.getElementById('import-action-delete-all');
     if (!customContainer) return;
 
-    if (select?.value === '__custom__') {
+    if (!select) {
+        if (primaryButton) primaryButton.disabled = true;
+        if (deleteAllButton) deleteAllButton.disabled = true;
+        return;
+    }
+
+    let modeValue = select.value || 'MERGE';
+
+    if (modeValue === '__custom__') {
         customContainer.style.display = 'block';
+        const customValue = customInput?.value?.trim();
+        if (!customValue) {
+            if (primaryButton) primaryButton.disabled = true;
+            if (deleteAllButton) deleteAllButton.disabled = true;
+            return;
+        }
+        modeValue = customValue.toUpperCase();
     } else {
         customContainer.style.display = 'none';
     }
+
+    if (primaryButton) primaryButton.disabled = false;
+    if (deleteAllButton) deleteAllButton.disabled = false;
+
+    if (primaryButton) {
+        const label = modeValue === 'MERGE'
+            ? 'merge with existing'
+            : modeValue === 'OVERWRITE'
+                ? 'overwrite conflicts'
+                : modeValue === 'STANDARD'
+                    ? 'standard mode'
+                    : modeValue === 'DELETE_ALL'
+                        ? 'delete existing first'
+                        : modeValue.toLowerCase();
+        primaryButton.textContent = `📥 Import (${label})`;
+        primaryButton.disabled = !document.getElementById(SELECTORS.IMPORT.FILE)?.files?.length;
+    }
+
+    if (deleteAllButton) {
+        const shouldHide = modeValue === 'DELETE_ALL';
+        deleteAllButton.style.display = shouldHide ? 'none' : 'block';
+        deleteAllButton.disabled = shouldHide || !document.getElementById(SELECTORS.IMPORT.FILE)?.files?.length;
+    }
 };
+
+document.addEventListener('DOMContentLoaded', () => {
+    try {
+        window.updateFileDisplay();
+        window.updateImportModeVisibility();
+    } catch (error) {
+        console.warn('Failed to initialize import/export controls:', error);
+    }
+});
 
 function setStatusMessage(elementId, type, message) {
     const el = document.getElementById(elementId);
@@ -3343,6 +3396,12 @@ function normalizeImportPayload(rawData, importMode) {
 async function executeImport(importModeOverride = null) {
     try {
         setStatusMessage(SELECTORS.IMPORT.RESULT, 'info', 'Processing import file...');
+        const fileInput = document.getElementById(SELECTORS.IMPORT.FILE);
+        if (!fileInput?.files?.length) {
+            NotificationManager.warning('Please select a file first');
+            setStatusMessage(SELECTORS.IMPORT.RESULT, 'error', 'No file selected.');
+            return;
+        }
         const rawData = await parseImportFile();
         const mode = resolveImportMode(importModeOverride);
         const payload = normalizeImportPayload(rawData, mode);
@@ -3387,6 +3446,7 @@ window.importMappings = async () => {
 window.importAndReplace = async () => {
     try {
         await executeImport('DELETE_ALL');
+        setStatusMessage(SELECTORS.IMPORT.RESULT, 'success', 'All existing mappings replaced.');
     } catch (_) {
         // handled inside executeImport
     }
