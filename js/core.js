@@ -129,11 +129,15 @@ window.SELECTORS = {
         FILE: 'import-file',
         DISPLAY: 'file-display',
         ACTIONS: 'import-actions',
-        RESULT: 'import-result'
+        RESULT: 'import-result',
+        MODE: 'import-mode',
+        MODE_CUSTOM: 'import-mode-custom',
+        MODE_CUSTOM_CONTAINER: 'import-mode-custom-container'
     },
 
     EXPORT: {
-        FORMAT: 'export-format'
+        FORMAT: 'export-format',
+        RESULT: 'export-result'
     },
 
     // Statistics
