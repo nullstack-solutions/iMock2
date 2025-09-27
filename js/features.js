@@ -592,7 +592,7 @@ const UIComponents = {
                     const escaped = Utils.escapeHtml(value);
                     const formatted = escaped.includes('\n') ? `<pre>${escaped}</pre>` : escaped;
                     return `<div class="preview-value"><strong>${key}:</strong> ${formatted}</div>`;
-                } else {
+                    } else {
                     const safeValue = Utils.escapeHtml(String(value));
                     return `<div class="preview-value"><strong>${key}:</strong> ${safeValue}</div>`;
                 }
@@ -2053,16 +2053,16 @@ window.startRecording = async (config = {}) => {
         };
         
         const recordingConfig = { ...defaultConfig, ...config };
-        
+
         await apiFetch(ENDPOINTS.RECORDINGS_START, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(recordingConfig)
         });
-        
+
         NotificationManager.success('Recording started!');
         window.isRecording = true;
-        
+
         // Refresh the UI
         const indicator = document.getElementById(SELECTORS.RECORDING.INDICATOR);
         if (indicator) indicator.style.display = 'block';
@@ -2079,7 +2079,7 @@ window.stopRecording = async () => {
         const response = await apiFetch(ENDPOINTS.RECORDINGS_STOP, {
             method: 'POST'
         });
-        
+
         window.isRecording = false;
         window.recordedCount = 0;
         
@@ -2091,8 +2091,8 @@ window.stopRecording = async () => {
         NotificationManager.success(`Recording stopped! Captured ${count} mappings`);
         
         // Refresh the mappings list
-        await fetchAndRenderMappings();
-        
+            await fetchAndRenderMappings();
+
         return response.mappings || [];
     } catch (error) {
         console.error('Stop recording error:', error);
