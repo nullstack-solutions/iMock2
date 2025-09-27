@@ -554,13 +554,12 @@ const UIComponents = {
                     } else {
                         return `<div class="preview-value"><strong>${key}:</strong><pre>${Utils.formatJson(value)}</pre></div>`;
                     }
-                } else {
-                    // Check if the string value is JSON and format it accordingly
-                    if (typeof value === 'string' && value.trim().startsWith('{') && value.trim().endsWith('}')) {
+                } else if (typeof value === 'string') {
+                    const trimmed = value.trim();
+                    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
                         try {
-                            const parsedJson = JSON.parse(value);
+                            const parsedJson = JSON.parse(trimmed);
                             const jsonString = JSON.stringify(parsedJson);
-                            // For large JSON strings, show a summary and lazy load full content
                             if (jsonString.length > 500) {
                                 const preview = Utils.formatJson(parsedJson, 'Invalid JSON', 200);
                                 const fullId = `full-${Math.random().toString(36).substr(2, 9)}`;
@@ -572,16 +571,19 @@ const UIComponents = {
                                     </button>
                                     <div id="${fullId}" style="display: none;"></div>
                                 </div>`;
-                            } else {
-                                return `<div class="preview-value"><strong>${key}:</strong><pre>${Utils.formatJson(parsedJson)}</pre></div>`;
                             }
+                            return `<div class="preview-value"><strong>${key}:</strong><pre>${Utils.formatJson(parsedJson)}</pre></div>`;
                         } catch (e) {
-                            // If JSON parsing fails, treat as regular string but still use pre for better formatting
-                            return `<div class="preview-value"><strong>${key}:</strong><pre>${Utils.escapeHtml(value)}</pre></div>`;
+                            // If JSON parsing fails, fall back to original string rendering
                         }
-                    } else {
-                        return `<div class="preview-value"><strong>${key}:</strong> ${value}</div>`;
                     }
+
+                    const escaped = Utils.escapeHtml(value);
+                    const formatted = escaped.includes('\n') ? `<pre>${escaped}</pre>` : escaped;
+                    return `<div class="preview-value"><strong>${key}:</strong> ${formatted}</div>`;
+                } else {
+                    const safeValue = Utils.escapeHtml(String(value));
+                    return `<div class="preview-value"><strong>${key}:</strong> ${safeValue}</div>`;
                 }
             }).join('')}
         </div>`,
