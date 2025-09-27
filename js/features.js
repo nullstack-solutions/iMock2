@@ -1512,6 +1512,34 @@ window.toggleRequestPreview = (requestId) => {
 
 let scenarioListHandlerAttached = false;
 
+function getScenarioByIdentifier(identifier) {
+    if (typeof identifier !== 'string') {
+        return null;
+    }
+
+    const scenarios = Array.isArray(allScenarios) ? allScenarios : [];
+
+    const directMatch = scenarios.find((scenario) =>
+        (typeof scenario?.id === 'string' && scenario.id === identifier) ||
+        (typeof scenario?.name === 'string' && scenario.name === identifier)
+    );
+
+    if (directMatch) {
+        return directMatch;
+    }
+
+    const trimmedIdentifier = identifier.trim();
+    if (!trimmedIdentifier) {
+        return null;
+    }
+
+    return scenarios.find((scenario) => {
+        const scenarioId = typeof scenario?.id === 'string' ? scenario.id.trim() : '';
+        const scenarioName = typeof scenario?.name === 'string' ? scenario.name.trim() : '';
+        return scenarioId === trimmedIdentifier || scenarioName === trimmedIdentifier;
+    }) || null;
+}
+
 function setScenariosLoading(isLoading) {
     const loadingEl = document.getElementById('scenarios-loading');
     if (loadingEl) {
@@ -1564,17 +1592,14 @@ window.resetAllScenarios = async () => {
     }
 };
 
-function updateScenarioStateSuggestions(selectedScenarioName) {
+function updateScenarioStateSuggestions(selectedScenarioIdentifier) {
     const stateOptionsEl = document.getElementById('scenario-state-options');
     const stateInput = document.getElementById('scenario-state');
 
     if (!stateOptionsEl) return;
 
     const scenarios = Array.isArray(allScenarios) ? allScenarios : [];
-    const normalizedName = typeof selectedScenarioName === 'string' ? selectedScenarioName.trim() : '';
-    const selectedScenario = normalizedName
-        ? scenarios.find((scenario) => scenario?.name === normalizedName)
-        : null;
+    const selectedScenario = getScenarioByIdentifier(selectedScenarioIdentifier);
 
     const states = new Set();
 
@@ -1620,22 +1645,29 @@ function updateScenarioStateSuggestions(selectedScenarioName) {
     }
 }
 
-window.setScenarioState = async (scenarioName, newState) => {
+window.setScenarioState = async (scenarioIdentifier, newState) => {
     const scenarioSelect = document.getElementById('scenario-select');
     const scenarioStateInput = document.getElementById('scenario-state');
 
-    const inlineScenarioName = typeof scenarioName === 'string' ? scenarioName.trim() : '';
+    const inlineScenarioIdentifier = typeof scenarioIdentifier === 'string' ? scenarioIdentifier : '';
     const inlineState = typeof newState === 'string' ? newState.trim() : '';
 
-    if (inlineScenarioName && scenarioSelect) {
-        scenarioSelect.value = inlineScenarioName;
-        updateScenarioStateSuggestions(inlineScenarioName);
+    let candidateIdentifier = inlineScenarioIdentifier;
+    if (!candidateIdentifier && scenarioSelect) {
+        candidateIdentifier = scenarioSelect.value || '';
     }
 
-    const resolvedScenarioName = inlineScenarioName || scenarioSelect?.value?.trim() || '';
+    const targetScenario = getScenarioByIdentifier(candidateIdentifier);
+    const endpointIdentifier = typeof targetScenario?.id === 'string'
+        ? targetScenario.id
+        : (typeof targetScenario?.name === 'string' ? targetScenario.name : candidateIdentifier);
+    const displayName = typeof targetScenario?.name === 'string'
+        ? targetScenario.name
+        : (typeof targetScenario?.id === 'string' ? targetScenario.id : candidateIdentifier);
+
     const resolvedState = inlineState || scenarioStateInput?.value?.trim() || '';
 
-    if (!resolvedScenarioName || !resolvedState) {
+    if (!endpointIdentifier || !endpointIdentifier.trim() || !resolvedState) {
         NotificationManager.warning('Please select scenario and enter state');
         return false;
     }
@@ -1643,21 +1675,26 @@ window.setScenarioState = async (scenarioName, newState) => {
     const stateEndpointBuilder = typeof window.buildScenarioStateEndpoint === 'function'
         ? window.buildScenarioStateEndpoint
         : (name) => `${ENDPOINTS.SCENARIOS}/${encodeURIComponent(name)}/state`;
-    const stateEndpoint = stateEndpointBuilder(resolvedScenarioName);
+    const stateEndpoint = stateEndpointBuilder(endpointIdentifier);
 
     if (!stateEndpoint) {
         NotificationManager.error('Unable to determine the scenario state endpoint.');
         return false;
     }
 
+    if (scenarioSelect) {
+        const selectValue = typeof targetScenario?.id === 'string'
+            ? targetScenario.id
+            : (typeof targetScenario?.name === 'string' ? targetScenario.name : endpointIdentifier);
+        scenarioSelect.value = selectValue;
+        updateScenarioStateSuggestions(selectValue);
+    } else {
+        updateScenarioStateSuggestions(endpointIdentifier);
+    }
+
     setScenariosLoading(true);
 
-    const scenarioExists = Array.isArray(allScenarios)
-        && allScenarios.some((scenario) => {
-            const candidate = (scenario?.name || '').trim();
-            const identifier = (scenario?.id || '').trim();
-            return candidate === resolvedScenarioName || identifier === resolvedScenarioName;
-        });
+    const scenarioExists = !!targetScenario;
 
     try {
         await apiFetch(stateEndpoint, {
@@ -1666,18 +1703,18 @@ window.setScenarioState = async (scenarioName, newState) => {
             body: JSON.stringify({ state: resolvedState })
         });
 
-        NotificationManager.success(`Scenario "${resolvedScenarioName}" switched to state "${resolvedState}"`);
+        NotificationManager.success(`Scenario "${displayName}" switched to state "${resolvedState}"`);
         if (!inlineState && scenarioStateInput) {
             scenarioStateInput.value = '';
         }
-        updateScenarioStateSuggestions(resolvedScenarioName);
+        updateScenarioStateSuggestions(endpointIdentifier);
         await loadScenarios();
         return true;
     } catch (error) {
         console.error('Change scenario state error:', error);
         const notFound = /HTTP\s+404/.test(error?.message || '');
         if (notFound && !scenarioExists) {
-            NotificationManager.error(`Scenario "${resolvedScenarioName}" was not found on the server.`);
+            NotificationManager.error(`Scenario "${displayName}" was not found on the server.`);
         } else {
             NotificationManager.error(`Scenario state change failed: ${error.message}`);
         }
@@ -1720,12 +1757,23 @@ window.renderScenarios = () => {
     const previousSelection = selectEl?.value || '';
     if (selectEl) {
         const options = ['<option value="">Select Scenario</option>']
-            .concat(normalizedScenarios.map(scenario => `
-                <option value="${escapeHtml(scenario.name)}">${escapeHtml(scenario.name)}</option>
-            `));
+            .concat(normalizedScenarios.map(scenario => {
+                const scenarioIdentifier = typeof scenario?.id === 'string'
+                    ? scenario.id
+                    : (typeof scenario?.name === 'string' ? scenario.name : '');
+                const scenarioLabel = typeof scenario?.name === 'string'
+                    ? scenario.name
+                    : (typeof scenario?.id === 'string' ? scenario.id : 'Unnamed scenario');
+                return `
+                <option value="${escapeHtml(scenarioIdentifier)}">${escapeHtml(scenarioLabel)}</option>
+            `;
+            }));
         selectEl.innerHTML = options.join('');
-        if (previousSelection && normalizedScenarios.some(s => s.name === previousSelection)) {
-            selectEl.value = previousSelection;
+        if (previousSelection) {
+            const matchedScenario = getScenarioByIdentifier(previousSelection);
+            if (matchedScenario) {
+                selectEl.value = matchedScenario.id || matchedScenario.name || '';
+            }
         }
     }
 
@@ -1742,9 +1790,14 @@ window.renderScenarios = () => {
 
     listEl.style.display = '';
     listEl.innerHTML = normalizedScenarios.map((scenario) => {
-        const scenarioName = scenario.name || '';
-        const scenarioNameAttr = escapeHtml(scenarioName);
-        const displayedName = escapeHtml(scenarioName);
+        const scenarioIdentifier = typeof scenario?.id === 'string'
+            ? scenario.id
+            : (typeof scenario?.name === 'string' ? scenario.name : '');
+        const scenarioIdentifierAttr = escapeHtml(scenarioIdentifier);
+        const displayLabel = typeof scenario?.name === 'string'
+            ? scenario.name
+            : (typeof scenario?.id === 'string' ? scenario.id : 'Unnamed scenario');
+        const displayedName = escapeHtml(displayLabel);
         const displayedState = escapeHtml(scenario.state || 'Started');
         const possibleStates = Array.isArray(scenario.possibleStates) ? scenario.possibleStates.filter(Boolean) : [];
 
@@ -1756,7 +1809,7 @@ window.renderScenarios = () => {
                 <button
                     class="btn btn-sm btn-secondary"
                     data-scenario-action="transition"
-                    data-scenario="${scenarioNameAttr}"
+                    data-scenario="${scenarioIdentifierAttr}"
                     data-state="${stateAttr}"
                 >
                     → ${displayedPossibleState}
@@ -1851,7 +1904,7 @@ window.renderScenarios = () => {
                     <button
                         class="btn btn-sm btn-danger"
                         data-scenario-action="transition"
-                        data-scenario="${scenarioNameAttr}"
+                        data-scenario="${scenarioIdentifierAttr}"
                         data-state="Started"
                     >
                         🔄 Reset
@@ -1869,15 +1922,15 @@ window.renderScenarios = () => {
             const action = button.dataset.scenarioAction;
 
             if (action === 'transition') {
-                const scenarioNameValue = (button.dataset.scenario || '').trim();
-                const targetState = (button.dataset.state || '').trim();
-                if (!scenarioNameValue || !targetState) {
+                const scenarioIdentifierValue = button.dataset.scenario || '';
+                const targetState = button.dataset.state || '';
+                if (!scenarioIdentifierValue.trim() || !targetState.trim()) {
                     return;
                 }
 
                 button.disabled = true;
                 try {
-                    await setScenarioState(scenarioNameValue, targetState);
+                    await setScenarioState(scenarioIdentifierValue, targetState);
                 } finally {
                     button.disabled = false;
                 }

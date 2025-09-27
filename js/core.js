@@ -191,9 +191,12 @@ window.ENDPOINTS = {
 
 // Helper to build the documented scenario state endpoint
 window.buildScenarioStateEndpoint = (scenarioName) => {
-    const normalizedName = (scenarioName || '').trim();
-    if (!normalizedName) return '';
-    return `${ENDPOINTS.SCENARIOS}/${encodeURIComponent(normalizedName)}/state`;
+    const rawName = typeof scenarioName === 'string' ? scenarioName : '';
+    if (!rawName.trim()) {
+        return '';
+    }
+
+    return `${ENDPOINTS.SCENARIOS}/${encodeURIComponent(rawName)}/state`;
 };
 
 // --- GLOBAL STATE ---
