@@ -262,7 +262,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Then load saved settings (will override defaults if settings exist)
     loadSettings();
     loadConnectionSettings();
-    
+    if (typeof window.initializeRecordingForm === 'function') {
+        window.initializeRecordingForm();
+    }
+
     // Ensure settings are loaded before any operations
     console.log('🔧 [main.js] Page loaded, defaults applied, settings initialized, ready for user interaction');
 });

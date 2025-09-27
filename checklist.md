@@ -11,7 +11,7 @@
 | ✅ | Settings & theme | `loadSettings`, `saveSettings`, and `toggleTheme` persist host/port, timeout, auth header, cache toggle, and UI theme across sessions.【F:js/main.js†L22-L138】【F:js/main.js†L344-L420】 |
 | ✅ | Notifications & status UI | `NotificationManager` plus helper badges keep connection, cache, and toast messaging coherent across flows.【F:js/features.js†L230-L260】【F:js/features.js†L2584-L2662】 |
 | ⚠️ | Cache service depth | `refreshImockCache`, `regenerateImockCache`, and scheduled validation rebuild the cache mapping and reset optimistic queues, but the integration still needs live end-to-end validation.【F:js/features.js†L1988-L2107】【F:js/features.js†L2584-L2662】 |
-| ⚠️ | Recording workflow | `startRecording`, `stopRecording`, and `takeRecordingSnapshot` hit the endpoints, yet the Recording tab ignores input fields and never populates `recordings-list`.【F:js/features.js†L1624-L1704】【F:index.html†L324-L413】 |
+| ✅ | Recording workflow | Recording helpers parse full start/snapshot specs, persist preferences, surface recorder status, render captured mappings, and expose JSON export via `initializeRecordingForm`, `startRecording`, `stopRecording`, `takeRecordingSnapshot`, and `downloadRecordingResults`.【F:js/features.js†L1599-L2219】【F:index.html†L333-L414】 |
 | ⚠️ | Auto-refresh toggle | Settings capture interval preferences, but no interval timer runs, so updates remain manual unless the cache pipeline triggers them.【F:js/main.js†L250-L344】 |
 | 🚧 | Demo mode | `loadMockData` only raises a toast and does not stage sample mappings or requests.【F:js/features.js†L2728-L2738】 |
 | 🚧 | Import/export buttons | UI buttons call undefined `exportMappings`, `exportRequests`, `importMappings`, and `importAndReplace`, resulting in console errors when clicked.【F:index.html†L120-L211】【F:js/features.js†L2686-L2727】 |
@@ -27,7 +27,7 @@
 | ⚠️ | Offline worker pool | `WorkerPool` skips instantiation on `file://`, so heavy JSON operations fall back to the main thread when the editor runs directly from disk.【F:editor/performance-optimizations.js†L121-L214】 |
 
 ## Backlog highlights
-- Wire the Recording tab inputs and list rendering to the existing helper responses.【F:index.html†L324-L413】【F:js/features.js†L1624-L1704】
+- Extend snapshot ergonomics with presets, quick ID pickers, and richer mapping metadata in the results list.【F:index.html†L333-L414】【F:js/features.js†L1821-L2219】
 - Implement Import/Export handlers or hide the buttons until the workflows exist.【F:index.html†L120-L211】【F:js/features.js†L2686-L2727】
 - Add a functional Demo Mode data loader for offline demos.【F:js/features.js†L2728-L2738】
 - Surface near-miss helper outputs in the dashboard for unmatched triage.【F:js/features.js†L1708-L1760】
