@@ -56,6 +56,7 @@ _Last updated: 2025-09-24_
 | `GET /__admin/requests/unmatched` & near-miss endpoints | Helper functions implemented without UI glue; intended for future unmatched analysis tooling.【F:js/features.js†L1708-L1760】 |
 | `GET /__admin/scenarios` / `POST /__admin/scenarios/reset` / `PUT /__admin/scenarios/set-state` | Fully wired to the Scenarios page actions and inline buttons.【F:js/features.js†L1488-L1556】【F:index.html†L240-L322】 |
 | Recording endpoints (`/recordings/start`, `/stop`, `/status`, `/snapshot`) | Helpers post full spec-compliant bodies, render results, manage snapshot IDs, and expose a JSON download for generated mappings.【F:js/features.js†L1821-L2219】 |
+
 | Import/export endpoints (`/mappings/import`, `/requests/remove`, etc.) | Placeholders only; buttons throw because handlers are undefined.【F:index.html†L120-L211】【F:js/features.js†L2686-L2727】 |
 
 ## Known gaps & follow-up items
