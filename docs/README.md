@@ -29,7 +29,7 @@ _Last updated: 2025-09-24_
 | ✅ | Request log tools | `fetchAndRenderRequests`, `renderRequestCard`, and `clearRequests` drive the list, filtering hooks, and cleanup actions exposed on the Request Log page.【F:js/features.js†L1102-L1296】【F:index.html†L144-L238】 |
 | ✅ | Scenario controls | `loadScenarios`, `setScenarioState`, and `resetAllScenarios` call the Admin API, render available states, and refresh after changes.【F:js/features.js†L1488-L1556】【F:index.html†L240-L322】 |
 | ⚠️ | Cache service | `refreshImockCache`, `regenerateImockCache`, and the scheduled validation rebuild WireMock’s cache mapping and reset optimistic queues, but the flow still relies on live endpoints for full verification.【F:js/features.js†L1988-L2107】【F:js/features.js†L2584-L2662】 |
-| ⚠️ | Recording workflow | `startRecording`, `stopRecording`, and `takeRecordingSnapshot` successfully call the recording endpoints, yet `recording-url`, filters, and `recordings-list` in the UI remain unpopulated placeholders.【F:js/features.js†L1624-L1704】【F:index.html†L324-L413】 |
+| ✅ | Recording workflow | `initializeRecordingForm`, `startRecording`, `stopRecording`, `takeRecordingSnapshot`, and `downloadRecordingResults` parse the OpenAPI fields (body matchers, extract thresholds, snapshot IDs), persist preferences, surface recorder status, and stream captured mappings with inline export controls.【F:js/features.js†L1599-L2219】【F:index.html†L333-L414】 |
 | ⚠️ | Auto-refresh | Settings capture `auto-refresh` preferences, but no interval is started, so datasets refresh only on manual actions or cache rebuilds.【F:js/main.js†L250-L344】 |
 | 🚧 | Demo mode | `loadMockData` only raises an informational toast; it does not populate demo mappings or requests.【F:js/features.js†L2728-L2738】 |
 | 🚧 | Import/export buttons | The Import/Export page wires buttons to `exportMappings`, `exportRequests`, `importMappings`, and `importAndReplace`, yet these functions are undefined and trigger errors when clicked.【F:index.html†L120-L211】【F:js/features.js†L2686-L2727】 |
@@ -54,12 +54,13 @@ _Last updated: 2025-09-24_
 | `GET /__admin/requests` & `DELETE /__admin/requests` | Request Log refresh and clear actions.【F:js/features.js†L1116-L1287】 |
 | `POST /__admin/requests/count` / `POST /__admin/requests/find` | Helper functions exist for analytics, but no UI surfaces the results yet.【F:js/features.js†L1558-L1622】 |
 | `GET /__admin/requests/unmatched` & near-miss endpoints | Helper functions implemented without UI glue; intended for future unmatched analysis tooling.【F:js/features.js†L1708-L1760】 |
-| `GET /__admin/scenarios` / `POST /__admin/scenarios/reset` / `PUT /__admin/scenarios/{name}/state` | Fully wired to the Scenarios page actions and inline buttons.【F:js/features.js†L1488-L1556】【F:index.html†L240-L322】 |
-| Recording endpoints (`/recordings/start`, `/stop`, `/status`, `/snapshot`) | Helpers issue the correct calls and surface notifications, but the Recording tab does not yet use the returned payloads.【F:js/features.js†L1624-L1704】 |
+| `GET /__admin/scenarios` / `POST /__admin/scenarios/reset` / `PUT /__admin/scenarios/set-state` | Fully wired to the Scenarios page actions and inline buttons.【F:js/features.js†L1488-L1556】【F:index.html†L240-L322】 |
+| Recording endpoints (`/recordings/start`, `/stop`, `/status`, `/snapshot`) | Helpers post full spec-compliant bodies, render results, manage snapshot IDs, and expose a JSON download for generated mappings.【F:js/features.js†L1821-L2219】 |
+
 | Import/export endpoints (`/mappings/import`, `/requests/remove`, etc.) | Placeholders only; buttons throw because handlers are undefined.【F:index.html†L120-L211】【F:js/features.js†L2686-L2727】 |
 
 ## Known gaps & follow-up items
-- Wire up the Recording tab inputs (`recording-url`, filters) and display results inside `recordings-list` instead of relying on toast notifications alone.【F:index.html†L324-L413】【F:js/features.js†L1624-L1704】
+- Polish snapshot UX by surfacing saved presets, quick ID pickers from the request journal, and richer result metadata (e.g. transformer badges).【F:index.html†L333-L414】【F:js/features.js†L1821-L2219】
 - Implement Import/Export handlers or hide the buttons until the download/upload logic exists to prevent runtime errors.【F:index.html†L120-L211】【F:js/features.js†L2686-L2727】
 - Add a Demo Mode data loader so the dashboard can be exercised without a live WireMock server.【F:js/features.js†L2728-L2738】
 - Surface near-miss helper results in the UI to assist unmatched request triage.【F:js/features.js†L1708-L1760】
