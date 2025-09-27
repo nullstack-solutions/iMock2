@@ -209,6 +209,18 @@ window.cacheManager = {
 // Initialize the cache manager
 window.cacheManager.init();
 
+function isCacheEnabled() {
+    try {
+        const settings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
+        const checkbox = document.getElementById('cache-enabled');
+        return (settings.cacheEnabled !== false) && (checkbox ? checkbox.checked : true);
+    } catch (error) {
+        console.warn('Failed to resolve cache enabled state:', error);
+        return false;
+    }
+}
+
+
 // --- CORE APPLICATION FUNCTIONS ---
 
 // Enhanced WireMock connection routine with accurate uptime handling
@@ -270,8 +282,7 @@ window.connectToWireMock = async () => {
         startHealthMonitoring();
         
         // Load data in parallel while leveraging the Cache Service
-        const useCache = (JSON.parse(localStorage.getItem('wiremock-settings') || '{}').cacheEnabled) === true
-            || !!document.getElementById('cache-enabled')?.checked;
+        const useCache = isCacheEnabled();
         const [mappingsLoaded, requestsLoaded] = await Promise.all([
             fetchAndRenderMappings(null, { useCache }),
             fetchAndRenderRequests()
@@ -2757,7 +2768,7 @@ async function fetchExistingCacheMapping() {
 async function syncCacheMappingWithServer(mapping, operation) {
     try {
         const settings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
-        if (settings.cacheEnabled !== true) {
+        if (!isCacheEnabled()) {
             console.log('🧩 [CACHE] Remote cache sync skipped - cache disabled');
             return;
         }
@@ -2920,7 +2931,7 @@ let _cacheRebuildTimer;
 function scheduleCacheRebuild() {
   try {
     const settings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
-    if (settings.cacheEnabled !== true) {
+    if (!isCacheEnabled()) {
       return;
     }
     const delay = Number(settings.cacheRebuildDelay) || 1000;
@@ -2965,7 +2976,7 @@ async function validateAndRefreshCache() {
         console.log('🧩 [CACHE] Starting cache validation...');
 
         const settings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
-        if (settings.cacheEnabled !== true) {
+    if (!isCacheEnabled()) {
             console.log('🧩 [CACHE] Validation skipped - cache disabled');
             return;
         }
@@ -3022,7 +3033,7 @@ window.refreshImockCache = async () => {
 
         try {
             const settings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
-            if (settings.cacheEnabled) {
+            if (isCacheEnabled()) {
                 updateDataSourceIndicator('cache_rebuilding');
                 console.log('🔄 [CACHE] Updated UI indicator to rebuilding');
             }
@@ -3062,7 +3073,7 @@ window.refreshImockCache = async () => {
         optimisticDelayRetries = 0;
         try {
             const settings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
-            if (settings.cacheEnabled) {
+            if (isCacheEnabled()) {
                 updateDataSourceIndicator('cache');
                 console.log('🔄 [CACHE] Updated UI indicator to cache');
             }
@@ -3105,7 +3116,7 @@ window.checkHealth = async () => {
 window.refreshMappings = async () => {
     try {
         const settings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
-        const useCache = !!settings.cacheEnabled;
+        const useCache = isCacheEnabled();
         const refreshed = await fetchAndRenderMappings(null, { useCache });
         if (refreshed) {
             NotificationManager.success('Mappings refreshed!');
@@ -3119,7 +3130,7 @@ window.refreshMappings = async () => {
 window.forceRefreshCache = async () => {
     try {
         const settings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
-        if (!settings.cacheEnabled) {
+        if (!isCacheEnabled()) {
             NotificationManager.warning('Cache is not enabled. Enable it in Settings first.');
             return;
         }
