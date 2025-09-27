@@ -339,33 +339,127 @@
                     <div class="card-header">
                         <h3 class="card-title">🎙️ Record API Calls</h3>
                     </div>
-                    <p style="margin-bottom: var(--space-4); color: var(--text-secondary);">Configure recording settings to capture real API calls and generate mappings automatically.</p>
-                    
+                    <p style="margin-bottom: var(--space-4); color: var(--text-secondary);">Configure recording settings to capture upstream traffic and generate WireMock stub mappings automatically.</p>
+
                     <div class="form-row">
                         <div class="form-group">
-                            <label class="form-label">Target URL</label>
+                            <label class="form-label">Target Base URL</label>
                             <input type="text" class="form-input" id="record-target-url" placeholder="https://api.example.com">
+                            <small class="form-help">Proxy destination used while live recording is enabled.</small>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">URL Path Pattern</label>
+                            <input type="text" class="form-input" id="record-url-pattern" placeholder="/api/.*">
+                            <small class="form-help">WireMock request matcher syntax to limit captured traffic.</small>
                         </div>
                         <div class="form-group">
-                            <label class="form-label">Recording Mode</label>
-                            <select class="form-select" id="record-mode">
-                                <option value="record">Record</option>
-                                <option value="snapshot">Snapshot</option>
+                            <label class="form-label">HTTP Method</label>
+                            <select class="form-select" id="record-http-method">
+                                <option value="ANY">Any</option>
+                                <option value="GET">GET</option>
+                                <option value="POST">POST</option>
+                                <option value="PUT">PUT</option>
+                                <option value="DELETE">DELETE</option>
+                                <option value="PATCH">PATCH</option>
+                                <option value="HEAD">HEAD</option>
+                                <option value="OPTIONS">OPTIONS</option>
                             </select>
                         </div>
+                        <div class="form-group">
+                            <label class="form-label">Output Format</label>
+                            <select class="form-select" id="record-output-format">
+                                <option value="FULL">Full mappings</option>
+                                <option value="IDS">Mapping IDs only</option>
+                            </select>
+                            <small class="form-help">Set to <code>IDS</code> for <code>/recordings/snapshot</code> when only IDs are required.</small>
+                        </div>
                     </div>
-                    
-                    <div style="display: flex; gap: var(--space-3); margin-top: var(--space-4);">
-                        <button class="btn btn-success" onclick="startRecording()">▶️ Start Recording</button>
-                        <button class="btn btn-danger" onclick="stopRecording()">⏹️ Stop Recording</button>
-                        <button class="btn btn-secondary" onclick="clearRecordings()">🗑️ Clear Recordings</button>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Capture Headers</label>
+                            <input type="text" class="form-input" id="record-capture-headers" placeholder="Accept, Content-Type: ci">
+                            <small class="form-help">Comma separated list. Append <code>:ci</code> for case-insensitive capture.</small>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Transformers</label>
+                            <input type="text" class="form-input" id="record-transformers" placeholder="response-template, add-headers">
+                            <small class="form-help">Comma separated names applied to generated stubs.</small>
+                        </div>
                     </div>
-                    
-                    <div id="recording-status" style="margin-top: var(--space-4);"></div>
+
+                    <div class="form-row recording-advanced">
+                        <div class="form-group">
+                            <label class="form-label">Request Body Pattern (JSON)</label>
+                            <textarea class="form-input" id="record-body-pattern" rows="4" placeholder='{"matchesJsonPath": "$.orderId"}'></textarea>
+                            <small class="form-help">Optional WireMock request matcher to further limit recorded requests.</small>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Transformer Parameters (JSON)</label>
+                            <textarea class="form-input" id="record-transformer-params" rows="4" placeholder='{"response-template": {"name": "value"}}'></textarea>
+                            <small class="form-help">Pass custom parameters to configured transformers.</small>
+                        </div>
+                    </div>
+
+                    <div class="form-row recording-advanced">
+                        <div class="form-group">
+                            <label class="form-label">Extract Body Criteria</label>
+                            <div class="threshold-inputs">
+                                <input type="number" class="form-input" id="record-extract-text" placeholder="Text threshold (bytes)">
+                                <input type="number" class="form-input" id="record-extract-binary" placeholder="Binary threshold (bytes)">
+                            </div>
+                            <small class="form-help">Bodies larger than the threshold will be moved to files for readability.</small>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Snapshot Request IDs</label>
+                            <textarea class="form-input" id="record-snapshot-ids" rows="3" placeholder="40a93c4a-d378-4e07-8321-6158d5dbcb29"></textarea>
+                            <small class="form-help">Comma or newline separated list for <code>/recordings/snapshot</code>.</small>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Recording Options</label>
+                            <div class="recording-options">
+                                <label class="form-checkbox">
+                                    <input type="checkbox" id="record-persist" checked>
+                                    Persist generated stubs
+                                </label>
+                                <label class="form-checkbox">
+                                    <input type="checkbox" id="record-repeats-as-scenarios" checked>
+                                    Track repeats as scenarios
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="recording-actions">
+                        <button class="btn btn-success" id="start-recording-btn" onclick="startRecording()">▶️ Start Recording</button>
+                        <button class="btn btn-danger" id="stop-recording-btn" onclick="stopRecording()">⏹️ Stop Recording</button>
+                        <button class="btn btn-secondary" type="button" id="snapshot-recording-btn" onclick="takeRecordingSnapshot()">📸 Snapshot</button>
+                        <button class="btn btn-secondary" type="button" onclick="clearRecordings()">🗑️ Clear Results</button>
+                        <button class="btn btn-secondary" type="button" id="recording-export" onclick="downloadRecordingResults()">⬇️ Download JSON</button>
+                    </div>
+                    <div class="recording-status-panel" id="recording-status">
+                        <div class="recording-status-summary">
+                            <span class="status-dot" id="recording-indicator"></span>
+                            <div>
+                                <div class="recording-status-text" id="recording-status-text">Recorder idle</div>
+                                <div class="recording-status-meta">
+                                    <span id="recording-target">No target configured</span>
+                                    <span id="recording-count">0 mappings captured</span>
+                                </div>
+                            </div>
+                        </div>
+                        <button class="btn btn-secondary btn-compact" type="button" onclick="refreshRecordingStatus()">↻ Refresh status</button>
+                    </div>
                 </div>
-                
-                <div id="recordings-list" style="margin-top: var(--space-6);">
-                    <!-- Recorded mappings will appear here -->
+
+                <div id="recordings-list" class="recordings-list">
+                    <div class="empty-state">Recording results will appear here after stopping a session or taking a snapshot.</div>
                 </div>
             </div>
             

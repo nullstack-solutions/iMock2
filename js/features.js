@@ -12,6 +12,7 @@ window.originalMappings = []; // Complete mapping list from the server
 window.allMappings = []; // Currently displayed mappings (may be filtered)
 window.originalRequests = []; // Complete request list from the server
 window.allRequests = []; // Currently displayed request list (may be filtered)
+window.recordingsHistory = window.recordingsHistory || []; // Recent recording results for UI summaries
 
 // Reliable deletion tracking system
 window.pendingDeletedIds = new Set(); // Track items pending deletion to prevent cache flicker
@@ -1622,104 +1623,772 @@ window.getUnmatchedRequests = async () => {
     }
 };
 
-// --- UPDATED RECORDING HELPERS ---
+// --- RECORDING HELPERS ---
 
-// Start recording
+const RECORDING_STORAGE_KEY = 'wiremock-recording-config';
+
+const getRecordingElement = (id) => {
+    if (typeof document === 'undefined' || !id) return null;
+    try {
+        return document.getElementById(id);
+    } catch (error) {
+        console.debug('recording:getElement fallback', id, error);
+        return null;
+    }
+};
+
+const parseCaptureHeaders = (raw = '') => {
+    return raw
+        .split(',')
+        .map((token) => token.trim())
+        .filter(Boolean)
+        .reduce((acc, token) => {
+            const [name, flag] = token.split(':').map((part) => part.trim());
+            if (!name) return acc;
+            acc[name] = flag && flag.toLowerCase() === 'ci' ? { caseInsensitive: true } : {};
+            return acc;
+        }, {});
+};
+
+const parseJsonField = (raw, label, errors = []) => {
+    if (!raw || !raw.trim()) return null;
+    try {
+        return JSON.parse(raw);
+    } catch (error) {
+        const message = `${label} must be valid JSON.`;
+        errors.push(message);
+        console.error(`recording:${label} parse error`, error);
+        return null;
+    }
+};
+
+const parseNumericField = (raw, label, errors = []) => {
+    if (!raw || !raw.trim()) return undefined;
+    const value = Number(raw);
+    if (!Number.isFinite(value) || value < 0) {
+        const message = `${label} must be a non-negative number.`;
+        errors.push(message);
+        return undefined;
+    }
+    return value;
+};
+
+const parseSnapshotIds = (raw = '') => {
+    return raw
+        .split(/\s|,/)
+        .map((token) => token.trim())
+        .filter(Boolean);
+};
+
+const mergeRecordingConfig = (baseConfig = {}, overrides = {}) => {
+    const merged = { ...baseConfig, ...overrides };
+
+    if (baseConfig.filters || overrides.filters) {
+        merged.filters = {
+            ...(baseConfig.filters || {}),
+            ...(overrides.filters || {}),
+        };
+    }
+
+    if (baseConfig.captureHeaders || overrides.captureHeaders) {
+        merged.captureHeaders = {
+            ...(baseConfig.captureHeaders || {}),
+            ...(overrides.captureHeaders || {}),
+        };
+    }
+
+    if (Array.isArray(baseConfig.transformers) || Array.isArray(overrides.transformers)) {
+        const base = Array.isArray(baseConfig.transformers) ? baseConfig.transformers : [];
+        const next = Array.isArray(overrides.transformers) ? overrides.transformers : [];
+        merged.transformers = Array.from(new Set([...base, ...next]));
+    }
+
+    return merged;
+};
+
+const formatRecordingTimestamp = (value) => {
+    if (!value) return '';
+    try {
+        const date = value instanceof Date ? value : new Date(value);
+        if (Number.isNaN(date.getTime())) {
+            return typeof value === 'string' ? value : '';
+        }
+        return date.toLocaleString();
+    } catch (error) {
+        console.debug('recording:timestamp format error', error);
+        return typeof value === 'string' ? value : '';
+    }
+};
+
+const extractRecordedMappings = (payload) => {
+    if (!payload) return [];
+    if (Array.isArray(payload)) return payload;
+    if (Array.isArray(payload.mappings)) return payload.mappings;
+    if (Array.isArray(payload.stubMappings)) return payload.stubMappings;
+    if (Array.isArray(payload.ids)) return payload.ids;
+    if (payload.recordingResult && Array.isArray(payload.recordingResult.mappings)) {
+        return payload.recordingResult.mappings;
+    }
+    if (payload.recordingResult && Array.isArray(payload.recordingResult.ids)) {
+        return payload.recordingResult.ids;
+    }
+    if (payload.result && Array.isArray(payload.result.mappings)) {
+        return payload.result.mappings;
+    }
+    if (payload.result && Array.isArray(payload.result.ids)) {
+        return payload.result.ids;
+    }
+    return [];
+};
+
+const renderRecordingResults = (mappings = [], { mode = 'record', meta = {} } = {}) => {
+    if (typeof document === 'undefined') return;
+    const container = getRecordingElement(SELECTORS.RECORDING.LIST);
+    if (!container) return;
+
+    if (!Array.isArray(mappings) || mappings.length === 0) {
+        container.innerHTML = '<div class="empty-state">No stub mappings were returned. Start a new recording session or take another snapshot to populate this list.</div>';
+        return;
+    }
+
+    const summaryTitle = mode === 'snapshot' ? 'Snapshot captured' : 'Recording stopped';
+    const contextText = mode === 'snapshot'
+        ? 'Mappings were generated from the request journal via /recordings/snapshot.'
+        : 'Live proxying has been stopped and the captured traffic has been converted to stub mappings.';
+    const totalText = `${mappings.length} ${mappings.length === 1 ? 'item' : 'items'}`;
+
+    const metaSummaryRaw = meta && typeof meta === 'object' && Object.keys(meta).length
+        ? JSON.stringify(meta)
+        : '';
+    const metaSummary = metaSummaryRaw
+        ? `<div class="form-help" style="margin-top: var(--space-2);">Meta: ${Utils?.escapeHtml ? Utils.escapeHtml(metaSummaryRaw.slice(0, 200) + (metaSummaryRaw.length > 200 ? '…' : '')) : metaSummaryRaw}</div>`
+        : '';
+
+    const isIdOnly = (meta?.outputFormat || '').toUpperCase?.() === 'IDS'
+        || mappings.every((item) => typeof item === 'string');
+
+    const items = mappings
+        .map((mapping, index) => {
+            if (typeof mapping === 'string') {
+                const escapedId = Utils?.escapeHtml ? Utils.escapeHtml(mapping) : mapping;
+                return `
+                <div class="recording-item">
+                    <div class="recording-item-header">
+                        <div class="recording-item-title">Mapping ID</div>
+                        <div class="recording-item-meta"><span>${escapedId}</span></div>
+                    </div>
+                </div>
+            `;
+            }
+            const name = mapping?.name || mapping?.id || `Mapping ${index + 1}`;
+            const method = mapping?.request?.method || mapping?.request?.method?.value || '';
+            const url = mapping?.request?.url
+                || mapping?.request?.urlPath
+                || mapping?.request?.urlPattern
+                || mapping?.request?.urlPathPattern
+                || '';
+            const status = mapping?.response?.status || mapping?.response?.statusCode;
+            const scenario = mapping?.scenarioName;
+            const recordedAt = mapping?.recordedAt || mapping?.metadata?.recordedAt || mapping?.metadata?.created;
+            const recordedText = recordedAt ? `Recorded ${formatRecordingTimestamp(recordedAt)}` : '';
+            const description = mapping?.description || mapping?.metadata?.description || '';
+
+            const metaParts = [
+                method && url ? `${method} ${url}` : method || url,
+                status ? `Response ${status}` : '',
+                scenario ? `Scenario: ${scenario}` : '',
+                recordedText,
+            ].filter(Boolean);
+
+            const metaHtml = metaParts.length
+                ? metaParts
+                    .map((part) => `<span>${Utils?.escapeHtml ? Utils.escapeHtml(part) : part}</span>`)
+                    .join('')
+                : `<span>${Utils?.escapeHtml ? Utils.escapeHtml(totalText) : totalText}</span>`;
+
+            const bodyHtml = description
+                ? `<div class="recording-item-body">${Utils?.escapeHtml ? Utils.escapeHtml(description) : description}</div>`
+                : '';
+
+            return `
+                <div class="recording-item">
+                    <div class="recording-item-header">
+                        <div class="recording-item-title">${Utils?.escapeHtml ? Utils.escapeHtml(name) : name}</div>
+                        <div class="recording-item-meta">${metaHtml}</div>
+                    </div>
+                    ${bodyHtml}
+                </div>
+            `;
+        })
+        .join('');
+
+    const formatHint = isIdOnly
+        ? '<p class="form-help" style="margin-top: var(--space-2);">The snapshot was requested with <code>outputFormat: \"IDS\"</code>; download the JSON to retrieve the stub IDs.</p>'
+        : '';
+
+    container.innerHTML = `
+        <div class="recording-results-card">
+            <div class="recording-results-header">
+                <div>
+                    <h4>${summaryTitle}</h4>
+                    <p class="form-help" style="margin-top: var(--space-2);">${contextText}</p>
+                    ${metaSummary}
+                    ${formatHint}
+                </div>
+                <span class="recording-badge">${Utils?.escapeHtml ? Utils.escapeHtml(totalText) : totalText}</span>
+            </div>
+            ${items}
+        </div>
+    `;
+};
+
+const updateRecordingStatusUI = (status = {}) => {
+    if (typeof document === 'undefined') return;
+
+    const indicator = getRecordingElement(SELECTORS.RECORDING.INDICATOR);
+    const statusTextEl = getRecordingElement(SELECTORS.RECORDING.STATUS_TEXT);
+    const targetEl = getRecordingElement(SELECTORS.RECORDING.TARGET);
+    const countEl = getRecordingElement(SELECTORS.RECORDING.COUNT);
+
+    const normalizedStatus = typeof status === 'string'
+        ? status
+        : status.status || status.state || status.recordingStatus || '';
+    const target = status.targetBaseUrl
+        || status.targetUrl
+        || status.target
+        || status?.recordingSpec?.targetBaseUrl
+        || '';
+    const count = typeof status.count === 'number'
+        ? status.count
+        : Array.isArray(status.mappings)
+            ? status.mappings.length
+            : typeof window.recordedCount === 'number'
+                ? window.recordedCount
+                : 0;
+    const isRecording = normalizedStatus && normalizedStatus.toLowerCase() === 'recording';
+
+    window.isRecording = Boolean(isRecording);
+
+    if (indicator) {
+        indicator.classList.remove('recording-active', 'recording-idle');
+        indicator.classList.add(isRecording ? 'recording-active' : 'recording-idle');
+    }
+
+    if (statusTextEl) {
+        if (!normalizedStatus) {
+            statusTextEl.textContent = 'Recorder idle';
+        } else {
+            statusTextEl.textContent = isRecording ? 'Recording in progress' : `Recorder ${normalizedStatus.toLowerCase()}`;
+        }
+    }
+
+    if (targetEl) {
+        targetEl.textContent = target ? `Target: ${target}` : 'No target configured';
+    }
+
+    if (countEl) {
+        countEl.textContent = `${count} ${count === 1 ? 'mapping' : 'mappings'} captured`;
+    }
+
+    const startButtonId = SELECTORS.BUTTONS?.START_RECORDING;
+    if (startButtonId) {
+        const startButton = document.getElementById(startButtonId);
+        if (startButton) startButton.disabled = isRecording;
+    }
+
+    const stopButtonId = SELECTORS.BUTTONS?.STOP_RECORDING;
+    if (stopButtonId) {
+        const stopButton = document.getElementById(stopButtonId);
+        if (stopButton) stopButton.disabled = !isRecording;
+    }
+
+    const snapshotButtonId = SELECTORS.BUTTONS?.SNAPSHOT_RECORDING;
+    if (snapshotButtonId) {
+        const snapshotButton = document.getElementById(snapshotButtonId);
+        if (snapshotButton) snapshotButton.disabled = isRecording;
+    }
+
+    const exportButton = getRecordingElement(SELECTORS.RECORDING.EXPORT);
+    if (exportButton) {
+        exportButton.disabled = !window.lastRecordingResult;
+    }
+};
+
+const readRecordingForm = (mode = 'record') => {
+    if (typeof document === 'undefined') {
+        return { config: {}, mode, errors: [] };
+    }
+
+    const getValue = (id) => getRecordingElement(id)?.value ?? '';
+    const getChecked = (id, fallback = false) => {
+        const el = getRecordingElement(id);
+        return typeof el?.checked === 'boolean' ? el.checked : fallback;
+    };
+
+    const errors = [];
+
+    const config = {};
+    const targetUrl = getValue(SELECTORS.RECORDING.TARGET_URL).trim();
+    if (targetUrl) {
+        config.targetBaseUrl = targetUrl;
+    }
+
+    const filters = {};
+    const urlPattern = getValue(SELECTORS.RECORDING.URL_PATTERN).trim();
+    if (urlPattern) {
+        filters.urlPathPattern = urlPattern;
+    }
+    const method = getValue(SELECTORS.RECORDING.METHOD);
+    if (method && method !== 'ANY') {
+        filters.method = method;
+    }
+    if (Object.keys(filters).length) {
+        config.filters = filters;
+    }
+
+    const captureHeadersRaw = getValue(SELECTORS.RECORDING.CAPTURE_HEADERS);
+    const captureHeaders = parseCaptureHeaders(captureHeadersRaw);
+    if (Object.keys(captureHeaders).length) {
+        config.captureHeaders = captureHeaders;
+    }
+
+    const requestBodyPatternRaw = getValue(SELECTORS.RECORDING.BODY_PATTERN);
+    const requestBodyPattern = parseJsonField(requestBodyPatternRaw, 'Request body pattern', errors);
+    if (requestBodyPatternRaw.trim()) {
+        if (requestBodyPattern) {
+            config.requestBodyPattern = requestBodyPattern;
+        }
+    }
+
+    const transformerParamsRaw = getValue(SELECTORS.RECORDING.TRANSFORMER_PARAMS);
+    const transformerParameters = parseJsonField(transformerParamsRaw, 'Transformer parameters', errors);
+    if (transformerParamsRaw.trim()) {
+        if (transformerParameters) {
+            config.transformerParameters = transformerParameters;
+        }
+    }
+
+    const textThreshold = parseNumericField(getValue(SELECTORS.RECORDING.EXTRACT_TEXT), 'Text body threshold', errors);
+    const binaryThreshold = parseNumericField(getValue(SELECTORS.RECORDING.EXTRACT_BINARY), 'Binary body threshold', errors);
+    if (textThreshold !== undefined || binaryThreshold !== undefined) {
+        config.extractBodyCriteria = {};
+        if (textThreshold !== undefined) config.extractBodyCriteria.textSizeThreshold = textThreshold;
+        if (binaryThreshold !== undefined) config.extractBodyCriteria.binarySizeThreshold = binaryThreshold;
+    }
+
+    const transformersRaw = getValue(SELECTORS.RECORDING.TRANSFORMERS);
+    if (transformersRaw.trim()) {
+        const transformers = transformersRaw
+            .split(',')
+            .map((token) => token.trim())
+            .filter(Boolean);
+        if (transformers.length) {
+            config.transformers = transformers;
+        }
+    }
+
+    if (mode === 'snapshot') {
+        const idsRaw = getValue(SELECTORS.RECORDING.SNAPSHOT_IDS);
+        const ids = parseSnapshotIds(idsRaw);
+        if (ids.length) {
+            config.filters = { ...(config.filters || {}), ids };
+        }
+    }
+
+    const outputFormat = getValue(SELECTORS.RECORDING.OUTPUT_FORMAT) || 'FULL';
+    if (outputFormat) {
+        config.outputFormat = outputFormat;
+    }
+
+    config.persist = getChecked(SELECTORS.RECORDING.PERSIST, true);
+    config.repeatsAsScenarios = getChecked(SELECTORS.RECORDING.REPEATS, true);
+
+    return errors.length ? { config: null, mode, errors } : { config, mode, errors: [] };
+};
+
+const storeRecordingPreferences = (config, mode) => {
+    if (typeof localStorage === 'undefined') return;
+    try {
+        localStorage.setItem(
+            RECORDING_STORAGE_KEY,
+            JSON.stringify({ config, mode, savedAt: Date.now() })
+        );
+    } catch (error) {
+        console.debug('recording:storePreferences error', error);
+    }
+};
+
+const loadRecordingPreferences = () => {
+    if (typeof localStorage === 'undefined') return null;
+    try {
+        const raw = localStorage.getItem(RECORDING_STORAGE_KEY);
+        return raw ? JSON.parse(raw) : null;
+    } catch (error) {
+        console.debug('recording:loadPreferences error', error);
+        return null;
+    }
+};
+
+const populateRecordingForm = (preferences) => {
+    if (typeof document === 'undefined' || !preferences) return;
+    const { config = {}, mode = 'record' } = preferences;
+
+    const setValue = (id, value) => {
+        const el = getRecordingElement(id);
+        if (el && value !== undefined) {
+            el.value = value;
+        }
+    };
+
+    const setChecked = (id, value) => {
+        const el = getRecordingElement(id);
+        if (el && typeof el.checked === 'boolean') {
+            el.checked = Boolean(value);
+        }
+    };
+
+    if (config.targetBaseUrl) setValue(SELECTORS.RECORDING.TARGET_URL, config.targetBaseUrl);
+    if (config.filters?.urlPathPattern) setValue(SELECTORS.RECORDING.URL_PATTERN, config.filters.urlPathPattern);
+    if (config.filters?.method) setValue(SELECTORS.RECORDING.METHOD, config.filters.method);
+    if (Array.isArray(config.filters?.ids)) {
+        setValue(SELECTORS.RECORDING.SNAPSHOT_IDS, config.filters.ids.join('\n'));
+    }
+
+    if (config.captureHeaders) {
+        const captureValue = Object.entries(config.captureHeaders)
+            .map(([name, options]) => `${name}${options?.caseInsensitive ? ':ci' : ''}`)
+            .join(', ');
+        setValue(SELECTORS.RECORDING.CAPTURE_HEADERS, captureValue);
+    }
+
+    if (config.requestBodyPattern) {
+        try {
+            setValue(SELECTORS.RECORDING.BODY_PATTERN, JSON.stringify(config.requestBodyPattern, null, 2));
+        } catch (error) {
+            setValue(SELECTORS.RECORDING.BODY_PATTERN, String(config.requestBodyPattern));
+        }
+    }
+
+    if (config.transformerParameters) {
+        try {
+            setValue(SELECTORS.RECORDING.TRANSFORMER_PARAMS, JSON.stringify(config.transformerParameters, null, 2));
+        } catch (error) {
+            setValue(SELECTORS.RECORDING.TRANSFORMER_PARAMS, String(config.transformerParameters));
+        }
+    }
+
+    if (config.extractBodyCriteria?.textSizeThreshold !== undefined) {
+        setValue(SELECTORS.RECORDING.EXTRACT_TEXT, config.extractBodyCriteria.textSizeThreshold);
+    }
+    if (config.extractBodyCriteria?.binarySizeThreshold !== undefined) {
+        setValue(SELECTORS.RECORDING.EXTRACT_BINARY, config.extractBodyCriteria.binarySizeThreshold);
+    }
+
+    if (Array.isArray(config.transformers) && config.transformers.length) {
+        setValue(SELECTORS.RECORDING.TRANSFORMERS, config.transformers.join(', '));
+    }
+
+    if (config.outputFormat) setValue(SELECTORS.RECORDING.OUTPUT_FORMAT, config.outputFormat);
+    if (config.persist !== undefined) setChecked(SELECTORS.RECORDING.PERSIST, config.persist);
+    if (config.repeatsAsScenarios !== undefined) setChecked(SELECTORS.RECORDING.REPEATS, config.repeatsAsScenarios);
+    window.lastRecordingMode = mode;
+};
+
+const handleRecordingResponse = (payload, { mode = 'record' } = {}) => {
+    const mappings = extractRecordedMappings(payload);
+    const baseMeta = payload?.meta || payload?.recordingResult?.meta || payload?.result?.meta || {};
+    const inferredFormat = baseMeta.outputFormat
+        || payload?.outputFormat
+        || payload?.recordingResult?.outputFormat
+        || payload?.result?.outputFormat
+        || (Array.isArray(payload?.ids)
+            || Array.isArray(payload?.recordingResult?.ids)
+            || Array.isArray(payload?.result?.ids)
+                ? 'IDS'
+                : undefined);
+    const meta = inferredFormat ? { ...baseMeta, outputFormat: inferredFormat } : baseMeta;
+
+    window.recordedCount = mappings.length;
+    window.recordingsHistory = window.recordingsHistory || [];
+    window.recordingsHistory.unshift({
+        timestamp: Date.now(),
+        mode,
+        count: mappings.length,
+        meta,
+        mappings,
+    });
+    window.recordingsHistory = window.recordingsHistory.slice(0, 5);
+
+    window.lastRecordingResult = {
+        raw: payload,
+        mappings,
+        meta,
+        mode,
+    };
+
+    renderRecordingResults(mappings, { mode, meta });
+    updateRecordingStatusUI({ ...(payload && typeof payload === 'object' ? payload : {}), count: mappings.length });
+
+    return mappings;
+};
+
+window.initializeRecordingForm = () => {
+    if (typeof document === 'undefined') return;
+
+    const stored = loadRecordingPreferences();
+    if (stored) {
+        populateRecordingForm(stored);
+    } else {
+        const targetInput = getRecordingElement(SELECTORS.RECORDING.TARGET_URL);
+        if (targetInput && !targetInput.value && window.wiremockBaseUrl) {
+            targetInput.value = window.wiremockBaseUrl.replace(/\/__admin.*$/, '');
+        }
+    }
+
+    const persistFields = [
+        SELECTORS.RECORDING.TARGET_URL,
+        SELECTORS.RECORDING.URL_PATTERN,
+        SELECTORS.RECORDING.METHOD,
+        SELECTORS.RECORDING.CAPTURE_HEADERS,
+        SELECTORS.RECORDING.OUTPUT_FORMAT,
+        SELECTORS.RECORDING.BODY_PATTERN,
+        SELECTORS.RECORDING.TRANSFORMER_PARAMS,
+        SELECTORS.RECORDING.EXTRACT_TEXT,
+        SELECTORS.RECORDING.EXTRACT_BINARY,
+        SELECTORS.RECORDING.TRANSFORMERS,
+    ]
+        .map((id) => getRecordingElement(id))
+        .filter(Boolean);
+
+    persistFields.forEach((input) => {
+        const handler = () => {
+            const { config } = readRecordingForm('record');
+            if (config) {
+                storeRecordingPreferences(config, 'record');
+            }
+        };
+        input.addEventListener('blur', handler);
+        input.addEventListener('change', handler);
+    });
+
+    const snapshotField = getRecordingElement(SELECTORS.RECORDING.SNAPSHOT_IDS);
+    if (snapshotField) {
+        snapshotField.addEventListener('blur', () => {
+            const { config } = readRecordingForm('snapshot');
+            if (config) {
+                storeRecordingPreferences(config, 'snapshot');
+            }
+        });
+    }
+
+    [
+        SELECTORS.RECORDING.PERSIST,
+        SELECTORS.RECORDING.REPEATS,
+    ]
+        .map((id) => getRecordingElement(id))
+        .filter(Boolean)
+        .forEach((checkbox) => {
+            checkbox.addEventListener('change', () => {
+                const { config } = readRecordingForm('record');
+                if (config) {
+                    storeRecordingPreferences(config, 'record');
+                }
+            });
+        });
+
+    void window.refreshRecordingStatus({ silent: true });
+};
+
+window.refreshRecordingStatus = async (options = {}) => {
+    const { silent = false } = typeof options === 'boolean' ? { silent: options } : options;
+    const status = await window.getRecordingStatus();
+
+    if (!silent) {
+        if (status && typeof status === 'object' && status.status) {
+            NotificationManager.info?.(`Recorder status: ${status.status}`);
+        } else {
+            NotificationManager.warning?.('Recorder status unavailable.');
+        }
+    }
+
+    return status;
+};
+
 window.startRecording = async (config = {}) => {
     try {
-        const defaultConfig = {
-            targetBaseUrl: 'https://example.com',
-            filters: {
-                urlPathPatterns: ['.*'],
-                method: 'ANY',
-                headers: {}
-            },
-            captureHeaders: {},
-            requestBodyPattern: {},
-            persist: true,
-            repeatsAsScenarios: false,
-            transformers: ['response-template'],
-            transformerParameters: {}
-        };
-        
-        const recordingConfig = { ...defaultConfig, ...config };
-        
+        const { config: formConfig, errors } = readRecordingForm('record');
+        if (!formConfig) {
+            errors.forEach((message) => NotificationManager.error?.(message));
+            return [];
+        }
+
+        const recordingConfig = mergeRecordingConfig(formConfig, config);
+
+        storeRecordingPreferences(recordingConfig, 'record');
+        window.lastRecordingMode = 'record';
+
+        if (!recordingConfig.targetBaseUrl) {
+            NotificationManager.warning?.('Please provide a target URL before starting recording.');
+            return [];
+        }
+
         await apiFetch(ENDPOINTS.RECORDINGS_START, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(recordingConfig)
+            body: JSON.stringify(recordingConfig),
         });
-        
-        NotificationManager.success('Recording started!');
+
+        NotificationManager.success?.('Recording started. Incoming traffic will be proxied and captured.');
         window.isRecording = true;
-        
-        // Refresh the UI
-        const indicator = document.getElementById(SELECTORS.RECORDING.INDICATOR);
-        if (indicator) indicator.style.display = 'block';
-        
+        updateRecordingStatusUI({ status: 'Recording', targetBaseUrl: recordingConfig.targetBaseUrl });
+        void window.refreshRecordingStatus({ silent: true });
+
+        return [];
     } catch (error) {
         console.error('Start recording error:', error);
-        NotificationManager.error(`Failed to start recording: ${error.message}`);
+        NotificationManager.error?.(`Failed to start recording: ${error?.message || error}`);
+        return [];
     }
 };
 
-// Stop recording
 window.stopRecording = async () => {
     try {
         const response = await apiFetch(ENDPOINTS.RECORDINGS_STOP, {
-            method: 'POST'
+            method: 'POST',
         });
-        
+
         window.isRecording = false;
-        window.recordedCount = 0;
-        
-        // Refresh the UI
-        const indicator = document.getElementById(SELECTORS.RECORDING.INDICATOR);
-        if (indicator) indicator.style.display = 'none';
-        
-        const count = response.mappings ? response.mappings.length : 0;
-        NotificationManager.success(`Recording stopped! Captured ${count} mappings`);
-        
-        // Refresh the mappings list
-        await fetchAndRenderMappings();
-        
-        return response.mappings || [];
+
+        const mappings = handleRecordingResponse(typeof response === 'object' ? response : {}, { mode: 'record' });
+        const count = mappings.length;
+        NotificationManager.success?.(count
+            ? `Recording stopped. Captured ${count} ${count === 1 ? 'mapping' : 'mappings'}.`
+            : 'Recording stopped with no new mappings.');
+
+        if (typeof fetchAndRenderMappings === 'function') {
+            await fetchAndRenderMappings();
+        }
+
+        updateRecordingStatusUI({ status: 'Stopped', count });
+
+        return mappings;
     } catch (error) {
         console.error('Stop recording error:', error);
-        NotificationManager.error(`Failed to stop recording: ${error.message}`);
+        NotificationManager.error?.(`Failed to stop recording: ${error?.message || error}`);
         return [];
     }
 };
 
-// Get recording status
 window.getRecordingStatus = async () => {
     try {
         const response = await apiFetch(ENDPOINTS.RECORDINGS_STATUS);
-        return response.status || 'Unknown';
+        if (response && typeof response === 'object') {
+            updateRecordingStatusUI(response);
+            return response;
+        }
+
+        updateRecordingStatusUI({ status: typeof response === 'string' ? response : 'Unknown' });
+        return response;
     } catch (error) {
         console.error('Recording status error:', error);
-        return 'Unknown';
+        updateRecordingStatusUI({ status: 'Unknown' });
+        return null;
     }
 };
 
-// Create a recording snapshot
 window.takeRecordingSnapshot = async (config = {}) => {
     try {
+        const { config: formConfig, errors } = readRecordingForm('snapshot');
+        if (!formConfig) {
+            errors.forEach((message) => NotificationManager.error?.(message));
+            return [];
+        }
+
+        const snapshotConfig = mergeRecordingConfig(formConfig, config);
+
+        storeRecordingPreferences(snapshotConfig, 'snapshot');
+        window.lastRecordingMode = 'snapshot';
+
         const response = await apiFetch(ENDPOINTS.RECORDINGS_SNAPSHOT, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(config)
+            body: JSON.stringify(snapshotConfig),
         });
-        
-        const count = response.mappings ? response.mappings.length : 0;
-        NotificationManager.success(`Snapshot created! Captured ${count} mappings`);
-        
-        return response.mappings || [];
+
+        const mappings = handleRecordingResponse(typeof response === 'object' ? response : {}, { mode: 'snapshot' });
+        const count = mappings.length;
+        NotificationManager.success?.(count
+            ? `Snapshot captured ${count} ${count === 1 ? 'mapping' : 'mappings'}.`
+            : 'Snapshot completed with no new mappings.');
+
+        if (count && typeof fetchAndRenderMappings === 'function') {
+            await fetchAndRenderMappings();
+        }
+
+        return mappings;
     } catch (error) {
         console.error('Recording snapshot error:', error);
-        NotificationManager.error(`Snapshot failed: ${error.message}`);
+        NotificationManager.error?.(`Snapshot failed: ${error?.message || error}`);
         return [];
     }
+};
+
+window.clearRecordings = () => {
+    window.recordedCount = 0;
+    window.lastRecordingResult = null;
+    window.recordingsHistory = window.recordingsHistory || [];
+    window.recordingsHistory.unshift({ timestamp: Date.now(), mode: 'clear', count: 0, mappings: [] });
+
+    if (typeof document !== 'undefined') {
+        const container = getRecordingElement(SELECTORS.RECORDING.LIST);
+        if (container) {
+            container.innerHTML = '<div class="empty-state">Recording results have been cleared. Start a new session to capture fresh mappings.</div>';
+        }
+        const exportButton = getRecordingElement(SELECTORS.RECORDING.EXPORT);
+        if (exportButton) {
+            exportButton.disabled = true;
+        }
+    }
+
+    updateRecordingStatusUI({ count: 0, status: window.isRecording ? 'Recording' : 'Stopped' });
+    NotificationManager.info?.('Recording results cleared from the dashboard.');
+};
+
+window.downloadRecordingResults = () => {
+    if (!window.lastRecordingResult) {
+        NotificationManager.info?.('No recording results available to download yet.');
+        return null;
+    }
+
+    const payload = window.lastRecordingResult.raw ?? window.lastRecordingResult.mappings;
+    const serialized = typeof payload === 'string'
+        ? payload
+        : JSON.stringify(payload, null, 2);
+
+    if (typeof document === 'undefined' || typeof Blob === 'undefined' || typeof URL === 'undefined') {
+        return serialized;
+    }
+
+    try {
+        const blob = new Blob([serialized], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        link.href = url;
+        link.download = `wiremock-recording-${timestamp}.json`;
+        document.body.appendChild(link);
+        if (typeof link.click === 'function') {
+            link.click();
+        }
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        NotificationManager.success?.('Recording payload downloaded.');
+    } catch (error) {
+        console.error('Recording download error:', error);
+        NotificationManager.error?.(`Failed to download recording: ${error?.message || error}`);
+    }
+
+    return serialized;
 };
 
 // --- NEAR MISSES FUNCTIONS ---

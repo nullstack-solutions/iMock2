@@ -98,19 +98,32 @@ window.SELECTORS = {
     // Buttons
     BUTTONS: {
         ADD_MAPPING: 'add-mapping-btn',
-        START_RECORDING: 'start-recording-btn'
+        START_RECORDING: 'start-recording-btn',
+        STOP_RECORDING: 'stop-recording-btn',
+        SNAPSHOT_RECORDING: 'snapshot-recording-btn'
     },
 
     // Recording
     RECORDING: {
-        URL: 'recording-url',
-        CAPTURE_HEADERS: 'capture-headers',
-        CAPTURE_BODY: 'capture-body',
-        URL_FILTER: 'url-filter',
+        TARGET_URL: 'record-target-url',
+        URL_PATTERN: 'record-url-pattern',
+        METHOD: 'record-http-method',
+        CAPTURE_HEADERS: 'record-capture-headers',
+        BODY_PATTERN: 'record-body-pattern',
+        EXTRACT_TEXT: 'record-extract-text',
+        EXTRACT_BINARY: 'record-extract-binary',
+        TRANSFORMERS: 'record-transformers',
+        TRANSFORMER_PARAMS: 'record-transformer-params',
+        SNAPSHOT_IDS: 'record-snapshot-ids',
+        OUTPUT_FORMAT: 'record-output-format',
+        PERSIST: 'record-persist',
+        REPEATS: 'record-repeats-as-scenarios',
         INDICATOR: 'recording-indicator',
+        STATUS_TEXT: 'recording-status-text',
         TARGET: 'recording-target',
         COUNT: 'recording-count',
-        STOP_BTN: 'stop-recording-btn'
+        LIST: 'recordings-list',
+        EXPORT: 'recording-export'
     },
 
     // Settings
