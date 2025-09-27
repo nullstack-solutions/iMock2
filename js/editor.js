@@ -495,6 +495,8 @@ function populateFormFields(mapping) {
     const responseBodyElement = document.getElementById('edit-response-body');
     const priorityElement = document.getElementById('edit-mapping-priority');
     const scenarioElement = document.getElementById('edit-mapping-scenario');
+    const requiredScenarioStateElement = document.getElementById('edit-required-scenario-state');
+    const newScenarioStateElement = document.getElementById('edit-new-scenario-state');
     const mappingNameElement = document.getElementById('edit-mapping-name');
     
     // Clear all fields first
@@ -509,6 +511,8 @@ function populateFormFields(mapping) {
     if (responseBodyElement) responseBodyElement.value = '';
     if (priorityElement) priorityElement.value = '1';
     if (scenarioElement) scenarioElement.value = '';
+    if (requiredScenarioStateElement) requiredScenarioStateElement.value = '';
+    if (newScenarioStateElement) newScenarioStateElement.value = '';
     if (mappingNameElement) mappingNameElement.value = '';
     
     // Then populate with new mapping data
@@ -567,6 +571,14 @@ function populateFormFields(mapping) {
     // Populate advanced fields
     if (priorityElement) priorityElement.value = mapping.priority || 1;
     if (scenarioElement) scenarioElement.value = mapping.scenarioName || '';
+    if (requiredScenarioStateElement) {
+        const requiredState = mapping.requiredScenarioState || mapping.requiredState || '';
+        requiredScenarioStateElement.value = requiredState;
+    }
+    if (newScenarioStateElement) {
+        const newState = mapping.newScenarioState || mapping.newState || '';
+        newScenarioStateElement.value = newState;
+    }
     if (mappingNameElement) mappingNameElement.value = mapping.name || mapping.metadata?.name || '';
 }
 
@@ -713,9 +725,19 @@ function collectFormData() {
         mapping.priority = priority;
     }
     
-    const scenarioName = document.getElementById('edit-mapping-scenario')?.value;
+    const scenarioName = document.getElementById('edit-mapping-scenario')?.value?.trim();
     if (scenarioName) {
         mapping.scenarioName = scenarioName;
+    }
+
+    const requiredScenarioState = document.getElementById('edit-required-scenario-state')?.value?.trim();
+    if (requiredScenarioState) {
+        mapping.requiredScenarioState = requiredScenarioState;
+    }
+
+    const newScenarioState = document.getElementById('edit-new-scenario-state')?.value?.trim();
+    if (newScenarioState) {
+        mapping.newScenarioState = newScenarioState;
     }
     
     // Parse headers and bodies

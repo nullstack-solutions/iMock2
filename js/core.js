@@ -183,11 +183,20 @@ window.ENDPOINTS = {
     // Scenario endpoints
     SCENARIOS: '/scenarios',
     SCENARIOS_RESET: '/scenarios/reset',
-    SCENARIOS_SET_STATE: '/scenarios/set-state',
 
     // System endpoints
     SETTINGS: '/settings',
     SHUTDOWN: '/shutdown'
+};
+
+// Helper to build the documented scenario state endpoint
+window.buildScenarioStateEndpoint = (scenarioName) => {
+    const rawName = typeof scenarioName === 'string' ? scenarioName : '';
+    if (!rawName.trim()) {
+        return '';
+    }
+
+    return `${ENDPOINTS.SCENARIOS}/${encodeURIComponent(rawName)}/state`;
 };
 
 // --- GLOBAL STATE ---

@@ -250,10 +250,11 @@
                         </div>
                         <div class="form-group">
                             <label class="form-label">Set State</label>
-                            <input type="text" class="form-input" id="scenario-state" placeholder="Enter state name">
+                            <input type="text" class="form-input" id="scenario-state" placeholder="Enter state name" list="scenario-state-options">
+                            <datalist id="scenario-state-options"></datalist>
                         </div>
                         <div class="form-group" style="display: flex; align-items: end;">
-                            <button class="btn btn-primary" onclick="setScenarioState()">Update State</button>
+                            <button class="btn btn-primary" id="scenario-update-btn" onclick="updateScenarioState()">Update State</button>
                         </div>
                     </div>
                 </div>
@@ -560,6 +561,17 @@
                     <div class="form-group">
                         <label class="form-label">Scenario Name</label>
                         <input type="text" class="form-input" id="edit-mapping-scenario" placeholder="Scenario name">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Required Scenario State</label>
+                        <input type="text" class="form-input" id="edit-required-scenario-state" placeholder="State required to match">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">New Scenario State</label>
+                        <input type="text" class="form-input" id="edit-new-scenario-state" placeholder="State after match">
                     </div>
                 </div>
             </form>
