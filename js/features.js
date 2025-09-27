@@ -1678,16 +1678,36 @@ window.setScenarioState = async (scenarioName, newState) => {
     };
 
     try {
-        await apiFetch(stateEndpoint, {
-            method: 'POST',
+        const performStateUpdate = async (method, body) => apiFetch(stateEndpoint, {
+            method,
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                state: resolvedState
-            })
+            body: JSON.stringify(body)
         });
 
-        await notifySuccess();
-        return true;
+        let lastError;
+
+        try {
+            await performStateUpdate('PUT', { state: resolvedState });
+            await notifySuccess();
+            return true;
+        } catch (putError) {
+            lastError = putError;
+            const shouldRetryWithPost = /HTTP\s+404/.test(putError?.message || '')
+                || /HTTP\s+405/.test(putError?.message || '')
+                || /HTTP\s+501/.test(putError?.message || '');
+
+            if (shouldRetryWithPost) {
+                try {
+                    await performStateUpdate('POST', { state: resolvedState });
+                    await notifySuccess();
+                    return true;
+                } catch (postError) {
+                    lastError = postError;
+                }
+            }
+        }
+
+        throw (lastError || new Error('Scenario state update failed'));
     } catch (primaryError) {
         if (shouldFallbackToLegacy(primaryError)) {
             console.warn('Primary scenario state endpoint failed, attempting legacy fallback.', primaryError);

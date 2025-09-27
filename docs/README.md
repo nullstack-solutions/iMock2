@@ -54,7 +54,7 @@ _Last updated: 2025-09-24_
 | `GET /__admin/requests` & `DELETE /__admin/requests` | Request Log refresh and clear actions.【F:js/features.js†L1116-L1287】 |
 | `POST /__admin/requests/count` / `POST /__admin/requests/find` | Helper functions exist for analytics, but no UI surfaces the results yet.【F:js/features.js†L1558-L1622】 |
 | `GET /__admin/requests/unmatched` & near-miss endpoints | Helper functions implemented without UI glue; intended for future unmatched analysis tooling.【F:js/features.js†L1708-L1760】 |
-| `GET /__admin/scenarios` / `POST /__admin/scenarios/reset` / `POST /__admin/scenarios/{name}/state` | Fully wired to the Scenarios page actions and inline buttons.【F:js/features.js†L1488-L1556】【F:index.html†L240-L322】 |
+| `GET /__admin/scenarios` / `POST /__admin/scenarios/reset` / `PUT /__admin/scenarios/{name}/state` | Fully wired to the Scenarios page actions and inline buttons.【F:js/features.js†L1488-L1556】【F:index.html†L240-L322】 |
 | Recording endpoints (`/recordings/start`, `/stop`, `/status`, `/snapshot`) | Helpers issue the correct calls and surface notifications, but the Recording tab does not yet use the returned payloads.【F:js/features.js†L1624-L1704】 |
 | Import/export endpoints (`/mappings/import`, `/requests/remove`, etc.) | Placeholders only; buttons throw because handlers are undefined.【F:index.html†L120-L211】【F:js/features.js†L2686-L2727】 |
 
