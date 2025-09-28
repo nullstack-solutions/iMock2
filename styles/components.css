@@ -355,13 +355,11 @@
 }
 
 .card:hover {
-    transform: translateY(-4px);
-    box-shadow: var(--shadow-lg);
-    border-color: rgba(59, 130, 246, 0.35);
+    /* Animation removed for connection-setup card */
 }
 
 .card:hover::after {
-    opacity: 1;
+    /* Animation removed for connection-setup card */
 }
 
 .card.card-static {
@@ -369,13 +367,11 @@
 }
 
 .card.card-static:hover {
-    transform: none;
-    box-shadow: var(--shadow-md);
-    border-color: inherit;
+    /* Animation removed for editor-toolbar */
 }
 
 .card.card-static:hover::after {
-    opacity: 0;
+    /* Animation removed for editor-toolbar */
 }
 
 .card-header {
@@ -776,8 +772,7 @@
 }
 
 .badge:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 12px 24px rgba(2, 6, 23, 0.35);
+    /* Animation removed for data-source-indicator */
 }
 
 .badge-secondary {
@@ -1159,8 +1154,8 @@
 .stats {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--space-3);
-    margin-bottom: var(--space-6);
+    gap: var(--space-2);
+    margin-bottom: var(--space-4);
 }
 
 .stat-card {
@@ -1169,21 +1164,21 @@
     flex-direction: column;
     align-items: flex-start;
     justify-content: space-between;
-    gap: var(--space-2);
-    padding: var(--space-3);
-    border-radius: var(--radius-xl);
+    gap: var(--space-1);
+    padding: var(--space-2);
+    border-radius: var(--radius-lg);
     background: linear-gradient(135deg, rgba(59, 130, 246, 0.26), rgba(29, 78, 216, 0.08));
     border: 1px solid rgba(59, 130, 246, 0.28);
-    box-shadow: 0 16px 30px rgba(8, 47, 73, 0.35);
-    width: 112px;
-    min-width: 112px;
-    height: 112px;
-    flex: 0 0 112px;
+    box-shadow: 0 8px 16px rgba(8, 47, 73, 0.25);
+    width: 80px;
+    min-width: 80px;
+    height: 80px;
+    flex: 0 0 80px;
 }
 
 .stat-icon {
-    width: 30px;
-    height: 30px;
+    width: 20px;
+    height: 20px;
     border-radius: 50%;
     display: inline-flex;
     align-items: center;
@@ -1194,8 +1189,8 @@
 }
 
 .icon-stat {
-    width: 18px;
-    height: 18px;
+    width: 12px;
+    height: 12px;
 }
 
 .stat-content {
@@ -1205,7 +1200,7 @@
 }
 
 .stat-number {
-    font-size: 1.5rem;
+    font-size: 0.95rem;
     font-weight: 700;
     color: var(--text-primary);
     line-height: 1.2;
@@ -1214,16 +1209,16 @@
 
 .stat-label {
     color: var(--text-secondary);
-    font-size: 0.65rem;
+    font-size: 0.55rem;
     text-transform: uppercase;
-    letter-spacing: 0.14em;
+    letter-spacing: 0.1em;
     font-weight: 600;
 }
 
 /* Compact stats in page header */
 .page-header .stats {
     margin: 0;
-    gap: var(--space-3);
+    gap: var(--space-2);
 }
 
 /* Mappings page header with stats on left and controls on right */
@@ -1293,6 +1288,11 @@
     box-shadow: 0 20px 40px rgba(37, 99, 235, 0.35);
 }
 
+.filter-tab.active .filter-tab-count {
+    background: rgba(255, 255, 255, 0.25);
+    color: #ffffff;
+}
+
 [data-theme="light"] .filter-tab {
     background: rgba(148, 163, 184, 0.18);
     border-color: rgba(148, 163, 184, 0.4);
@@ -1319,6 +1319,8 @@
     border-radius: 999px;
     background: rgba(255, 255, 255, 0.12);
     color: var(--text-primary);
+    position: relative;
+    z-index: 2;
 }
 
 [data-theme="light"] .filter-tab-count {
