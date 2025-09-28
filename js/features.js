@@ -811,7 +811,7 @@ const UIComponents = {
             wrapper.appendChild(label);
 
             const content = document.createElement('div');
-            content.className = 'preview-content';
+            content.className = 'preview-content show';
             wrapper.appendChild(content);
 
             UIComponents.appendValueContent(content, value);
