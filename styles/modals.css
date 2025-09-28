@@ -42,6 +42,7 @@
     flex-direction: column;
     overflow: hidden;
     backdrop-filter: blur(18px);
+    position: relative;
 }
 
 .modal-header {
@@ -51,6 +52,7 @@
     gap: var(--space-4);
     padding: var(--space-6);
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    padding-right: calc(var(--space-6) + 3rem);
 }
 
 .modal-header-main {
@@ -72,10 +74,6 @@
 
 .modal-header-actions .btn-sm {
     padding: var(--space-2) var(--space-3);
-}
-
-.modal-header-actions .modal-close {
-    flex: 0 0 auto;
 }
 
 .modal-content > form,
@@ -107,8 +105,7 @@
     letter-spacing: 0.02em;
 }
 
-.close,
-.modal-close {
+.close {
     font-size: var(--font-size-2xl);
     font-weight: bold;
     color: var(--text-tertiary);
@@ -125,17 +122,51 @@
     justify-content: center;
 }
 
-.close:hover,
-.modal-close:hover {
+.close:hover {
     color: var(--error);
     background: rgba(239, 68, 68, 0.15);
     transform: translateY(-1px);
 }
 
-.close:focus-visible,
+.close:focus-visible {
+    outline: 2px solid rgba(239, 68, 68, 0.6);
+    outline-offset: 2px;
+}
+
+.modal-close {
+    position: absolute;
+    top: var(--space-5);
+    right: var(--space-5);
+    margin: 0;
+    width: 40px;
+    height: 40px;
+    border-radius: var(--radius-lg);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-tertiary);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background-color var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
+    z-index: 2;
+}
+
+.modal-close:hover {
+    color: var(--error);
+    background: rgba(239, 68, 68, 0.18);
+    border-color: rgba(239, 68, 68, 0.35);
+    transform: translateY(-1px);
+}
+
 .modal-close:focus-visible {
     outline: 2px solid rgba(239, 68, 68, 0.6);
     outline-offset: 2px;
+}
+
+.modal-close svg {
+    width: 18px;
+    height: 18px;
 }
 
 .modal-body {
@@ -350,6 +381,11 @@ pre {
     .modal-footer {
         padding: var(--space-4);
     }
+
+    .modal-close {
+        top: var(--space-4);
+        right: var(--space-4);
+    }
     
     .tab-buttons {
         flex-wrap: wrap;
@@ -375,6 +411,11 @@ pre {
     
     .modal-footer {
         flex-direction: column;
+    }
+
+    .modal-close {
+        top: var(--space-3);
+        right: var(--space-3);
     }
     
     .modal-footer .btn {

@@ -740,10 +740,21 @@
     <!-- MODAL FOR ADDING/EDITING MAPPINGS -->
     <div id="add-mapping-modal" class="modal hidden">
         <div class="modal-content">
+            <button class="modal-close" type="button" onclick="hideModal('add-mapping-modal')" aria-label="Close add mapping modal">
+                <svg class="icon icon-16" aria-hidden="true" focusable="false">
+                    <use href="#icon-x-circle"></use>
+                </svg>
+                <span class="sr-only">Close</span>
+            </button>
             <div class="modal-header">
-                <button type="button" class="btn btn-primary" onclick="saveMappingWrapper()">Save Mapping</button>
-                <h3 id="modal-title">Add New Mapping</h3>
-                <button class="modal-close" onclick="hideModal('add-mapping-modal')">&times;</button>
+                <div class="modal-header-main">
+                    <h3 id="modal-title">Add New Mapping</h3>
+                </div>
+                <div class="modal-header-actions">
+                    <button type="button" class="btn btn-primary" onclick="saveMappingWrapper()">
+                        <span class="btn-label">Save Mapping</span>
+                    </button>
+                </div>
             </div>
             <form id="mapping-form">
                 <input type="hidden" id="mapping-id">
@@ -786,6 +797,12 @@
     <!-- MODAL FOR EDITING MAPPINGS -->
     <div id="edit-mapping-modal" class="modal hidden">
         <div class="modal-content">
+            <button class="modal-close" type="button" onclick="hideModal('edit-mapping-modal')" aria-label="Close edit mapping modal">
+                <svg class="icon icon-16" aria-hidden="true" focusable="false">
+                    <use href="#icon-x-circle"></use>
+                </svg>
+                <span class="sr-only">Close</span>
+            </button>
             <div class="modal-header">
                 <div class="modal-header-main">
                     <h3 id="edit-modal-title">Edit Mapping</h3>
@@ -798,7 +815,6 @@
                         <span class="btn-label">Update Mapping</span>
                         <span class="btn-spinner loading-spinner" aria-hidden="true"></span>
                     </button>
-                    <button class="modal-close" onclick="hideModal('edit-mapping-modal')">&times;</button>
                 </div>
             </div>
             
@@ -906,9 +922,14 @@
     <!-- MODAL FOR REQUEST DETAILS -->
     <div id="request-details-modal" class="modal hidden">
         <div class="modal-content">
+            <button class="modal-close" type="button" onclick="hideModal('request-details-modal')" aria-label="Close request details modal">
+                <svg class="icon icon-16" aria-hidden="true" focusable="false">
+                    <use href="#icon-x-circle"></use>
+                </svg>
+                <span class="sr-only">Close</span>
+            </button>
             <div class="modal-header">
                 <h3>Request Details</h3>
-                <button class="modal-close" onclick="hideModal('request-details-modal')">&times;</button>
             </div>
             <div class="modal-body">
                 <div id="request-details-content">
@@ -924,9 +945,14 @@
     <!-- MODAL FOR MAPPING DETAILS -->
     <div id="mapping-details-modal" class="modal hidden">
         <div class="modal-content">
+            <button class="modal-close" type="button" onclick="hideModal('mapping-details-modal')" aria-label="Close mapping details modal">
+                <svg class="icon icon-16" aria-hidden="true" focusable="false">
+                    <use href="#icon-x-circle"></use>
+                </svg>
+                <span class="sr-only">Close</span>
+            </button>
             <div class="modal-header">
                 <h3>Mapping Details</h3>
-                <button class="modal-close" onclick="hideModal('mapping-details-modal')">&times;</button>
             </div>
             <div class="modal-body">
                 <div id="mapping-details-content">

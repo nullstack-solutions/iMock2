@@ -147,7 +147,7 @@
         </symbol>
     </svg>
     <div class="editor-app">
-        <section class="editor-toolbar card" aria-label="Editor controls">
+        <section class="editor-toolbar card card-static json-editor-toolbar" aria-label="Editor controls">
             <div class="toolbar-row toolbar-row--primary">
                 <div class="toolbar-side toolbar-side--left">
                     <div class="toolbar-brand" aria-label="WireMock JSON Studio">
@@ -293,13 +293,14 @@
     <!-- Templates Modal -->
     <div class="modal hidden" id="fullscreenModal" role="dialog" aria-modal="true" aria-labelledby="modal-title-templates" aria-hidden="true">
         <div class="modal-content">
+            <button class="modal-close" type="button" onclick="closeModal()" aria-label="Close templates modal">
+                <svg class="icon icon-16" aria-hidden="true" focusable="false">
+                    <use href="#icon-x-circle"></use>
+                </svg>
+                <span class="sr-only">Close</span>
+            </button>
             <div class="modal-header">
                 <h2 id="modal-title-templates">WireMock Templates</h2>
-                <button class="btn btn-icon" onclick="closeModal()" aria-label="Close templates modal">
-                    <svg class="icon icon-16" aria-hidden="true" focusable="false">
-                        <use href="#icon-x-circle"></use>
-                    </svg>
-                </button>
             </div>
             <div class="modal-body">
                 <div class="template-grid" id="templateGrid">
@@ -311,13 +312,14 @@
 
     <div class="modal hidden" id="templatePreviewModal" role="dialog" aria-modal="true" aria-labelledby="modal-title-template-preview" aria-hidden="true">
         <div class="modal-content modal-content--wide">
+            <button class="modal-close" type="button" onclick="closeModal('templatePreviewModal')" aria-label="Close template preview">
+                <svg class="icon icon-16" aria-hidden="true" focusable="false">
+                    <use href="#icon-x-circle"></use>
+                </svg>
+                <span class="sr-only">Close</span>
+            </button>
             <div class="modal-header">
                 <h2 id="modal-title-template-preview">Template preview</h2>
-                <button class="btn btn-icon" onclick="closeModal('templatePreviewModal')" aria-label="Close template preview">
-                    <svg class="icon icon-16" aria-hidden="true" focusable="false">
-                        <use href="#icon-x-circle"></use>
-                    </svg>
-                </button>
             </div>
             <div class="modal-body template-preview-body">
                 <p class="template-preview-description" id="templatePreviewDescription"></p>
@@ -333,13 +335,14 @@
 
     <div class="modal hidden modal--stacked" id="historyPreviewModal" role="dialog" aria-modal="true" aria-labelledby="modal-title-history-preview" aria-hidden="true">
         <div class="modal-content modal-content--wide">
+            <button class="modal-close" type="button" onclick="closeModal('historyPreviewModal')" aria-label="Close history preview">
+                <svg class="icon icon-16" aria-hidden="true" focusable="false">
+                    <use href="#icon-x-circle"></use>
+                </svg>
+                <span class="sr-only">Close</span>
+            </button>
             <div class="modal-header">
                 <h2 id="modal-title-history-preview">Snapshot preview</h2>
-                <button class="btn btn-icon" onclick="closeModal('historyPreviewModal')" aria-label="Close history preview">
-                    <svg class="icon icon-16" aria-hidden="true" focusable="false">
-                        <use href="#icon-x-circle"></use>
-                    </svg>
-                </button>
             </div>
             <div class="modal-body history-preview-body">
                 <div class="history-preview-meta" id="historyPreviewMeta"></div>
@@ -356,13 +359,14 @@
     <!-- History Modal -->
     <div class="modal hidden" id="historyModal" role="dialog" aria-modal="true" aria-labelledby="modal-title-history" aria-hidden="true">
         <div class="modal-content">
+            <button class="modal-close" type="button" onclick="closeHistoryModal()" aria-label="Close history modal">
+                <svg class="icon icon-16" aria-hidden="true" focusable="false">
+                    <use href="#icon-x-circle"></use>
+                </svg>
+                <span class="sr-only">Close</span>
+            </button>
             <div class="modal-header">
                 <h2 id="modal-title-history">History</h2>
-                <button class="btn btn-icon" onclick="closeHistoryModal()" aria-label="Close history modal">
-                    <svg class="icon icon-16" aria-hidden="true" focusable="false">
-                        <use href="#icon-x-circle"></use>
-                    </svg>
-                </button>
             </div>
             <div class="modal-body">
                 <div class="history-list" id="historyList">
