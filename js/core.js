@@ -678,6 +678,14 @@ window.hideModal = (modal) => {
     if (form) {
         form.reset();
     }
+
+    if (
+        modalElement.id === 'edit-mapping-modal' &&
+        typeof UIComponents !== 'undefined' &&
+        typeof UIComponents.clearCardState === 'function'
+    ) {
+        UIComponents.clearCardState('mapping', 'is-editing');
+    }
 };
 
 // Tab management

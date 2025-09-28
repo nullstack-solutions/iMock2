@@ -640,7 +640,31 @@ const UIComponents = {
                 </div>
             </div>`;
     },
-    
+
+    getCardElement(type, id) {
+        const cards = document.querySelectorAll(`.${type}-card`);
+        const targetId = String(id ?? '');
+        for (const card of cards) {
+            if ((card.dataset?.id || '') === targetId) {
+                return card;
+            }
+        }
+        return null;
+    },
+
+    setCardState(type, id, className, isActive = true) {
+        const card = this.getCardElement(type, id);
+        if (card) {
+            card.classList.toggle(className, Boolean(isActive));
+        }
+    },
+
+    clearCardState(type, className) {
+        document.querySelectorAll(`.${type}-card.${className}`).forEach(card => {
+            card.classList.remove(className);
+        });
+    },
+
     createPreviewSection: (title, items) => `
         <div class="preview-section">
             <h4>${title}</h4>
@@ -701,11 +725,17 @@ const UIComponents = {
     toggleDetails: (id, type) => {
         const preview = document.getElementById(`preview-${id}`);
         const arrow = document.getElementById(`arrow-${id}`);
-        if (preview && arrow) {
-            const isHidden = preview.style.display === 'none';
-            preview.style.display = isHidden ? 'block' : 'none';
-            arrow.textContent = isHidden ? '▼' : '▶';
+        const willShow = preview ? preview.style.display === 'none' : false;
+
+        if (preview) {
+            preview.style.display = willShow ? 'block' : 'none';
         }
+
+        if (arrow) {
+            arrow.textContent = willShow ? '▼' : '▶';
+        }
+
+        this.setCardState(type, id, 'is-expanded', willShow);
     },
     
     toggleFullContent: (elementId) => {
@@ -1194,8 +1224,10 @@ window.updateMappingsCounter = function() {
 };
 
 function updateMappingTabCounts() {
+    const sourceMappings = Array.isArray(window.originalMappings) ? window.originalMappings : [];
+
     const counts = {
-        all: Array.isArray(window.allMappings) ? window.allMappings.length : 0,
+        all: sourceMappings.length,
         get: 0,
         post: 0,
         put: 0,
@@ -1203,14 +1235,12 @@ function updateMappingTabCounts() {
         delete: 0
     };
 
-    if (Array.isArray(window.allMappings)) {
-        window.allMappings.forEach(mapping => {
+    sourceMappings.forEach(mapping => {
             const method = (mapping?.request?.method || '').toLowerCase();
             if (Object.prototype.hasOwnProperty.call(counts, method)) {
                 counts[method] += 1;
             }
-        });
-    }
+    });
 
     const mappingCountTargets = {
         all: document.getElementById('mapping-tab-all'),
@@ -1442,22 +1472,22 @@ function updateRequestsCounter() {
 window.updateRequestsCounter = updateRequestsCounter;
 
 function updateRequestTabCounts() {
+    const sourceRequests = Array.isArray(window.originalRequests) ? window.originalRequests : [];
+
     const counts = {
-        all: Array.isArray(window.allRequests) ? window.allRequests.length : 0,
+        all: sourceRequests.length,
         matched: 0,
         unmatched: 0
     };
 
-    if (Array.isArray(window.allRequests)) {
-        window.allRequests.forEach(request => {
+    sourceRequests.forEach(request => {
             const matched = request?.wasMatched !== false;
             if (matched) {
                 counts.matched += 1;
             } else {
                 counts.unmatched += 1;
             }
-        });
-    }
+    });
 
     const requestCountTargets = {
         all: document.getElementById('requests-tab-all'),
@@ -1592,7 +1622,15 @@ window.openEditModal = async (identifier) => {
         NotificationManager.show('Mapping not found', NotificationManager.TYPES.ERROR);
         return;
     }
-    
+
+    if (typeof UIComponents?.clearCardState === 'function') {
+        UIComponents.clearCardState('mapping', 'is-editing');
+    }
+    const highlightId = mapping?.id || targetIdentifier;
+    if (highlightId && typeof UIComponents?.setCardState === 'function') {
+        UIComponents.setCardState('mapping', highlightId, 'is-editing', true);
+    }
+
     // Show the modal first
     if (typeof window.showModal === 'function') {
         window.showModal('edit-mapping-modal');
