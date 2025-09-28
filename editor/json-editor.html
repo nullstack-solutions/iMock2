@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="../styles/main.css">
     <link href="json-editor.css" rel="stylesheet">
 </head>
-<body data-theme="light">
+<body data-theme="dark">
     <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="display: none;" aria-hidden="true">
         <symbol id="icon-logo" viewBox="0 0 24 24">
             <path d="M12 2.5c-5.24 0-9.5 4.26-9.5 9.5s4.26 9.5 9.5 9.5c3.02 0 5.72-1.39 7.45-3.58a1 1 0 00-.78-1.62h-5.17a2.75 2.75 0 110-5.5h5.17a1 1 0 00.78-1.62C17.72 3.89 15.02 2.5 12 2.5z" fill="currentColor"/>
@@ -264,7 +264,7 @@
                             <span class="btn-label">Download</span>
                         </button>
                     </div>
-                    <button class="btn btn-icon btn-secondary btn-icon-compact toolbar-theme-toggle" onclick="toggleTheme()" title="Toggle theme" data-tooltip="Toggle theme">
+                    <button class="btn btn-icon btn-secondary btn-icon-compact toolbar-theme-toggle" onclick="toggleEditorTheme()" title="Toggle theme" data-tooltip="Toggle theme">
                         <svg class="icon icon-16" aria-hidden="true" focusable="false">
                             <use id="editor-theme-icon" href="#icon-moon"></use>
                         </svg>
@@ -891,15 +891,15 @@
         /**
          * Toggle theme
          */
-        const globalToggleTheme = window.toggleTheme;
-        function toggleTheme() {
+        const globalToggleTheme = typeof window !== 'undefined' ? window.toggleTheme : null;
+        function toggleEditorTheme() {
             if (typeof globalToggleTheme === 'function') {
                 globalToggleTheme();
                 return;
             }
 
             const body = document.body;
-            const currentTheme = body.getAttribute('data-theme') || 'light';
+            const currentTheme = body.getAttribute('data-theme') || 'dark';
             const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
             body.setAttribute('data-theme', newTheme);
 

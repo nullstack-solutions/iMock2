@@ -1,6 +1,6 @@
 'use strict';
 
-function escapeHtml(value) {
+function editorEscapeHtml(value) {
     if (value == null) {
         return '';
     }
@@ -1945,10 +1945,10 @@ async function renderHistoryModal(options = {}) {
             ? `${formatRelativeTime(stats.latestTimestamp)} (${new Date(stats.latestTimestamp).toLocaleString()})`
             : '—';
         const latestLabel = stats.latestLabel || '—';
-        const safeApproxSize = escapeHtml(approxSize);
-        const safeLastSaved = escapeHtml(lastSaved);
-        const safeLatestLabel = escapeHtml(latestLabel);
-        const safeCount = typeof stats.count === 'number' ? stats.count : escapeHtml(String(stats.count || '—'));
+        const safeApproxSize = editorEscapeHtml(approxSize);
+        const safeLastSaved = editorEscapeHtml(lastSaved);
+        const safeLatestLabel = editorEscapeHtml(latestLabel);
+        const safeCount = typeof stats.count === 'number' ? stats.count : editorEscapeHtml(String(stats.count || '—'));
 
         statsContainer.innerHTML = `
             <div class="history-meta">

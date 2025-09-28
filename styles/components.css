@@ -829,6 +829,36 @@
     color: #1f2937;
 }
 
+[data-theme="light"] .badge-secondary {
+    background: rgba(148, 163, 184, 0.2);
+    border-color: rgba(148, 163, 184, 0.45);
+    color: #0f172a;
+}
+
+[data-theme="light"] .badge-info {
+    background: rgba(59, 130, 246, 0.14);
+    border-color: rgba(59, 130, 246, 0.4);
+    color: #1d4ed8;
+}
+
+[data-theme="light"] .badge-success {
+    background: rgba(34, 197, 94, 0.14);
+    border-color: rgba(34, 197, 94, 0.4);
+    color: #166534;
+}
+
+[data-theme="light"] .badge-warning {
+    background: rgba(245, 158, 11, 0.18);
+    border-color: rgba(245, 158, 11, 0.45);
+    color: #b45309;
+}
+
+[data-theme="light"] .badge-danger {
+    background: rgba(239, 68, 68, 0.16);
+    border-color: rgba(239, 68, 68, 0.45);
+    color: #b91c1c;
+}
+
 [data-theme="light"] .stat-card {
     background: linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(226, 232, 240, 0.9));
     border: 1px solid rgba(148, 163, 184, 0.35);
@@ -1098,12 +1128,27 @@
 
 .trend-up {
     background: rgba(34, 197, 94, 0.18);
-    color: #4ade80;
+    color: #86efac;
 }
 
 .trend-down {
     background: rgba(239, 68, 68, 0.18);
-    color: #f87171;
+    color: #fca5a5;
+}
+
+[data-theme="light"] .trend-neutral {
+    background: rgba(148, 163, 184, 0.18);
+    color: #1f2937;
+}
+
+[data-theme="light"] .trend-up {
+    background: rgba(34, 197, 94, 0.16);
+    color: #166534;
+}
+
+[data-theme="light"] .trend-down {
+    background: rgba(239, 68, 68, 0.16);
+    color: #b91c1c;
 }
 
 /* Compact stats in page header */
@@ -1126,6 +1171,12 @@
     box-shadow: var(--shadow-md);
     border: 1px solid rgba(255, 255, 255, 0.05);
     backdrop-filter: blur(12px);
+}
+
+[data-theme="light"] .search-filters {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.95), rgba(226, 232, 240, 0.85));
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    box-shadow: 0 18px 42px rgba(15, 23, 42, 0.12);
 }
 
 .filter-grid {
@@ -1169,8 +1220,25 @@
 .filter-tab.active {
     background: var(--gradient-button);
     border-color: rgba(59, 130, 246, 0.5);
-    color: var(--text-inverse);
+    color: #ffffff;
     box-shadow: 0 20px 40px rgba(37, 99, 235, 0.35);
+}
+
+[data-theme="light"] .filter-tab {
+    background: rgba(148, 163, 184, 0.18);
+    border-color: rgba(148, 163, 184, 0.4);
+    color: #334155;
+}
+
+[data-theme="light"] .filter-tab:hover {
+    background: rgba(59, 130, 246, 0.18);
+    color: #1d4ed8;
+}
+
+[data-theme="light"] .filter-tab.active {
+    background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+    color: #ffffff;
+    border-color: rgba(59, 130, 246, 0.55);
 }
 
 .filter-tab-count {
@@ -1182,6 +1250,11 @@
     border-radius: 999px;
     background: rgba(255, 255, 255, 0.12);
     color: var(--text-primary);
+}
+
+[data-theme="light"] .filter-tab-count {
+    background: rgba(59, 130, 246, 0.18);
+    color: #1d4ed8;
 }
 
 /* ===== MESSAGES ===== */

@@ -741,7 +741,7 @@ window.toggleTheme = () => {
         return;
     }
 
-    const currentTheme = body.getAttribute('data-theme') || 'light';
+    const currentTheme = body.getAttribute('data-theme') || 'dark';
     const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
 
     applyThemeToDom(newTheme);
@@ -768,7 +768,7 @@ window.changeTheme = () => {
 
 // Initialize theme on load
 window.initializeTheme = () => {
-    const savedTheme = localStorage.getItem('theme') || 'light';
+    const savedTheme = localStorage.getItem('theme') || 'dark';
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     const themeToApply = savedTheme === 'auto' ? (prefersDark ? 'dark' : 'light') : savedTheme;
 
