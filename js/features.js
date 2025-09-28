@@ -1145,8 +1145,44 @@ window.renderMappingCard = function(mapping) {
 window.updateMappingsCounter = function() {
     const counter = document.getElementById(SELECTORS.COUNTERS.MAPPINGS);
     if (counter) {
-        counter.textContent = window.allMappings.length;
+        counter.textContent = Array.isArray(window.allMappings) ? window.allMappings.length : 0;
     }
+    updateMappingTabCounts();
+};
+
+function updateMappingTabCounts() {
+    const counts = {
+        all: Array.isArray(window.allMappings) ? window.allMappings.length : 0,
+        get: 0,
+        post: 0,
+        put: 0,
+        patch: 0,
+        delete: 0
+    };
+
+    if (Array.isArray(window.allMappings)) {
+        window.allMappings.forEach(mapping => {
+            const method = (mapping?.request?.method || '').toLowerCase();
+            if (Object.prototype.hasOwnProperty.call(counts, method)) {
+                counts[method] += 1;
+            }
+        });
+    }
+
+    const mappingCountTargets = {
+        all: document.getElementById('mapping-tab-all'),
+        get: document.getElementById('mapping-tab-get'),
+        post: document.getElementById('mapping-tab-post'),
+        put: document.getElementById('mapping-tab-put'),
+        patch: document.getElementById('mapping-tab-patch'),
+        delete: document.getElementById('mapping-tab-delete')
+    };
+
+    Object.entries(mappingCountTargets).forEach(([key, element]) => {
+        if (element) {
+            element.textContent = counts[key] ?? 0;
+        }
+    });
 }
 
 // Update the data-source indicator (cache/remote/direct)
@@ -1317,9 +1353,122 @@ window.renderRequestCard = function(request) {
 function updateRequestsCounter() {
     const counter = document.getElementById(SELECTORS.COUNTERS.REQUESTS);
     if (counter) {
-        counter.textContent = window.allRequests.length;
+        counter.textContent = Array.isArray(window.allRequests) ? window.allRequests.length : 0;
+    }
+    updateRequestTabCounts();
+}
+
+window.updateRequestsCounter = updateRequestsCounter;
+
+function updateRequestTabCounts() {
+    const counts = {
+        all: Array.isArray(window.allRequests) ? window.allRequests.length : 0,
+        matched: 0,
+        unmatched: 0
+    };
+
+    if (Array.isArray(window.allRequests)) {
+        window.allRequests.forEach(request => {
+            const matched = request?.wasMatched !== false;
+            if (matched) {
+                counts.matched += 1;
+            } else {
+                counts.unmatched += 1;
+            }
+        });
+    }
+
+    const requestCountTargets = {
+        all: document.getElementById('requests-tab-all'),
+        matched: document.getElementById('requests-tab-matched'),
+        unmatched: document.getElementById('requests-tab-unmatched')
+    };
+
+    Object.entries(requestCountTargets).forEach(([key, element]) => {
+        if (element) {
+            element.textContent = counts[key] ?? 0;
+        }
+    });
+}
+
+function setActiveFilterTab(button) {
+    if (!button) {
+        return;
+    }
+
+    const group = button.dataset.filterGroup;
+    if (!group) {
+        return;
+    }
+
+    document.querySelectorAll(`.filter-tab[data-filter-group="${group}"]`).forEach(tab => {
+        tab.classList.toggle('active', tab === button);
+    });
+}
+
+function syncFilterTabsFromSelect(group, value) {
+    const normalizedValue = (value || '').toString().toLowerCase();
+    const tabs = document.querySelectorAll(`.filter-tab[data-filter-group="${group}"]`);
+    let activated = false;
+
+    tabs.forEach(tab => {
+        const tabValue = (tab.dataset.filterValue || '').toLowerCase();
+        const isMatch = tabValue === normalizedValue || (!tabValue && !normalizedValue);
+        if (isMatch) {
+            tab.classList.add('active');
+            activated = true;
+        } else {
+            tab.classList.remove('active');
+        }
+    });
+
+    if (!activated && tabs.length > 0) {
+        tabs[0].classList.add('active');
     }
 }
+
+window.handleMappingTabClick = (button, method) => {
+    setActiveFilterTab(button);
+    const select = document.getElementById('filter-method');
+    if (select) {
+        select.value = method || '';
+        if (typeof applyFilters === 'function') {
+            applyFilters();
+        }
+    }
+};
+
+window.handleRequestTabClick = (button, status) => {
+    setActiveFilterTab(button);
+    const select = document.getElementById('req-filter-status');
+    if (select) {
+        select.value = status || '';
+        if (typeof applyRequestFilters === 'function') {
+            applyRequestFilters();
+        }
+    }
+};
+
+window.initializeFilterTabs = () => {
+    const mappingSelect = document.getElementById('filter-method');
+    if (mappingSelect) {
+        mappingSelect.addEventListener('change', () => {
+            syncFilterTabsFromSelect('mapping', mappingSelect.value);
+        });
+        syncFilterTabsFromSelect('mapping', mappingSelect.value);
+    }
+
+    const requestStatusSelect = document.getElementById('req-filter-status');
+    if (requestStatusSelect) {
+        requestStatusSelect.addEventListener('change', () => {
+            syncFilterTabsFromSelect('requests', requestStatusSelect.value);
+        });
+        syncFilterTabsFromSelect('requests', requestStatusSelect.value);
+    }
+
+    updateMappingTabCounts();
+    updateRequestTabCounts();
+};
 
 // --- ACTION HANDLERS (deduplicated connectToWireMock) ---
 

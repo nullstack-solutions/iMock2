@@ -4,13 +4,13 @@
 
 /* Basic fade in animation */
 @keyframes fadeIn {
-    from { 
-        opacity: 0; 
-        transform: translateY(10px); 
+    from {
+        opacity: 0;
+        transform: translateY(24px);
     }
-    to { 
-        opacity: 1; 
-        transform: translateY(0); 
+    to {
+        opacity: 1;
+        transform: translateY(0);
     }
 }
 
@@ -143,7 +143,7 @@
 
 /* Basic animations */
 .fade-in {
-    animation: fadeIn var(--transition-slow) ease-out;
+    animation: fadeIn 0.5s ease-out both;
 }
 
 .slide-in-left {
