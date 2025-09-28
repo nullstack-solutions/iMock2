@@ -701,9 +701,6 @@ function executeRequestFilters() {
     console.log(`🔍 Filtered requests: ${window.allRequests.length} items`);
 }
 
-window.FilterManager._applyMappingFilters = window.debounce(executeMappingFilters, 180);
-window.FilterManager._applyRequestFilters = window.debounce(executeRequestFilters, 180);
-
 // --- FILTER MANAGER ---
 // Centralized filter management
 function getMappingRenderKey(mapping) {
@@ -857,5 +854,8 @@ window.FilterManager = {
         }
     }
 };
+
+window.FilterManager._applyMappingFilters = window.debounce(executeMappingFilters, 180);
+window.FilterManager._applyRequestFilters = window.debounce(executeRequestFilters, 180);
 
 console.log('✅ Managers.js loaded - NotificationManager, TabManager, FilterManager');
