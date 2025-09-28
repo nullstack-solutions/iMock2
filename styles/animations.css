@@ -219,10 +219,6 @@
     transform: translateY(-1px);
 }
 
-.stat-card:hover {
-    transform: translateY(-2px);
-}
-
 .nav-item:hover {
     transform: translateX(2px);
 }

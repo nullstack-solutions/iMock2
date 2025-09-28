@@ -95,14 +95,14 @@
     content: '';
     position: absolute;
     inset: 0;
-    background: radial-gradient(120% 120% at 50% -20%, rgba(255, 255, 255, 0.28), transparent 65%);
+    background: radial-gradient(140% 140% at 50% 0%, rgba(255, 255, 255, 0.18), transparent 70%);
     opacity: 0;
     transition: opacity var(--transition-fast), transform var(--transition-fast);
-    transform: translateY(4px);
+    transform: translateY(6px);
 }
 
 .btn:hover:not(:disabled)::after {
-    opacity: 0.22;
+    opacity: 0.14;
     transform: translateY(0);
 }
 
@@ -211,17 +211,17 @@
 .form-select {
     width: 100%;
     padding: var(--space-3) var(--space-4);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.16);
     border-radius: var(--radius-lg);
     font-size: var(--font-size-base);
-    background: rgba(38, 38, 38, 0.65);
+    background: rgba(22, 22, 22, 0.9);
     color: var(--text-primary);
     transition: background-color var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast), color var(--transition-fast);
 }
 
 .form-select option {
-    background-color: rgba(22, 22, 22, 0.95);
-    color: var(--text-primary);
+    background-color: #161616;
+    color: #f9fafb;
 }
 
 [data-theme="light"] .form-select option {
@@ -371,7 +371,7 @@
 .card.card-static:hover {
     transform: none;
     box-shadow: var(--shadow-md);
-    border-color: rgba(255, 255, 255, 0.06);
+    border-color: inherit;
 }
 
 .card.card-static:hover::after {
@@ -472,11 +472,7 @@
     margin: calc(-1 * var(--space-2));
 }
 
-.mapping-header:hover, .request-header:hover,
-.mapping-card .mapping-header:hover, .request-card .request-header:hover {
-    background: rgba(59, 130, 246, 0.18);
-    transform: translateX(4px);
-}
+
 
 /* ===== COLLAPSE ARROWS FOR SPOILERS ===== */
 .collapse-arrow {
@@ -992,9 +988,9 @@
 }
 
 [data-theme="light"] .stat-card {
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(226, 232, 240, 0.88));
-    border: 1px solid rgba(148, 163, 184, 0.28);
-    box-shadow: 0 18px 42px rgba(15, 23, 42, 0.12);
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(255, 255, 255, 0.92));
+    border: 1px solid rgba(59, 130, 246, 0.24);
+    box-shadow: 0 16px 32px rgba(15, 23, 42, 0.16);
 }
 
 .method-badge {
@@ -1162,8 +1158,8 @@
 /* ===== STATS ===== */
 .stats {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    gap: var(--space-4);
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: var(--space-3);
     margin-bottom: var(--space-6);
 }
 
@@ -1171,32 +1167,33 @@
     position: relative;
     display: flex;
     flex-direction: column;
+    align-items: flex-start;
+    justify-content: space-between;
     gap: var(--space-3);
     padding: var(--space-4);
     border-radius: var(--radius-xl);
-    background: linear-gradient(135deg, rgba(59, 130, 246, 0.16), rgba(29, 78, 216, 0.05));
-    border: 1px solid rgba(59, 130, 246, 0.18);
-    box-shadow: var(--shadow-sm);
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.26), rgba(29, 78, 216, 0.08));
+    border: 1px solid rgba(59, 130, 246, 0.28);
+    box-shadow: 0 18px 36px rgba(8, 47, 73, 0.45);
     aspect-ratio: 1;
-    min-height: 148px;
-    justify-content: space-between;
+    min-height: 120px;
 }
 
 .stat-icon {
-    width: 40px;
-    height: 40px;
-    border-radius: 12px;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    background: rgba(59, 130, 246, 0.2);
-    color: var(--primary-200);
-    box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.24);
+    background: rgba(59, 130, 246, 0.22);
+    color: var(--text-inverse);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
 }
 
 .icon-stat {
-    width: 22px;
-    height: 22px;
+    width: 20px;
+    height: 20px;
 }
 
 .stat-content {
@@ -1206,16 +1203,16 @@
 }
 
 .stat-number {
-    font-size: 2rem;
+    font-size: 1.75rem;
     font-weight: 700;
     color: var(--text-primary);
 }
 
 .stat-label {
     color: var(--text-secondary);
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     text-transform: uppercase;
-    letter-spacing: 0.12em;
+    letter-spacing: 0.14em;
     font-weight: 600;
 }
 

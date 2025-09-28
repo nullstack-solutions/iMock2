@@ -13,6 +13,8 @@ window.allMappings = []; // Currently displayed mappings (may be filtered)
 window.originalRequests = []; // Complete request list from the server
 window.allRequests = []; // Currently displayed request list (may be filtered)
 window.mappingIndex = new Map();
+window.mappingTabTotals = { all: 0, get: 0, post: 0, put: 0, patch: 0, delete: 0 };
+window.requestTabTotals = { all: 0, matched: 0, unmatched: 0 };
 
 // Reliable deletion tracking system
 window.pendingDeletedIds = new Set(); // Track items pending deletion to prevent cache flicker
@@ -79,6 +81,54 @@ function rebuildMappingIndex(mappings) {
         return;
     }
     mappings.forEach(addMappingToIndex);
+}
+
+function computeMappingTabTotals(source = []) {
+    const totals = { all: 0, get: 0, post: 0, put: 0, patch: 0, delete: 0 };
+    if (!Array.isArray(source) || source.length === 0) {
+        return totals;
+    }
+
+    totals.all = source.length;
+    source.forEach(mapping => {
+        const method = (mapping?.request?.method || '').toLowerCase();
+        if (Object.prototype.hasOwnProperty.call(totals, method)) {
+            totals[method] += 1;
+        }
+    });
+    return totals;
+}
+
+function refreshMappingTabSnapshot() {
+    window.mappingTabTotals = computeMappingTabTotals(window.originalMappings);
+    if (typeof updateMappingTabCounts === 'function') {
+        updateMappingTabCounts();
+    }
+}
+
+function computeRequestTabTotals(source = []) {
+    const totals = { all: 0, matched: 0, unmatched: 0 };
+    if (!Array.isArray(source) || source.length === 0) {
+        return totals;
+    }
+
+    totals.all = source.length;
+    source.forEach(request => {
+        const matched = request?.wasMatched !== false;
+        if (matched) {
+            totals.matched += 1;
+        } else {
+            totals.unmatched += 1;
+        }
+    });
+    return totals;
+}
+
+function refreshRequestTabSnapshot() {
+    window.requestTabTotals = computeRequestTabTotals(window.originalRequests);
+    if (typeof updateRequestTabCounts === 'function') {
+        updateRequestTabCounts();
+    }
 }
 
 function removeMappingFromIndex(identifier) {
@@ -255,6 +305,7 @@ window.cacheManager = {
 
             // Update the global arrays
             window.originalMappings = Array.from(this.cache.values());
+            refreshMappingTabSnapshot();
             window.allMappings = window.originalMappings;
             rebuildMappingIndex(window.originalMappings);
 
@@ -846,6 +897,7 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                                 // Update with merged data
                                 window.allMappings = mergedMappings;
                                 window.originalMappings = mergedMappings;
+                                refreshMappingTabSnapshot();
                                 syncCacheWithMappings(window.originalMappings);
                                 rebuildMappingIndex(window.originalMappings);
 
@@ -916,6 +968,7 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                 }
             } catch {}
             window.originalMappings = Array.isArray(incoming) ? incoming.filter(m => !isImockCacheMapping(m)) : [];
+            refreshMappingTabSnapshot();
             syncCacheWithMappings(window.originalMappings);
             window.allMappings = window.originalMappings;
             rebuildMappingIndex(window.originalMappings);
@@ -925,6 +978,7 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
             const sourceOverride = options?.source;
             window.allMappings = Array.isArray(mappingsToRender) ? [...mappingsToRender] : [];
             window.originalMappings = [...window.allMappings];
+            refreshMappingTabSnapshot();
             rebuildMappingIndex(window.originalMappings);
             renderSource = sourceOverride || 'custom';
             if (renderSource === 'demo') {
@@ -1145,6 +1199,7 @@ window.backgroundRefreshMappings = async (useCache = false) => {
         }
         const incoming = data.mappings || [];
         window.originalMappings = Array.isArray(incoming) ? incoming.filter(m => !isImockCacheMapping(m)) : [];
+        refreshMappingTabSnapshot();
         syncCacheWithMappings(window.originalMappings);
         window.allMappings = window.originalMappings;
         rebuildMappingIndex(window.originalMappings);
@@ -1224,23 +1279,7 @@ window.updateMappingsCounter = function() {
 };
 
 function updateMappingTabCounts() {
-    const sourceMappings = Array.isArray(window.originalMappings) ? window.originalMappings : [];
-
-    const counts = {
-        all: sourceMappings.length,
-        get: 0,
-        post: 0,
-        put: 0,
-        patch: 0,
-        delete: 0
-    };
-
-    sourceMappings.forEach(mapping => {
-            const method = (mapping?.request?.method || '').toLowerCase();
-            if (Object.prototype.hasOwnProperty.call(counts, method)) {
-                counts[method] += 1;
-            }
-    });
+    const counts = window.mappingTabTotals || computeMappingTabTotals(window.originalMappings);
 
     const mappingCountTargets = {
         all: document.getElementById('mapping-tab-all'),
@@ -1253,7 +1292,7 @@ function updateMappingTabCounts() {
 
     Object.entries(mappingCountTargets).forEach(([key, element]) => {
         if (element) {
-            element.textContent = counts[key] ?? 0;
+            element.textContent = counts?.[key] ?? 0;
         }
     });
 }
@@ -1373,11 +1412,13 @@ window.fetchAndRenderRequests = async (requestsToRender = null, options = {}) =>
             }
 
             window.originalRequests = data.requests || [];
+            refreshRequestTabSnapshot();
             window.allRequests = [...window.originalRequests];
         } else {
             const sourceOverride = options?.source;
             window.allRequests = Array.isArray(requestsToRender) ? [...requestsToRender] : [];
             window.originalRequests = [...window.allRequests];
+            refreshRequestTabSnapshot();
             reqSource = sourceOverride || 'custom';
             if (reqSource === 'demo') {
                 markDemoModeActive('manual-requests');
@@ -1472,22 +1513,7 @@ function updateRequestsCounter() {
 window.updateRequestsCounter = updateRequestsCounter;
 
 function updateRequestTabCounts() {
-    const sourceRequests = Array.isArray(window.originalRequests) ? window.originalRequests : [];
-
-    const counts = {
-        all: sourceRequests.length,
-        matched: 0,
-        unmatched: 0
-    };
-
-    sourceRequests.forEach(request => {
-            const matched = request?.wasMatched !== false;
-            if (matched) {
-                counts.matched += 1;
-            } else {
-                counts.unmatched += 1;
-            }
-    });
+    const counts = window.requestTabTotals || computeRequestTabTotals(window.originalRequests);
 
     const requestCountTargets = {
         all: document.getElementById('requests-tab-all'),
@@ -1497,7 +1523,7 @@ function updateRequestTabCounts() {
 
     Object.entries(requestCountTargets).forEach(([key, element]) => {
         if (element) {
-            element.textContent = counts[key] ?? 0;
+            element.textContent = counts?.[key] ?? 0;
         }
     });
 }
@@ -3195,6 +3221,7 @@ function refreshMappingsFromCache({ maintainFilters = true } = {}) {
         const sanitized = buildCacheSnapshot();
 
         window.originalMappings = sanitized;
+        refreshMappingTabSnapshot();
         window.allMappings = sanitized;
         rebuildMappingIndex(window.originalMappings);
 
