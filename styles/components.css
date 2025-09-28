@@ -22,10 +22,16 @@
 .icon {
     width: 1.25rem;
     height: 1.25rem;
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     flex-shrink: 0;
     color: inherit;
     fill: currentColor;
+}
+
+.icon use {
+    pointer-events: none;
 }
 
 .icon-sm {
@@ -230,10 +236,12 @@
 .form-row {
     display: flex;
     gap: var(--space-4);
+    flex-wrap: wrap;
 }
 
 .form-row .form-group {
-    flex: 1;
+    flex: 1 1 220px;
+    min-width: 200px;
 }
 
 .form-actions-group {
@@ -787,21 +795,51 @@
 }
 
 /* Dark theme adjustments for status badges */
+[data-theme="dark"] .status-badge,
+[data-theme="dark"] .success,
+[data-theme="dark"] .redirect,
+[data-theme="dark"] .client-error,
+[data-theme="dark"] .server-error,
+[data-theme="dark"] .unknown {
+    text-shadow: none;
+}
+
+[data-theme="dark"] .status-2xx,
 [data-theme="dark"] .status-200,
-[data-theme="dark"] .status-201 {
+[data-theme="dark"] .status-201,
+[data-theme="dark"] .success {
     background: #0f766e;
     color: #ecfdf5;
     border: 1px solid #134e4a;
 }
-[data-theme="dark"] .status-400 {
-    background: #92400e;
+
+[data-theme="dark"] .status-3xx,
+[data-theme="dark"] .status-400,
+[data-theme="dark"] .redirect {
+    background: #b45309;
     color: #fff7ed;
-    border: 1px solid #b45309;
+    border: 1px solid #f97316;
 }
-[data-theme="dark"] .status-500 {
-    background: #991b1b;
+
+[data-theme="dark"] .status-4xx,
+[data-theme="dark"] .status-404,
+[data-theme="dark"] .client-error {
+    background: #b91c1c;
     color: #fee2e2;
     border: 1px solid #f87171;
+}
+
+[data-theme="dark"] .status-5xx,
+[data-theme="dark"] .server-error {
+    background: #6d28d9;
+    color: #ede9fe;
+    border: 1px solid #a855f7;
+}
+
+[data-theme="dark"] .unknown {
+    background: #475569;
+    color: #f8fafc;
+    border: 1px solid #94a3b8;
 }
 
 /* ===== HEALTH INDICATORS ===== */

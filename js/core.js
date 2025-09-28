@@ -943,8 +943,9 @@ const applyThemeToDom = (theme) => {
     if (themeIcon) {
         const useEl = themeIcon.querySelector('use');
         if (useEl) {
-            useEl.setAttribute('href', theme === 'dark' ? '#icon-sun' : '#icon-moon');
-            useEl.setAttribute('xlink:href', theme === 'dark' ? '#icon-sun' : '#icon-moon');
+            const target = `icons.svg#${theme === 'dark' ? 'icon-sun' : 'icon-moon'}`;
+            useEl.setAttribute('href', target);
+            useEl.setAttribute('xlink:href', target);
         }
         themeIcon.setAttribute('data-icon-mode', theme);
     }

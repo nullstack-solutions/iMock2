@@ -32,25 +32,6 @@ body.modal-open {
 }
 
 /* ===== CHROME ===== */
-.logo-badge {
-    width: 40px;
-    height: 40px;
-    border-radius: var(--radius-xl);
-    background: var(--primary-100);
-    color: var(--primary-700);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 700;
-    font-size: var(--font-size-lg);
-    letter-spacing: 0.05em;
-}
-
-[data-theme="dark"] .logo-badge {
-    background: var(--primary-900);
-    color: var(--primary-200);
-}
-
 .toolbar-row {
     display: flex;
     align-items: center;
@@ -140,16 +121,6 @@ body.modal-open {
     padding: 0;
     font-size: var(--font-size-base);
     border-radius: var(--radius-md);
-    line-height: 1;
-}
-
-.icon {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.5rem;
-    height: 1.5rem;
-    font-size: 1rem;
     line-height: 1;
 }
 

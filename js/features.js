@@ -66,13 +66,54 @@ window.cacheManager = {
     // Synchronization flag
     isSyncing: false,
 
+    // Interval handles for lifecycle management
+    cleanupIntervalId: null,
+    syncIntervalId: null,
+
     // Initialization
     init() {
+        const tracker = window.ResourceCleaner?.trackInterval?.bind(window.ResourceCleaner);
+        const registerCleanup = window.ResourceCleaner?.registerCleanup?.bind(window.ResourceCleaner);
+
+        const createInterval = (fn, delay) => {
+            const id = window.setInterval(fn, delay);
+            return tracker ? tracker(id) : id;
+        };
+
         // Periodically remove stale optimistic updates
-        setInterval(() => this.cleanupStaleOptimisticUpdates(), 5000);
+        this.cleanupIntervalId = createInterval(() => this.cleanupStaleOptimisticUpdates(), 5000);
 
         // Periodically synchronize with the server
-        setInterval(() => this.syncWithServer(), 60000);
+        this.syncIntervalId = createInterval(() => this.syncWithServer(), 60000);
+
+        if (registerCleanup) {
+            registerCleanup(() => this.destroy());
+        }
+    },
+
+    destroy() {
+        const clearTracked = window.ResourceCleaner?.clearInterval?.bind(window.ResourceCleaner);
+
+        if (this.cleanupIntervalId) {
+            if (clearTracked) {
+                clearTracked(this.cleanupIntervalId);
+            } else {
+                clearInterval(this.cleanupIntervalId);
+            }
+            this.cleanupIntervalId = null;
+        }
+
+        if (this.syncIntervalId) {
+            if (clearTracked) {
+                clearTracked(this.syncIntervalId);
+            } else {
+                clearInterval(this.syncIntervalId);
+            }
+            this.syncIntervalId = null;
+        }
+
+        this.optimisticQueue = [];
+        this.isSyncing = false;
     },
 
     // Add an optimistic update (simplified flow)

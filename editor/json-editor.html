@@ -17,57 +17,59 @@
             <div class="toolbar-row toolbar-row--primary">
                 <div class="toolbar-side toolbar-side--left">
                     <div class="toolbar-brand">
-                        <span class="logo-badge" aria-hidden="true">WM</span>
+                        <svg class="icon icon-lg" aria-hidden="true"><use href="../icons.svg#icon-logo" xlink:href="../icons.svg#icon-logo"></use></svg>
                         <div class="toolbar-text">
+                            <span class="toolbar-caption">WireMock</span>
+                            <h1 class="toolbar-title">JSON Studio</h1>
                         </div>
                     </div>
                     <div class="search-container" role="toolbar" aria-label="Editor utilities">
                         <div class="search-actions" role="group" aria-label="Editor utilities">
                             <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="openTextFindWidget()" title="Find (Ctrl+F)" data-tooltip="Open find (Ctrl+F)">
-                                <span class="icon" aria-hidden="true">🔍</span>
+                                <svg class="icon icon-sm" aria-hidden="true"><use href="../icons.svg#icon-search" xlink:href="../icons.svg#icon-search"></use></svg>
                                 <span class="sr-only">Open find widget</span>
                             </button>
                             <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="openJSONPathWidget()" title="JSONPath (Alt+J)" data-tooltip="Open JSONPath mode (Alt+J)">
-                                <span class="icon" aria-hidden="true">$.</span>
+                                <svg class="icon icon-sm" aria-hidden="true"><use href="../icons.svg#icon-jsonpath" xlink:href="../icons.svg#icon-jsonpath"></use></svg>
                                 <span class="sr-only">Open JSONPath find widget</span>
                             </button>
                             <span class="search-actions__divider" role="presentation" aria-hidden="true"></span>
                             <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="formatJSON()" title="Format JSON" data-tooltip="Pretty print JSON">
-                                <span class="icon" aria-hidden="true">{ }</span>
+                                <svg class="icon icon-sm" aria-hidden="true"><use href="../icons.svg#icon-format" xlink:href="../icons.svg#icon-format"></use></svg>
                                 <span class="sr-only">Format JSON</span>
                             </button>
                             <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="minifyJSON()" title="Minify JSON" data-tooltip="Minify JSON">
-                                <span class="icon" aria-hidden="true">➖</span>
+                                <svg class="icon icon-sm" aria-hidden="true"><use href="../icons.svg#icon-compress" xlink:href="../icons.svg#icon-compress"></use></svg>
                                 <span class="sr-only">Minify JSON</span>
                             </button>
                             <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="sortJSONKeys()" title="Sort keys (Ctrl+Alt+S)" data-tooltip="Sort keys alphabetically (Ctrl+Alt+S)">
-                                <span class="icon" aria-hidden="true">🔤</span>
+                                <svg class="icon icon-sm" aria-hidden="true"><use href="../icons.svg#icon-sort" xlink:href="../icons.svg#icon-sort"></use></svg>
                                 <span class="sr-only">Sort JSON keys</span>
                             </button>
                             <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="collapseAllJSON()" title="Collapse all (Ctrl+Shift+[)" data-tooltip="Collapse all blocks (Ctrl+Shift+[)">
-                                <span class="icon" aria-hidden="true">📕</span>
+                                <svg class="icon icon-sm" aria-hidden="true"><use href="../icons.svg#icon-collapse" xlink:href="../icons.svg#icon-collapse"></use></svg>
                                 <span class="sr-only">Collapse all JSON blocks</span>
                             </button>
                             <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="expandAllJSON()" title="Expand all (Ctrl+Shift+])" data-tooltip="Expand all blocks (Ctrl+Shift+])">
-                                <span class="icon" aria-hidden="true">📖</span>
+                                <svg class="icon icon-sm" aria-hidden="true"><use href="../icons.svg#icon-expand" xlink:href="../icons.svg#icon-expand"></use></svg>
                                 <span class="sr-only">Expand all JSON blocks</span>
                             </button>
                             <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="validateJSON()" title="Validate JSON" data-tooltip="Validate JSON">
-                                <span class="icon" aria-hidden="true">✔️</span>
+                                <svg class="icon icon-sm" aria-hidden="true"><use href="../icons.svg#icon-check" xlink:href="../icons.svg#icon-check"></use></svg>
                                 <span class="sr-only">Validate JSON</span>
                             </button>
                             <span class="search-actions__divider" role="presentation" aria-hidden="true"></span>
                             <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="openModal()" title="WireMock Templates" data-tooltip="WireMock templates">
-                                <span class="icon" aria-hidden="true">🧩</span>
+                                <svg class="icon icon-sm" aria-hidden="true"><use href="../icons.svg#icon-puzzle" xlink:href="../icons.svg#icon-puzzle"></use></svg>
                                 <span class="sr-only">WireMock templates</span>
                             </button>
                             <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="openHistoryModal()" title="History" data-tooltip="Show history">
-                                <span class="icon" aria-hidden="true">🕒</span>
+                                <svg class="icon icon-sm" aria-hidden="true"><use href="../icons.svg#icon-history" xlink:href="../icons.svg#icon-history"></use></svg>
                                 <span class="sr-only">History</span>
                             </button>
                             <span class="search-actions__divider" role="presentation" aria-hidden="true"></span>
                             <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="exportAsYAML()" title="Export as YAML" data-tooltip="Export YAML">
-                                <span class="icon" aria-hidden="true">📤</span>
+                                <svg class="icon icon-sm" aria-hidden="true"><use href="../icons.svg#icon-download" xlink:href="../icons.svg#icon-download"></use></svg>
                                 <span class="sr-only">Export as YAML</span>
                             </button>
                         </div>
@@ -76,28 +78,28 @@
                 <div class="toolbar-side toolbar-side--right">
                     <div class="btn-group" id="editorControls" role="group" aria-label="Workspace actions">
                         <button class="btn btn-primary" onclick="updateMappingOnServer()" title="Update mapping" data-tooltip="Update existing mapping in WireMock">
-                            <span class="icon" aria-hidden="true">🔁</span>
+                            <svg class="icon icon-sm" aria-hidden="true"><use href="../icons.svg#icon-refresh" xlink:href="../icons.svg#icon-refresh"></use></svg>
                             <span class="btn-label">Update</span>
                         </button>
                         <button class="btn btn-secondary" onclick="createMappingOnServer()" title="Create mapping" data-tooltip="Create new mapping in WireMock">
-                            <span class="icon" aria-hidden="true">✨</span>
+                            <svg class="icon icon-sm" aria-hidden="true"><use href="../icons.svg#icon-bolt" xlink:href="../icons.svg#icon-bolt"></use></svg>
                             <span class="btn-label">Create</span>
                         </button>
                         <button class="btn btn-secondary" onclick="newDocument()" title="Blank (Ctrl+N)" data-tooltip="New document (Ctrl+N)">
-                            <span class="icon" aria-hidden="true">📄</span>
+                            <svg class="icon icon-sm" aria-hidden="true"><use href="../icons.svg#icon-document" xlink:href="../icons.svg#icon-document"></use></svg>
                             <span class="btn-label">Blank</span>
                         </button>
                         <button class="btn btn-secondary" onclick="loadFile()" title="Upload (Ctrl+O)" data-tooltip="Upload JSON from file (Ctrl+O)">
-                            <span class="icon" aria-hidden="true">📥</span>
+                            <svg class="icon icon-sm" aria-hidden="true"><use href="../icons.svg#icon-upload" xlink:href="../icons.svg#icon-upload"></use></svg>
                             <span class="btn-label">Upload</span>
                         </button>
                         <button class="btn btn-secondary" onclick="downloadCurrentMapping()" title="Download (Ctrl+S)" data-tooltip="Download JSON (Ctrl+S)">
-                            <span class="icon" aria-hidden="true">💾</span>
+                            <svg class="icon icon-sm" aria-hidden="true"><use href="../icons.svg#icon-download" xlink:href="../icons.svg#icon-download"></use></svg>
                             <span class="btn-label">Download</span>
                         </button>
                     </div>
                     <button class="btn btn-icon btn-secondary btn-icon-compact toolbar-theme-toggle" onclick="toggleTheme()" title="Toggle theme" data-tooltip="Toggle theme">
-                        <span class="theme-icon" aria-hidden="true">🌙</span>
+                        <svg class="icon icon-md" aria-hidden="true"><use href="../icons.svg#icon-moon" xlink:href="../icons.svg#icon-moon"></use></svg>
                         <span class="sr-only">Toggle theme</span>
                     </button>
                 </div>
@@ -705,20 +707,37 @@
         /**
          * Toggle theme
          */
-        function toggleTheme() {
-            const body = document.body;
-            const currentTheme = body.getAttribute('data-theme');
-            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-            body.setAttribute('data-theme', newTheme);
-
-            const themeIcon = document.querySelector('.theme-icon');
-            if (themeIcon) {
-                themeIcon.textContent = newTheme === 'dark' ? '☀️' : '🌙';
+        function updateThemeToggleIcon(theme) {
+            const iconUse = document.querySelector('.toolbar-theme-toggle use');
+            if (!iconUse) {
+                return;
             }
 
-            localStorage.setItem('theme', newTheme);
-            showNotification(`Switched to ${newTheme} theme`, 'success');
+            const symbol = theme === 'dark' ? '../icons.svg#icon-sun' : '../icons.svg#icon-moon';
+            iconUse.setAttribute('href', symbol);
+            iconUse.setAttribute('xlink:href', symbol);
         }
+
+        (function enhanceThemeToggle() {
+            const originalToggle = typeof window.toggleTheme === 'function' ? window.toggleTheme.bind(window) : null;
+
+            window.toggleTheme = () => {
+                if (originalToggle) {
+                    originalToggle();
+                } else {
+                    const body = document.body;
+                    const currentTheme = body.getAttribute('data-theme') || 'light';
+                    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+                    body.setAttribute('data-theme', newTheme);
+                    localStorage.setItem('theme', newTheme);
+                    showNotification(`Switched to ${newTheme} theme`, 'success');
+                }
+
+                updateThemeToggleIcon(document.body.getAttribute('data-theme') || 'light');
+            };
+        })();
+
+        updateThemeToggleIcon(document.body.getAttribute('data-theme') || 'light');
 
         function newDocument() {
             try {
