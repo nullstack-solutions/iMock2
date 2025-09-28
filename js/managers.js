@@ -481,8 +481,287 @@ window.TabManager = {
     }
 };
 
+function executeMappingFilters() {
+    const method = document.getElementById('filter-method')?.value?.trim() || '';
+    const url = document.getElementById('filter-url')?.value?.trim() || '';
+    const status = document.getElementById('filter-status')?.value?.trim() || '';
+
+    const filters = { method, url, status };
+    window.FilterManager.saveFilterState('mappings', filters);
+
+    if (!Array.isArray(window.originalMappings) || window.originalMappings.length === 0) {
+        window.allMappings = [];
+        const emptyState = document.getElementById(SELECTORS.EMPTY.MAPPINGS);
+        const container = document.getElementById(SELECTORS.LISTS.MAPPINGS);
+        if (emptyState) emptyState.classList.remove('hidden');
+        if (container) container.style.display = 'none';
+        if (typeof updateMappingsCounter === 'function') {
+            updateMappingsCounter();
+        }
+        return;
+    }
+
+    const loweredMethod = method.toLowerCase();
+    const loweredUrl = url.toLowerCase();
+    const hasFilters = Boolean(method || url || status);
+
+    const filteredMappings = hasFilters
+        ? window.originalMappings.filter(mapping => {
+            if (!mapping) {
+                return false;
+            }
+
+            if (method) {
+                const requestMethod = (mapping.request?.method || '').toLowerCase();
+                if (!requestMethod.includes(loweredMethod)) {
+                    return false;
+                }
+            }
+
+            if (url) {
+                const mappingUrl = (mapping.request?.url || mapping.request?.urlPattern || mapping.request?.urlPath || '').toLowerCase();
+                const mappingName = (mapping.name || '').toLowerCase();
+                if (!mappingUrl.includes(loweredUrl) && !mappingName.includes(loweredUrl)) {
+                    return false;
+                }
+            }
+
+            if (status) {
+                const responseStatus = (mapping.response?.status ?? '').toString();
+                if (!responseStatus.includes(status)) {
+                    return false;
+                }
+            }
+
+            return true;
+        })
+        : window.originalMappings;
+
+    window.allMappings = hasFilters ? filteredMappings : window.originalMappings;
+
+    const container = document.getElementById(SELECTORS.LISTS.MAPPINGS);
+    const emptyState = document.getElementById(SELECTORS.EMPTY.MAPPINGS);
+    const loadingState = document.getElementById(SELECTORS.LOADING.MAPPINGS);
+
+    if (!container) {
+        return;
+    }
+
+    const sortedMappings = [...window.allMappings].sort((a, b) => {
+        const priorityA = a?.priority ?? 1;
+        const priorityB = b?.priority ?? 1;
+        if (priorityA !== priorityB) return priorityA - priorityB;
+
+        const methodOrder = { 'GET': 1, 'POST': 2, 'PUT': 3, 'PATCH': 4, 'DELETE': 5 };
+        const methodA = methodOrder[a?.request?.method] || 999;
+        const methodB = methodOrder[b?.request?.method] || 999;
+        if (methodA !== methodB) return methodA - methodB;
+
+        const urlA = a?.request?.url || a?.request?.urlPattern || a?.request?.urlPath || '';
+        const urlB = b?.request?.url || b?.request?.urlPattern || b?.request?.urlPath || '';
+        return urlA.localeCompare(urlB);
+    });
+
+    renderList(container, sortedMappings, {
+        renderItem: renderMappingMarkup,
+        getKey: getMappingRenderKey,
+        getSignature: getMappingRenderSignature
+    });
+
+    if (loadingState) {
+        loadingState.classList.add('hidden');
+    }
+
+    if (sortedMappings.length === 0) {
+        if (emptyState) emptyState.classList.remove('hidden');
+        container.style.display = 'none';
+    } else {
+        if (emptyState) emptyState.classList.add('hidden');
+        container.style.display = 'block';
+    }
+
+    if (typeof updateMappingsCounter === 'function') {
+        updateMappingsCounter();
+    }
+}
+
+function executeRequestFilters() {
+    const method = document.getElementById('req-filter-method')?.value?.trim() || '';
+    const status = document.getElementById('req-filter-status')?.value?.trim() || '';
+    const url = document.getElementById('req-filter-url')?.value?.trim() || '';
+    const from = document.getElementById('req-filter-from')?.value || '';
+    const to = document.getElementById('req-filter-to')?.value || '';
+
+    const filters = { method, status, url, from, to };
+    window.FilterManager.saveFilterState('requests', filters);
+
+    if (!Array.isArray(window.originalRequests) || window.originalRequests.length === 0) {
+        window.allRequests = [];
+        const emptyState = document.getElementById(SELECTORS.EMPTY.REQUESTS);
+        const container = document.getElementById(SELECTORS.LISTS.REQUESTS);
+        if (emptyState) emptyState.classList.remove('hidden');
+        if (container) container.style.display = 'none';
+        if (typeof updateRequestsCounter === 'function') {
+            updateRequestsCounter();
+        }
+        return;
+    }
+
+    const loweredMethod = method.toLowerCase();
+    const loweredUrl = url.toLowerCase();
+    const fromTime = from ? new Date(from).getTime() : null;
+    const toTime = to ? new Date(to).getTime() : null;
+    const hasFilters = Boolean(method || status || url || fromTime !== null || toTime !== null);
+
+    const filteredRequests = hasFilters
+        ? window.originalRequests.filter(request => {
+            if (!request) {
+                return false;
+            }
+
+            if (method) {
+                const reqMethod = (request.request?.method || '').toLowerCase();
+                if (!reqMethod.includes(loweredMethod)) {
+                    return false;
+                }
+            }
+
+            if (status) {
+                if (status === 'matched' && request.wasMatched === false) {
+                    return false;
+                }
+                if (status === 'unmatched' && request.wasMatched !== false) {
+                    return false;
+                }
+                if (status !== 'matched' && status !== 'unmatched') {
+                    const responseStatus = request.response?.status ?? request.responseDefinition?.status ?? '';
+                    if (!responseStatus.toString().includes(status)) {
+                        return false;
+                    }
+                }
+            }
+
+            if (url) {
+                const requestUrl = (request.request?.url || '').toLowerCase();
+                if (!requestUrl.includes(loweredUrl)) {
+                    return false;
+                }
+            }
+
+            if (fromTime) {
+                const requestTime = new Date(request.request?.loggedDate || request.loggedDate).getTime();
+                if (Number.isFinite(fromTime) && (!Number.isFinite(requestTime) || requestTime < fromTime)) {
+                    return false;
+                }
+            }
+
+            if (toTime) {
+                const requestTime = new Date(request.request?.loggedDate || request.loggedDate).getTime();
+                if (Number.isFinite(toTime) && (!Number.isFinite(requestTime) || requestTime > toTime)) {
+                    return false;
+                }
+            }
+
+            return true;
+        })
+        : window.originalRequests;
+
+    window.allRequests = hasFilters ? filteredRequests : window.originalRequests;
+
+    const container = document.getElementById(SELECTORS.LISTS.REQUESTS);
+    const emptyState = document.getElementById(SELECTORS.EMPTY.REQUESTS);
+    const loadingState = document.getElementById(SELECTORS.LOADING.REQUESTS);
+
+    if (!container) {
+        return;
+    }
+
+    renderList(container, window.allRequests, {
+        renderItem: renderRequestMarkup,
+        getKey: getRequestRenderKey,
+        getSignature: getRequestRenderSignature
+    });
+
+    if (loadingState) {
+        loadingState.classList.add('hidden');
+    }
+
+    if (window.allRequests.length === 0) {
+        if (emptyState) emptyState.classList.remove('hidden');
+        container.style.display = 'none';
+    } else {
+        if (emptyState) emptyState.classList.add('hidden');
+        container.style.display = 'block';
+    }
+
+    if (typeof updateRequestsCounter === 'function') {
+        updateRequestsCounter();
+    }
+
+    console.log(`🔍 Filtered requests: ${window.allRequests.length} items`);
+}
+
 // --- FILTER MANAGER ---
 // Centralized filter management
+function getMappingRenderKey(mapping) {
+    if (!mapping || typeof mapping !== 'object') {
+        return '';
+    }
+    return String(mapping.id || mapping.uuid || mapping.stubId || '');
+}
+
+function getMappingRenderSignature(mapping) {
+    if (!mapping || typeof mapping !== 'object') {
+        return '';
+    }
+    const request = mapping.request || {};
+    const response = mapping.response || {};
+    const metadata = mapping.metadata || {};
+    return [
+        request.method || '',
+        request.url || request.urlPattern || request.urlPath || request.urlPathPattern || '',
+        response.status || '',
+        response.fixedDelayMilliseconds || '',
+        mapping.name || metadata.name || '',
+        mapping.priority ?? '',
+        mapping.scenarioName || '',
+        metadata.edited || metadata.created || '',
+        metadata.source || ''
+    ].join('|');
+}
+
+function renderMappingMarkup(mapping) {
+    return typeof window.renderMappingCard === 'function' ? window.renderMappingCard(mapping) : '';
+}
+
+function getRequestRenderKey(request) {
+    if (!request || typeof request !== 'object') {
+        return '';
+    }
+    return String(request.id || request.requestId || request.mappingUuid || request.request?.id || request.request?.loggedDate || request.loggedDate || '');
+}
+
+function getRequestRenderSignature(request) {
+    if (!request || typeof request !== 'object') {
+        return '';
+    }
+    const req = request.request || {};
+    const res = request.responseDefinition || {};
+    return [
+        req.method || '',
+        req.url || req.urlPath || '',
+        req.loggedDate || request.loggedDate || '',
+        request.wasMatched === false ? 'unmatched' : 'matched',
+        res.status ?? '',
+        (res.body || res.jsonBody || '').length,
+        (req.body || '').length
+    ].join('|');
+}
+
+function renderRequestMarkup(request) {
+    return typeof window.renderRequestCard === 'function' ? window.renderRequestCard(request) : '';
+}
+
 window.FilterManager = {
     // Save filter state to localStorage
     saveFilterState(tabName, filters) {
@@ -508,172 +787,29 @@ window.FilterManager = {
     
     // Apply mapping filters
     applyMappingFilters() {
-        const method = document.getElementById('filter-method')?.value || '';
-        const url = document.getElementById('filter-url')?.value || '';
-        const status = document.getElementById('filter-status')?.value || '';
+        if (typeof this._applyMappingFilters !== 'function') {
+            return;
+        }
+        this._applyMappingFilters();
+    },
 
-        const filters = { method, url, status };
-        this.saveFilterState('mappings', filters);
-
-        // Apply filters to mappings
-        if (window.originalMappings && window.originalMappings.length > 0) {
-            let filtered = [...window.originalMappings];
-
-            if (method) {
-                filtered = filtered.filter(mapping =>
-                    (mapping.request?.method || '').toLowerCase().includes(method.toLowerCase())
-                );
-            }
-
-            if (url) {
-                filtered = filtered.filter(mapping => {
-                    // Search in URL fields
-                    const mappingUrl = mapping.request?.url || mapping.request?.urlPattern || mapping.request?.urlPath || '';
-                    const urlMatch = mappingUrl.toLowerCase().includes(url.toLowerCase());
-
-                    // Search in mapping name
-                    const mappingName = mapping.name || '';
-                    const nameMatch = mappingName.toLowerCase().includes(url.toLowerCase());
-
-                    // Return true if either URL or Name matches
-                    return urlMatch || nameMatch;
-                });
-            }
-
-            if (status) {
-                filtered = filtered.filter(mapping =>
-                    (mapping.response?.status || '').toString().includes(status)
-                );
-            }
-
-            window.allMappings = filtered;
-
-            // Re-render mappings
-            const container = document.getElementById(SELECTORS.LISTS.MAPPINGS);
-            if (container) {
-                const sortedMappings = [...window.allMappings].sort((a, b) => {
-                    const priorityA = a.priority || 1;
-                    const priorityB = b.priority || 1;
-                    if (priorityA !== priorityB) return priorityA - priorityB;
-
-                    const methodOrder = { 'GET': 1, 'POST': 2, 'PUT': 3, 'PATCH': 4, 'DELETE': 5 };
-                    const methodA = methodOrder[a.request?.method] || 999;
-                    const methodB = methodOrder[b.request?.method] || 999;
-                    if (methodA !== methodB) return methodA - methodB;
-
-                    const urlA = a.request?.url || a.request?.urlPattern || a.request?.urlPath || '';
-                    const urlB = b.request?.url || b.request?.urlPattern || b.request?.urlPath || '';
-                    return urlA.localeCompare(urlB);
-                });
-
-                // Add a safety check before using renderMappingCard:
-                if (typeof window.renderMappingCard === 'function') {
-                    container.innerHTML = sortedMappings.map(mapping => window.renderMappingCard(mapping)).join('');
-                }
-
-                // Update UI elements
-                const emptyState = document.getElementById('mappings-empty');
-                const loadingState = document.getElementById('mappings-loading');
-
-                if (window.allMappings.length === 0) {
-                    if (emptyState) emptyState.classList.remove('hidden');
-                    if (container) container.style.display = 'none';
-                } else {
-                    if (emptyState) emptyState.classList.add('hidden');
-                    if (container) container.style.display = 'block';
-                }
-
-                if (typeof updateMappingsCounter === 'function') {
-                    updateMappingsCounter();
-                }
-            }
+    flushMappingFilters() {
+        if (this._applyMappingFilters && typeof this._applyMappingFilters.flush === 'function') {
+            this._applyMappingFilters.flush();
         }
     },
     
     // Apply request filters
     applyRequestFilters() {
-        const method = document.getElementById('req-filter-method')?.value || '';
-        const status = document.getElementById('req-filter-status')?.value || '';
-        const url = document.getElementById('req-filter-url')?.value || '';
-        const from = document.getElementById('req-filter-from')?.value || '';
-        const to = document.getElementById('req-filter-to')?.value || '';
+        if (typeof this._applyRequestFilters !== 'function') {
+            return;
+        }
+        this._applyRequestFilters();
+    },
 
-        const filters = { method, status, url, from, to };
-        this.saveFilterState('requests', filters);
-
-        // Apply filters to requests
-        if (window.originalRequests && window.originalRequests.length > 0) {
-            let filtered = [...window.originalRequests];
-
-            if (method) {
-                filtered = filtered.filter(request =>
-                    (request.request?.method || '').toLowerCase().includes(method.toLowerCase())
-                );
-            }
-
-            if (status) {
-                if (status === 'matched') {
-                    filtered = filtered.filter(request => request.wasMatched !== false);
-                } else if (status === 'unmatched') {
-                    filtered = filtered.filter(request => request.wasMatched === false);
-                } else {
-                    filtered = filtered.filter(request => {
-                        const responseStatus = request.response?.status ?? request.responseDefinition?.status ?? '';
-                        return responseStatus.toString().includes(status);
-                    });
-                }
-            }
-
-            if (url) {
-                filtered = filtered.filter(request =>
-                    (request.request?.url || '').toLowerCase().includes(url.toLowerCase())
-                );
-            }
-
-            if (from) {
-                const fromTime = new Date(from).getTime();
-                filtered = filtered.filter(request => {
-                    const requestTime = new Date(request.request?.loggedDate || request.loggedDate).getTime();
-                    return requestTime >= fromTime;
-                });
-            }
-
-            if (to) {
-                const toTime = new Date(to).getTime();
-                filtered = filtered.filter(request => {
-                    const requestTime = new Date(request.request?.loggedDate || request.loggedDate).getTime();
-                    return requestTime <= toTime;
-                });
-            }
-
-            window.allRequests = filtered;
-
-            // Re-render requests
-            const container = document.getElementById(SELECTORS.LISTS.REQUESTS);
-            if (container) {
-                // Add a safety check before using renderRequestCard:
-                if (typeof window.renderRequestCard === 'function') {
-                    container.innerHTML = window.allRequests.map(request => window.renderRequestCard(request)).join('');
-                }
-
-                // Update UI elements
-                const emptyState = document.getElementById('requests-empty');
-                const loadingState = document.getElementById('requests-loading');
-
-                if (window.allRequests.length === 0) {
-                    if (emptyState) emptyState.classList.remove('hidden');
-                    if (container) container.style.display = 'none';
-                } else {
-                    if (emptyState) emptyState.classList.add('hidden');
-                    if (container) container.style.display = 'block';
-                }
-
-                if (typeof updateRequestsCounter === 'function') {
-                    updateRequestsCounter();
-                }
-
-                console.log(`🔍 Filtered requests: ${window.allRequests.length} items`);
-            }
+    flushRequestFilters() {
+        if (this._applyRequestFilters && typeof this._applyRequestFilters.flush === 'function') {
+            this._applyRequestFilters.flush();
         }
     },
     
@@ -718,5 +854,8 @@ window.FilterManager = {
         }
     }
 };
+
+window.FilterManager._applyMappingFilters = window.debounce(executeMappingFilters, 180);
+window.FilterManager._applyRequestFilters = window.debounce(executeRequestFilters, 180);
 
 console.log('✅ Managers.js loaded - NotificationManager, TabManager, FilterManager');

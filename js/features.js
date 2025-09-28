@@ -12,6 +12,9 @@ window.originalMappings = []; // Complete mapping list from the server
 window.allMappings = []; // Currently displayed mappings (may be filtered)
 window.originalRequests = []; // Complete request list from the server
 window.allRequests = []; // Currently displayed request list (may be filtered)
+window.mappingIndex = new Map();
+window.mappingTabTotals = { all: 0, get: 0, post: 0, put: 0, patch: 0, delete: 0 };
+window.requestTabTotals = { all: 0, matched: 0, unmatched: 0 };
 
 // Reliable deletion tracking system
 window.pendingDeletedIds = new Set(); // Track items pending deletion to prevent cache flicker
@@ -19,6 +22,129 @@ window.deletionTimeouts = new Map(); // Track cleanup timeouts for safety
 
 // Ensure only one heavy /mappings request is in-flight at a time
 let mappingsFetchPromise = null;
+
+if (typeof window.isDemoMode === 'undefined') {
+    window.isDemoMode = false;
+}
+
+if (typeof window.demoModeAnnounced === 'undefined') {
+    window.demoModeAnnounced = false;
+}
+
+if (typeof window.demoModeLastError === 'undefined') {
+    window.demoModeLastError = null;
+}
+
+function markDemoModeActive(reason = 'automatic') {
+    window.isDemoMode = true;
+    window.demoModeReason = reason;
+    if (!window.demoModeAnnounced && typeof NotificationManager !== 'undefined' && NotificationManager?.info) {
+        NotificationManager.info('WireMock API unreachable. Showing demo data so the interface stays interactive.');
+        window.demoModeAnnounced = true;
+    }
+}
+
+function addMappingToIndex(mapping) {
+    if (!mapping || typeof mapping !== 'object') {
+        return;
+    }
+    if (!(window.mappingIndex instanceof Map)) {
+        window.mappingIndex = new Map();
+    }
+
+    const identifiers = new Set();
+    const fields = ['id', 'uuid', 'stubMappingId', 'stubId', 'mappingId'];
+    fields.forEach(field => {
+        const value = mapping[field];
+        if (value) {
+            identifiers.add(String(value).trim());
+        }
+    });
+    if (mapping.metadata?.id) {
+        identifiers.add(String(mapping.metadata.id).trim());
+    }
+
+    identifiers.forEach(id => {
+        if (id) {
+            window.mappingIndex.set(id, mapping);
+        }
+    });
+}
+
+function rebuildMappingIndex(mappings) {
+    if (!(window.mappingIndex instanceof Map)) {
+        window.mappingIndex = new Map();
+    } else {
+        window.mappingIndex.clear();
+    }
+    if (!Array.isArray(mappings)) {
+        return;
+    }
+    mappings.forEach(addMappingToIndex);
+}
+
+function computeMappingTabTotals(source = []) {
+    const totals = { all: 0, get: 0, post: 0, put: 0, patch: 0, delete: 0 };
+    if (!Array.isArray(source) || source.length === 0) {
+        return totals;
+    }
+
+    totals.all = source.length;
+    source.forEach(mapping => {
+        const method = (mapping?.request?.method || '').toLowerCase();
+        if (Object.prototype.hasOwnProperty.call(totals, method)) {
+            totals[method] += 1;
+        }
+    });
+    return totals;
+}
+
+function refreshMappingTabSnapshot() {
+    window.mappingTabTotals = computeMappingTabTotals(window.originalMappings);
+    if (typeof updateMappingTabCounts === 'function') {
+        updateMappingTabCounts();
+    }
+}
+
+function computeRequestTabTotals(source = []) {
+    const totals = { all: 0, matched: 0, unmatched: 0 };
+    if (!Array.isArray(source) || source.length === 0) {
+        return totals;
+    }
+
+    totals.all = source.length;
+    source.forEach(request => {
+        const matched = request?.wasMatched !== false;
+        if (matched) {
+            totals.matched += 1;
+        } else {
+            totals.unmatched += 1;
+        }
+    });
+    return totals;
+}
+
+function refreshRequestTabSnapshot() {
+    window.requestTabTotals = computeRequestTabTotals(window.originalRequests);
+    if (typeof updateRequestTabCounts === 'function') {
+        updateRequestTabCounts();
+    }
+}
+
+function removeMappingFromIndex(identifier) {
+    if (!(window.mappingIndex instanceof Map)) {
+        return;
+    }
+    const mapping = typeof identifier === 'object' ? identifier : window.mappingIndex.get(identifier);
+    if (!mapping) {
+        return;
+    }
+    for (const [key, value] of window.mappingIndex.entries()) {
+        if (value === mapping || key === identifier) {
+            window.mappingIndex.delete(key);
+        }
+    }
+}
 
 async function fetchMappingsFromServer({ force = false } = {}) {
     if (!force && mappingsFetchPromise) {
@@ -36,6 +162,14 @@ async function fetchMappingsFromServer({ force = false } = {}) {
     const requestPromise = (async () => {
         try {
             return await apiFetch(ENDPOINTS.MAPPINGS);
+        } catch (error) {
+            if (window.DemoData?.isAvailable?.() && window.DemoData?.getMappingsPayload) {
+                console.warn('⚠️ Falling back to demo mappings because the WireMock API request failed.', error);
+                window.demoModeLastError = error;
+                markDemoModeActive('mappings-fallback');
+                return window.DemoData.getMappingsPayload();
+            }
+            throw error;
         } finally {
             if (mappingsFetchPromise === requestPromise) {
                 mappingsFetchPromise = null;
@@ -60,6 +194,10 @@ window.cacheManager = {
     // TTL configuration for optimistic updates (30 seconds by default)
     optimisticTTL: 30000,
 
+    // Interval handles for lifecycle management
+    cleanupInterval: null,
+    syncInterval: null,
+
     // Version counter for change tracking
     version: 0,
 
@@ -68,11 +206,18 @@ window.cacheManager = {
 
     // Initialization
     init() {
+        if (this.cleanupInterval) {
+            window.LifecycleManager.clearInterval(this.cleanupInterval);
+        }
+        if (this.syncInterval) {
+            window.LifecycleManager.clearInterval(this.syncInterval);
+        }
+
         // Periodically remove stale optimistic updates
-        setInterval(() => this.cleanupStaleOptimisticUpdates(), 5000);
+        this.cleanupInterval = window.LifecycleManager.setInterval(() => this.cleanupStaleOptimisticUpdates(), 5000);
 
         // Periodically synchronize with the server
-        setInterval(() => this.syncWithServer(), 60000);
+        this.syncInterval = window.LifecycleManager.setInterval(() => this.syncWithServer(), 60000);
     },
 
     // Add an optimistic update (simplified flow)
@@ -160,7 +305,9 @@ window.cacheManager = {
 
             // Update the global arrays
             window.originalMappings = Array.from(this.cache.values());
-            window.allMappings = [...window.originalMappings];
+            refreshMappingTabSnapshot();
+            window.allMappings = window.originalMappings;
+            rebuildMappingIndex(window.originalMappings);
 
             console.log(`✅ [CACHE] Rebuild complete: ${this.cache.size} mappings`);
 
@@ -345,8 +492,8 @@ window.checkHealthAndStartUptime = async () => {
         if (isHealthy) {
             // Start uptime only after a successful health check
             window.startTime = Date.now();
-            if (window.uptimeInterval) clearInterval(window.uptimeInterval);
-            window.uptimeInterval = setInterval(updateUptime, 1000);
+            if (window.uptimeInterval) window.LifecycleManager.clearInterval(window.uptimeInterval);
+            window.uptimeInterval = window.LifecycleManager.setInterval(updateUptime, 1000);
             // Unified health UI update (fallback below keeps old DOM path)
             if (typeof window.applyHealthUI === 'function') {
                 try { window.applyHealthUI(true, responseTime); } catch (e) { console.warn('applyHealthUI failed:', e); }
@@ -377,11 +524,11 @@ window.checkHealthAndStartUptime = async () => {
 window.startHealthMonitoring = () => {
     // Clear any previous interval
     if (healthCheckInterval) {
-        clearInterval(healthCheckInterval);
+        window.LifecycleManager.clearInterval(healthCheckInterval);
     }
 
     // Check health every 30 seconds
-    healthCheckInterval = setInterval(async () => {
+    healthCheckInterval = window.LifecycleManager.setInterval(async () => {
         try {
             const startTime = performance.now();
             let responseTime = 0;
@@ -410,7 +557,7 @@ window.startHealthMonitoring = () => {
                     healthIndicator.innerHTML = `<span>Response Time: </span><span class="unhealthy">Unhealthy</span>`;
                     // Stop uptime on the first failed health check
                     stopUptime();
-                    clearInterval(healthCheckInterval);
+                    window.LifecycleManager.clearInterval(healthCheckInterval);
                     NotificationManager.warning('WireMock health check failed, uptime stopped');
                 }
             }
@@ -424,7 +571,7 @@ window.startHealthMonitoring = () => {
                 healthIndicator.innerHTML = `<span>Response Time: </span><span class="error">Error</span>`;
             }
             stopUptime();
-            clearInterval(healthCheckInterval);
+            window.LifecycleManager.clearInterval(healthCheckInterval);
             NotificationManager.error('Health monitoring failed, uptime stopped');
         }
     }, 30000); // 30 seconds
@@ -453,7 +600,7 @@ window.updateUptime = function() {
 
 window.stopUptime = function() {
     if (window.uptimeInterval) {
-        clearInterval(window.uptimeInterval);
+        window.LifecycleManager.clearInterval(window.uptimeInterval);
         window.uptimeInterval = null;
     }
     window.startTime = null;
@@ -532,7 +679,10 @@ const UIComponents = {
                         ${actions.map(action => `
                             <button class="btn btn-sm btn-${action.class}"
                                     onclick="${action.handler}('${Utils.escapeHtml(id)}')"
-                                    title="${Utils.escapeHtml(action.title)}">${action.icon}</button>
+                                    title="${Utils.escapeHtml(action.title)}">
+                                ${action.icon ? Icons.render(action.icon, { className: 'action-icon' }) : ''}
+                                <span class="sr-only">${Utils.escapeHtml(action.title)}</span>
+                            </button>
                         `).join('')}
                     </div>
                 </div>
@@ -541,7 +691,31 @@ const UIComponents = {
                 </div>
             </div>`;
     },
-    
+
+    getCardElement(type, id) {
+        const cards = document.querySelectorAll(`.${type}-card`);
+        const targetId = String(id ?? '');
+        for (const card of cards) {
+            if ((card.dataset?.id || '') === targetId) {
+                return card;
+            }
+        }
+        return null;
+    },
+
+    setCardState(type, id, className, isActive = true) {
+        const card = this.getCardElement(type, id);
+        if (card) {
+            card.classList.toggle(className, Boolean(isActive));
+        }
+    },
+
+    clearCardState(type, className) {
+        document.querySelectorAll(`.${type}-card.${className}`).forEach(card => {
+            card.classList.remove(className);
+        });
+    },
+
     createPreviewSection: (title, items) => `
         <div class="preview-section">
             <h4>${title}</h4>
@@ -602,11 +776,17 @@ const UIComponents = {
     toggleDetails: (id, type) => {
         const preview = document.getElementById(`preview-${id}`);
         const arrow = document.getElementById(`arrow-${id}`);
-        if (preview && arrow) {
-            const isHidden = preview.style.display === 'none';
-            preview.style.display = isHidden ? 'block' : 'none';
-            arrow.textContent = isHidden ? '▼' : '▶';
+        const willShow = preview ? preview.style.display === 'none' : false;
+
+        if (preview) {
+            preview.style.display = willShow ? 'block' : 'none';
         }
+
+        if (arrow) {
+            arrow.textContent = willShow ? '▼' : '▶';
+        }
+
+        UIComponents.setCardState(type, id, 'is-expanded', willShow);
     },
     
     toggleFullContent: (elementId) => {
@@ -716,8 +896,10 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
 
                                 // Update with merged data
                                 window.allMappings = mergedMappings;
-                                window.originalMappings = [...mergedMappings];
+                                window.originalMappings = mergedMappings;
+                                refreshMappingTabSnapshot();
                                 syncCacheWithMappings(window.originalMappings);
+                                rebuildMappingIndex(window.originalMappings);
 
                                 // Re-render UI with merged complete data
                                 fetchAndRenderMappings(window.allMappings);
@@ -739,6 +921,14 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                 data = await fetchMappingsFromServer({ force: true });
                 dataSource = 'direct';
             }
+            if (data && data.__source) {
+                dataSource = data.__source;
+                if (dataSource === 'demo') {
+                    markDemoModeActive('mappings-fallback');
+                }
+                try { delete data.__source; } catch (_) {}
+            }
+
             // If we fetched a full admin list, strip service cache mapping from UI
             let incoming = data.mappings || [];
 
@@ -778,16 +968,24 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                 }
             } catch {}
             window.originalMappings = Array.isArray(incoming) ? incoming.filter(m => !isImockCacheMapping(m)) : [];
+            refreshMappingTabSnapshot();
             syncCacheWithMappings(window.originalMappings);
-            window.allMappings = [...window.originalMappings];
+            window.allMappings = window.originalMappings;
+            rebuildMappingIndex(window.originalMappings);
             // Update data source indicator in UI
-            updateDataSourceIndicator(dataSource);
             renderSource = dataSource;
         } else {
-            window.allMappings = mappingsToRender;
-            renderSource = 'custom';
+            const sourceOverride = options?.source;
+            window.allMappings = Array.isArray(mappingsToRender) ? [...mappingsToRender] : [];
+            window.originalMappings = [...window.allMappings];
+            refreshMappingTabSnapshot();
+            rebuildMappingIndex(window.originalMappings);
+            renderSource = sourceOverride || 'custom';
+            if (renderSource === 'demo') {
+                markDemoModeActive('manual-mappings');
+            }
         }
-        
+
         loadingState.classList.add('hidden');
         
         if (window.allMappings.length === 0) {
@@ -819,8 +1017,13 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
             return urlA.localeCompare(urlB);
         });
         console.log(`📦 Mappings render from: ${renderSource} — ${sortedMappings.length} items`);
-        container.innerHTML = sortedMappings.map(mapping => renderMappingCard(mapping)).join('');
+        renderList(container, sortedMappings, {
+            renderItem: renderMappingMarkup,
+            getKey: getMappingRenderKey,
+            getSignature: getMappingRenderSignature
+        });
         updateMappingsCounter();
+        updateDataSourceIndicator(renderSource);
         // Reapply mapping filters if any are active, preserving user's view
         try {
             const hasFilters = (document.getElementById(SELECTORS.MAPPING_FILTERS.METHOD)?.value || '')
@@ -828,6 +1031,9 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                 || (document.getElementById(SELECTORS.MAPPING_FILTERS.STATUS)?.value || '');
             if (hasFilters && typeof FilterManager !== 'undefined' && FilterManager.applyMappingFilters) {
                 FilterManager.applyMappingFilters();
+                if (typeof FilterManager.flushMappingFilters === 'function') {
+                    FilterManager.flushMappingFilters();
+                }
                 console.log('[FILTERS] Mapping filters re-applied after refresh');
             }
         } catch {}
@@ -856,7 +1062,13 @@ window.getMappingById = async (mappingId) => {
         console.log(`📥 [getMappingById] Cache size:`, window.allMappings?.length || 0);
 
         // Try to get from cache first
-        const cachedMapping = window.allMappings?.find(m => m.id === mappingId);
+        let cachedMapping = null;
+        if (window.mappingIndex instanceof Map) {
+            cachedMapping = window.mappingIndex.get(mappingId) || null;
+        }
+        if (!cachedMapping) {
+            cachedMapping = window.allMappings?.find(m => m.id === mappingId) || null;
+        }
         if (cachedMapping) {
             console.log(`📦 [getMappingById] Found mapping in cache: ${mappingId}`, cachedMapping);
             return cachedMapping;
@@ -882,6 +1094,7 @@ window.getMappingById = async (mappingId) => {
         }
 
         console.log(`✅ [getMappingById] Successfully fetched mapping: ${mappingId}`, mapping);
+        addMappingToIndex(mapping);
         return mapping;
 
     } catch (error) {
@@ -986,8 +1199,10 @@ window.backgroundRefreshMappings = async (useCache = false) => {
         }
         const incoming = data.mappings || [];
         window.originalMappings = Array.isArray(incoming) ? incoming.filter(m => !isImockCacheMapping(m)) : [];
+        refreshMappingTabSnapshot();
         syncCacheWithMappings(window.originalMappings);
-        window.allMappings = [...window.originalMappings];
+        window.allMappings = window.originalMappings;
+        rebuildMappingIndex(window.originalMappings);
         updateDataSourceIndicator(source);
         // re-render without loading state
         fetchAndRenderMappings(window.allMappings);
@@ -1004,9 +1219,9 @@ window.renderMappingCard = function(mapping) {
     }
     
     const actions = [
-        { class: 'secondary', handler: 'editMapping', title: 'Edit in Editor', icon: '📝' },
-        { class: 'primary', handler: 'openEditModal', title: 'Edit', icon: '✏️' },
-        { class: 'danger', handler: 'deleteMapping', title: 'Delete', icon: '🗑️' }
+        { class: 'secondary', handler: 'editMapping', title: 'Edit in Editor', icon: 'open-external' },
+        { class: 'primary', handler: 'openEditModal', title: 'Edit', icon: 'pencil' },
+        { class: 'danger', handler: 'deleteMapping', title: 'Delete', icon: 'trash' }
     ];
     
     const data = {
@@ -1016,18 +1231,18 @@ window.renderMappingCard = function(mapping) {
         status: mapping.response?.status || 200,
         name: mapping.name || mapping.metadata?.name || `Mapping ${mapping.id.substring(0, 8)}`,
         extras: {
-            preview: UIComponents.createPreviewSection('📥 Request', {
+            preview: UIComponents.createPreviewSection(`${Icons.render('request-in', { className: 'icon-inline' })} Request`, {
                 'Method': mapping.request?.method || 'GET',
                 'URL': mapping.request?.url || mapping.request?.urlPattern || mapping.request?.urlPath || mapping.request?.urlPathPattern,
                 'Headers': mapping.request?.headers,
                 'Body': mapping.request?.bodyPatterns || mapping.request?.body,
                 'Query Parameters': mapping.request?.queryParameters
-            }) + UIComponents.createPreviewSection('📤 Response', {
+            }) + UIComponents.createPreviewSection(`${Icons.render('response-out', { className: 'icon-inline' })} Response`, {
                 'Status': mapping.response?.status,
                 'Headers': mapping.response?.headers,
                 'Body': mapping.response?.jsonBody || mapping.response?.body,
                 'Delay': mapping.response?.fixedDelayMilliseconds ? `${mapping.response.fixedDelayMilliseconds}ms` : null
-            }) + UIComponents.createPreviewSection('Overview', {
+            }) + UIComponents.createPreviewSection(`${Icons.render('info', { className: 'icon-inline' })} Overview`, {
                 'ID': mapping.id || mapping.uuid,
                 'Name': mapping.name || mapping.metadata?.name,
                 'Priority': mapping.priority,
@@ -1058,8 +1273,28 @@ window.renderMappingCard = function(mapping) {
 window.updateMappingsCounter = function() {
     const counter = document.getElementById(SELECTORS.COUNTERS.MAPPINGS);
     if (counter) {
-        counter.textContent = window.allMappings.length;
+        counter.textContent = Array.isArray(window.allMappings) ? window.allMappings.length : 0;
     }
+    updateMappingTabCounts();
+};
+
+function updateMappingTabCounts() {
+    const counts = window.mappingTabTotals || computeMappingTabTotals(window.originalMappings);
+
+    const mappingCountTargets = {
+        all: document.getElementById('mapping-tab-all'),
+        get: document.getElementById('mapping-tab-get'),
+        post: document.getElementById('mapping-tab-post'),
+        put: document.getElementById('mapping-tab-put'),
+        patch: document.getElementById('mapping-tab-patch'),
+        delete: document.getElementById('mapping-tab-delete')
+    };
+
+    Object.entries(mappingCountTargets).forEach(([key, element]) => {
+        if (element) {
+            element.textContent = counts?.[key] ?? 0;
+        }
+    });
 }
 
 // Update the data-source indicator (cache/remote/direct)
@@ -1076,6 +1311,14 @@ function updateDataSourceIndicator(source) {
         case 'cache_rebuilding':
             text = 'Source: cache (rebuilding…)';
             cls = 'badge badge-success';
+            break;
+        case 'demo':
+            text = 'Source: demo data';
+            cls = 'badge badge-info';
+            break;
+        case 'custom':
+            text = 'Source: custom';
+            cls = 'badge badge-secondary';
             break;
         case 'remote':
             text = 'Source: remote';
@@ -1104,6 +1347,10 @@ function updateRequestsSourceIndicator(source) {
             text = 'Requests: custom';
             cls = 'badge badge-secondary';
             break;
+        case 'demo':
+            text = 'Requests: demo data';
+            cls = 'badge badge-info';
+            break;
         case 'remote':
             text = 'Requests: remote';
             cls = 'badge badge-warning';
@@ -1125,11 +1372,11 @@ window.toggleMappingDetails = (mappingId) => UIComponents.toggleDetails(mappingI
 window.toggleRequestDetails = (requestId) => UIComponents.toggleDetails(requestId, 'request');
 
 // Compact request loader (temporary reuse until DataManager exists)
-window.fetchAndRenderRequests = async (requestsToRender = null) => {
+window.fetchAndRenderRequests = async (requestsToRender = null, options = {}) => {
     const container = document.getElementById(SELECTORS.LISTS.REQUESTS);
     const emptyState = document.getElementById(SELECTORS.EMPTY.REQUESTS);
     const loadingState = document.getElementById(SELECTORS.LOADING.REQUESTS);
-    
+
     if (!container || !emptyState || !loadingState) {
         console.error('Required DOM elements not found for requests rendering');
         return false;
@@ -1141,17 +1388,45 @@ window.fetchAndRenderRequests = async (requestsToRender = null) => {
             loadingState.classList.remove('hidden');
             container.style.display = 'none';
             emptyState.classList.add('hidden');
-            
-            const data = await apiFetch(ENDPOINTS.REQUESTS);
+
+            let data;
+            try {
+                data = await apiFetch(ENDPOINTS.REQUESTS);
+            } catch (error) {
+                if (window.DemoData?.isAvailable?.() && window.DemoData?.getRequestsPayload) {
+                    console.warn('⚠️ Falling back to demo requests because the WireMock API request failed.', error);
+                    window.demoModeLastError = error;
+                    markDemoModeActive('requests-fallback');
+                    data = window.DemoData.getRequestsPayload();
+                } else {
+                    throw error;
+                }
+            }
+
+            if (data && data.__source) {
+                reqSource = data.__source;
+                if (reqSource === 'demo') {
+                    markDemoModeActive('requests-fallback');
+                }
+                try { delete data.__source; } catch (_) {}
+            }
+
             window.originalRequests = data.requests || [];
+            refreshRequestTabSnapshot();
             window.allRequests = [...window.originalRequests];
         } else {
-            window.allRequests = requestsToRender;
-            reqSource = 'custom';
+            const sourceOverride = options?.source;
+            window.allRequests = Array.isArray(requestsToRender) ? [...requestsToRender] : [];
+            window.originalRequests = [...window.allRequests];
+            refreshRequestTabSnapshot();
+            reqSource = sourceOverride || 'custom';
+            if (reqSource === 'demo') {
+                markDemoModeActive('manual-requests');
+            }
         }
-        
+
         loadingState.classList.add('hidden');
-        
+
         if (window.allRequests.length === 0) {
             emptyState.classList.remove('hidden');
             container.style.display = 'none';
@@ -1165,7 +1440,11 @@ window.fetchAndRenderRequests = async (requestsToRender = null) => {
         // Invalidate cache before re-rendering to ensure fresh DOM references
         window.invalidateElementCache(SELECTORS.LISTS.REQUESTS);
 
-        container.innerHTML = window.allRequests.map(request => renderRequestCard(request)).join('');
+        renderList(container, window.allRequests, {
+            renderItem: renderRequestMarkup,
+            getKey: getRequestRenderKey,
+            getSignature: getRequestRenderSignature
+        });
         updateRequestsCounter();
         // Source indicator + log, mirroring mappings
         if (typeof updateRequestsSourceIndicator === 'function') updateRequestsSourceIndicator(reqSource);
@@ -1200,16 +1479,17 @@ window.renderRequestCard = function(request) {
         time: `${Utils.parseRequestTime(request.request.loggedDate)} <span class="request-ip">IP: ${Utils.escapeHtml(clientIp)}</span>`,
         extras: {
             badges: `
-                ${matched ? '<span class="badge badge-success">✓ Matched</span>' : 
-                          '<span class="badge badge-danger">❌ Unmatched</span>'}
+                ${matched
+                    ? `<span class="badge badge-success">${Icons.render('check-circle', { className: 'badge-icon' })}<span>Matched</span></span>`
+                    : `<span class="badge badge-danger">${Icons.render('x-circle', { className: 'badge-icon' })}<span>Unmatched</span></span>`}
             `,
-            preview: UIComponents.createPreviewSection('📥 Request', {
+            preview: UIComponents.createPreviewSection(`${Icons.render('request-in', { className: 'icon-inline' })} Request`, {
                 'Method': request.request?.method,
                 'URL': request.request?.url || request.request?.urlPath,
                 'Client IP': clientIp,
                 'Headers': request.request?.headers,
                 'Body': request.request?.body
-            }) + UIComponents.createPreviewSection('📤 Response', {
+            }) + UIComponents.createPreviewSection(`${Icons.render('response-out', { className: 'icon-inline' })} Response`, {
                 'Status': request.responseDefinition?.status,
                 'Matched': matched ? 'Yes' : 'No',
                 'Headers': request.responseDefinition?.headers,
@@ -1225,9 +1505,107 @@ window.renderRequestCard = function(request) {
 function updateRequestsCounter() {
     const counter = document.getElementById(SELECTORS.COUNTERS.REQUESTS);
     if (counter) {
-        counter.textContent = window.allRequests.length;
+        counter.textContent = Array.isArray(window.allRequests) ? window.allRequests.length : 0;
+    }
+    updateRequestTabCounts();
+}
+
+window.updateRequestsCounter = updateRequestsCounter;
+
+function updateRequestTabCounts() {
+    const counts = window.requestTabTotals || computeRequestTabTotals(window.originalRequests);
+
+    const requestCountTargets = {
+        all: document.getElementById('requests-tab-all'),
+        matched: document.getElementById('requests-tab-matched'),
+        unmatched: document.getElementById('requests-tab-unmatched')
+    };
+
+    Object.entries(requestCountTargets).forEach(([key, element]) => {
+        if (element) {
+            element.textContent = counts?.[key] ?? 0;
+        }
+    });
+}
+
+function setActiveFilterTab(button) {
+    if (!button) {
+        return;
+    }
+
+    const group = button.dataset.filterGroup;
+    if (!group) {
+        return;
+    }
+
+    document.querySelectorAll(`.filter-tab[data-filter-group="${group}"]`).forEach(tab => {
+        tab.classList.toggle('active', tab === button);
+    });
+}
+
+function syncFilterTabsFromSelect(group, value) {
+    const normalizedValue = (value || '').toString().toLowerCase();
+    const tabs = document.querySelectorAll(`.filter-tab[data-filter-group="${group}"]`);
+    let activated = false;
+
+    tabs.forEach(tab => {
+        const tabValue = (tab.dataset.filterValue || '').toLowerCase();
+        const isMatch = tabValue === normalizedValue || (!tabValue && !normalizedValue);
+        if (isMatch) {
+            tab.classList.add('active');
+            activated = true;
+        } else {
+            tab.classList.remove('active');
+        }
+    });
+
+    if (!activated && tabs.length > 0) {
+        tabs[0].classList.add('active');
     }
 }
+
+window.handleMappingTabClick = (button, method) => {
+    setActiveFilterTab(button);
+    const select = document.getElementById('filter-method');
+    if (select) {
+        select.value = method || '';
+        if (typeof applyFilters === 'function') {
+            applyFilters();
+        }
+    }
+};
+
+window.handleRequestTabClick = (button, status) => {
+    setActiveFilterTab(button);
+    const select = document.getElementById('req-filter-status');
+    if (select) {
+        select.value = status || '';
+        if (typeof applyRequestFilters === 'function') {
+            applyRequestFilters();
+        }
+    }
+};
+
+window.initializeFilterTabs = () => {
+    const mappingSelect = document.getElementById('filter-method');
+    if (mappingSelect) {
+        mappingSelect.addEventListener('change', () => {
+            syncFilterTabsFromSelect('mapping', mappingSelect.value);
+        });
+        syncFilterTabsFromSelect('mapping', mappingSelect.value);
+    }
+
+    const requestStatusSelect = document.getElementById('req-filter-status');
+    if (requestStatusSelect) {
+        requestStatusSelect.addEventListener('change', () => {
+            syncFilterTabsFromSelect('requests', requestStatusSelect.value);
+        });
+        syncFilterTabsFromSelect('requests', requestStatusSelect.value);
+    }
+
+    updateMappingTabCounts();
+    updateRequestTabCounts();
+};
 
 // --- ACTION HANDLERS (deduplicated connectToWireMock) ---
 
@@ -1258,13 +1636,27 @@ window.openEditModal = async (identifier) => {
 
     const targetIdentifier = normalizeIdentifier(identifier);
 
-    let mapping = window.allMappings.find((candidate) => collectCandidateIdentifiers(candidate).includes(targetIdentifier));
+    let mapping = null;
+    if (window.mappingIndex instanceof Map && targetIdentifier) {
+        mapping = window.mappingIndex.get(targetIdentifier) || null;
+    }
+    if (!mapping) {
+        mapping = window.allMappings.find((candidate) => collectCandidateIdentifiers(candidate).includes(targetIdentifier));
+    }
     if (!mapping) {
         console.warn('🔍 [OPEN MODAL DEBUG] Mapping not found by identifier lookup. Identifier:', identifier);
         NotificationManager.show('Mapping not found', NotificationManager.TYPES.ERROR);
         return;
     }
-    
+
+    if (typeof UIComponents?.clearCardState === 'function') {
+        UIComponents.clearCardState('mapping', 'is-editing');
+    }
+    const highlightId = mapping?.id || targetIdentifier;
+    if (highlightId && typeof UIComponents?.setCardState === 'function') {
+        UIComponents.setCardState('mapping', highlightId, 'is-editing', true);
+    }
+
     // Show the modal first
     if (typeof window.showModal === 'function') {
         window.showModal('edit-mapping-modal');
@@ -1300,10 +1692,12 @@ window.openEditModal = async (identifier) => {
             const idx = window.allMappings.findIndex((candidate) => candidate === mapping);
             if (idx !== -1) {
                 window.allMappings[idx] = latestMapping;
+                addMappingToIndex(latestMapping);
             } else {
                 const fallbackIdx = window.allMappings.findIndex((candidate) => collectCandidateIdentifiers(candidate).includes(targetIdentifier));
                 if (fallbackIdx !== -1) {
                     window.allMappings[fallbackIdx] = latestMapping;
+                    addMappingToIndex(latestMapping);
                 }
             }
         } else {
@@ -1336,12 +1730,14 @@ window.deleteMapping = async (id) => {
         NotificationManager.success('Mapping deleted!');
 
         // Update cache and UI with server confirmation
+        removeMappingFromIndex(id);
         updateOptimisticCache({ id }, 'delete');
 
     } catch (e) {
         // Handle 404: mapping already deleted
         if (e.message.includes('404')) {
             console.log('🗑️ [DELETE] Mapping already deleted from server (404), updating cache locally');
+            removeMappingFromIndex(id);
             updateOptimisticCache({ id }, 'delete');
             NotificationManager.success('Mapping was already deleted');
         } else {
@@ -1374,6 +1770,9 @@ window.clearMappingFilters = () => {
     document.getElementById(SELECTORS.MAPPING_FILTERS.URL).value = '';
     document.getElementById(SELECTORS.MAPPING_FILTERS.STATUS).value = '';
     FilterManager.applyMappingFilters();
+    if (typeof FilterManager.flushMappingFilters === 'function') {
+        FilterManager.flushMappingFilters();
+    }
 };
 window.applyRequestFilters = () => FilterManager.applyRequestFilters();
 
@@ -1381,7 +1780,7 @@ window.applyRequestFilters = () => FilterManager.applyRequestFilters();
 window.applyQuickFilter = () => {
     const quickFilterEl = document.getElementById(SELECTORS.REQUEST_FILTERS.QUICK);
     if (!quickFilterEl) return;
-    
+
     const value = quickFilterEl.value;
     if (!value) {
         // Clear time range if no quick filter selected
@@ -1390,6 +1789,9 @@ window.applyQuickFilter = () => {
         if (dateFromEl) dateFromEl.value = '';
         if (dateToEl) dateToEl.value = '';
         FilterManager.applyRequestFilters();
+        if (typeof FilterManager.flushRequestFilters === 'function') {
+            FilterManager.flushRequestFilters();
+        }
         return;
     }
     
@@ -1434,9 +1836,12 @@ window.applyQuickFilter = () => {
     
     if (dateFromEl) dateFromEl.value = formatDateTime(fromTime);
     if (dateToEl) dateToEl.value = formatDateTime(now);
-    
+
     // Apply the filters
     FilterManager.applyRequestFilters();
+    if (typeof FilterManager.flushRequestFilters === 'function') {
+        FilterManager.flushRequestFilters();
+    }
 };
 
 // Clear quick filter selection (used when custom time range is set)
@@ -1459,8 +1864,11 @@ window.clearRequestFilters = () => {
     if (dateFromEl) dateFromEl.value = '';
     if (dateToEl) dateToEl.value = '';
     if (quickEl) quickEl.value = ''; // Reset quick filter selection
-    
+
     FilterManager.applyRequestFilters();
+    if (typeof FilterManager.flushRequestFilters === 'function') {
+        FilterManager.flushRequestFilters();
+    }
 };
 
 // --- ADDITIONAL MANAGEMENT HELPERS ---
@@ -1724,6 +2132,11 @@ window.setScenarioState = async (scenarioIdentifier, newState) => {
         return false;
     }
 
+    if (targetScenario && Array.isArray(targetScenario.possibleStates) && targetScenario.possibleStates.length === 0) {
+        NotificationManager.warning(`Scenario "${displayName}" does not expose any states to switch to.`);
+        return false;
+    }
+
     if (scenarioSelect) {
         const selectValue = typeof targetScenario?.id === 'string'
             ? targetScenario.id
@@ -1755,8 +2168,11 @@ window.setScenarioState = async (scenarioIdentifier, newState) => {
     } catch (error) {
         console.error('Change scenario state error:', error);
         const notFound = /HTTP\s+404/.test(error?.message || '');
+        const notSupported = /does not support state/i.test(error?.message || '');
         if (notFound && !scenarioExists) {
             NotificationManager.error(`Scenario "${displayName}" was not found on the server.`);
+        } else if (notSupported) {
+            NotificationManager.error(`Scenario "${displayName}" does not allow state changes.`);
         } else {
             NotificationManager.error(`Scenario state change failed: ${error.message}`);
         }
@@ -2120,15 +2536,38 @@ window.takeRecordingSnapshot = async (config = {}) => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(config)
         });
-        
+
         const count = response.mappings ? response.mappings.length : 0;
         NotificationManager.success(`Snapshot created! Captured ${count} mappings`);
-        
+
         return response.mappings || [];
     } catch (error) {
         console.error('Recording snapshot error:', error);
         NotificationManager.error(`Snapshot failed: ${error.message}`);
         return [];
+    }
+};
+
+window.clearRecordings = async () => {
+    if (!confirm('Clear all recorded requests?')) return;
+
+    try {
+        await apiFetch(ENDPOINTS.REQUESTS_RESET, { method: 'POST' });
+        window.recordedCount = 0;
+
+        const list = document.getElementById('recordings-list');
+        if (list) {
+            list.innerHTML = '';
+        }
+
+        if (typeof fetchAndRenderRequests === 'function') {
+            await fetchAndRenderRequests();
+        }
+
+        NotificationManager.success('Recording log cleared.');
+    } catch (error) {
+        console.error('Clear recordings error:', error);
+        NotificationManager.error(`Failed to clear recordings: ${error.message}`);
     }
 };
 
@@ -2812,8 +3251,10 @@ function refreshMappingsFromCache({ maintainFilters = true } = {}) {
         // Use full cache snapshot logic for consistency
         const sanitized = buildCacheSnapshot();
 
-        window.originalMappings = sanitized.slice();
-        window.allMappings = sanitized.slice();
+        window.originalMappings = sanitized;
+        refreshMappingTabSnapshot();
+        window.allMappings = sanitized;
+        rebuildMappingIndex(window.originalMappings);
 
         const methodFilter = document.getElementById(SELECTORS.MAPPING_FILTERS.METHOD)?.value || '';
         const urlFilter = document.getElementById(SELECTORS.MAPPING_FILTERS.URL)?.value || '';
@@ -2822,8 +3263,11 @@ function refreshMappingsFromCache({ maintainFilters = true } = {}) {
 
         if (hasFilters && typeof FilterManager !== 'undefined' && typeof FilterManager.applyMappingFilters === 'function') {
             FilterManager.applyMappingFilters();
+            if (typeof FilterManager.flushMappingFilters === 'function') {
+                FilterManager.flushMappingFilters();
+            }
         } else if (typeof fetchAndRenderMappings === 'function') {
-            fetchAndRenderMappings(window.allMappings.slice());
+            fetchAndRenderMappings(window.allMappings);
         }
 
         if (typeof updateDataSourceIndicator === 'function') {
@@ -2863,6 +3307,7 @@ function updateOptimisticCache(mapping, operation, options = {}) {
         }
 
         if (normalizedOperation === 'delete') {
+            removeMappingFromIndex(mappingId);
             cache.delete(mappingId);
             if (window.pendingDeletedIds instanceof Set) {
                 window.pendingDeletedIds.add(mappingId);
@@ -2901,6 +3346,8 @@ function updateOptimisticCache(mapping, operation, options = {}) {
             if (!incoming.uuid && (mapping.uuid || mappingId)) {
                 incoming.uuid = mapping.uuid || mappingId;
             }
+
+            addMappingToIndex(mapping);
 
             if (cache.has(mappingId)) {
                 const merged = mergeMappingData(cache.get(mappingId), incoming);
@@ -2959,7 +3406,7 @@ let optimisticInProgress = false;
 let optimisticDelayRetries = 0;
 
 // Cache validation timer (check every minute, validate every 5 minutes)
-setInterval(() => {
+window.cacheValidationInterval = window.LifecycleManager.setInterval(() => {
     const timeSinceLastUpdate = Date.now() - (window.cacheLastUpdate || 0);
     const optimisticOps = window.cacheOptimisticOperations || 0;
 
@@ -3169,8 +3616,31 @@ window.forceRefreshCache = async () => {
 };
 
 // Missing HTML onclick functions
-window.loadMockData = () => {
-    NotificationManager.info('Demo mode not implemented yet');
+window.loadMockData = async () => {
+    if (!window.DemoData?.isAvailable?.() || !window.DemoData?.getDataset) {
+        NotificationManager.error('Demo dataset is not available in this build.');
+        return;
+    }
+
+    const dataset = window.DemoData.getDataset();
+    if (!dataset) {
+        NotificationManager.error('Unable to load the demo dataset.');
+        return;
+    }
+
+    markDemoModeActive('manual-trigger');
+    window.demoModeLastError = null;
+
+    const [mappingsLoaded, requestsLoaded] = await Promise.all([
+        fetchAndRenderMappings(dataset.mappings || [], { source: 'demo' }),
+        fetchAndRenderRequests(dataset.requests || [], { source: 'demo' })
+    ]);
+
+    if (mappingsLoaded && requestsLoaded) {
+        NotificationManager.success('Demo data loaded locally. Explore the interface freely.');
+    } else {
+        NotificationManager.warning('Demo data only loaded partially. Check the console for details.');
+    }
 };
 
 window.updateScenarioState = async () => {
@@ -3368,12 +3838,31 @@ function normalizeImportPayload(rawData, importMode) {
         payload.mappings = clone;
     } else if (Array.isArray(clone.mappings)) {
         payload.mappings = clone.mappings;
+    } else if (clone.mappings && typeof clone.mappings === 'object') {
+        if (Array.isArray(clone.mappings.mappings)) {
+            payload.mappings = clone.mappings.mappings;
+        } else if (Array.isArray(clone.mappings.items)) {
+            payload.mappings = clone.mappings.items;
+        } else {
+            const objectValues = Object.values(clone.mappings).filter(Boolean);
+            const inferredMappings = objectValues.filter((entry) => typeof entry === 'object' && (entry.request || entry.response));
+            if (inferredMappings.length > 0) {
+                payload.mappings = inferredMappings;
+            }
+        }
+        if (!payload.mappings && (clone.mappings.request || clone.mappings.response)) {
+            payload.mappings = [clone.mappings];
+        }
     } else if (clone.mappings) {
         payload.mappings = [clone.mappings];
     } else if (Array.isArray(clone.mapping)) {
         payload.mappings = clone.mapping;
     } else if (clone.mapping) {
         payload.mappings = [clone.mapping];
+    } else if (Array.isArray(clone.stubs)) {
+        payload.mappings = clone.stubs;
+    } else if (clone.stubs && typeof clone.stubs === 'object') {
+        payload.mappings = Object.values(clone.stubs).filter(Boolean);
     } else if (clone.request || clone.response) {
         payload.mappings = [clone];
     }
