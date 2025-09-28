@@ -631,8 +631,7 @@ const UIComponents = {
                 }
             }
 
-            if (value.includes('
-')) {
+            if (value.includes('\n')) {
                 const pre = document.createElement('pre');
                 pre.textContent = value;
                 container.appendChild(pre);
@@ -2374,22 +2373,45 @@ window.stopRecording = async () => {
 
         window.isRecording = false;
         window.recordedCount = 0;
-        
+
         // Refresh the UI
         const indicator = document.getElementById(SELECTORS.RECORDING.INDICATOR);
         if (indicator) indicator.style.display = 'none';
-        
+
         const count = response.mappings ? response.mappings.length : 0;
         NotificationManager.success(`Recording stopped! Captured ${count} mappings`);
-        
+
         // Refresh the mappings list
-            await fetchAndRenderMappings();
+        await fetchAndRenderMappings();
 
         return response.mappings || [];
     } catch (error) {
         console.error('Stop recording error:', error);
         NotificationManager.error(`Failed to stop recording: ${error.message}`);
         return [];
+    }
+};
+
+// Clear any recorded mappings from the UI and reset counters
+window.clearRecordings = async () => {
+    try {
+        const listEl = document.getElementById('recordings-list');
+        if (listEl) {
+            listEl.innerHTML = '';
+        }
+
+        const statusEl = document.getElementById('recording-status');
+        if (statusEl) {
+            statusEl.textContent = '';
+        }
+
+        window.recordedCount = 0;
+        window.isRecording = false;
+
+        NotificationManager.info('Recording history cleared.');
+    } catch (error) {
+        console.error('Clear recordings error:', error);
+        NotificationManager.error(`Failed to clear recordings: ${error.message}`);
     }
 };
 
