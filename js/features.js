@@ -786,7 +786,7 @@ const UIComponents = {
             arrow.textContent = willShow ? '▼' : '▶';
         }
 
-        this.setCardState(type, id, 'is-expanded', willShow);
+        UIComponents.setCardState(type, id, 'is-expanded', willShow);
     },
     
     toggleFullContent: (elementId) => {
@@ -2132,6 +2132,11 @@ window.setScenarioState = async (scenarioIdentifier, newState) => {
         return false;
     }
 
+    if (targetScenario && Array.isArray(targetScenario.possibleStates) && targetScenario.possibleStates.length === 0) {
+        NotificationManager.warning(`Scenario "${displayName}" does not expose any states to switch to.`);
+        return false;
+    }
+
     if (scenarioSelect) {
         const selectValue = typeof targetScenario?.id === 'string'
             ? targetScenario.id
@@ -2163,8 +2168,11 @@ window.setScenarioState = async (scenarioIdentifier, newState) => {
     } catch (error) {
         console.error('Change scenario state error:', error);
         const notFound = /HTTP\s+404/.test(error?.message || '');
+        const notSupported = /does not support state/i.test(error?.message || '');
         if (notFound && !scenarioExists) {
             NotificationManager.error(`Scenario "${displayName}" was not found on the server.`);
+        } else if (notSupported) {
+            NotificationManager.error(`Scenario "${displayName}" does not allow state changes.`);
         } else {
             NotificationManager.error(`Scenario state change failed: ${error.message}`);
         }
@@ -2528,15 +2536,38 @@ window.takeRecordingSnapshot = async (config = {}) => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(config)
         });
-        
+
         const count = response.mappings ? response.mappings.length : 0;
         NotificationManager.success(`Snapshot created! Captured ${count} mappings`);
-        
+
         return response.mappings || [];
     } catch (error) {
         console.error('Recording snapshot error:', error);
         NotificationManager.error(`Snapshot failed: ${error.message}`);
         return [];
+    }
+};
+
+window.clearRecordings = async () => {
+    if (!confirm('Clear all recorded requests?')) return;
+
+    try {
+        await apiFetch(ENDPOINTS.REQUESTS_RESET, { method: 'POST' });
+        window.recordedCount = 0;
+
+        const list = document.getElementById('recordings-list');
+        if (list) {
+            list.innerHTML = '';
+        }
+
+        if (typeof fetchAndRenderRequests === 'function') {
+            await fetchAndRenderRequests();
+        }
+
+        NotificationManager.success('Recording log cleared.');
+    } catch (error) {
+        console.error('Clear recordings error:', error);
+        NotificationManager.error(`Failed to clear recordings: ${error.message}`);
     }
 };
 
@@ -3807,12 +3838,31 @@ function normalizeImportPayload(rawData, importMode) {
         payload.mappings = clone;
     } else if (Array.isArray(clone.mappings)) {
         payload.mappings = clone.mappings;
+    } else if (clone.mappings && typeof clone.mappings === 'object') {
+        if (Array.isArray(clone.mappings.mappings)) {
+            payload.mappings = clone.mappings.mappings;
+        } else if (Array.isArray(clone.mappings.items)) {
+            payload.mappings = clone.mappings.items;
+        } else {
+            const objectValues = Object.values(clone.mappings).filter(Boolean);
+            const inferredMappings = objectValues.filter((entry) => typeof entry === 'object' && (entry.request || entry.response));
+            if (inferredMappings.length > 0) {
+                payload.mappings = inferredMappings;
+            }
+        }
+        if (!payload.mappings && (clone.mappings.request || clone.mappings.response)) {
+            payload.mappings = [clone.mappings];
+        }
     } else if (clone.mappings) {
         payload.mappings = [clone.mappings];
     } else if (Array.isArray(clone.mapping)) {
         payload.mappings = clone.mapping;
     } else if (clone.mapping) {
         payload.mappings = [clone.mapping];
+    } else if (Array.isArray(clone.stubs)) {
+        payload.mappings = clone.stubs;
+    } else if (clone.stubs && typeof clone.stubs === 'object') {
+        payload.mappings = Object.values(clone.stubs).filter(Boolean);
     } else if (clone.request || clone.response) {
         payload.mappings = [clone];
     }
