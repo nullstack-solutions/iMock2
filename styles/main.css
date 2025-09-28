@@ -188,6 +188,35 @@ body {
     gap: var(--space-2);
 }
 
+.logo-text {
+    color: var(--primary-700);
+}
+
+[data-theme="dark"] .logo-text {
+    color: var(--primary-100);
+}
+
+.logo-mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 0.75rem;
+    background: var(--primary-100);
+    color: var(--primary-700);
+}
+
+.logo-mark .icon {
+    width: 1.25rem;
+    height: 1.25rem;
+}
+
+[data-theme="dark"] .logo-mark {
+    background: rgba(99, 102, 241, 0.15);
+    color: var(--primary-200);
+}
+
 .version {
     font-size: var(--font-size-xs);
     background: var(--primary-100);
@@ -290,7 +319,8 @@ body {
 }
 
 .nav-icon {
-    font-size: var(--font-size-lg);
+    width: 1.5rem;
+    height: 1.5rem;
 }
 
 /* ===== UTILITIES ===== */

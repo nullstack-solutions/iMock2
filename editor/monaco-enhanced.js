@@ -1,5 +1,21 @@
 'use strict';
 
+function escapeHtml(value) {
+    if (value == null) {
+        return '';
+    }
+    return String(value).replace(/[&<>"']/g, (char) => {
+        switch (char) {
+            case '&': return '&amp;';
+            case '<': return '&lt;';
+            case '>': return '&gt;';
+            case '"': return '&quot;';
+            case "'": return '&#39;';
+            default: return char;
+        }
+    });
+}
+
 // ---- Template library & history helpers ----
 
 const TEMPLATE_LIBRARY = [
@@ -1929,23 +1945,27 @@ async function renderHistoryModal(options = {}) {
             ? `${formatRelativeTime(stats.latestTimestamp)} (${new Date(stats.latestTimestamp).toLocaleString()})`
             : '—';
         const latestLabel = stats.latestLabel || '—';
+        const safeApproxSize = escapeHtml(approxSize);
+        const safeLastSaved = escapeHtml(lastSaved);
+        const safeLatestLabel = escapeHtml(latestLabel);
+        const safeCount = typeof stats.count === 'number' ? stats.count : escapeHtml(String(stats.count || '—'));
 
         statsContainer.innerHTML = `
             <div class="history-meta">
                 <span class="history-meta__label">Snapshots</span>
-                <span>${stats.count}</span>
+                <span>${safeCount}</span>
             </div>
             <div class="history-meta">
                 <span class="history-meta__label">Approx size</span>
-                <span>${approxSize}</span>
+                <span>${safeApproxSize}</span>
             </div>
             <div class="history-meta">
                 <span class="history-meta__label">Last save</span>
-                <span>${lastSaved}</span>
+                <span>${safeLastSaved}</span>
             </div>
             <div class="history-meta">
                 <span class="history-meta__label">Latest label</span>
-                <span>${latestLabel}</span>
+                <span>${safeLatestLabel}</span>
             </div>
             <div class="history-actions-row">
                 <button class="btn btn-secondary btn-sm" data-history-action="snapshot">Manual snapshot</button>

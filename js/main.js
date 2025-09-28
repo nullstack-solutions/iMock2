@@ -57,9 +57,9 @@ window.editMapping = (mappingId) => {
     NotificationManager.info(`Editor opened for mapping ${mappingId}`);
         
     // Track window closure to refresh counters
-    const checkClosed = setInterval(() => {
+    const checkClosed = window.LifecycleManager.setInterval(() => {
         if (editorWindow.closed) {
-            clearInterval(checkClosed);
+            window.LifecycleManager.clearInterval(checkClosed);
             console.log('🔄 Editor closed, updating counters only');
             // Only update counters, don't refresh data to preserve optimistic updates
             if (typeof window.updateMappingsCounter === 'function') {
@@ -74,7 +74,7 @@ window.editMapping = (mappingId) => {
     // Safety cleanup: clear interval after 5 minutes to prevent memory leaks
     setTimeout(() => {
         if (!editorWindow.closed) {
-            clearInterval(checkClosed);
+            window.LifecycleManager.clearInterval(checkClosed);
             console.log('🔄 Editor interval cleaned up after timeout');
         }
     }, 5 * 60 * 1000); // 5 minutes

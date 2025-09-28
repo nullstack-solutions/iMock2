@@ -12,6 +12,7 @@ window.originalMappings = []; // Complete mapping list from the server
 window.allMappings = []; // Currently displayed mappings (may be filtered)
 window.originalRequests = []; // Complete request list from the server
 window.allRequests = []; // Currently displayed request list (may be filtered)
+window.mappingIndex = new Map();
 
 // Reliable deletion tracking system
 window.pendingDeletedIds = new Set(); // Track items pending deletion to prevent cache flicker
@@ -19,6 +20,60 @@ window.deletionTimeouts = new Map(); // Track cleanup timeouts for safety
 
 // Ensure only one heavy /mappings request is in-flight at a time
 let mappingsFetchPromise = null;
+
+function addMappingToIndex(mapping) {
+    if (!mapping || typeof mapping !== 'object') {
+        return;
+    }
+    if (!(window.mappingIndex instanceof Map)) {
+        window.mappingIndex = new Map();
+    }
+
+    const identifiers = new Set();
+    const fields = ['id', 'uuid', 'stubMappingId', 'stubId', 'mappingId'];
+    fields.forEach(field => {
+        const value = mapping[field];
+        if (value) {
+            identifiers.add(String(value).trim());
+        }
+    });
+    if (mapping.metadata?.id) {
+        identifiers.add(String(mapping.metadata.id).trim());
+    }
+
+    identifiers.forEach(id => {
+        if (id) {
+            window.mappingIndex.set(id, mapping);
+        }
+    });
+}
+
+function rebuildMappingIndex(mappings) {
+    if (!(window.mappingIndex instanceof Map)) {
+        window.mappingIndex = new Map();
+    } else {
+        window.mappingIndex.clear();
+    }
+    if (!Array.isArray(mappings)) {
+        return;
+    }
+    mappings.forEach(addMappingToIndex);
+}
+
+function removeMappingFromIndex(identifier) {
+    if (!(window.mappingIndex instanceof Map)) {
+        return;
+    }
+    const mapping = typeof identifier === 'object' ? identifier : window.mappingIndex.get(identifier);
+    if (!mapping) {
+        return;
+    }
+    for (const [key, value] of window.mappingIndex.entries()) {
+        if (value === mapping || key === identifier) {
+            window.mappingIndex.delete(key);
+        }
+    }
+}
 
 async function fetchMappingsFromServer({ force = false } = {}) {
     if (!force && mappingsFetchPromise) {
@@ -60,6 +115,10 @@ window.cacheManager = {
     // TTL configuration for optimistic updates (30 seconds by default)
     optimisticTTL: 30000,
 
+    // Interval handles for lifecycle management
+    cleanupInterval: null,
+    syncInterval: null,
+
     // Version counter for change tracking
     version: 0,
 
@@ -68,11 +127,18 @@ window.cacheManager = {
 
     // Initialization
     init() {
+        if (this.cleanupInterval) {
+            window.LifecycleManager.clearInterval(this.cleanupInterval);
+        }
+        if (this.syncInterval) {
+            window.LifecycleManager.clearInterval(this.syncInterval);
+        }
+
         // Periodically remove stale optimistic updates
-        setInterval(() => this.cleanupStaleOptimisticUpdates(), 5000);
+        this.cleanupInterval = window.LifecycleManager.setInterval(() => this.cleanupStaleOptimisticUpdates(), 5000);
 
         // Periodically synchronize with the server
-        setInterval(() => this.syncWithServer(), 60000);
+        this.syncInterval = window.LifecycleManager.setInterval(() => this.syncWithServer(), 60000);
     },
 
     // Add an optimistic update (simplified flow)
@@ -160,7 +226,8 @@ window.cacheManager = {
 
             // Update the global arrays
             window.originalMappings = Array.from(this.cache.values());
-            window.allMappings = [...window.originalMappings];
+            window.allMappings = window.originalMappings;
+            rebuildMappingIndex(window.originalMappings);
 
             console.log(`✅ [CACHE] Rebuild complete: ${this.cache.size} mappings`);
 
@@ -345,8 +412,8 @@ window.checkHealthAndStartUptime = async () => {
         if (isHealthy) {
             // Start uptime only after a successful health check
             window.startTime = Date.now();
-            if (window.uptimeInterval) clearInterval(window.uptimeInterval);
-            window.uptimeInterval = setInterval(updateUptime, 1000);
+            if (window.uptimeInterval) window.LifecycleManager.clearInterval(window.uptimeInterval);
+            window.uptimeInterval = window.LifecycleManager.setInterval(updateUptime, 1000);
             // Unified health UI update (fallback below keeps old DOM path)
             if (typeof window.applyHealthUI === 'function') {
                 try { window.applyHealthUI(true, responseTime); } catch (e) { console.warn('applyHealthUI failed:', e); }
@@ -377,11 +444,11 @@ window.checkHealthAndStartUptime = async () => {
 window.startHealthMonitoring = () => {
     // Clear any previous interval
     if (healthCheckInterval) {
-        clearInterval(healthCheckInterval);
+        window.LifecycleManager.clearInterval(healthCheckInterval);
     }
 
     // Check health every 30 seconds
-    healthCheckInterval = setInterval(async () => {
+    healthCheckInterval = window.LifecycleManager.setInterval(async () => {
         try {
             const startTime = performance.now();
             let responseTime = 0;
@@ -410,7 +477,7 @@ window.startHealthMonitoring = () => {
                     healthIndicator.innerHTML = `<span>Response Time: </span><span class="unhealthy">Unhealthy</span>`;
                     // Stop uptime on the first failed health check
                     stopUptime();
-                    clearInterval(healthCheckInterval);
+                    window.LifecycleManager.clearInterval(healthCheckInterval);
                     NotificationManager.warning('WireMock health check failed, uptime stopped');
                 }
             }
@@ -424,7 +491,7 @@ window.startHealthMonitoring = () => {
                 healthIndicator.innerHTML = `<span>Response Time: </span><span class="error">Error</span>`;
             }
             stopUptime();
-            clearInterval(healthCheckInterval);
+            window.LifecycleManager.clearInterval(healthCheckInterval);
             NotificationManager.error('Health monitoring failed, uptime stopped');
         }
     }, 30000); // 30 seconds
@@ -453,7 +520,7 @@ window.updateUptime = function() {
 
 window.stopUptime = function() {
     if (window.uptimeInterval) {
-        clearInterval(window.uptimeInterval);
+        window.LifecycleManager.clearInterval(window.uptimeInterval);
         window.uptimeInterval = null;
     }
     window.startTime = null;
@@ -532,7 +599,10 @@ const UIComponents = {
                         ${actions.map(action => `
                             <button class="btn btn-sm btn-${action.class}"
                                     onclick="${action.handler}('${Utils.escapeHtml(id)}')"
-                                    title="${Utils.escapeHtml(action.title)}">${action.icon}</button>
+                                    title="${Utils.escapeHtml(action.title)}">
+                                ${action.icon ? Icons.render(action.icon, { className: 'action-icon' }) : ''}
+                                <span class="sr-only">${Utils.escapeHtml(action.title)}</span>
+                            </button>
                         `).join('')}
                     </div>
                 </div>
@@ -716,8 +786,9 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
 
                                 // Update with merged data
                                 window.allMappings = mergedMappings;
-                                window.originalMappings = [...mergedMappings];
+                                window.originalMappings = mergedMappings;
                                 syncCacheWithMappings(window.originalMappings);
+                                rebuildMappingIndex(window.originalMappings);
 
                                 // Re-render UI with merged complete data
                                 fetchAndRenderMappings(window.allMappings);
@@ -779,7 +850,8 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
             } catch {}
             window.originalMappings = Array.isArray(incoming) ? incoming.filter(m => !isImockCacheMapping(m)) : [];
             syncCacheWithMappings(window.originalMappings);
-            window.allMappings = [...window.originalMappings];
+            window.allMappings = window.originalMappings;
+            rebuildMappingIndex(window.originalMappings);
             // Update data source indicator in UI
             updateDataSourceIndicator(dataSource);
             renderSource = dataSource;
@@ -819,7 +891,11 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
             return urlA.localeCompare(urlB);
         });
         console.log(`📦 Mappings render from: ${renderSource} — ${sortedMappings.length} items`);
-        container.innerHTML = sortedMappings.map(mapping => renderMappingCard(mapping)).join('');
+        renderList(container, sortedMappings, {
+            renderItem: renderMappingMarkup,
+            getKey: getMappingRenderKey,
+            getSignature: getMappingRenderSignature
+        });
         updateMappingsCounter();
         // Reapply mapping filters if any are active, preserving user's view
         try {
@@ -828,6 +904,9 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                 || (document.getElementById(SELECTORS.MAPPING_FILTERS.STATUS)?.value || '');
             if (hasFilters && typeof FilterManager !== 'undefined' && FilterManager.applyMappingFilters) {
                 FilterManager.applyMappingFilters();
+                if (typeof FilterManager.flushMappingFilters === 'function') {
+                    FilterManager.flushMappingFilters();
+                }
                 console.log('[FILTERS] Mapping filters re-applied after refresh');
             }
         } catch {}
@@ -856,7 +935,13 @@ window.getMappingById = async (mappingId) => {
         console.log(`📥 [getMappingById] Cache size:`, window.allMappings?.length || 0);
 
         // Try to get from cache first
-        const cachedMapping = window.allMappings?.find(m => m.id === mappingId);
+        let cachedMapping = null;
+        if (window.mappingIndex instanceof Map) {
+            cachedMapping = window.mappingIndex.get(mappingId) || null;
+        }
+        if (!cachedMapping) {
+            cachedMapping = window.allMappings?.find(m => m.id === mappingId) || null;
+        }
         if (cachedMapping) {
             console.log(`📦 [getMappingById] Found mapping in cache: ${mappingId}`, cachedMapping);
             return cachedMapping;
@@ -882,6 +967,7 @@ window.getMappingById = async (mappingId) => {
         }
 
         console.log(`✅ [getMappingById] Successfully fetched mapping: ${mappingId}`, mapping);
+        addMappingToIndex(mapping);
         return mapping;
 
     } catch (error) {
@@ -987,7 +1073,8 @@ window.backgroundRefreshMappings = async (useCache = false) => {
         const incoming = data.mappings || [];
         window.originalMappings = Array.isArray(incoming) ? incoming.filter(m => !isImockCacheMapping(m)) : [];
         syncCacheWithMappings(window.originalMappings);
-        window.allMappings = [...window.originalMappings];
+        window.allMappings = window.originalMappings;
+        rebuildMappingIndex(window.originalMappings);
         updateDataSourceIndicator(source);
         // re-render without loading state
         fetchAndRenderMappings(window.allMappings);
@@ -1004,9 +1091,9 @@ window.renderMappingCard = function(mapping) {
     }
     
     const actions = [
-        { class: 'secondary', handler: 'editMapping', title: 'Edit in Editor', icon: '📝' },
-        { class: 'primary', handler: 'openEditModal', title: 'Edit', icon: '✏️' },
-        { class: 'danger', handler: 'deleteMapping', title: 'Delete', icon: '🗑️' }
+        { class: 'secondary', handler: 'editMapping', title: 'Edit in Editor', icon: 'open-external' },
+        { class: 'primary', handler: 'openEditModal', title: 'Edit', icon: 'pencil' },
+        { class: 'danger', handler: 'deleteMapping', title: 'Delete', icon: 'trash' }
     ];
     
     const data = {
@@ -1016,18 +1103,18 @@ window.renderMappingCard = function(mapping) {
         status: mapping.response?.status || 200,
         name: mapping.name || mapping.metadata?.name || `Mapping ${mapping.id.substring(0, 8)}`,
         extras: {
-            preview: UIComponents.createPreviewSection('📥 Request', {
+            preview: UIComponents.createPreviewSection(`${Icons.render('request-in', { className: 'icon-inline' })} Request`, {
                 'Method': mapping.request?.method || 'GET',
                 'URL': mapping.request?.url || mapping.request?.urlPattern || mapping.request?.urlPath || mapping.request?.urlPathPattern,
                 'Headers': mapping.request?.headers,
                 'Body': mapping.request?.bodyPatterns || mapping.request?.body,
                 'Query Parameters': mapping.request?.queryParameters
-            }) + UIComponents.createPreviewSection('📤 Response', {
+            }) + UIComponents.createPreviewSection(`${Icons.render('response-out', { className: 'icon-inline' })} Response`, {
                 'Status': mapping.response?.status,
                 'Headers': mapping.response?.headers,
                 'Body': mapping.response?.jsonBody || mapping.response?.body,
                 'Delay': mapping.response?.fixedDelayMilliseconds ? `${mapping.response.fixedDelayMilliseconds}ms` : null
-            }) + UIComponents.createPreviewSection('Overview', {
+            }) + UIComponents.createPreviewSection(`${Icons.render('info', { className: 'icon-inline' })} Overview`, {
                 'ID': mapping.id || mapping.uuid,
                 'Name': mapping.name || mapping.metadata?.name,
                 'Priority': mapping.priority,
@@ -1165,7 +1252,11 @@ window.fetchAndRenderRequests = async (requestsToRender = null) => {
         // Invalidate cache before re-rendering to ensure fresh DOM references
         window.invalidateElementCache(SELECTORS.LISTS.REQUESTS);
 
-        container.innerHTML = window.allRequests.map(request => renderRequestCard(request)).join('');
+        renderList(container, window.allRequests, {
+            renderItem: renderRequestMarkup,
+            getKey: getRequestRenderKey,
+            getSignature: getRequestRenderSignature
+        });
         updateRequestsCounter();
         // Source indicator + log, mirroring mappings
         if (typeof updateRequestsSourceIndicator === 'function') updateRequestsSourceIndicator(reqSource);
@@ -1200,16 +1291,17 @@ window.renderRequestCard = function(request) {
         time: `${Utils.parseRequestTime(request.request.loggedDate)} <span class="request-ip">IP: ${Utils.escapeHtml(clientIp)}</span>`,
         extras: {
             badges: `
-                ${matched ? '<span class="badge badge-success">✓ Matched</span>' : 
-                          '<span class="badge badge-danger">❌ Unmatched</span>'}
+                ${matched
+                    ? `<span class="badge badge-success">${Icons.render('check-circle', { className: 'badge-icon' })}<span>Matched</span></span>`
+                    : `<span class="badge badge-danger">${Icons.render('x-circle', { className: 'badge-icon' })}<span>Unmatched</span></span>`}
             `,
-            preview: UIComponents.createPreviewSection('📥 Request', {
+            preview: UIComponents.createPreviewSection(`${Icons.render('request-in', { className: 'icon-inline' })} Request`, {
                 'Method': request.request?.method,
                 'URL': request.request?.url || request.request?.urlPath,
                 'Client IP': clientIp,
                 'Headers': request.request?.headers,
                 'Body': request.request?.body
-            }) + UIComponents.createPreviewSection('📤 Response', {
+            }) + UIComponents.createPreviewSection(`${Icons.render('response-out', { className: 'icon-inline' })} Response`, {
                 'Status': request.responseDefinition?.status,
                 'Matched': matched ? 'Yes' : 'No',
                 'Headers': request.responseDefinition?.headers,
@@ -1258,7 +1350,13 @@ window.openEditModal = async (identifier) => {
 
     const targetIdentifier = normalizeIdentifier(identifier);
 
-    let mapping = window.allMappings.find((candidate) => collectCandidateIdentifiers(candidate).includes(targetIdentifier));
+    let mapping = null;
+    if (window.mappingIndex instanceof Map && targetIdentifier) {
+        mapping = window.mappingIndex.get(targetIdentifier) || null;
+    }
+    if (!mapping) {
+        mapping = window.allMappings.find((candidate) => collectCandidateIdentifiers(candidate).includes(targetIdentifier));
+    }
     if (!mapping) {
         console.warn('🔍 [OPEN MODAL DEBUG] Mapping not found by identifier lookup. Identifier:', identifier);
         NotificationManager.show('Mapping not found', NotificationManager.TYPES.ERROR);
@@ -1300,10 +1398,12 @@ window.openEditModal = async (identifier) => {
             const idx = window.allMappings.findIndex((candidate) => candidate === mapping);
             if (idx !== -1) {
                 window.allMappings[idx] = latestMapping;
+                addMappingToIndex(latestMapping);
             } else {
                 const fallbackIdx = window.allMappings.findIndex((candidate) => collectCandidateIdentifiers(candidate).includes(targetIdentifier));
                 if (fallbackIdx !== -1) {
                     window.allMappings[fallbackIdx] = latestMapping;
+                    addMappingToIndex(latestMapping);
                 }
             }
         } else {
@@ -1336,12 +1436,14 @@ window.deleteMapping = async (id) => {
         NotificationManager.success('Mapping deleted!');
 
         // Update cache and UI with server confirmation
+        removeMappingFromIndex(id);
         updateOptimisticCache({ id }, 'delete');
 
     } catch (e) {
         // Handle 404: mapping already deleted
         if (e.message.includes('404')) {
             console.log('🗑️ [DELETE] Mapping already deleted from server (404), updating cache locally');
+            removeMappingFromIndex(id);
             updateOptimisticCache({ id }, 'delete');
             NotificationManager.success('Mapping was already deleted');
         } else {
@@ -1374,6 +1476,9 @@ window.clearMappingFilters = () => {
     document.getElementById(SELECTORS.MAPPING_FILTERS.URL).value = '';
     document.getElementById(SELECTORS.MAPPING_FILTERS.STATUS).value = '';
     FilterManager.applyMappingFilters();
+    if (typeof FilterManager.flushMappingFilters === 'function') {
+        FilterManager.flushMappingFilters();
+    }
 };
 window.applyRequestFilters = () => FilterManager.applyRequestFilters();
 
@@ -1381,7 +1486,7 @@ window.applyRequestFilters = () => FilterManager.applyRequestFilters();
 window.applyQuickFilter = () => {
     const quickFilterEl = document.getElementById(SELECTORS.REQUEST_FILTERS.QUICK);
     if (!quickFilterEl) return;
-    
+
     const value = quickFilterEl.value;
     if (!value) {
         // Clear time range if no quick filter selected
@@ -1390,6 +1495,9 @@ window.applyQuickFilter = () => {
         if (dateFromEl) dateFromEl.value = '';
         if (dateToEl) dateToEl.value = '';
         FilterManager.applyRequestFilters();
+        if (typeof FilterManager.flushRequestFilters === 'function') {
+            FilterManager.flushRequestFilters();
+        }
         return;
     }
     
@@ -1434,9 +1542,12 @@ window.applyQuickFilter = () => {
     
     if (dateFromEl) dateFromEl.value = formatDateTime(fromTime);
     if (dateToEl) dateToEl.value = formatDateTime(now);
-    
+
     // Apply the filters
     FilterManager.applyRequestFilters();
+    if (typeof FilterManager.flushRequestFilters === 'function') {
+        FilterManager.flushRequestFilters();
+    }
 };
 
 // Clear quick filter selection (used when custom time range is set)
@@ -1459,8 +1570,11 @@ window.clearRequestFilters = () => {
     if (dateFromEl) dateFromEl.value = '';
     if (dateToEl) dateToEl.value = '';
     if (quickEl) quickEl.value = ''; // Reset quick filter selection
-    
+
     FilterManager.applyRequestFilters();
+    if (typeof FilterManager.flushRequestFilters === 'function') {
+        FilterManager.flushRequestFilters();
+    }
 };
 
 // --- ADDITIONAL MANAGEMENT HELPERS ---
@@ -2812,8 +2926,9 @@ function refreshMappingsFromCache({ maintainFilters = true } = {}) {
         // Use full cache snapshot logic for consistency
         const sanitized = buildCacheSnapshot();
 
-        window.originalMappings = sanitized.slice();
-        window.allMappings = sanitized.slice();
+        window.originalMappings = sanitized;
+        window.allMappings = sanitized;
+        rebuildMappingIndex(window.originalMappings);
 
         const methodFilter = document.getElementById(SELECTORS.MAPPING_FILTERS.METHOD)?.value || '';
         const urlFilter = document.getElementById(SELECTORS.MAPPING_FILTERS.URL)?.value || '';
@@ -2822,8 +2937,11 @@ function refreshMappingsFromCache({ maintainFilters = true } = {}) {
 
         if (hasFilters && typeof FilterManager !== 'undefined' && typeof FilterManager.applyMappingFilters === 'function') {
             FilterManager.applyMappingFilters();
+            if (typeof FilterManager.flushMappingFilters === 'function') {
+                FilterManager.flushMappingFilters();
+            }
         } else if (typeof fetchAndRenderMappings === 'function') {
-            fetchAndRenderMappings(window.allMappings.slice());
+            fetchAndRenderMappings(window.allMappings);
         }
 
         if (typeof updateDataSourceIndicator === 'function') {
@@ -2863,6 +2981,7 @@ function updateOptimisticCache(mapping, operation, options = {}) {
         }
 
         if (normalizedOperation === 'delete') {
+            removeMappingFromIndex(mappingId);
             cache.delete(mappingId);
             if (window.pendingDeletedIds instanceof Set) {
                 window.pendingDeletedIds.add(mappingId);
@@ -2901,6 +3020,8 @@ function updateOptimisticCache(mapping, operation, options = {}) {
             if (!incoming.uuid && (mapping.uuid || mappingId)) {
                 incoming.uuid = mapping.uuid || mappingId;
             }
+
+            addMappingToIndex(mapping);
 
             if (cache.has(mappingId)) {
                 const merged = mergeMappingData(cache.get(mappingId), incoming);
@@ -2959,7 +3080,7 @@ let optimisticInProgress = false;
 let optimisticDelayRetries = 0;
 
 // Cache validation timer (check every minute, validate every 5 minutes)
-setInterval(() => {
+window.cacheValidationInterval = window.LifecycleManager.setInterval(() => {
     const timeSinceLastUpdate = Date.now() - (window.cacheLastUpdate || 0);
     const optimisticOps = window.cacheOptimisticOperations || 0;
 

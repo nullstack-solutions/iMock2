@@ -18,6 +18,37 @@
     line-height: 1.2;
 }
 
+/* ===== ICONS ===== */
+.icon {
+    width: 1.1em;
+    height: 1.1em;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    vertical-align: middle;
+    fill: currentColor;
+}
+
+.icon-inline {
+    margin-right: var(--space-2);
+}
+
+.btn .icon {
+    width: 1em;
+    height: 1em;
+}
+
+.btn-label {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.action-icon {
+    width: 0.95em;
+    height: 0.95em;
+}
+
 /* ===== BUTTONS ===== */
 .btn {
     display: inline-flex;
@@ -169,10 +200,12 @@
 .form-row {
     display: flex;
     gap: var(--space-4);
+    flex-wrap: wrap;
 }
 
 .form-row .form-group {
     flex: 1;
+    min-width: min(260px, 100%);
 }
 
 .form-help {
@@ -561,6 +594,11 @@
     letter-spacing: 0.025em;
 }
 
+.badge .icon {
+    width: 0.85em;
+    height: 0.85em;
+}
+
 .method-badge {
     color: white;
     min-width: 60px;
@@ -678,21 +716,21 @@
 }
 
 /* Dark theme adjustments for status badges */
-[data-theme="dark"] .status-200, 
-[data-theme="dark"] .status-201 { 
-    background: rgba(16, 185, 129, 0.2); 
-    color: #34d399; 
-    border: 1px solid rgba(16, 185, 129, 0.3);
+[data-theme="dark"] .status-200,
+[data-theme="dark"] .status-201 {
+    background: #064e3b;
+    color: #ecfdf5;
+    border: 1px solid rgba(16, 185, 129, 0.45);
 }
-[data-theme="dark"] .status-400 { 
-    background: rgba(245, 158, 11, 0.2); 
-    color: #fbbf24; 
-    border: 1px solid rgba(245, 158, 11, 0.3);
+[data-theme="dark"] .status-400 {
+    background: #7c2d12;
+    color: #fef3c7;
+    border: 1px solid rgba(245, 158, 11, 0.45);
 }
-[data-theme="dark"] .status-500 { 
-    background: rgba(239, 68, 68, 0.2); 
-    color: #fca5a5; 
-    border: 1px solid rgba(239, 68, 68, 0.3);
+[data-theme="dark"] .status-500 {
+    background: #7f1d1d;
+    color: #fee2e2;
+    border: 1px solid rgba(239, 68, 68, 0.5);
 }
 
 /* ===== HEALTH INDICATORS ===== */
@@ -812,7 +850,7 @@
 
 .filter-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
     gap: var(--space-4);
     align-items: end;
 }

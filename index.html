@@ -15,9 +15,118 @@
     <link rel="stylesheet" href="styles/main.css">
 </head>
 <body data-theme="light">
+    <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="display: none;" aria-hidden="true">
+        <symbol id="icon-logo" viewBox="0 0 24 24">
+            <path d="M12 2.5c-5.24 0-9.5 4.26-9.5 9.5s4.26 9.5 9.5 9.5c3.02 0 5.72-1.39 7.45-3.58a1 1 0 00-.78-1.62h-5.17a2.75 2.75 0 110-5.5h5.17a1 1 0 00.78-1.62C17.72 3.89 15.02 2.5 12 2.5z" fill="currentColor"/>
+        </symbol>
+        <symbol id="icon-moon" viewBox="0 0 24 24">
+            <path d="M21 12.79A9 9 0 0111.21 3 7 7 0 0012 21a7 7 0 009-8.21z" fill="currentColor"/>
+        </symbol>
+        <symbol id="icon-sun" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="4" fill="currentColor"/>
+            <path d="M12 3v2M12 19v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M3 12h2M19 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </symbol>
+        <symbol id="icon-clipboard" viewBox="0 0 24 24">
+            <path d="M9 4h6a2 2 0 012 2v12a2 2 0 01-2 2H9a2 2 0 01-2-2V6a2 2 0 012-2z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+            <path d="M9 2.75A1.75 1.75 0 0110.75 1h2.5A1.75 1.75 0 0115 2.75V4H9z" fill="currentColor"/>
+        </symbol>
+        <symbol id="icon-inbox" viewBox="0 0 24 24">
+            <path d="M4.75 6.5A1.75 1.75 0 016.5 4.75h11a1.75 1.75 0 011.75 1.75v6a1.75 1.75 0 01-1.75 1.75h-2.94a2.06 2.06 0 00-1.46.6l-.7.7a2.06 2.06 0 01-1.46.6h-1.48a2.06 2.06 0 01-1.46-.6l-.7-.7a2.06 2.06 0 00-1.46-.6H6.5A1.75 1.75 0 014.75 12.5z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+            <path d="M12 7v4m0 0l2-2m-2 2l-2-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
+        <symbol id="icon-masks" viewBox="0 0 24 24">
+            <path d="M5 6a4 4 0 014-4h6a4 4 0 014 4v5a4 4 0 01-4 4h-2l-2 2-2-2H9a4 4 0 01-4-4z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+            <path d="M9 9a1 1 0 11-2 0m8 0a1 1 0 11-2 0" fill="currentColor"/>
+            <path d="M8.5 11.5c1.5 1 3.5 1 5 0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </symbol>
+        <symbol id="icon-box" viewBox="0 0 24 24">
+            <path d="M3.5 7.5L12 3l8.5 4.5v9L12 21l-8.5-4.5z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+            <path d="M12 21v-9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            <path d="M20.5 7.5l-8.5 4.5L3.5 7.5" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+        </symbol>
+        <symbol id="icon-mic" viewBox="0 0 24 24">
+            <rect x="9" y="4" width="6" height="10" rx="3" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M5 10a7 7 0 0014 0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            <path d="M12 20v-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            <path d="M9 20h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </symbol>
+        <symbol id="icon-settings" viewBox="0 0 24 24">
+            <path d="M10.325 4.317a1.75 1.75 0 013.35 0l.287.955a1.75 1.75 0 001.651 1.224h1.003a1.75 1.75 0 011.237 2.987l-.725.725a1.75 1.75 0 000 2.475l.725.725a1.75 1.75 0 01-1.237 2.987h-1.003a1.75 1.75 0 00-1.651 1.224l-.287.955a1.75 1.75 0 01-3.35 0l-.287-.955a1.75 1.75 0 00-1.651-1.224H8.384a1.75 1.75 0 01-1.237-2.987l.725-.725a1.75 1.75 0 000-2.475l-.725-.725a1.75 1.75 0 011.237-2.987h1.003a1.75 1.75 0 001.651-1.224z" fill="none" stroke="currentColor" stroke-width="1.3"/>
+            <circle cx="12" cy="12" r="3" fill="currentColor"/>
+        </symbol>
+        <symbol id="icon-refresh" viewBox="0 0 24 24">
+            <path d="M4.5 12a7.5 7.5 0 0112.73-5.3L19.5 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            <path d="M19.5 6v3a1 1 0 01-1 1h-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            <path d="M19.5 12a7.5 7.5 0 01-12.73 5.3L4.5 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            <path d="M4.5 18v-3a1 1 0 011-1h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        </symbol>
+        <symbol id="icon-bolt" viewBox="0 0 24 24">
+            <path d="M11 2L5 13h5v9l6-11h-5z" fill="currentColor"/>
+        </symbol>
+        <symbol id="icon-plus" viewBox="0 0 24 24">
+            <path d="M12 5v14m-7-7h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </symbol>
+        <symbol id="icon-trash" viewBox="0 0 24 24">
+            <path d="M5 7h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            <path d="M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            <path d="M6 7l1 12a2 2 0 002 2h6a2 2 0 002-2l1-12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M10 11v6m4-6v6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </symbol>
+        <symbol id="icon-pencil" viewBox="0 0 24 24">
+            <path d="M4 17.5V20h2.5l11-11-2.5-2.5-11 11z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+            <path d="M14.5 4.5l2.5 2.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </symbol>
+        <symbol id="icon-open-external" viewBox="0 0 24 24">
+            <path d="M13 5h6v6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M11 13l8-8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            <path d="M19 13v5a2 2 0 01-2 2H7a2 2 0 01-2-2V7a2 2 0 012-2h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </symbol>
+        <symbol id="icon-check-circle" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.5" fill="none"/>
+            <path d="M9.5 12.5l2 2 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
+        <symbol id="icon-x-circle" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.5" fill="none"/>
+            <path d="M9.5 9.5l5 5m0-5l-5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </symbol>
+        <symbol id="icon-request-in" viewBox="0 0 24 24">
+            <path d="M6 6a2 2 0 012-2h8a2 2 0 012 2v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            <path d="M7 12l5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M12 17V6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </symbol>
+        <symbol id="icon-response-out" viewBox="0 0 24 24">
+            <path d="M18 18a2 2 0 01-2 2H8a2 2 0 01-2-2v-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            <path d="M12 7v11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            <path d="M7 11l5-5 5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
+        <symbol id="icon-info" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.5" fill="none"/>
+            <path d="M12 8h.01M11 11h1v4h1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
+        <symbol id="icon-broom" viewBox="0 0 24 24">
+            <path d="M4 16l4 4 10-10-4-4z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+            <path d="M16 6l3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </symbol>
+        <symbol id="icon-save" viewBox="0 0 24 24">
+            <path d="M5 5a2 2 0 012-2h9l3 3v13a2 2 0 01-2 2H7a2 2 0 01-2-2z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+            <path d="M9 3v5h6V3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            <rect x="9" y="13" width="6" height="5" rx="1" fill="currentColor"/>
+        </symbol>
+        <symbol id="icon-play" viewBox="0 0 24 24">
+            <path d="M8 5v14l10-7z" fill="currentColor"/>
+        </symbol>
+        <symbol id="icon-stop" viewBox="0 0 24 24">
+            <rect x="7" y="7" width="10" height="10" rx="1.5" fill="currentColor"/>
+        </symbol>
+    </svg>
     <div class="header">
         <div class="logo">
-            🍎 iMock
+            <span class="logo-mark" aria-hidden="true">
+                <svg class="icon icon-logo" focusable="false">
+                    <use href="#icon-logo"></use>
+                </svg>
+            </span>
+            <span class="logo-text">iMock</span>
             <span class="version">v2.2</span>
         </div>
         <div class="status">
@@ -27,30 +136,39 @@
                 <span id="health-indicator" style="display: none; margin-left: 10px; font-size: 0.9em;"></span>
             </div>
             <button class="theme-toggle" onclick="if(typeof toggleTheme === 'function') toggleTheme()">
-                <span id="theme-icon">🌙</span>
+                <svg class="icon" aria-hidden="true" focusable="false">
+                    <use id="theme-icon" href="#icon-moon"></use>
+                </svg>
+                <span class="sr-only">Toggle theme</span>
             </button>
         </div>
     </div>
-    
+
     <div class="container">
         <div class="sidebar">
             <div class="nav-item active" onclick="showPage('mappings', this)">
-                <span class="nav-icon">📋</span> Mappings
+                <svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#icon-clipboard"></use></svg>
+                <span>Mappings</span>
             </div>
             <div class="nav-item" onclick="showPage('requests', this)">
-                <span class="nav-icon">📥</span> Request Log
+                <svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#icon-inbox"></use></svg>
+                <span>Request Log</span>
             </div>
             <div class="nav-item" onclick="showPage('scenarios', this)">
-                <span class="nav-icon">🎭</span> Scenarios
+                <svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#icon-masks"></use></svg>
+                <span>Scenarios</span>
             </div>
             <div class="nav-item" onclick="showPage('import-export', this)">
-                <span class="nav-icon">📦</span> Import/Export
+                <svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#icon-box"></use></svg>
+                <span>Import/Export</span>
             </div>
             <div class="nav-item" onclick="showPage('recording', this)">
-                <span class="nav-icon">🎙️</span> Recording
+                <svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#icon-mic"></use></svg>
+                <span>Recording</span>
             </div>
             <div class="nav-item" onclick="showPage('settings', this)">
-                <span class="nav-icon">⚙️</span> Settings
+                <svg class="icon nav-icon" aria-hidden="true" focusable="false"><use href="#icon-settings"></use></svg>
+                <span>Settings</span>
             </div>
         </div>
         
@@ -79,12 +197,19 @@
                     </div>
                     <div style="display: flex; gap: var(--space-3); align-items: center;">
                         <span id="data-source-indicator" class="badge badge-secondary" title="Current data source">Source: direct</span>
-                        <button class="btn btn-secondary" onclick="refreshMappings()">🔄 Refresh</button>
+                        <button class="btn btn-secondary" onclick="refreshMappings()">
+                            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-refresh"></use></svg>
+                            <span>Refresh</span>
+                        </button>
                         <button class="btn btn-secondary" onclick="forceRefreshCache()" title="Rebuild the service cache mapping and reload">
                             <span class="btn-spinner loading-spinner" aria-hidden="true"></span>
-                            <span class="btn-label">⚡ Force Refresh Cache</span>
+                            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-bolt"></use></svg>
+                            <span class="btn-label">Force Refresh Cache</span>
                         </button>
-                        <button class="btn btn-primary" onclick="openAddMappingModal()" id="add-mapping-btn" disabled>+ Add Mapping</button>
+                        <button class="btn btn-primary" onclick="openAddMappingModal()" id="add-mapping-btn" disabled>
+                            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-plus"></use></svg>
+                            <span>Add Mapping</span>
+                        </button>
                     </div>
                 </div>
 
@@ -156,9 +281,18 @@
                     <div class="page-title">Request Log</div>
                     <div style="display: flex; gap: var(--space-2); align-items: center;">
                         <span id="requests-source-indicator" class="badge badge-secondary" title="Current data source">Requests: direct</span>
-                        <button class="btn btn-secondary" onclick="refreshRequests()">🔄 Refresh</button>
-                        <button class="btn btn-danger" onclick="clearRequests()">🗑️ Clear Log</button>
-                        <button class="btn btn-secondary" onclick="clearRequestFilters()">🧹 Clear Filters</button>
+                        <button class="btn btn-secondary" onclick="refreshRequests()">
+                            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-refresh"></use></svg>
+                            <span>Refresh</span>
+                        </button>
+                        <button class="btn btn-danger" onclick="clearRequests()">
+                            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-trash"></use></svg>
+                            <span>Clear Log</span>
+                        </button>
+                        <button class="btn btn-secondary" onclick="clearRequestFilters()">
+                            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-broom"></use></svg>
+                            <span>Clear Filters</span>
+                        </button>
                     </div>
                 </div>
                 
@@ -180,8 +314,8 @@
                             <label class="form-label">Status</label>
                             <select class="form-select" id="req-filter-status" onchange="applyRequestFilters()">
                                 <option value="">All Statuses</option>
-                                <option value="matched">✅ Matched</option>
-                                <option value="unmatched">❌ Unmatched</option>
+                                <option value="matched">Matched</option>
+                                <option value="unmatched">Unmatched</option>
                             </select>
                         </div>
                         <div class="form-group">
@@ -235,8 +369,14 @@
                 <div class="page-header">
                     <div class="page-title">Scenario Management</div>
                     <div style="display: flex; gap: var(--space-2);">
-                        <button class="btn btn-secondary" onclick="refreshScenarios()">🔄 Refresh</button>
-                        <button class="btn btn-danger" onclick="resetAllScenarios()">🔄 Reset All</button>
+                        <button class="btn btn-secondary" onclick="refreshScenarios()">
+                            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-refresh"></use></svg>
+                            <span>Refresh</span>
+                        </button>
+                        <button class="btn btn-danger" onclick="resetAllScenarios()">
+                            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-refresh"></use></svg>
+                            <span>Reset All</span>
+                        </button>
                     </div>
                 </div>
                 
@@ -284,7 +424,10 @@
                     <!-- Export Section -->
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">📤 Export Data</h3>
+                            <h3 class="card-title">
+                                <svg class="icon icon-inline" aria-hidden="true" focusable="false"><use href="#icon-response-out"></use></svg>
+                                Export Data
+                            </h3>
                         </div>
                         <div class="form-group">
                             <label class="form-label">Export Format</label>
@@ -294,8 +437,14 @@
                             </select>
                         </div>
                         <div style="display: flex; flex-direction: column; gap: var(--space-3);">
-                            <button class="btn btn-primary" onclick="exportMappings()">📤 Export All Mappings</button>
-                            <button class="btn btn-secondary" onclick="exportRequests()">📤 Export Request Log</button>
+                            <button class="btn btn-primary" onclick="exportMappings()">
+                                <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-response-out"></use></svg>
+                                <span>Export All Mappings</span>
+                            </button>
+                            <button class="btn btn-secondary" onclick="exportRequests()">
+                                <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-response-out"></use></svg>
+                                <span>Export Request Log</span>
+                            </button>
                         </div>
                         <div id="export-result" style="margin-top: var(--space-4);"></div>
                         <p class="form-help" style="margin-top: var(--space-3);">
@@ -305,13 +454,19 @@
                     <!-- Import Section -->
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">📥 Import Data</h3>
+                            <h3 class="card-title">
+                                <svg class="icon icon-inline" aria-hidden="true" focusable="false"><use href="#icon-request-in"></use></svg>
+                                Import Data
+                            </h3>
                         </div>
                         <div class="form-group">
                             <label class="form-label">Import File</label>
                             <div class="file-input-container">
                                 <input type="file" class="file-input" id="import-file" accept=".json,.yaml,.yml" onchange="updateFileDisplay()">
-                                <label for="import-file" class="btn btn-secondary" style="width: 100%; justify-content: center;">📁 Choose File</label>
+                                <label for="import-file" class="btn btn-secondary" style="width: 100%; justify-content: center;">
+                                    <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-box"></use></svg>
+                                    <span>Choose File</span>
+                                </label>
                                 <div class="file-display" style="margin-top: var(--space-2); padding: var(--space-3); background: var(--bg-secondary); border-radius: var(--radius-md); text-align: center; color: var(--text-secondary);" id="file-display">
                                     <span class="file-placeholder">No file selected</span>
                                 </div>
@@ -330,7 +485,10 @@
                         <div class="form-group" id="import-actions" style="display: none;">
                             <button class="btn btn-primary" id="import-submit-btn" onclick="executeImportFromUi()">
                                 <span class="btn-spinner loading-spinner" aria-hidden="true"></span>
-                                <span class="btn-label">📥 Import</span>
+                                <span class="btn-label">
+                                    <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-request-in"></use></svg>
+                                    <span>Import</span>
+                                </span>
                             </button>
                         </div>
                         <div id="import-result" style="margin-top: var(--space-4);"></div>
@@ -346,7 +504,10 @@
                 
                 <div class="card">
                     <div class="card-header">
-                        <h3 class="card-title">🎙️ Record API Calls</h3>
+                        <h3 class="card-title">
+                            <svg class="icon icon-inline" aria-hidden="true" focusable="false"><use href="#icon-mic"></use></svg>
+                            Record API Calls
+                        </h3>
                     </div>
                     <p style="margin-bottom: var(--space-4); color: var(--text-secondary);">Configure recording settings to capture real API calls and generate mappings automatically.</p>
                     <p class="form-help" style="margin-bottom: var(--space-4);">Need the classic recorder interface? Open <a id="recorder-link" href="" target="_blank" rel="noopener">configure host to enable link</a>.</p>
@@ -366,9 +527,18 @@
                     </div>
 
                     <div style="display: flex; gap: var(--space-3); margin-top: var(--space-4);">
-                        <button class="btn btn-success" onclick="startRecording()">▶️ Start Recording</button>
-                        <button class="btn btn-danger" onclick="stopRecording()">⏹️ Stop Recording</button>
-                        <button class="btn btn-secondary" onclick="clearRecordings()">🗑️ Clear Recordings</button>
+                        <button class="btn btn-success" onclick="startRecording()">
+                            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-play"></use></svg>
+                            <span>Start Recording</span>
+                        </button>
+                        <button class="btn btn-danger" onclick="stopRecording()">
+                            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-stop"></use></svg>
+                            <span>Stop Recording</span>
+                        </button>
+                        <button class="btn btn-secondary" onclick="clearRecordings()">
+                            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-trash"></use></svg>
+                            <span>Clear Recordings</span>
+                        </button>
                     </div>
 
                     <div id="recording-status" style="margin-top: var(--space-4);"></div>
@@ -389,7 +559,10 @@
                     <!-- General Settings -->
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">⚙️ General Settings</h3>
+                        <h3 class="card-title">
+                            <svg class="icon icon-inline" aria-hidden="true" focusable="false"><use href="#icon-settings"></use></svg>
+                            General Settings
+                        </h3>
                         </div>
                         <div class="form-group">
                             <label class="form-label">Theme</label>
@@ -412,8 +585,11 @@
                     
                     <!-- Connection Settings -->
                     <div class="card">
-                        <div class="card-header">
-                            <h3 class="card-title">🔗 Connection Settings</h3>
+                    <div class="card-header">
+                        <h3 class="card-title">
+                            <svg class="icon icon-inline" aria-hidden="true" focusable="false"><use href="#icon-settings"></use></svg>
+                            Connection Settings
+                        </h3>
                         </div>
                         <div class="form-group">
                             <label class="form-label">Default Host</label>
@@ -440,8 +616,14 @@
                 </div>
                 
                 <div style="margin-top: var(--space-6); text-align: center;">
-                    <button class="btn btn-primary" onclick="saveSettings()">💾 Save Settings</button>
-                    <button class="btn btn-secondary" onclick="resetSettings()">🔄 Reset to Defaults</button>
+                    <button class="btn btn-primary" onclick="saveSettings()">
+                        <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-save"></use></svg>
+                        <span>Save Settings</span>
+                    </button>
+                    <button class="btn btn-secondary" onclick="resetSettings()">
+                        <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-refresh"></use></svg>
+                        <span>Reset to Defaults</span>
+                    </button>
                 </div>
             </div>
         </div>
@@ -502,8 +684,8 @@
                     <span id="editor-dirty-indicator" class="dirty-indicator" style="display: none;">● Unsaved changes</span>
                 </div>
                 <div class="modal-header-actions">
-                    <button type="button" class="btn btn-secondary btn-sm" data-action="format-json">🎨 Format</button>
-                    <button type="button" class="btn btn-secondary btn-sm" data-action="minify-json">📦 Minify</button>
+                    <button type="button" class="btn btn-secondary btn-sm" data-action="format-json">Format</button>
+                    <button type="button" class="btn btn-secondary btn-sm" data-action="minify-json">Minify</button>
                     <button type="button" class="btn btn-primary" id="update-mapping-btn" onclick="updateMapping()">
                         <span class="btn-label">Update Mapping</span>
                         <span class="btn-spinner loading-spinner" aria-hidden="true"></span>

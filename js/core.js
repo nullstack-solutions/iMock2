@@ -152,6 +152,202 @@ window.SELECTORS = {
 
 };
 
+// --- SCHEDULING & RENDER HELPERS ---
+(function initialiseLifecycleManager() {
+    const intervalIds = new Set();
+    const rafIds = new Set();
+
+    const manager = {
+        setInterval(handler, delay) {
+            const id = window.setInterval(handler, delay);
+            intervalIds.add(id);
+            return id;
+        },
+        clearInterval(id) {
+            if (id !== undefined && id !== null) {
+                window.clearInterval(id);
+                intervalIds.delete(id);
+            }
+        },
+        requestAnimationFrame(handler) {
+            if (typeof window.requestAnimationFrame !== 'function') {
+                handler();
+                return null;
+            }
+            const id = window.requestAnimationFrame(handler);
+            rafIds.add(id);
+            return id;
+        },
+        cancelAnimationFrame(id) {
+            if (id !== undefined && id !== null && typeof window.cancelAnimationFrame === 'function') {
+                window.cancelAnimationFrame(id);
+                rafIds.delete(id);
+            }
+        },
+        clearAll() {
+            intervalIds.forEach(identifier => window.clearInterval(identifier));
+            intervalIds.clear();
+            rafIds.forEach(identifier => {
+                if (typeof window.cancelAnimationFrame === 'function') {
+                    window.cancelAnimationFrame(identifier);
+                }
+            });
+            rafIds.clear();
+        }
+    };
+
+    window.LifecycleManager = manager;
+    window.addEventListener('beforeunload', () => manager.clearAll());
+})();
+
+window.debounce = function debounce(fn, wait = 150, options = {}) {
+    let timeoutId;
+    let lastArgs;
+    let lastThis;
+    let result;
+    const { leading = false, trailing = true } = options;
+
+    const invoke = () => {
+        timeoutId = undefined;
+        if (trailing && lastArgs) {
+            result = fn.apply(lastThis, lastArgs);
+            lastArgs = lastThis = undefined;
+        }
+    };
+
+    return Object.assign(function debounced(...args) {
+        lastArgs = args;
+        lastThis = this;
+
+        if (timeoutId === undefined) {
+            if (leading) {
+                result = fn.apply(lastThis, lastArgs);
+                lastArgs = lastThis = undefined;
+            }
+            timeoutId = window.setTimeout(invoke, wait);
+        } else {
+            window.clearTimeout(timeoutId);
+            timeoutId = window.setTimeout(invoke, wait);
+        }
+
+        return result;
+    }, {
+        cancel() {
+            if (timeoutId !== undefined) {
+                window.clearTimeout(timeoutId);
+            }
+            timeoutId = undefined;
+            lastArgs = lastThis = undefined;
+        },
+        flush() {
+            if (timeoutId !== undefined) {
+                window.clearTimeout(timeoutId);
+                invoke();
+            }
+            return result;
+        }
+    });
+};
+
+(function initialiseRenderList() {
+    const pendingFrames = new WeakMap();
+
+    function toElement(markup) {
+        if (typeof markup !== 'string' || !markup.trim()) {
+            return null;
+        }
+        const template = document.createElement('template');
+        template.innerHTML = markup.trim();
+        return template.content.firstElementChild;
+    }
+
+    window.renderList = function renderList(container, items, options = {}) {
+        if (!(container instanceof Element) || !Array.isArray(items)) {
+            return;
+        }
+        const { renderItem, getKey, getSignature } = options;
+        if (typeof renderItem !== 'function') {
+            return;
+        }
+
+        const existingNodes = new Map();
+        Array.from(container.children).forEach(node => {
+            if (node instanceof HTMLElement && node.dataset && node.dataset.id) {
+                existingNodes.set(node.dataset.id, node);
+            }
+        });
+
+        const fragment = document.createDocumentFragment();
+
+        items.forEach(item => {
+            const key = typeof getKey === 'function' ? getKey(item) : (item && (item.id || item.uuid));
+            if (!key) {
+                return;
+            }
+            const keyString = String(key);
+            const signature = typeof getSignature === 'function' ? getSignature(item) : keyString;
+            const existing = existingNodes.get(keyString);
+
+            if (existing && existing.dataset.renderSignature === signature) {
+                existing.dataset.renderSignature = signature;
+                fragment.appendChild(existing);
+                existingNodes.delete(keyString);
+                return;
+            }
+
+            const markup = renderItem(item);
+            const node = toElement(markup);
+            if (!node) {
+                existingNodes.delete(keyString);
+                return;
+            }
+            node.dataset.id = keyString;
+            node.dataset.renderSignature = signature;
+            fragment.appendChild(node);
+            existingNodes.delete(keyString);
+        });
+
+        existingNodes.forEach(node => node.remove());
+
+        const scheduleRender = () => {
+            container.replaceChildren(fragment);
+        };
+
+        if (window.LifecycleManager && typeof window.LifecycleManager.requestAnimationFrame === 'function') {
+            const pending = pendingFrames.get(container);
+            if (pending) {
+                window.LifecycleManager.cancelAnimationFrame(pending);
+            }
+            const handle = window.LifecycleManager.requestAnimationFrame(() => {
+                scheduleRender();
+                pendingFrames.delete(container);
+            });
+            if (handle !== null) {
+                pendingFrames.set(container, handle);
+            }
+        } else if (typeof window.requestAnimationFrame === 'function') {
+            const handle = window.requestAnimationFrame(scheduleRender);
+            pendingFrames.set(container, handle);
+        } else {
+            scheduleRender();
+        }
+    };
+})();
+
+window.Icons = {
+    render(name, options = {}) {
+        if (!name) {
+            return '';
+        }
+        const classes = ['icon', `icon-${name}`];
+        if (options.className) {
+            classes.push(options.className);
+        }
+        const classAttr = classes.join(' ');
+        return `<svg class="${classAttr}" aria-hidden="true" focusable="false"><use href="#icon-${name}"></use></svg>`;
+    }
+};
+
 window.ENDPOINTS = {
     // Core endpoints
     HEALTH: '/health',
@@ -519,7 +715,9 @@ const applyThemeToDom = (theme) => {
 
     const themeIcon = document.getElementById('theme-icon');
     if (themeIcon) {
-        themeIcon.textContent = theme === 'dark' ? '☀️' : '🌙';
+        const target = theme === 'dark' ? '#icon-sun' : '#icon-moon';
+        themeIcon.setAttribute('href', target);
+        themeIcon.setAttribute('xlink:href', target);
     }
 };
 
