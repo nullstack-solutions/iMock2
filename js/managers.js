@@ -566,9 +566,18 @@ window.FilterManager = {
                     return urlA.localeCompare(urlB);
                 });
 
-                // Add a safety check before using renderMappingCard:
-                if (typeof window.renderMappingCard === 'function') {
-                    container.innerHTML = sortedMappings.map(mapping => window.renderMappingCard(mapping)).join('');
+                if (window.ListRenderer && typeof window.ListRenderer.render === 'function') {
+                    window.ListRenderer.render(container, sortedMappings, window.renderMappingCard);
+                } else if (typeof window.renderMappingCard === 'function') {
+                    container.innerHTML = '';
+                    const fragment = document.createDocumentFragment();
+                    sortedMappings.forEach(mapping => {
+                        const node = window.renderMappingCard(mapping);
+                        if (node instanceof Node) {
+                            fragment.appendChild(node);
+                        }
+                    });
+                    container.appendChild(fragment);
                 }
 
                 // Update UI elements
@@ -651,9 +660,18 @@ window.FilterManager = {
             // Re-render requests
             const container = document.getElementById(SELECTORS.LISTS.REQUESTS);
             if (container) {
-                // Add a safety check before using renderRequestCard:
-                if (typeof window.renderRequestCard === 'function') {
-                    container.innerHTML = window.allRequests.map(request => window.renderRequestCard(request)).join('');
+                if (window.ListRenderer && typeof window.ListRenderer.render === 'function') {
+                    window.ListRenderer.render(container, window.allRequests, window.renderRequestCard);
+                } else if (typeof window.renderRequestCard === 'function') {
+                    container.innerHTML = '';
+                    const fragment = document.createDocumentFragment();
+                    window.allRequests.forEach(request => {
+                        const node = window.renderRequestCard(request);
+                        if (node instanceof Node) {
+                            fragment.appendChild(node);
+                        }
+                    });
+                    container.appendChild(fragment);
                 }
 
                 // Update UI elements

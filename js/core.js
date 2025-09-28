@@ -191,6 +191,429 @@ window.ENDPOINTS = {
     SHUTDOWN: '/shutdown'
 };
 
+// --- SECURITY & STATE HELPERS ---
+(function initializeCoreUtilities() {
+    const hasCryptoSupport = typeof window !== 'undefined'
+        && window.crypto && window.crypto.subtle && window.crypto.getRandomValues;
+
+    const base64 = {
+        encode(bytes) {
+            let binary = '';
+            const chunkSize = 0x8000;
+            for (let i = 0; i < bytes.length; i += chunkSize) {
+                const chunk = bytes.subarray(i, i + chunkSize);
+                binary += String.fromCharCode.apply(null, chunk);
+            }
+            return window.btoa(binary);
+        },
+
+        decode(str) {
+            const binary = window.atob(str);
+            const len = binary.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i += 1) {
+                bytes[i] = binary.charCodeAt(i);
+            }
+            return bytes;
+        }
+    };
+
+    const SETTINGS_KEY = 'wiremock-settings';
+    const SETTINGS_KEY_FLAG = `${SETTINGS_KEY}::enc`;
+    const CRYPTO_KEY_STORAGE = 'imock-settings-key';
+    let cryptoKeyPromise = null;
+    let settingsCache = null;
+    let settingsLoadPromise = null;
+
+    async function ensureCryptoKey() {
+        if (!hasCryptoSupport) {
+            return null;
+        }
+        if (cryptoKeyPromise) {
+            return cryptoKeyPromise;
+        }
+
+        cryptoKeyPromise = (async () => {
+            let rawKey = window.localStorage.getItem(CRYPTO_KEY_STORAGE);
+            if (!rawKey) {
+                const buffer = new Uint8Array(32);
+                window.crypto.getRandomValues(buffer);
+                rawKey = base64.encode(buffer);
+                window.localStorage.setItem(CRYPTO_KEY_STORAGE, rawKey);
+            }
+
+            const keyBytes = base64.decode(rawKey);
+            return window.crypto.subtle.importKey(
+                'raw',
+                keyBytes,
+                { name: 'AES-GCM' },
+                false,
+                ['encrypt', 'decrypt']
+            );
+        })();
+
+        try {
+            return await cryptoKeyPromise;
+        } catch (error) {
+            console.warn('Failed to establish crypto key, falling back to plain storage', error);
+            cryptoKeyPromise = null;
+            return null;
+        }
+    }
+
+    async function encryptPayload(value) {
+        const key = await ensureCryptoKey();
+        if (!key) {
+            return null;
+        }
+
+        const encoder = new TextEncoder();
+        const iv = window.crypto.getRandomValues(new Uint8Array(12));
+        const cipherBuffer = await window.crypto.subtle.encrypt(
+            { name: 'AES-GCM', iv },
+            key,
+            encoder.encode(value)
+        );
+
+        const combined = new Uint8Array(iv.byteLength + cipherBuffer.byteLength);
+        combined.set(iv, 0);
+        combined.set(new Uint8Array(cipherBuffer), iv.byteLength);
+        return base64.encode(combined);
+    }
+
+    async function decryptPayload(payload) {
+        const key = await ensureCryptoKey();
+        if (!key) {
+            return null;
+        }
+
+        const bytes = base64.decode(payload);
+        const iv = bytes.slice(0, 12);
+        const data = bytes.slice(12);
+
+        const decrypted = await window.crypto.subtle.decrypt(
+            { name: 'AES-GCM', iv },
+            key,
+            data
+        );
+
+        const decoder = new TextDecoder();
+        return decoder.decode(decrypted);
+    }
+
+    async function readSettingsFromStorage() {
+        const stored = window.localStorage.getItem(SETTINGS_KEY);
+        if (!stored) {
+            return null;
+        }
+
+        const isEncrypted = window.localStorage.getItem(SETTINGS_KEY_FLAG) === '1';
+        if (isEncrypted) {
+            try {
+                const decrypted = await decryptPayload(stored);
+                if (decrypted) {
+                    return JSON.parse(decrypted);
+                }
+            } catch (error) {
+                console.warn('Failed to decrypt stored settings, falling back to plain JSON', error);
+                window.localStorage.removeItem(SETTINGS_KEY_FLAG);
+            }
+        }
+
+        try {
+            return JSON.parse(stored);
+        } catch (error) {
+            console.warn('Stored settings payload is malformed JSON', error);
+            return null;
+        }
+    }
+
+    async function persistSettings(settings) {
+        const payload = JSON.stringify(settings);
+
+        try {
+            const encrypted = await encryptPayload(payload);
+            if (encrypted) {
+                window.localStorage.setItem(SETTINGS_KEY, encrypted);
+                window.localStorage.setItem(SETTINGS_KEY_FLAG, '1');
+                return;
+            }
+        } catch (error) {
+            console.warn('Failed to encrypt settings payload, storing as plain JSON', error);
+        }
+
+        window.localStorage.setItem(SETTINGS_KEY, payload);
+        window.localStorage.removeItem(SETTINGS_KEY_FLAG);
+    }
+
+    const SettingsStore = {
+        async load() {
+            if (settingsCache) {
+                return { ...settingsCache };
+            }
+
+            if (!settingsLoadPromise) {
+                settingsLoadPromise = (async () => {
+                    const stored = await readSettingsFromStorage();
+                    settingsCache = {
+                        ...(window.DEFAULT_SETTINGS || {}),
+                        ...(stored || {})
+                    };
+                    settingsLoadPromise = null;
+                    return { ...settingsCache };
+                })();
+            }
+
+            return settingsLoadPromise;
+        },
+
+        getCached() {
+            if (settingsCache) {
+                return { ...settingsCache };
+            }
+            try {
+                const stored = JSON.parse(window.localStorage.getItem(SETTINGS_KEY) || '{}');
+                settingsCache = {
+                    ...(window.DEFAULT_SETTINGS || {}),
+                    ...(stored || {})
+                };
+            } catch (_) {
+                settingsCache = { ...(window.DEFAULT_SETTINGS || {}) };
+            }
+            return { ...settingsCache };
+        },
+
+        async save(newSettings) {
+            settingsCache = {
+                ...(window.DEFAULT_SETTINGS || {}),
+                ...(newSettings || {})
+            };
+            await persistSettings(settingsCache);
+            return { ...settingsCache };
+        },
+
+        async update(mutator) {
+            const current = await this.load();
+            const updated = mutator ? mutator({ ...current }) : current;
+            return this.save(updated);
+        },
+
+        setCache(settings) {
+            settingsCache = {
+                ...(window.DEFAULT_SETTINGS || {}),
+                ...(settings || {})
+            };
+        }
+    };
+
+    window.SettingsStore = SettingsStore;
+
+    // Resource tracking for cleanup
+    const ResourceCleaner = {
+        intervals: new Set(),
+        timeouts: new Set(),
+        observers: new Set(),
+        cleanups: new Set(),
+
+        trackInterval(id) {
+            if (id) {
+                this.intervals.add(id);
+            }
+            return id;
+        },
+
+        trackTimeout(id) {
+            if (id) {
+                this.timeouts.add(id);
+            }
+            return id;
+        },
+
+        trackObserver(observer) {
+            if (observer) {
+                this.observers.add(observer);
+            }
+            return observer;
+        },
+
+        registerCleanup(fn) {
+            if (typeof fn === 'function') {
+                this.cleanups.add(fn);
+            }
+            return fn;
+        },
+
+        clearInterval(id) {
+            if (this.intervals.has(id)) {
+                window.clearInterval(id);
+                this.intervals.delete(id);
+            }
+        },
+
+        clearTimeout(id) {
+            if (this.timeouts.has(id)) {
+                window.clearTimeout(id);
+                this.timeouts.delete(id);
+            }
+        },
+
+        cleanupAll() {
+            this.intervals.forEach(id => window.clearInterval(id));
+            this.intervals.clear();
+            this.timeouts.forEach(id => window.clearTimeout(id));
+            this.timeouts.clear();
+            this.observers.forEach(observer => observer.disconnect?.());
+            this.observers.clear();
+            this.cleanups.forEach(fn => {
+                try { fn(); } catch (error) { console.warn('Cleanup handler failed', error); }
+            });
+            this.cleanups.clear();
+        }
+    };
+
+    window.ResourceCleaner = ResourceCleaner;
+
+    // Debounce helper shared across modules
+    window.createDebounce = (fn, wait = 200) => {
+        let timeoutId = null;
+        return (...args) => {
+            if (timeoutId) {
+                window.clearTimeout(timeoutId);
+                ResourceCleaner.timeouts.delete(timeoutId);
+            }
+            const handle = window.setTimeout(() => {
+                ResourceCleaner.timeouts.delete(handle);
+                timeoutId = null;
+                fn.apply(null, args);
+            }, wait);
+            timeoutId = handle;
+            ResourceCleaner.trackTimeout(handle);
+        };
+    };
+
+    // Lightweight list renderer with incremental updates
+    class IncrementalListRenderer {
+        constructor(container) {
+            this.container = container;
+            this.chunkSize = 30;
+            this.items = [];
+            this.renderFn = null;
+            this.renderedCount = 0;
+            this.sentinel = document.createElement('div');
+            this.sentinel.className = 'list-sentinel';
+            this.sentinel.setAttribute('aria-hidden', 'true');
+            this.renderScheduled = false;
+
+            this.observer = new IntersectionObserver((entries) => {
+                if (entries.some(entry => entry.isIntersecting)) {
+                    this.scheduleNextChunk();
+                }
+            }, { root: container, threshold: 0.1 });
+
+            ResourceCleaner.trackObserver(this.observer);
+            this.observer.observe(this.sentinel);
+            ResourceCleaner.registerCleanup(() => this.dispose());
+        }
+
+        setItems(items, renderFn) {
+            this.items = Array.isArray(items) ? items : [];
+            this.renderFn = renderFn;
+            this.renderedCount = 0;
+            this.clearContainer();
+            this.scheduleNextChunk(true);
+        }
+
+        clearContainer() {
+            while (this.container.firstChild) {
+                this.container.removeChild(this.container.firstChild);
+            }
+            this.container.appendChild(this.sentinel);
+        }
+
+        scheduleNextChunk(isImmediate = false) {
+            if (this.renderScheduled || !this.renderFn) {
+                return;
+            }
+
+            const execute = () => {
+                this.renderScheduled = false;
+                if (!this.renderFn) {
+                    return;
+                }
+
+                const fragment = document.createDocumentFragment();
+                let processed = 0;
+                while (this.renderedCount < this.items.length && processed < this.chunkSize) {
+                    const item = this.items[this.renderedCount];
+                    const node = this.renderFn(item);
+                    if (node instanceof Node) {
+                        fragment.appendChild(node);
+                    }
+                    this.renderedCount += 1;
+                    processed += 1;
+                }
+
+                this.container.insertBefore(fragment, this.sentinel);
+
+                if (this.renderedCount >= this.items.length) {
+                    this.sentinel.classList.add('is-complete');
+                } else {
+                    this.sentinel.classList.remove('is-complete');
+                }
+            };
+
+            this.renderScheduled = true;
+            if (isImmediate) {
+                execute();
+            } else {
+                window.requestAnimationFrame(() => execute());
+            }
+        }
+
+        dispose() {
+            if (this.observer) {
+                this.observer.disconnect();
+                this.observer = null;
+            }
+            if (this.sentinel?.parentNode === this.container) {
+                this.container.removeChild(this.sentinel);
+            }
+            this.renderFn = null;
+            this.items = [];
+        }
+    }
+
+    const listRendererRegistry = new WeakMap();
+
+    window.ListRenderer = {
+        render(container, items, renderFn) {
+            if (!(container instanceof Element)) {
+                return;
+            }
+
+            let renderer = listRendererRegistry.get(container);
+            if (!renderer) {
+                renderer = new IncrementalListRenderer(container);
+                listRendererRegistry.set(container, renderer);
+            }
+
+            renderer.setItems(items, renderFn);
+        },
+
+        dispose(container) {
+            const renderer = listRendererRegistry.get(container);
+            if (renderer) {
+                renderer.dispose();
+                listRendererRegistry.delete(container);
+            }
+        }
+    };
+
+    window.addEventListener('beforeunload', () => {
+        ResourceCleaner.cleanupAll();
+    });
+})();
+
 // Helper to build the documented scenario state endpoint
 window.buildScenarioStateEndpoint = (scenarioName) => {
     const rawName = typeof scenarioName === 'string' ? scenarioName : '';
@@ -266,9 +689,9 @@ window.apiFetch = async (endpoint, options = {}) => {
     const controller = new AbortController();
 
     // Read timeout from settings, fallback to centralized default
-    const timeoutSettings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
-    const defaultTimeout = window.DEFAULT_SETTINGS?.requestTimeout ? parseInt(window.DEFAULT_SETTINGS.requestTimeout) : 69000;
-    const currentTimeout = timeoutSettings.requestTimeout ? parseInt(timeoutSettings.requestTimeout) : defaultTimeout;
+    const timeoutSettings = window.SettingsStore?.getCached?.() || {};
+    const defaultTimeout = window.DEFAULT_SETTINGS?.requestTimeout ? parseInt(window.DEFAULT_SETTINGS.requestTimeout, 10) : 69000;
+    const currentTimeout = timeoutSettings.requestTimeout ? parseInt(timeoutSettings.requestTimeout, 10) : defaultTimeout;
     console.log(`⏱️ [API] Using request timeout: ${currentTimeout}ms (from settings: ${timeoutSettings.requestTimeout || `default ${defaultTimeout}`})`);
     const timeoutId = setTimeout(() => controller.abort(), currentTimeout);
 
@@ -278,8 +701,7 @@ window.apiFetch = async (endpoint, options = {}) => {
 
     // Prepare headers with auth header if available
     // Retrieve the authHeader from settings on every request
-    const authSettings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
-    const currentAuthHeader = authSettings.authHeader || window.authHeader || '';
+    const currentAuthHeader = timeoutSettings.authHeader || window.authHeader || '';
 
     const headers = {
         'Content-Type': 'application/json',
@@ -519,16 +941,25 @@ const applyThemeToDom = (theme) => {
 
     const themeIcon = document.getElementById('theme-icon');
     if (themeIcon) {
-        themeIcon.textContent = theme === 'dark' ? '☀️' : '🌙';
+        const useEl = themeIcon.querySelector('use');
+        if (useEl) {
+            useEl.setAttribute('href', theme === 'dark' ? '#icon-sun' : '#icon-moon');
+            useEl.setAttribute('xlink:href', theme === 'dark' ? '#icon-sun' : '#icon-moon');
+        }
+        themeIcon.setAttribute('data-icon-mode', theme);
     }
 };
 
 const persistThemePreference = (preference) => {
     localStorage.setItem('theme', preference);
-    try {
-        const current = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
-        localStorage.setItem('wiremock-settings', JSON.stringify({ ...current, theme: preference }));
-    } catch (_) {}
+    if (window.SettingsStore && typeof window.SettingsStore.update === 'function') {
+        window.SettingsStore.update((current) => ({
+            ...current,
+            theme: preference
+        })).catch((error) => console.warn('Failed to persist theme preference to settings store', error));
+    } else {
+        console.warn('SettingsStore unavailable; theme preference not saved to settings payload.');
+    }
 };
 
 window.toggleTheme = () => {
@@ -608,7 +1039,7 @@ window.debugAuthHeader = () => {
         'window.authHeader': window.authHeader,
         'typeof': typeof window.authHeader,
         'length': window.authHeader?.length,
-        'localStorage': JSON.parse(localStorage.getItem('wiremock-settings') || '{}').authHeader
+        'settingsCache': (window.SettingsStore?.getCached?.() || {}).authHeader
     });
 };
 

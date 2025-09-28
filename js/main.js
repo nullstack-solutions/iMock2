@@ -29,7 +29,7 @@ window.editMapping = (mappingId) => {
     console.log('🔧 Opening editor for mapping:', mappingId);
 
     // Get current settings to pass to editor
-    const currentSettings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
+    const currentSettings = window.SettingsStore?.getCached?.() || {};
 
     // Option 1: Pass ALL settings (current behavior)
     const settingsParam = encodeURIComponent(JSON.stringify(currentSettings));
@@ -57,9 +57,10 @@ window.editMapping = (mappingId) => {
     NotificationManager.info(`Editor opened for mapping ${mappingId}`);
         
     // Track window closure to refresh counters
-    const checkClosed = setInterval(() => {
+    const checkClosed = window.setInterval(() => {
         if (editorWindow.closed) {
             clearInterval(checkClosed);
+            window.ResourceCleaner?.intervals?.delete?.(checkClosed);
             console.log('🔄 Editor closed, updating counters only');
             // Only update counters, don't refresh data to preserve optimistic updates
             if (typeof window.updateMappingsCounter === 'function') {
@@ -70,20 +71,24 @@ window.editMapping = (mappingId) => {
             }
         }
     }, 1000);
+    window.ResourceCleaner?.trackInterval?.(checkClosed);
 
     // Safety cleanup: clear interval after 5 minutes to prevent memory leaks
-    setTimeout(() => {
+    const timeoutHandle = window.setTimeout(() => {
         if (!editorWindow.closed) {
             clearInterval(checkClosed);
             console.log('🔄 Editor interval cleaned up after timeout');
         }
+        window.ResourceCleaner?.intervals?.delete?.(checkClosed);
+        window.ResourceCleaner?.timeouts?.delete?.(timeoutHandle);
     }, 5 * 60 * 1000); // 5 minutes
+    window.ResourceCleaner?.trackTimeout?.(timeoutHandle);
 };
 
 // === SETTINGS MANAGEMENT ===
 
 // Save settings from the settings page
-window.saveSettings = () => {
+window.saveSettings = async () => {
     try {
         // Collect settings from settings form (prioritize settings form values)
         const cacheCheckbox = document.getElementById('cache-enabled');
@@ -111,9 +116,13 @@ window.saveSettings = () => {
         if (hostInput) hostInput.value = settings.host;
         if (portInput) portInput.value = settings.port;
         
-        // Save to localStorage
-        localStorage.setItem('wiremock-settings', JSON.stringify(settings));
-        console.log('🔧 [main.js] Settings saved to localStorage:', settings);
+        // Persist securely
+        if (window.SettingsStore && typeof window.SettingsStore.save === 'function') {
+            await window.SettingsStore.save(settings);
+        } else {
+            console.warn('[main.js] SettingsStore unavailable; settings were not persisted.');
+        }
+        console.log('🔧 [main.js] Settings persisted:', settings);
         console.log('🔧 [main.js] Request timeout field value:', document.getElementById('request-timeout')?.value);
 
         // Update global baseUrl immediately
@@ -139,9 +148,9 @@ window.saveSettings = () => {
 };
 
 // Reset settings to defaults
-window.resetSettings = () => {
+window.resetSettings = async () => {
     if (!confirm('Reset all settings to defaults?')) return;
-    
+
     try {
         // Update form fields
         if (document.getElementById('default-host')) document.getElementById('default-host').value = DEFAULT_SETTINGS.host;
@@ -153,7 +162,11 @@ window.resetSettings = () => {
         if (document.getElementById('refresh-interval')) document.getElementById('refresh-interval').value = DEFAULT_SETTINGS.refreshInterval;
 
         // Save defaults
-        localStorage.setItem('wiremock-settings', JSON.stringify(DEFAULT_SETTINGS));
+        if (window.SettingsStore && typeof window.SettingsStore.save === 'function') {
+            await window.SettingsStore.save(DEFAULT_SETTINGS);
+        } else {
+            console.warn('[main.js] SettingsStore unavailable; defaults were not persisted.');
+        }
 
         // Update global baseUrl
         window.wiremockBaseUrl = `http://${DEFAULT_SETTINGS.host}:${DEFAULT_SETTINGS.port}/__admin`;
@@ -174,10 +187,16 @@ window.resetSettings = () => {
 };
 
 // Load settings into form fields
-window.loadSettings = () => {
+window.loadSettings = async () => {
     try {
-        const settings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
-        console.log('🔧 [main.js] Loading settings from localStorage:', settings);
+        let settings = {};
+        if (window.SettingsStore && typeof window.SettingsStore.load === 'function') {
+            settings = await window.SettingsStore.load();
+        } else {
+            console.warn('[main.js] SettingsStore unavailable; using defaults.');
+            settings = { ...DEFAULT_SETTINGS };
+        }
+        console.log('🔧 [main.js] Loading settings from storage:', settings);
 
         // Load into settings form fields if they exist
         if (document.getElementById('default-host')) document.getElementById('default-host').value = settings.host || DEFAULT_SETTINGS.host;
@@ -268,8 +287,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     applyDefaultsToForm();
     
     // Then load saved settings (will override defaults if settings exist)
-    loadSettings();
-    loadConnectionSettings();
+    await loadSettings();
+    await loadConnectionSettings();
     
     // Ensure settings are loaded before any operations
     console.log('🔧 [main.js] Page loaded, defaults applied, settings initialized, ready for user interaction');
@@ -277,12 +296,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // Listen for settings changes from editor windows or other sources
 window.addEventListener('storage', (e) => {
-    if (e.key === 'wiremock-settings' && e.newValue) {
-        try {
-            const settings = JSON.parse(e.newValue);
+    if (e.key === 'wiremock-settings') {
+        const handleSettingsUpdate = (settings) => {
+            if (!settings) return;
             console.log('🔧 [main.js] Settings updated from external source:', settings);
 
-            // Update main connection form fields
             const hostInput = document.getElementById('wiremock-host');
             const portInput = document.getElementById('wiremock-port');
             if (hostInput && settings.host) {
@@ -292,7 +310,6 @@ window.addEventListener('storage', (e) => {
                 portInput.value = settings.port;
             }
 
-            // Update URL if we have valid settings
             if (settings.host && settings.port) {
                 if (typeof window.normalizeWiremockBaseUrl === 'function') {
                     window.wiremockBaseUrl = window.normalizeWiremockBaseUrl(settings.host, settings.port);
@@ -301,8 +318,18 @@ window.addEventListener('storage', (e) => {
                 }
                 console.log('🔧 [main.js] URL updated from settings change:', window.wiremockBaseUrl);
             }
-        } catch (error) {
-            console.error('🔧 [main.js] Error processing settings update:', error);
+        };
+
+        if (window.SettingsStore && typeof window.SettingsStore.load === 'function') {
+            window.SettingsStore.load().then(handleSettingsUpdate).catch(error => {
+                console.error('🔧 [main.js] Error processing settings update:', error);
+            });
+        } else if (e.newValue) {
+            try {
+                handleSettingsUpdate(JSON.parse(e.newValue));
+            } catch (error) {
+                console.error('🔧 [main.js] Error processing settings update:', error);
+            }
         }
     }
 });
@@ -413,9 +440,15 @@ if (typeof BroadcastChannel !== 'undefined') {
 }
 
 // Load connection settings into main connection form
-function loadConnectionSettings() {
+async function loadConnectionSettings() {
     try {
-        const settings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
+        let settings = {};
+        if (window.SettingsStore && typeof window.SettingsStore.load === 'function') {
+            settings = await window.SettingsStore.load();
+        } else {
+            console.warn('[loadConnectionSettings] SettingsStore unavailable; using defaults.');
+            settings = { ...DEFAULT_SETTINGS };
+        }
 
         console.log('🔧 [loadConnectionSettings] Loading settings:', settings);
 
