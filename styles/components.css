@@ -30,7 +30,12 @@
     font-size: var(--font-size-sm);
     font-weight: 600;
     cursor: pointer;
-    transition: all var(--transition-fast);
+    transition:
+        background-color var(--transition-fast),
+        color var(--transition-fast),
+        border-color var(--transition-fast),
+        box-shadow var(--transition-fast),
+        transform var(--transition-fast);
     text-decoration: none;
     position: relative;
     overflow: hidden;
@@ -149,7 +154,11 @@
     font-size: var(--font-size-base);
     background: var(--bg-primary);
     color: var(--text-primary);
-    transition: all var(--transition-fast);
+    transition:
+        background-color var(--transition-fast),
+        border-color var(--transition-fast),
+        box-shadow var(--transition-fast),
+        color var(--transition-fast);
 }
 
 .form-input:focus,
@@ -214,6 +223,8 @@
     overflow: hidden;
     box-shadow: var(--shadow-sm);
     border: 1px solid var(--border-primary);
+    contain: layout style;
+    content-visibility: auto;
 }
 
 /* ===== LIST ITEMS ===== */
@@ -237,6 +248,12 @@
     border-bottom: 1px solid var(--border-primary);
     position: relative;
     transition: background-color var(--transition-fast);
+}
+
+:where(.mapping-item, .request-item, .mapping-card, .request-card) {
+    contain: layout paint style;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 160px;
 }
 
 .mapping-item:last-child, .request-item:last-child, 
@@ -263,7 +280,11 @@
     align-items: center;
     margin-bottom: 1rem;
     cursor: pointer;
-    transition: all var(--transition-fast);
+    transition:
+        background-color var(--transition-fast),
+        color var(--transition-fast),
+        transform var(--transition-fast),
+        box-shadow var(--transition-fast);
     border-radius: var(--radius-md);
     padding: var(--space-2);
     margin: calc(-1 * var(--space-2));
@@ -394,7 +415,11 @@
     border-radius: var(--radius-lg);
     padding: var(--space-4);
     margin-bottom: var(--space-3);
-    transition: all var(--transition-fast);
+    transition:
+        background-color var(--transition-fast),
+        border-color var(--transition-fast),
+        box-shadow var(--transition-fast),
+        transform var(--transition-fast);
 }
 
 .request-card:hover,
@@ -589,6 +614,7 @@
     background: linear-gradient(135deg, #6b7280, #4b5563); 
 }
 
+
 .status-badge {
     color: white;
     min-width: 38px;
@@ -598,96 +624,58 @@
     border: 1px solid rgba(255, 255, 255, 0.3);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2);
     padding: var(--space-1) var(--space-2);
-    border-radius: var(--radius-md); /* Added rounded corners */
+    border-radius: var(--radius-md);
     font-size: var(--font-size-xs);
     margin: 0 var(--space-2);
 }
 
-.status-2xx { background: #10b981; } /* Improved color */
-.status-3xx { background: #f59e0b; }
-.status-4xx { background: #ef4444; }
-.status-5xx { background: #8b5cf6; } /* Improved color */
-
-/* Specific status codes */
-.status-200, .status-201 { 
-    background: #10b981; /* Improved color */
-    color: white; 
-    border: 1px solid rgba(255, 255, 255, 0.2);
-}
-.status-400 { 
-    background: #f59e0b; /* Improved color */
-    color: white; 
-    border: 1px solid rgba(255, 255, 255, 0.2);
-}
-.status-404 { 
-    background: #ef4444; /* Improved color */
-    color: white; 
-    border: 1px solid rgba(255, 255, 255, 0.2);
-}
-.status-500 { 
-    background: #8b5cf6; /* Improved color */
-    color: white; 
-    border: 1px solid rgba(255, 255, 255, 0.2);
-}
-
-/* Status classes returned by getStatusClass function */
-.success { 
-    background: #10b981;
+:where(
+    .status-badge,
+    [class^="status-"],
+    .success,
+    .redirect,
+    .client-error,
+    .server-error,
+    .unknown
+) {
+    --status-surface: var(--status-surface, #10b981);
+    background: var(--status-surface);
     color: white;
-    min-width: 38px;
-    height: 20px;
-    line-height: 10px;
-    border: 1px solid rgba(255, 255, 255, 0.3);
-}
-.redirect { 
-    background: #f59e0b;
-    color: white;
-    min-width: 38px;
-    height: 20px;
-    line-height: 10px;
-    border: 1px solid rgba(255, 255, 255, 0.3);
-}
-.client-error { 
-    background: #ef4444;
-    color: white;
-    min-width: 38px;
-    height: 20px;
-    line-height: 10px;
-    border: 1px solid rgba(255, 255, 255, 0.3);
-}
-.server-error { 
-    background: #8b5cf6;
-    color: white;
-    min-width: 38px;
-    height: 20px;
-    line-height: 10px;
-    border: 1px solid rgba(255, 255, 255, 0.3);
-}
-.unknown { 
-    background: #6b7280;
-    color: white;
-    min-width: 38px;
-    height: 20px;
-    line-height: 10px;
     border: 1px solid rgba(255, 255, 255, 0.3);
 }
 
-/* Dark theme adjustments for status badges */
-[data-theme="dark"] .status-200, 
-[data-theme="dark"] .status-201 { 
-    background: rgba(16, 185, 129, 0.2); 
-    color: #34d399; 
-    border: 1px solid rgba(16, 185, 129, 0.3);
+:where(.status-2xx, .status-200, .status-201, .success) {
+    --status-surface: #10b981;
 }
-[data-theme="dark"] .status-400 { 
-    background: rgba(245, 158, 11, 0.2); 
-    color: #fbbf24; 
-    border: 1px solid rgba(245, 158, 11, 0.3);
+
+:where(.status-3xx, .redirect) {
+    --status-surface: #f59e0b;
 }
-[data-theme="dark"] .status-500 { 
-    background: rgba(239, 68, 68, 0.2); 
-    color: #fca5a5; 
-    border: 1px solid rgba(239, 68, 68, 0.3);
+
+:where(.status-4xx, .status-400, .status-404, .client-error) {
+    --status-surface: #ef4444;
+}
+
+:where(.status-5xx, .status-500, .server-error) {
+    --status-surface: #8b5cf6;
+}
+
+:where(.unknown) {
+    --status-surface: #6b7280;
+}
+
+[data-theme="dark"] :is(
+    .status-badge,
+    [class^="status-"],
+    .success,
+    .redirect,
+    .client-error,
+    .server-error,
+    .unknown
+) {
+    background: color-mix(in srgb, var(--status-surface, #10b981) 20%, transparent);
+    color: color-mix(in srgb, var(--status-surface, #10b981) 85%, white);
+    border-color: color-mix(in srgb, var(--status-surface, #10b981) 35%, transparent);
 }
 
 /* ===== HEALTH INDICATORS ===== */
