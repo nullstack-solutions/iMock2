@@ -236,24 +236,24 @@ async function saveMapping() {
                         // Initialize metadata object if it doesn't exist
                         if (!mappingData.metadata) {
                             mappingData.metadata = {};
-                            console.log('📅 [METADATA] Initialized metadata object (update)');
+                            console.log('[DATE] [METADATA] Initialized metadata object (update)');
                         }
 
                         // Set created timestamp if not exists (first save)
                         if (!mappingData.metadata.created) {
                             mappingData.metadata.created = nowIso;
-                            console.log('📅 [METADATA] Set created timestamp (UI):', mappingData.metadata.created);
+                            console.log('[DATE] [METADATA] Set created timestamp (UI):', mappingData.metadata.created);
                         }
 
                         // Always update edited timestamp and source
                         mappingData.metadata.edited = nowIso;
                         mappingData.metadata.source = 'ui';
 
-                        console.log('📅 [METADATA] Updated edited timestamp (UI):', mappingData.metadata.edited);
-                        console.log('📅 [METADATA] Set source: ui');
+                        console.log('[DATE] [METADATA] Updated edited timestamp (UI):', mappingData.metadata.edited);
+                        console.log('[DATE] [METADATA] Set source: ui');
                     }
                 } catch (e) {
-                    console.warn('📅 [METADATA] Failed to update metadata:', e);
+                    console.warn('[DATE] [METADATA] Failed to update metadata:', e);
                 }
             })();
             const response = await apiFetch(`/mappings/${id}`, {
@@ -265,7 +265,7 @@ async function saveMapping() {
 
             NotificationManager.success('Mapping updated!');
 
-            // NEW SEQUENCE: API → Cache → UI (reuse same flow as create)
+            // NEW SEQUENCE: API -> Cache -> UI (reuse same flow as create)
             try {
                 if (updatedMapping) {
                     if (typeof updateOptimisticCache === 'function') {
@@ -287,7 +287,7 @@ async function saveMapping() {
                         // Initialize metadata object if it doesn't exist
                         if (!mappingData.metadata) {
                             mappingData.metadata = {};
-                            console.log('📅 [METADATA] Initialized metadata object (create)');
+                            console.log('[DATE] [METADATA] Initialized metadata object (create)');
                         }
 
                         // Set created timestamp (always for new mappings)
@@ -295,11 +295,11 @@ async function saveMapping() {
                         mappingData.metadata.edited = nowIso;
                         mappingData.metadata.source = 'ui';
 
-                        console.log('📅 [METADATA] Set created timestamp (UI):', mappingData.metadata.created);
-                        console.log('📅 [METADATA] Set source: ui');
+                        console.log('[DATE] [METADATA] Set created timestamp (UI):', mappingData.metadata.created);
+                        console.log('[DATE] [METADATA] Set source: ui');
                     }
                 } catch (e) {
-                    console.warn('📅 [METADATA] Failed to update metadata:', e);
+                    console.warn('[DATE] [METADATA] Failed to update metadata:', e);
                 }
             })();
             const response = await apiFetch('/mappings', {
@@ -310,7 +310,7 @@ async function saveMapping() {
             const createdMapping = response?.mapping || response;
             NotificationManager.success('Mapping created!');
 
-            // NEW SEQUENCE: API → Optimistic Cache → UI
+            // NEW SEQUENCE: API -> Optimistic Cache -> UI
             try {
                 if (createdMapping && createdMapping.id) {
                     // Update cache and UI optimistically using the unified function
@@ -351,7 +351,7 @@ window.updateMapping = async () => {
     console.log('updateMapping called');
 
     try {
-        window.setMappingEditorBusyState(true, 'Updating…');
+        window.setMappingEditorBusyState(true, 'Updating...');
 
         // Save current state based on active mode FIRST
         if (editorState.mode === EDITOR_MODES.JSON) {
@@ -378,24 +378,24 @@ window.updateMapping = async () => {
                     // Initialize metadata object if it doesn't exist
                     if (!mappingData.metadata) {
                         mappingData.metadata = {};
-                        console.log('📅 [METADATA] Initialized metadata object');
+                        console.log('[DATE] [METADATA] Initialized metadata object');
                     }
 
                     // Set created timestamp if not exists (first save)
                     if (!mappingData.metadata.created) {
                         mappingData.metadata.created = nowIso;
-                        console.log('📅 [METADATA] Set created timestamp (UI):', mappingData.metadata.created);
+                        console.log('[DATE] [METADATA] Set created timestamp (UI):', mappingData.metadata.created);
                     }
 
                     // Always update edited timestamp and source
                     mappingData.metadata.edited = nowIso;
                     mappingData.metadata.source = 'ui';
 
-                    console.log('📅 [METADATA] Updated edited timestamp (UI):', mappingData.metadata.edited);
-                    console.log('📅 [METADATA] Set source: ui');
+                    console.log('[DATE] [METADATA] Updated edited timestamp (UI):', mappingData.metadata.edited);
+                    console.log('[DATE] [METADATA] Set source: ui');
                 }
             } catch (e) {
-                console.warn('📅 [METADATA] Failed to update metadata:', e);
+                console.warn('[DATE] [METADATA] Failed to update metadata:', e);
             }
         })();
         const response = await apiFetch(`/mappings/${id}`, {
@@ -448,12 +448,12 @@ window.updateMapping = async () => {
  * Populate the edit mapping form with data from a mapping
  */
 window.populateEditMappingForm = (mapping) => {
-    console.log('🔵 [EDITOR DEBUG] populateEditMappingForm called');
-    console.log('🔵 [EDITOR DEBUG] Incoming mapping ID:', mapping?.id);
-    console.log('🔵 [EDITOR DEBUG] Incoming mapping name:', mapping?.name);
-    console.log('🔵 [EDITOR DEBUG] Current editor mode:', editorState.mode);
-    console.log('🔵 [EDITOR DEBUG] Previous currentMapping ID:', editorState.currentMapping?.id);
-    console.log('🔵 [EDITOR DEBUG] Full incoming mapping:', mapping);
+    console.log('[INFO] [EDITOR DEBUG] populateEditMappingForm called');
+    console.log('[INFO] [EDITOR DEBUG] Incoming mapping ID:', mapping?.id);
+    console.log('[INFO] [EDITOR DEBUG] Incoming mapping name:', mapping?.name);
+    console.log('[INFO] [EDITOR DEBUG] Current editor mode:', editorState.mode);
+    console.log('[INFO] [EDITOR DEBUG] Previous currentMapping ID:', editorState.currentMapping?.id);
+    console.log('[INFO] [EDITOR DEBUG] Full incoming mapping:', mapping);
     
     // Always reset state when opening a new mapping
     editorState.originalMapping = mapping;
@@ -461,27 +461,27 @@ window.populateEditMappingForm = (mapping) => {
     editorState.isDirty = false;
     updateDirtyIndicator();
     
-    console.log('🔵 [EDITOR DEBUG] After state update - currentMapping ID:', editorState.currentMapping?.id);
+    console.log('[INFO] [EDITOR DEBUG] After state update - currentMapping ID:', editorState.currentMapping?.id);
     
     // Always populate form fields first (for consistency)
     populateFormFields(mapping);
     
     // Then load data based on current mode
     if (editorState.mode === EDITOR_MODES.JSON) {
-        console.log('🔵 [EDITOR DEBUG] Loading JSON mode for mapping ID:', editorState.currentMapping?.id);
+        console.log('[INFO] [EDITOR DEBUG] Loading JSON mode for mapping ID:', editorState.currentMapping?.id);
         loadJSONMode();
     }
     
-    console.log('🔵 [EDITOR DEBUG] populateEditMappingForm completed for mapping ID:', mapping?.id);
+    console.log('[INFO] [EDITOR DEBUG] populateEditMappingForm completed for mapping ID:', mapping?.id);
 };
 
 /**
  * Populate form fields with mapping data
  */
 function populateFormFields(mapping) {
-    console.log('🟣 [FORM DEBUG] populateFormFields called');
-    console.log('🟣 [FORM DEBUG] Mapping ID to populate:', mapping?.id);
-    console.log('🟣 [FORM DEBUG] Mapping name to populate:', mapping?.name);
+    console.log('[STATE-PURPLE] [FORM DEBUG] populateFormFields called');
+    console.log('[STATE-PURPLE] [FORM DEBUG] Mapping ID to populate:', mapping?.id);
+    console.log('[STATE-PURPLE] [FORM DEBUG] Mapping name to populate:', mapping?.name);
     
     // Always populate form fields regardless of mode (needed for both modes)
     const idElement = document.getElementById('edit-mapping-id');
@@ -588,7 +588,7 @@ function populateFormFields(mapping) {
  * Switch editor mode
  */
 function switchEditorMode() {
-    console.log('🟠 [MODE DEBUG] switchEditorMode forced to JSON');
+    console.log('[STATE-ORANGE] [MODE DEBUG] switchEditorMode forced to JSON');
 
     try {
         editorState.mode = EDITOR_MODES.JSON;
@@ -619,32 +619,32 @@ function updateEditorUI() {
 }
 
 function saveFromJSONMode() {
-    console.log('🟢 [SAVE DEBUG] saveFromJSONMode called');
+    console.log('[STATE-GREEN] [SAVE DEBUG] saveFromJSONMode called');
     
     const jsonEditor = document.getElementById('json-editor');
     if (!jsonEditor) {
-        console.log('🔴 [SAVE DEBUG] JSON editor element not found!');
+        console.log('[FAIL] [SAVE DEBUG] JSON editor element not found!');
         return;
     }
     
     const jsonText = jsonEditor.value;
     if (!jsonText.trim()) {
-        console.log('🟢 [SAVE DEBUG] JSON editor is empty, nothing to save');
+        console.log('[STATE-GREEN] [SAVE DEBUG] JSON editor is empty, nothing to save');
         return;
     }
     
-    console.log('🟢 [SAVE DEBUG] JSON text length:', jsonText.length);
-    console.log('🟢 [SAVE DEBUG] Previous currentMapping ID:', editorState.currentMapping?.id);
+    console.log('[STATE-GREEN] [SAVE DEBUG] JSON text length:', jsonText.length);
+    console.log('[STATE-GREEN] [SAVE DEBUG] Previous currentMapping ID:', editorState.currentMapping?.id);
     
     try {
         const parsedMapping = JSON.parse(jsonText);
-        console.log('🟢 [SAVE DEBUG] Parsed mapping ID:', parsedMapping?.id);
-        console.log('🟢 [SAVE DEBUG] Parsed mapping name:', parsedMapping?.name);
+        console.log('[STATE-GREEN] [SAVE DEBUG] Parsed mapping ID:', parsedMapping?.id);
+        console.log('[STATE-GREEN] [SAVE DEBUG] Parsed mapping name:', parsedMapping?.name);
         
         editorState.currentMapping = parsedMapping;
-        console.log('🟢 [SAVE DEBUG] Updated currentMapping ID:', editorState.currentMapping?.id);
+        console.log('[STATE-GREEN] [SAVE DEBUG] Updated currentMapping ID:', editorState.currentMapping?.id);
     } catch (error) {
-        console.log('🔴 [SAVE DEBUG] JSON parse error:', error.message);
+        console.log('[FAIL] [SAVE DEBUG] JSON parse error:', error.message);
         throw new Error('Invalid JSON: ' + error.message);
     }
 }
@@ -661,18 +661,18 @@ function saveFromFormMode() {
  * Load JSON mode
  */
 function loadJSONMode() {
-    console.log('🟡 [JSON DEBUG] loadJSONMode called');
-    console.log('🟡 [JSON DEBUG] currentMapping ID:', editorState.currentMapping?.id);
-    console.log('🟡 [JSON DEBUG] currentMapping name:', editorState.currentMapping?.name);
+    console.log('[STATE-YELLOW] [JSON DEBUG] loadJSONMode called');
+    console.log('[STATE-YELLOW] [JSON DEBUG] currentMapping ID:', editorState.currentMapping?.id);
+    console.log('[STATE-YELLOW] [JSON DEBUG] currentMapping name:', editorState.currentMapping?.name);
     
     const jsonEditor = document.getElementById('json-editor');
     if (!jsonEditor) {
-        console.log('🔴 [JSON DEBUG] JSON editor element not found!');
+        console.log('[FAIL] [JSON DEBUG] JSON editor element not found!');
         return;
     }
     
     if (!editorState.currentMapping) {
-        console.log('🔴 [JSON DEBUG] No currentMapping in editorState!');
+        console.log('[FAIL] [JSON DEBUG] No currentMapping in editorState!');
         return;
     }
     
@@ -680,8 +680,8 @@ function loadJSONMode() {
     jsonEditor.value = formattedJSON;
     adjustJsonEditorHeight(true);
 
-    console.log('🟡 [JSON DEBUG] JSON editor populated with mapping ID:', editorState.currentMapping?.id);
-    console.log('🟡 [JSON DEBUG] JSON content length:', formattedJSON.length);
+    console.log('[STATE-YELLOW] [JSON DEBUG] JSON editor populated with mapping ID:', editorState.currentMapping?.id);
+    console.log('[STATE-YELLOW] [JSON DEBUG] JSON content length:', formattedJSON.length);
 }
 
 /**
@@ -711,7 +711,7 @@ function collectFormData() {
     // Preserve existing metadata if present
     if (editorState.currentMapping?.metadata) {
         mapping.metadata = { ...editorState.currentMapping.metadata };
-        console.log('📅 [METADATA] Preserved existing metadata in collectFormData');
+        console.log('[DATE] [METADATA] Preserved existing metadata in collectFormData');
     }
     
     // Add optional fields
@@ -824,9 +824,9 @@ function validateCurrentJSON() {
     
     try {
         JSON.parse(jsonText);
-        validationResult.innerHTML = '<div class="validation-success">✓ JSON is valid</div>';
+        validationResult.innerHTML = '<div class="validation-success">[OK] JSON is valid</div>';
     } catch (error) {
-        validationResult.innerHTML = `<div class="validation-error">✗ JSON error: ${error.message}</div>`;
+        validationResult.innerHTML = `<div class="validation-error">[X] JSON error: ${error.message}</div>`;
     }
 }
 

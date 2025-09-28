@@ -692,7 +692,7 @@ window.apiFetch = async (endpoint, options = {}) => {
     const timeoutSettings = window.SettingsStore?.getCached?.() || {};
     const defaultTimeout = window.DEFAULT_SETTINGS?.requestTimeout ? parseInt(window.DEFAULT_SETTINGS.requestTimeout, 10) : 69000;
     const currentTimeout = timeoutSettings.requestTimeout ? parseInt(timeoutSettings.requestTimeout, 10) : defaultTimeout;
-    console.log(`⏱️ [API] Using request timeout: ${currentTimeout}ms (from settings: ${timeoutSettings.requestTimeout || `default ${defaultTimeout}`})`);
+    console.log(`[TIMER] [API] Using request timeout: ${currentTimeout}ms (from settings: ${timeoutSettings.requestTimeout || `default ${defaultTimeout}`})`);
     const timeoutId = setTimeout(() => controller.abort(), currentTimeout);
 
     // Always use the latest wiremockBaseUrl from window object
@@ -710,7 +710,7 @@ window.apiFetch = async (endpoint, options = {}) => {
     };
     
     // Log every API request for debugging
-    console.log(`🔗 WireMock API Request:`, {
+    console.log(`[LINK] WireMock API Request:`, {
         method,
         url: fullUrl,
         baseUrl: window.wiremockBaseUrl,
@@ -731,7 +731,7 @@ window.apiFetch = async (endpoint, options = {}) => {
         clearTimeout(timeoutId);
         
         // Log response for debugging
-        console.log(`📥 WireMock API Response:`, {
+        console.log(`[INBOX] WireMock API Response:`, {
             method,
             url: fullUrl,
             status: response.status,
@@ -742,7 +742,7 @@ window.apiFetch = async (endpoint, options = {}) => {
         
         if (!response.ok) {
             const errorText = await response.text();
-            console.error(`❌ WireMock API Error:`, {
+            console.error(`[ERROR] WireMock API Error:`, {
                 method,
                 url: fullUrl,
                 status: response.status,
@@ -765,7 +765,7 @@ window.apiFetch = async (endpoint, options = {}) => {
             JSON.stringify(responseData).substring(0, 500) + (JSON.stringify(responseData).length > 500 ? '...' : '') :
             responseData.toString().substring(0, 500) + (responseData.toString().length > 500 ? '...' : '');
         
-        console.log(`✅ WireMock API Success:`, {
+        console.log(`[OK] WireMock API Success:`, {
             method,
             url: fullUrl,
             dataPreview,
@@ -787,7 +787,7 @@ window.apiFetch = async (endpoint, options = {}) => {
         clearTimeout(timeoutId);
         
         // Log all errors for debugging
-        console.error(`💥 WireMock API Exception:`, {
+        console.error(`[ALERT] WireMock API Exception:`, {
             method,
             url: fullUrl,
             error: error.message,
@@ -1036,7 +1036,7 @@ document.addEventListener('keydown', (e) => {
 
 // Debug function to check auth header
 window.debugAuthHeader = () => {
-    console.log('🔍 Auth Header Debug:', {
+    console.log('[SEARCH] Auth Header Debug:', {
         'window.authHeader': window.authHeader,
         'typeof': typeof window.authHeader,
         'length': window.authHeader?.length,
@@ -1131,4 +1131,4 @@ window.getUserFriendlyErrorMessage = (error, operation = 'operation') => {
     return `Failed to ${operation}: ${errorMessage}`;
 };
 
-console.log('✅ Core.js loaded - Constants, API client, basic UI functions');
+console.log('[OK] Core.js loaded - Constants, API client, basic UI functions');

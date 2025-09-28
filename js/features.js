@@ -123,14 +123,14 @@ window.cacheManager = {
 
         // Lightweight logic - the server remains the source of truth
         this.optimisticQueue.push({ id, op, payload: m, ts: Date.now() });
-        console.log(`🎯 [CACHE] Added optimistic update: ${id}, operation: ${op}`);
+        console.log(`[TARGET] [CACHE] Added optimistic update: ${id}, operation: ${op}`);
     },
 
     // Remove the optimistic update after the server confirms it
     confirmOptimisticUpdate(id) {
         const i = this.optimisticQueue.findIndex(x => x.id === id);
         if (i >= 0) {
-            console.log(`✅ [CACHE] Confirmed optimistic update: ${id}`);
+            console.log(`[OK] [CACHE] Confirmed optimistic update: ${id}`);
             this.optimisticQueue.splice(i, 1);
         }
     },
@@ -141,7 +141,7 @@ window.cacheManager = {
         const initialLength = this.optimisticQueue.length;
         this.optimisticQueue = this.optimisticQueue.filter(item => {
             if (now - item.ts > this.optimisticTTL) {
-                console.log(`🧹 [CACHE] Removing stale optimistic update: ${item.id}`);
+                console.log(`[CLEAN] [CACHE] Removing stale optimistic update: ${item.id}`);
                 return false;
             }
             return true;
@@ -149,7 +149,7 @@ window.cacheManager = {
 
         const removedCount = initialLength - this.optimisticQueue.length;
         if (removedCount > 0) {
-            console.log(`🧹 [CACHE] Cleaned ${removedCount} stale optimistic updates`);
+            console.log(`[CLEAN] [CACHE] Cleaned ${removedCount} stale optimistic updates`);
             // Trigger a UI refresh if stale updates were removed
             this.rebuildCache();
         }
@@ -159,7 +159,7 @@ window.cacheManager = {
     removeOptimisticUpdate(id) {
         const i = this.optimisticQueue.findIndex(x => x.id === id);
         if (i >= 0) {
-            console.log(`🗑️ [CACHE] Removing optimistic update: ${id}`);
+            console.log(`[TRASH] [CACHE] Removing optimistic update: ${id}`);
             this.optimisticQueue.splice(i, 1);
         }
     },
@@ -167,12 +167,12 @@ window.cacheManager = {
     // Full cache rebuild
     async rebuildCache() {
         if (this.isSyncing) {
-            console.log('⏳ [CACHE] Already syncing, skipping rebuild');
+            console.log('[WAIT] [CACHE] Already syncing, skipping rebuild');
             return;
         }
 
         this.isSyncing = true;
-        console.log('🔄 [CACHE] Starting cache rebuild');
+        console.log('[REFRESH] [CACHE] Starting cache rebuild');
 
         try {
             // Pull the latest data from the server
@@ -203,7 +203,7 @@ window.cacheManager = {
             window.originalMappings = Array.from(this.cache.values());
             window.allMappings = [...window.originalMappings];
 
-            console.log(`✅ [CACHE] Rebuild complete: ${this.cache.size} mappings`);
+            console.log(`[OK] [CACHE] Rebuild complete: ${this.cache.size} mappings`);
 
             // Refresh the UI
             if (typeof window.fetchAndRenderMappings === 'function') {
@@ -211,7 +211,7 @@ window.cacheManager = {
             }
 
         } catch (error) {
-            console.error('❌ [CACHE] Rebuild failed:', error);
+            console.error('[ERROR] [CACHE] Rebuild failed:', error);
         } finally {
             this.isSyncing = false;
         }
@@ -220,11 +220,11 @@ window.cacheManager = {
     // Synchronize with the server
     async syncWithServer() {
         if (this.optimisticQueue.length === 0) {
-            console.log('✨ [CACHE] No optimistic updates to sync');
+            console.log('[INFO] [CACHE] No optimistic updates to sync');
             return;
         }
 
-        console.log(`🔄 [CACHE] Syncing ${this.optimisticQueue.length} optimistic updates`);
+        console.log(`[REFRESH] [CACHE] Syncing ${this.optimisticQueue.length} optimistic updates`);
         await this.rebuildCache();
     },
 
@@ -243,7 +243,7 @@ window.cacheManager = {
         this.cache.clear();
         this.optimisticQueue.length = 0;
         this.version = 0;
-        console.log('🧹 [CACHE] Cache cleared');
+        console.log('[CLEAN] [CACHE] Cache cleared');
     }
 };
 
@@ -281,7 +281,7 @@ window.connectToWireMock = async () => {
     
     // DON'T save connection settings here - they should already be saved from Settings page
     // Only use these values for the current connection attempt
-    console.log('🔗 Connecting with:', { host, port });
+    console.log('[LINK] Connecting with:', { host, port });
     
     // Update the base URL (with proper scheme/port normalization)
     if (typeof window.normalizeWiremockBaseUrl === 'function') {
@@ -404,7 +404,7 @@ window.checkHealthAndStartUptime = async () => {
                 healthIndicator.innerHTML = `<span>Response Time: </span><span class="healthy">${responseTime}ms</span>`;
             }
             
-            console.log(`✅ WireMock health check passed (${responseTime}ms), uptime started`);
+            console.log(`[OK] WireMock health check passed (${responseTime}ms), uptime started`);
         } else {
             throw new Error('WireMock is not healthy');
         }
@@ -552,7 +552,7 @@ const LazyJsonFormatter = (() => {
                 const truncated = jsonString.length > task.maxLength;
                 const previewText = truncated
                     ? `${jsonString.slice(0, task.maxLength)}
-… (truncated - ${jsonString.length - task.maxLength} more characters)`
+... (truncated - ${jsonString.length - task.maxLength} more characters)`
                     : jsonString;
                 task.onResult({ previewText, truncated, fullText: truncated ? jsonString : previewText });
             } catch (error) {
@@ -641,7 +641,7 @@ const UIComponents = {
 
         if (typeof value === 'object') {
             const placeholder = document.createElement('pre');
-            placeholder.textContent = 'Preparing preview…';
+            placeholder.textContent = 'Preparing preview...';
             container.appendChild(placeholder);
 
             LazyJsonFormatter.enqueue({
@@ -733,7 +733,7 @@ const UIComponents = {
         arrow.className = 'collapse-arrow';
         arrow.id = `arrow-${id}`;
         arrow.setAttribute('aria-hidden', 'true');
-        arrow.textContent = '▶';
+        arrow.textContent = '>';
         methodBadge.appendChild(arrow);
         methodBadge.appendChild(document.createTextNode(` ${method}`));
         topLine.appendChild(methodBadge);
@@ -870,7 +870,7 @@ const UIComponents = {
         }
         const isHidden = preview.style.display === 'none';
         preview.style.display = isHidden ? 'block' : 'none';
-        arrow.textContent = isHidden ? '▼' : '▶';
+        arrow.textContent = isHidden ? 'v' : '>';
 
         const card = preview.closest(`.${type}-card`);
         const header = card?.querySelector(`.${type}-header`);
@@ -943,7 +943,7 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                 const cached = await loadImockCacheBestOf3();
                 if (cached && cached.data && Array.isArray(cached.data.mappings)) {
                     // Cache hit - use cached data for quick UI, but always fetch fresh data for complete info
-                    console.log('🧩 [CACHE] Cache hit - using cached data for quick start, fetching fresh data');
+                    console.log('[CACHE] Cache hit - using cached data for quick start, fetching fresh data');
                     dataSource = 'cache';
 
                     // Start async fresh fetch for complete data (only if no optimistic updates in progress)
@@ -1001,7 +1001,7 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                                 fetchAndRenderMappings(window.allMappings);
                             }
                         } catch (e) {
-                            console.warn('🧩 [CACHE] Failed to load fresh data:', e);
+                            console.warn('[CACHE] Failed to load fresh data:', e);
                         }
                     })();
 
@@ -1011,7 +1011,7 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                     data = await fetchMappingsFromServer({ force: true });
                     dataSource = 'direct';
                     // regenerate cache asynchronously
-                    try { console.log('🧩 [CACHE] Async regenerate after cache miss'); regenerateImockCache(); } catch {}
+                    try { console.log('[CACHE] Async regenerate after cache miss'); regenerateImockCache(); } catch {}
                 }
             } else {
                 data = await fetchMappingsFromServer({ force: true });
@@ -1022,17 +1022,17 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
 
             // Server data is now authoritative - optimistic updates are handled through UI updates only
             if (window.cacheManager.optimisticQueue.length > 0) {
-                console.log('🎯 [OPTIMISTIC] Applying optimistic updates to incoming data:', window.cacheManager.optimisticQueue.length, 'updates');
+                console.log('[TARGET] [OPTIMISTIC] Applying optimistic updates to incoming data:', window.cacheManager.optimisticQueue.length, 'updates');
 
                 incoming = incoming.map(serverMapping => {
                     const optimisticItem = window.cacheManager.optimisticQueue.find(x => x.id === (serverMapping.id || serverMapping.uuid));
                     if (optimisticItem) {
                         if (optimisticItem.op === 'delete') {
-                            console.log('🎯 [OPTIMISTIC] Removing deleted mapping from results:', serverMapping.id);
+                            console.log('[TARGET] [OPTIMISTIC] Removing deleted mapping from results:', serverMapping.id);
                             return null; // Mark for removal
                         }
                         // Use optimistic version
-                        console.log('🎯 [OPTIMISTIC] Using optimistic version for:', serverMapping.id);
+                        console.log('[TARGET] [OPTIMISTIC] Using optimistic version for:', serverMapping.id);
                         return optimisticItem.payload;
                     }
                     return serverMapping;
@@ -1041,7 +1041,7 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                 // Add any new optimistic mappings that weren't on server
                 window.cacheManager.optimisticQueue.forEach(item => {
                     if (item.op !== 'delete' && !incoming.some(m => (m.id || m.uuid) === item.id)) {
-                        console.log('🎯 [OPTIMISTIC] Adding new optimistic mapping:', item.id);
+                        console.log('[TARGET] [OPTIMISTIC] Adding new optimistic mapping:', item.id);
                         incoming.unshift(item.payload);
                     }
                 });
@@ -1052,7 +1052,7 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                 if (window.pendingDeletedIds && window.pendingDeletedIds.size > 0) {
                     const before = incoming.length;
                     incoming = incoming.filter(m => !window.pendingDeletedIds.has(m.id || m.uuid));
-                    if (before !== incoming.length) console.log('🧩 [CACHE] filtered pending-deleted from render:', before - incoming.length);
+                    if (before !== incoming.length) console.log('[CACHE] filtered pending-deleted from render:', before - incoming.length);
                 }
             } catch {}
             window.originalMappings = Array.isArray(incoming) ? incoming.filter(m => !isImockCacheMapping(m)) : [];
@@ -1096,7 +1096,7 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
             const urlB = b.request?.url || b.request?.urlPattern || b.request?.urlPath || '';
             return urlA.localeCompare(urlB);
         });
-        console.log(`📦 Mappings render from: ${renderSource} — ${sortedMappings.length} items`);
+        console.log(`[PACKAGE] Mappings render from: ${renderSource} - ${sortedMappings.length} items`);
         if (window.ListRenderer && typeof window.ListRenderer.render === 'function') {
             window.ListRenderer.render(container, sortedMappings, window.renderMappingCard);
         } else {
@@ -1140,43 +1140,43 @@ window.getMappingById = async (mappingId) => {
             throw new Error('Mapping ID is required');
         }
 
-        console.log(`📥 [getMappingById] Fetching mapping with ID: ${mappingId}`);
-        console.log(`📥 [getMappingById] Current wiremockBaseUrl:`, window.wiremockBaseUrl);
-        console.log(`📥 [getMappingById] window.allMappings available:`, Array.isArray(window.allMappings));
-        console.log(`📥 [getMappingById] Cache size:`, window.allMappings?.length || 0);
+        console.log(`[INBOX] [getMappingById] Fetching mapping with ID: ${mappingId}`);
+        console.log(`[INBOX] [getMappingById] Current wiremockBaseUrl:`, window.wiremockBaseUrl);
+        console.log(`[INBOX] [getMappingById] window.allMappings available:`, Array.isArray(window.allMappings));
+        console.log(`[INBOX] [getMappingById] Cache size:`, window.allMappings?.length || 0);
 
         // Try to get from cache first
         const cachedMapping = window.allMappings?.find(m => m.id === mappingId);
         if (cachedMapping) {
-            console.log(`📦 [getMappingById] Found mapping in cache: ${mappingId}`, cachedMapping);
+            console.log(`[PACKAGE] [getMappingById] Found mapping in cache: ${mappingId}`, cachedMapping);
             return cachedMapping;
         } else {
-            console.log(`📦 [getMappingById] Mapping not found in cache, will fetch from API`);
+            console.log(`[PACKAGE] [getMappingById] Mapping not found in cache, will fetch from API`);
         }
 
         // Fetch from WireMock API
-        console.log(`📡 [getMappingById] Making API call to: /mappings/${mappingId}`);
+        console.log(`[RADIO] [getMappingById] Making API call to: /mappings/${mappingId}`);
         const response = await apiFetch(`/mappings/${mappingId}`);
-        console.log(`📡 [getMappingById] Raw API response:`, response);
+        console.log(`[RADIO] [getMappingById] Raw API response:`, response);
 
         // Handle both wrapped and unwrapped responses
         const mapping = response && typeof response === 'object' && response.mapping
             ? response.mapping
             : response;
 
-        console.log(`📡 [getMappingById] Processed mapping:`, mapping);
+        console.log(`[RADIO] [getMappingById] Processed mapping:`, mapping);
 
         if (!mapping || typeof mapping !== 'object') {
-            console.log(`❌ [getMappingById] API returned invalid data for mapping ${mappingId}`);
+            console.log(`[ERROR] [getMappingById] API returned invalid data for mapping ${mappingId}`);
             throw new Error(`Mapping with ID ${mappingId} not found or invalid response`);
         }
 
-        console.log(`✅ [getMappingById] Successfully fetched mapping: ${mappingId}`, mapping);
+        console.log(`[OK] [getMappingById] Successfully fetched mapping: ${mappingId}`, mapping);
         return mapping;
 
     } catch (error) {
-        console.error(`❌ [getMappingById] Error fetching mapping ${mappingId}:`, error);
-        console.error(`❌ [getMappingById] Error details:`, {
+        console.error(`[ERROR] [getMappingById] Error fetching mapping ${mappingId}:`, error);
+        console.error(`[ERROR] [getMappingById] Error details:`, {
             message: error.message,
             status: error.status,
             statusText: error.statusText,
@@ -1190,20 +1190,20 @@ window.getMappingById = async (mappingId) => {
 window.applyOptimisticMappingUpdate = (mappingLike) => {
     try {
         if (!mappingLike) {
-            console.warn('🎯 [OPTIMISTIC] No mapping data provided');
+            console.warn('[TARGET] [OPTIMISTIC] No mapping data provided');
             return;
         }
 
         const mapping = mappingLike.mapping || mappingLike;
         const mappingId = mapping?.id || mapping?.uuid;
         if (!mapping || !mappingId) {
-            console.warn('🎯 [OPTIMISTIC] Invalid mapping data - missing id:', mapping);
+            console.warn('[TARGET] [OPTIMISTIC] Invalid mapping data - missing id:', mapping);
             return;
         }
 
         // Ignore synthetic cache service mappings
         if (isImockCacheMapping(mapping)) {
-            console.log('🎯 [OPTIMISTIC] Skipping cache mapping update');
+            console.log('[TARGET] [OPTIMISTIC] Skipping cache mapping update');
             return;
         }
 
@@ -1221,13 +1221,13 @@ window.applyOptimisticMappingUpdate = (mappingLike) => {
                     try {
                         window.cacheManager.addOptimisticUpdate(mapping, optimisticOperation);
                     } catch (queueError) {
-                        console.warn('🎯 [OPTIMISTIC] Failed to enqueue optimistic update:', queueError);
+                        console.warn('[TARGET] [OPTIMISTIC] Failed to enqueue optimistic update:', queueError);
                     }
                 }
                 seedCacheFromGlobals(window.cacheManager.cache);
                 const incoming = cloneMappingForCache(mapping);
                 if (!incoming) {
-                    console.warn('🎯 [OPTIMISTIC] Failed to clone mapping for cache:', mappingId);
+                    console.warn('[TARGET] [OPTIMISTIC] Failed to clone mapping for cache:', mappingId);
                 } else {
                     if (!incoming.id && mappingId) {
                         incoming.id = mappingId;
@@ -1249,10 +1249,10 @@ window.applyOptimisticMappingUpdate = (mappingLike) => {
             refreshMappingsFromCache();
         }
 
-        console.log('🎯 [OPTIMISTIC] Applied update for mapping:', mappingId);
+        console.log('[TARGET] [OPTIMISTIC] Applied update for mapping:', mappingId);
 
     } catch (e) {
-        console.warn('🎯 [OPTIMISTIC] Update failed:', e);
+        console.warn('[TARGET] [OPTIMISTIC] Update failed:', e);
     }
 };
 
@@ -1328,7 +1328,7 @@ window.renderMappingCard = function(mapping) {
     ];
 
     const badges = [];
-    const shortId = mappingId.length > 12 ? `${mappingId.slice(0, 8)}…${mappingId.slice(-4)}` : mappingId;
+    const shortId = mappingId.length > 12 ? `${mappingId.slice(0, 8)}...${mappingId.slice(-4)}` : mappingId;
     badges.push(UIComponents.createBadge(shortId, 'badge badge-secondary', 'Mapping ID'));
 
     if (typeof mapping.priority === 'number') {
@@ -1388,7 +1388,7 @@ function updateDataSourceIndicator(source) {
             cls = 'badge badge-success';
             break;
         case 'cache_rebuilding':
-            text = 'Source: cache (rebuilding…)';
+            text = 'Source: cache (rebuilding...)';
             cls = 'badge badge-success';
             break;
         case 'remote':
@@ -1495,7 +1495,7 @@ window.fetchAndRenderRequests = async (requestsToRender = null) => {
         updateRequestsCounter();
         // Source indicator + log, mirroring mappings
         if (typeof updateRequestsSourceIndicator === 'function') updateRequestsSourceIndicator(reqSource);
-        console.log(`📦 Requests render from: ${reqSource} — ${window.allRequests.length} items`);
+        console.log(`[PACKAGE] Requests render from: ${reqSource} - ${window.allRequests.length} items`);
 
         return true;
     } catch (error) {
@@ -1594,7 +1594,7 @@ window.openEditModal = async (identifier) => {
 
     let mapping = window.allMappings.find((candidate) => collectCandidateIdentifiers(candidate).includes(targetIdentifier));
     if (!mapping) {
-        console.warn('🔍 [OPEN MODAL DEBUG] Mapping not found by identifier lookup. Identifier:', identifier);
+        console.warn('[SEARCH] [OPEN MODAL DEBUG] Mapping not found by identifier lookup. Identifier:', identifier);
         NotificationManager.show('Mapping not found', NotificationManager.TYPES.ERROR);
         return;
     }
@@ -1607,8 +1607,8 @@ window.openEditModal = async (identifier) => {
         return;
     }
     
-    console.log('🔴 [OPEN MODAL DEBUG] openEditModal called for mapping identifier:', identifier);
-    console.log('🔴 [OPEN MODAL DEBUG] Found mapping (cached):', mapping);
+    console.log('[FAIL] [OPEN MODAL DEBUG] openEditModal called for mapping identifier:', identifier);
+    console.log('[FAIL] [OPEN MODAL DEBUG] Found mapping (cached):', mapping);
     
     // Prefill the form with cached data to render the UI instantly
     if (typeof window.populateEditMappingForm === 'function') {
@@ -1621,14 +1621,14 @@ window.openEditModal = async (identifier) => {
     // Then fetch the latest mapping version by UUID
     try {
         if (typeof window.setMappingEditorBusyState === 'function') {
-            window.setMappingEditorBusyState(true, 'Loading…');
+            window.setMappingEditorBusyState(true, 'Loading...');
         }
 
         const mappingIdForFetch = normalizeIdentifier(mapping.id) || normalizeIdentifier(mapping.uuid) || targetIdentifier;
         const latest = await apiFetch(`/mappings/${encodeURIComponent(mappingIdForFetch)}`);
         const latestMapping = latest?.mapping || latest; // support multiple response formats
         if (latestMapping && latestMapping.id) {
-            console.log('🔵 [OPEN MODAL DEBUG] Loaded latest mapping from server:', latestMapping);
+            console.log('[INFO] [OPEN MODAL DEBUG] Loaded latest mapping from server:', latestMapping);
             window.populateEditMappingForm(latestMapping);
             // Update the reference in allMappings to keep lists and operations consistent
             const idx = window.allMappings.findIndex((candidate) => candidate === mapping);
@@ -1655,7 +1655,7 @@ window.openEditModal = async (identifier) => {
     const modalTitleElement = document.getElementById(SELECTORS.MODAL.TITLE);
     if (modalTitleElement) modalTitleElement.textContent = 'Edit Mapping';
     
-    console.log('🔴 [OPEN MODAL DEBUG] openEditModal completed for mapping identifier:', identifier);
+    console.log('[FAIL] [OPEN MODAL DEBUG] openEditModal completed for mapping identifier:', identifier);
 };
 
 // REMOVED: updateMapping function moved to editor.js
@@ -1675,7 +1675,7 @@ window.deleteMapping = async (id) => {
     } catch (e) {
         // Handle 404: mapping already deleted
         if (e.message.includes('404')) {
-            console.log('🗑️ [DELETE] Mapping already deleted from server (404), updating cache locally');
+            console.log('[TRASH] [DELETE] Mapping already deleted from server (404), updating cache locally');
             updateOptimisticCache({ id }, 'delete');
             NotificationManager.success('Mapping was already deleted');
         } else {
@@ -2191,7 +2191,7 @@ window.renderScenarios = () => {
                     data-scenario="${scenarioIdentifierAttr}"
                     data-state="${stateAttr}"
                 >
-                    → ${displayedPossibleState}
+                    -> ${displayedPossibleState}
                 </button>
             `;
         }).join('');
@@ -2228,14 +2228,14 @@ window.renderScenarios = () => {
                     const urlLabel = url ? `<span class="scenario-mapping-url">${escapeHtml(url)}</span>` : '';
                     const metaLabel = methodLabel || urlLabel ? `
                         <div class="scenario-mapping-meta">
-                            ${[methodLabel, urlLabel].filter(Boolean).join(' · ')}
+                            ${[methodLabel, urlLabel].filter(Boolean).join(' - ')}
                         </div>
                     ` : '';
                     const requiredState = mapping?.requiredScenarioState || mapping?.requiredState || '';
                     const newState = mapping?.newScenarioState || mapping?.newState || '';
                     const transitionMarkup = [
                         requiredState ? `<span class="badge badge-warning" title="Required scenario state">Requires: ${escapeHtml(requiredState)}</span>` : '',
-                        newState ? `<span class="badge badge-info" title="Next scenario state">→ ${escapeHtml(newState)}</span>` : ''
+                        newState ? `<span class="badge badge-info" title="Next scenario state">-> ${escapeHtml(newState)}</span>` : ''
                     ].filter(Boolean).join(' ');
                     const transitions = transitionMarkup ? `
                         <div class="scenario-mapping-states">${transitionMarkup}</div>
@@ -2247,7 +2247,7 @@ window.renderScenarios = () => {
                                 data-scenario-action="edit-mapping"
                                 data-mapping-id="${mappingIdAttr}"
                             >
-                                📝 Edit mapping
+                                [NOTE] Edit mapping
                             </button>
                         </div>
                     ` : '';
@@ -2286,7 +2286,7 @@ window.renderScenarios = () => {
                         data-scenario="${scenarioIdentifierAttr}"
                         data-state="Started"
                     >
-                        🔄 Reset
+                        [REFRESH] Reset
                     </button>
                 </div>
             </div>
@@ -2600,7 +2600,7 @@ window.handleEditSuccess = async (mapping) => {
     }, 1000);
 };
 
-console.log('✅ Features.js loaded - Business functions for mappings, requests, scenarios + WireMock 3.9.1+ API fixes');
+console.log('[OK] Features.js loaded - Business functions for mappings, requests, scenarios + WireMock 3.9.1+ API fixes');
 
 // Update connection status text with last successful request time
 window.updateLastSuccessUI = () => {
@@ -2726,10 +2726,10 @@ function simpleHash(str) {
 
 async function getCacheByFixedId() {
     try {
-        console.log('🧩 [CACHE] Trying fixed ID lookup...');
+        console.log('[CACHE] Trying fixed ID lookup...');
         const m = await apiFetch(`/mappings/${IMOCK_CACHE_ID}`);
         if (m && isImockCacheMapping(m)) return m;
-        console.log('🧩 [CACHE] Fixed ID miss');
+        console.log('[CACHE] Fixed ID miss');
     } catch {}
     return null;
 }
@@ -2741,7 +2741,7 @@ async function getCacheByMetadata() {
             { matchesJsonPath: "$[?(@.metadata.imock.type == 'cache')]" },
             { matchesJsonPath: { expression: "$[?(@.metadata.imock.type == 'cache')]" } },
         ];
-        console.log('🧩 [CACHE] Trying metadata lookup (JSONPath)...');
+        console.log('[CACHE] Trying metadata lookup (JSONPath)...');
         for (const body of tryBodies) {
             try {
                 const res = await apiFetch(ENDPOINTS.MAPPINGS_FIND_BY_METADATA, {
@@ -2751,18 +2751,18 @@ async function getCacheByMetadata() {
                 });
                 const list = res?.mappings || res?.items || [];
                 const found = list.find(isImockCacheMapping);
-                if (found) { console.log('🧩 [CACHE] Metadata hit'); return found; }
+                if (found) { console.log('[CACHE] Metadata hit'); return found; }
             } catch (e) {
                 // try next body shape
             }
         }
-        console.log('🧩 [CACHE] Metadata miss');
+        console.log('[CACHE] Metadata miss');
     } catch {}
     return null;
 }
 
 async function upsertImockCacheMapping(slim) {
-    console.log('🧩 [CACHE] Upsert cache mapping start');
+    console.log('[CACHE] Upsert cache mapping start');
     const meta = {
         imock: {
             type: 'cache',
@@ -2787,24 +2787,24 @@ async function upsertImockCacheMapping(slim) {
     };
     try {
         // Try update first; if 404, create
-        console.log('🧩 [CACHE] PUT /mappings/{id}');
+        console.log('[CACHE] PUT /mappings/{id}');
         const response = await apiFetch(`/mappings/${IMOCK_CACHE_ID}`, {
             method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(stub),
         });
-        console.log('🧩 [CACHE] Upsert done (PUT)');
+        console.log('[CACHE] Upsert done (PUT)');
         return response;
     } catch (e) {
-        console.log('🧩 [CACHE] PUT failed, POST /mappings');
+        console.log('[CACHE] PUT failed, POST /mappings');
         const response = await apiFetch('/mappings', {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(stub),
         });
-        console.log('🧩 [CACHE] Upsert done (POST)');
+        console.log('[CACHE] Upsert done (POST)');
         return response;
     }
 }
 
 async function regenerateImockCache(existingData = null) {
-    console.log('🧩 [CACHE] Regenerate cache start');
+    console.log('[CACHE] Regenerate cache start');
     const t0 = performance.now();
 
     // Get fresh data from server - server is now the source of truth
@@ -2815,7 +2815,7 @@ async function regenerateImockCache(existingData = null) {
 
     const mappings = all?.mappings || [];
 
-    console.log('🧩 [CACHE] Using fresh server data for cache regeneration');
+    console.log('[CACHE] Using fresh server data for cache regeneration');
 
     const slim = buildSlimList(mappings);
     let finalPayload = slim;
@@ -2826,43 +2826,43 @@ async function regenerateImockCache(existingData = null) {
             finalPayload = serverPayload;
         }
     } catch (e) {
-        console.warn('🧩 [CACHE] Upsert cache failed:', e);
+        console.warn('[CACHE] Upsert cache failed:', e);
     }
     const dt = Math.round(performance.now() - t0);
-    console.log(`🧩 [CACHE] Regenerate cache done (${(finalPayload?.mappings||[]).length} items) in ${dt}ms`);
+    console.log(`[CACHE] Regenerate cache done (${(finalPayload?.mappings||[]).length} items) in ${dt}ms`);
     return finalPayload;
 }
 
 async function loadImockCacheBestOf3() {
     // Preferred order: fixed ID, then find-by-metadata (JSONPath), else none
-    console.log('🧩 [CACHE] loadImockCacheBestOf3 start');
+    console.log('[CACHE] loadImockCacheBestOf3 start');
     const b = await getCacheByFixedId();
-    if (b && b.response?.jsonBody) { console.log('🧩 [CACHE] Using cache: fixed id'); return { source: 'cache', data: b.response.jsonBody }; }
+    if (b && b.response?.jsonBody) { console.log('[CACHE] Using cache: fixed id'); return { source: 'cache', data: b.response.jsonBody }; }
     const c = await getCacheByMetadata();
-    if (c && c.response?.jsonBody) { console.log('🧩 [CACHE] Using cache: metadata'); return { source: 'cache', data: c.response.jsonBody }; }
-    console.log('🧩 [CACHE] No cache found');
+    if (c && c.response?.jsonBody) { console.log('[CACHE] Using cache: metadata'); return { source: 'cache', data: c.response.jsonBody }; }
+    console.log('[CACHE] No cache found');
     return null;
 }
 
 // Resolve conflicts by querying the server for the authoritative version of a specific mapping
 async function resolveConflictWithServer(mappingId) {
     try {
-        console.log('🔍 [CONFLICT] Resolving conflict for', mappingId, 'with server query');
+        console.log('[SEARCH] [CONFLICT] Resolving conflict for', mappingId, 'with server query');
 
         // Query the specific mapping from server
         const serverResponse = await apiFetch(`/mappings/${mappingId}`);
         const serverMapping = serverResponse?.mapping || serverResponse;
 
         if (!serverMapping) {
-            console.warn('🔍 [CONFLICT] Server returned no mapping for', mappingId);
+            console.warn('[SEARCH] [CONFLICT] Server returned no mapping for', mappingId);
             return null; // No authoritative data available
         }
 
-        console.log('🔍 [CONFLICT] Server returned authoritative data for', mappingId);
+        console.log('[SEARCH] [CONFLICT] Server returned authoritative data for', mappingId);
         return serverMapping;
 
     } catch (error) {
-        console.warn('🔍 [CONFLICT] Server query failed for', mappingId, error);
+        console.warn('[SEARCH] [CONFLICT] Server query failed for', mappingId, error);
         return null; // Fall back to no resolution
     }
 }
@@ -2941,13 +2941,13 @@ function seedCacheFromGlobals(cache) {
 
             if (inserted > 0) {
                 seededFrom = source === window.originalMappings ? 'originalMappings' : 'allMappings';
-                console.log(`🧩 [CACHE] Seeded ${inserted} mappings into cache from ${seededFrom}`);
+                console.log(`[CACHE] Seeded ${inserted} mappings into cache from ${seededFrom}`);
                 break;
             }
         }
 
         if (!seededFrom && cache.size === 0) {
-            console.log('🧩 [CACHE] Nothing available to seed cache from globals');
+            console.log('[CACHE] Nothing available to seed cache from globals');
         }
     } catch (error) {
         console.warn('seedCacheFromGlobals failed:', error);
@@ -3128,20 +3128,20 @@ async function fetchExistingCacheMapping() {
 async function syncCacheMappingWithServer(mapping, operation) {
     try {
         if (!isCacheEnabled()) {
-            console.log('🧩 [CACHE] Remote cache sync skipped - cache disabled');
+            console.log('[CACHE] Remote cache sync skipped - cache disabled');
             return;
         }
 
         const existingMapping = await fetchExistingCacheMapping();
         if (!existingMapping || !existingMapping.response) {
-            console.log('🧩 [CACHE] Remote cache sync skipped - cache mapping missing');
+            console.log('[CACHE] Remote cache sync skipped - cache mapping missing');
             return;
         }
 
         const currentPayload = extractCacheJsonBody(existingMapping) || { mappings: [] };
         const updatedPayload = buildUpdatedCachePayload(currentPayload, mapping, operation);
         if (!updatedPayload) {
-            console.log('🧩 [CACHE] Remote cache sync skipped - unable to build payload');
+            console.log('[CACHE] Remote cache sync skipped - unable to build payload');
             return;
         }
 
@@ -3149,9 +3149,9 @@ async function syncCacheMappingWithServer(mapping, operation) {
         const finalPayload = extractCacheJsonBody(response) || updatedPayload;
         window.imockCacheSnapshot = finalPayload;
         window.cacheLastUpdate = Date.now();
-        console.log('🧩 [CACHE] Remote cache mapping updated via optimistic sync');
+        console.log('[CACHE] Remote cache mapping updated via optimistic sync');
     } catch (error) {
-        console.warn('🧩 [CACHE] syncCacheMappingWithServer failed:', error);
+        console.warn('[CACHE] syncCacheMappingWithServer failed:', error);
     }
 }
 
@@ -3162,7 +3162,7 @@ function enqueueCacheSync(mapping, operation) {
             .catch(() => { })
             .then(() => syncCacheMappingWithServer(mapping, operation));
     } catch (error) {
-        console.warn('🧩 [CACHE] enqueueCacheSync failed:', error);
+        console.warn('[CACHE] enqueueCacheSync failed:', error);
     }
 }
 
@@ -3302,14 +3302,14 @@ function scheduleCacheRebuild() {
       try {
         const existing = await fetchExistingCacheMapping();
         if (existing && extractCacheJsonBody(existing)) {
-          console.log('🧩 [CACHE] Skipping scheduled rebuild - cache mapping already exists');
+          console.log('[CACHE] Skipping scheduled rebuild - cache mapping already exists');
           return;
         }
         if (typeof window.refreshImockCache === 'function') {
           await window.refreshImockCache();
         }
       } catch (timerError) {
-        console.warn('🧩 [CACHE] Scheduled rebuild attempt failed:', timerError);
+        console.warn('[CACHE] Scheduled rebuild attempt failed:', timerError);
       } finally {
         window.ResourceCleaner?.timeouts?.delete?.(_cacheRebuildTimer);
         _cacheRebuildTimer = null;
@@ -3317,7 +3317,7 @@ function scheduleCacheRebuild() {
     }, delay);
     window.ResourceCleaner?.trackTimeout?.(_cacheRebuildTimer);
   } catch (error) {
-    console.warn('🧩 [CACHE] scheduleCacheRebuild failed:', error);
+    console.warn('[CACHE] scheduleCacheRebuild failed:', error);
   }
 }
 
@@ -3332,7 +3332,7 @@ const cacheValidationInterval = window.setInterval(() => {
 
     // Validate if cache is older than 5 minutes OR has too many optimistic operations
     if (timeSinceLastUpdate > 5 * 60 * 1000 || optimisticOps > 20) {
-        console.log('🧩 [CACHE] Validation triggered - time:', Math.round(timeSinceLastUpdate/1000), 's, ops:', optimisticOps);
+        console.log('[CACHE] Validation triggered - time:', Math.round(timeSinceLastUpdate/1000), 's, ops:', optimisticOps);
         validateAndRefreshCache();
     }
 }, 60 * 1000); // Check every minute
@@ -3340,23 +3340,23 @@ window.ResourceCleaner?.trackInterval?.(cacheValidationInterval);
 
 async function validateAndRefreshCache() {
     try {
-        console.log('🧩 [CACHE] Starting cache validation...');
+        console.log('[CACHE] Starting cache validation...');
 
     if (!isCacheEnabled()) {
-            console.log('🧩 [CACHE] Validation skipped - cache disabled');
+            console.log('[CACHE] Validation skipped - cache disabled');
             return;
         }
 
         const existing = await fetchExistingCacheMapping();
         if (existing && extractCacheJsonBody(existing)) {
-            console.log('🧩 [CACHE] Validation skipped - cache mapping already present');
+            console.log('[CACHE] Validation skipped - cache mapping already present');
             return;
         }
 
         // Cache mapping missing - rebuild from server data
         const freshData = await fetchMappingsFromServer({ force: true });
         if (!freshData?.mappings) {
-            console.warn('🧩 [CACHE] Failed to get fresh data for validation');
+            console.warn('[CACHE] Failed to get fresh data for validation');
             return;
         }
 
@@ -3367,10 +3367,10 @@ async function validateAndRefreshCache() {
         window.cacheOptimisticOperations = 0;
         window.cacheLastUpdate = Date.now();
 
-        console.log('🧩 [CACHE] Validation rebuilt cache because mapping was missing');
+        console.log('[CACHE] Validation rebuilt cache because mapping was missing');
 
     } catch (e) {
-        console.warn('🧩 [CACHE] Validation failed:', e);
+        console.warn('[CACHE] Validation failed:', e);
         // Don't reset counters on failure - try again later
     }
 }
@@ -3381,10 +3381,10 @@ window.refreshImockCache = async () => {
         if (optimisticDelayRetries++ > 10) {
             console.warn('[CACHE] forced refresh after optimistic delay cap');
         } else {
-            console.log('🔄 [CACHE] Optimistic update in progress, delaying cache refresh...');
+            console.log('[REFRESH] [CACHE] Optimistic update in progress, delaying cache refresh...');
             return new Promise(resolve => {
                 setTimeout(async () => {
-                    console.log('🔄 [CACHE] Retrying cache refresh after optimistic update delay');
+                    console.log('[REFRESH] [CACHE] Retrying cache refresh after optimistic update delay');
                     await window.refreshImockCache();
                     resolve();
                 }, 1000);
@@ -3395,43 +3395,43 @@ window.refreshImockCache = async () => {
     optimisticInProgress = true;
     try {
         window.cacheRebuilding = true;
-        console.log('🔄 [CACHE] Set cache rebuilding flag');
+        console.log('[REFRESH] [CACHE] Set cache rebuilding flag');
 
         try {
             if (isCacheEnabled()) {
                 updateDataSourceIndicator('cache_rebuilding');
-                console.log('🔄 [CACHE] Updated UI indicator to rebuilding');
+                console.log('[REFRESH] [CACHE] Updated UI indicator to rebuilding');
             }
         } catch (settingsError) {
-            console.warn('🔄 [CACHE] Failed to update UI indicator:', settingsError);
+            console.warn('[REFRESH] [CACHE] Failed to update UI indicator:', settingsError);
         }
 
-        console.log('🔄 [CACHE] Starting regeneration...');
+        console.log('[REFRESH] [CACHE] Starting regeneration...');
         const payload = await regenerateImockCache();
         window.imockCacheSnapshot = payload;
-        console.log('🔄 [CACHE] Regeneration completed');
+        console.log('[REFRESH] [CACHE] Regeneration completed');
 
         // Clear optimistic update queue after successful cache rebuild
-        console.log('🔄 [CACHE] Clearing optimistic update queue after rebuild');
+        console.log('[REFRESH] [CACHE] Clearing optimistic update queue after rebuild');
         window.cacheManager.optimisticQueue.length = 0;
 
         // Auto-refresh UI after cache update
         try {
             if (typeof window.fetchAndRenderMappings === 'function' && window.allMappings) {
-                console.log('🔄 [CACHE] Auto-refreshing UI after cache rebuild');
+                console.log('[REFRESH] [CACHE] Auto-refreshing UI after cache rebuild');
                 window.fetchAndRenderMappings(window.allMappings);
-                console.log('🔄 [CACHE] UI refresh completed');
+                console.log('[REFRESH] [CACHE] UI refresh completed');
             } else {
-                console.warn('🔄 [CACHE] UI refresh functions not available');
+                console.warn('[REFRESH] [CACHE] UI refresh functions not available');
             }
         } catch (uiError) {
-            console.warn('🔄 [CACHE] UI refresh after cache rebuild failed:', uiError);
+            console.warn('[REFRESH] [CACHE] UI refresh after cache rebuild failed:', uiError);
         }
     } catch (e) {
-        console.warn('🔄 [CACHE] refreshImockCache failed:', e);
+        console.warn('[REFRESH] [CACHE] refreshImockCache failed:', e);
     } finally {
         window.cacheRebuilding = false;
-        console.log('🔄 [CACHE] Cleared cache rebuilding flag');
+        console.log('[REFRESH] [CACHE] Cleared cache rebuilding flag');
         window.cacheLastUpdate = Date.now();
         window.cacheOptimisticOperations = 0;
         optimisticInProgress = false;
@@ -3439,10 +3439,10 @@ window.refreshImockCache = async () => {
         try {
             if (isCacheEnabled()) {
                 updateDataSourceIndicator('cache');
-                console.log('🔄 [CACHE] Updated UI indicator to cache');
+                console.log('[REFRESH] [CACHE] Updated UI indicator to cache');
             }
         } catch (settingsError) {
-            console.warn('🔄 [CACHE] Failed to reset UI indicator:', settingsError);
+            console.warn('[REFRESH] [CACHE] Failed to reset UI indicator:', settingsError);
         }
     }
 };
@@ -3466,7 +3466,7 @@ window.checkHealth = async () => {
             } else {
                 window.wiremockBaseUrl = `http://${host}:${port}/__admin`;
             }
-            console.log('🔧 [checkHealth] Updated WireMock URL from form:', window.wiremockBaseUrl);
+            console.log('[SETUP] [checkHealth] Updated WireMock URL from form:', window.wiremockBaseUrl);
         }
 
         await checkHealthAndStartUptime();
@@ -3626,7 +3626,7 @@ function padHostWithProtocol(value) {
 function setStatusMessage(elementId, type, message) {
     const el = document.getElementById(elementId);
     if (!el) return;
-    const prefix = type === 'success' ? '✅' : type === 'error' ? '❌' : 'ℹ️';
+    const prefix = type === 'success' ? '[OK]' : type === 'error' ? '[ERROR]' : '[INFO]';
     el.textContent = `${prefix} ${message}`;
 }
 

@@ -15,10 +15,10 @@ if (!window.NotificationManager) {
         },
 
         ICONS: {
-            info: 'ℹ️',
-            success: '✅',
-            warning: '⚠️',
-            error: '⛔'
+            info: '[INFO]',
+            success: '[OK]',
+            warning: '[WARN]',
+            error: '[BLOCK]'
         },
 
         queue: [],
@@ -247,7 +247,7 @@ if (!window.NotificationManager) {
             const countEl = document.createElement('span');
             countEl.className = 'toast-count';
             if (payload.count > 1) {
-                countEl.textContent = `×${payload.count}`;
+                countEl.textContent = `x${payload.count}`;
                 countEl.setAttribute('aria-label', `${payload.count} occurrences`);
             }
 
@@ -258,7 +258,7 @@ if (!window.NotificationManager) {
             closeButton.type = 'button';
             closeButton.className = 'toast-close';
             closeButton.setAttribute('aria-label', 'Dismiss notification');
-            closeButton.textContent = '✕';
+            closeButton.textContent = 'x';
             closeButton.addEventListener('click', () => this.dismissToast(toast, payload, 'close'));
 
             if (payload.action) {
@@ -388,12 +388,12 @@ if (!window.NotificationManager) {
                 const content = dedupeEntry.toastEl.querySelector('.toast-content');
                 if (dedupeEntry.count > 1) {
                     if (countEl) {
-                        countEl.textContent = `×${dedupeEntry.count}`;
+                        countEl.textContent = `x${dedupeEntry.count}`;
                         countEl.setAttribute('aria-label', `${dedupeEntry.count} occurrences`);
                     } else if (content) {
                         const newCountEl = document.createElement('span');
                         newCountEl.className = 'toast-count';
-                        newCountEl.textContent = `×${dedupeEntry.count}`;
+                        newCountEl.textContent = `x${dedupeEntry.count}`;
                         newCountEl.setAttribute('aria-label', `${dedupeEntry.count} occurrences`);
                         content.appendChild(newCountEl);
                     }
@@ -455,7 +455,7 @@ window.TabManager = {
             const loadFn = window[config.loadFunction];
             if (typeof loadFn === 'function') {
                 await loadFn();
-                console.log(`✅ ${config.name} refreshed`);
+                console.log(`[OK] ${config.name} refreshed`);
             } else {
                 console.warn(`Load function not found: ${config.loadFunction}`);
             }
@@ -473,7 +473,7 @@ window.TabManager = {
             const clearFn = window[config.clearFunction];
             if (typeof clearFn === 'function') {
                 clearFn();
-                console.log(`🧹 ${config.name} filters cleared`);
+                console.log(`[CLEAN] ${config.name} filters cleared`);
             }
         } catch (error) {
             console.error(`Error clearing ${config.name} filters:`, error);
@@ -690,7 +690,7 @@ window.FilterManager = {
                     updateRequestsCounter();
                 }
 
-                console.log(`🔍 Filtered requests: ${window.allRequests.length} items`);
+                console.log(`[SEARCH] Filtered requests: ${window.allRequests.length} items`);
             }
         }
     },
@@ -737,4 +737,4 @@ window.FilterManager = {
     }
 };
 
-console.log('✅ Managers.js loaded - NotificationManager, TabManager, FilterManager');
+console.log('[OK] Managers.js loaded - NotificationManager, TabManager, FilterManager');
