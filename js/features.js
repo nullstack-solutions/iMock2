@@ -21,6 +21,27 @@ window.deletionTimeouts = new Map(); // Track cleanup timeouts for safety
 // Ensure only one heavy /mappings request is in-flight at a time
 let mappingsFetchPromise = null;
 
+if (typeof window.isDemoMode === 'undefined') {
+    window.isDemoMode = false;
+}
+
+if (typeof window.demoModeAnnounced === 'undefined') {
+    window.demoModeAnnounced = false;
+}
+
+if (typeof window.demoModeLastError === 'undefined') {
+    window.demoModeLastError = null;
+}
+
+function markDemoModeActive(reason = 'automatic') {
+    window.isDemoMode = true;
+    window.demoModeReason = reason;
+    if (!window.demoModeAnnounced && typeof NotificationManager !== 'undefined' && NotificationManager?.info) {
+        NotificationManager.info('WireMock API unreachable. Showing demo data so the interface stays interactive.');
+        window.demoModeAnnounced = true;
+    }
+}
+
 function addMappingToIndex(mapping) {
     if (!mapping || typeof mapping !== 'object') {
         return;
@@ -91,6 +112,14 @@ async function fetchMappingsFromServer({ force = false } = {}) {
     const requestPromise = (async () => {
         try {
             return await apiFetch(ENDPOINTS.MAPPINGS);
+        } catch (error) {
+            if (window.DemoData?.isAvailable?.() && window.DemoData?.getMappingsPayload) {
+                console.warn('⚠️ Falling back to demo mappings because the WireMock API request failed.', error);
+                window.demoModeLastError = error;
+                markDemoModeActive('mappings-fallback');
+                return window.DemoData.getMappingsPayload();
+            }
+            throw error;
         } finally {
             if (mappingsFetchPromise === requestPromise) {
                 mappingsFetchPromise = null;
@@ -810,6 +839,14 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                 data = await fetchMappingsFromServer({ force: true });
                 dataSource = 'direct';
             }
+            if (data && data.__source) {
+                dataSource = data.__source;
+                if (dataSource === 'demo') {
+                    markDemoModeActive('mappings-fallback');
+                }
+                try { delete data.__source; } catch (_) {}
+            }
+
             // If we fetched a full admin list, strip service cache mapping from UI
             let incoming = data.mappings || [];
 
@@ -853,13 +890,18 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
             window.allMappings = window.originalMappings;
             rebuildMappingIndex(window.originalMappings);
             // Update data source indicator in UI
-            updateDataSourceIndicator(dataSource);
             renderSource = dataSource;
         } else {
-            window.allMappings = mappingsToRender;
-            renderSource = 'custom';
+            const sourceOverride = options?.source;
+            window.allMappings = Array.isArray(mappingsToRender) ? [...mappingsToRender] : [];
+            window.originalMappings = [...window.allMappings];
+            rebuildMappingIndex(window.originalMappings);
+            renderSource = sourceOverride || 'custom';
+            if (renderSource === 'demo') {
+                markDemoModeActive('manual-mappings');
+            }
         }
-        
+
         loadingState.classList.add('hidden');
         
         if (window.allMappings.length === 0) {
@@ -897,6 +939,7 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
             getSignature: getMappingRenderSignature
         });
         updateMappingsCounter();
+        updateDataSourceIndicator(renderSource);
         // Reapply mapping filters if any are active, preserving user's view
         try {
             const hasFilters = (document.getElementById(SELECTORS.MAPPING_FILTERS.METHOD)?.value || '')
@@ -1200,6 +1243,14 @@ function updateDataSourceIndicator(source) {
             text = 'Source: cache (rebuilding…)';
             cls = 'badge badge-success';
             break;
+        case 'demo':
+            text = 'Source: demo data';
+            cls = 'badge badge-info';
+            break;
+        case 'custom':
+            text = 'Source: custom';
+            cls = 'badge badge-secondary';
+            break;
         case 'remote':
             text = 'Source: remote';
             cls = 'badge badge-warning';
@@ -1227,6 +1278,10 @@ function updateRequestsSourceIndicator(source) {
             text = 'Requests: custom';
             cls = 'badge badge-secondary';
             break;
+        case 'demo':
+            text = 'Requests: demo data';
+            cls = 'badge badge-info';
+            break;
         case 'remote':
             text = 'Requests: remote';
             cls = 'badge badge-warning';
@@ -1248,11 +1303,11 @@ window.toggleMappingDetails = (mappingId) => UIComponents.toggleDetails(mappingI
 window.toggleRequestDetails = (requestId) => UIComponents.toggleDetails(requestId, 'request');
 
 // Compact request loader (temporary reuse until DataManager exists)
-window.fetchAndRenderRequests = async (requestsToRender = null) => {
+window.fetchAndRenderRequests = async (requestsToRender = null, options = {}) => {
     const container = document.getElementById(SELECTORS.LISTS.REQUESTS);
     const emptyState = document.getElementById(SELECTORS.EMPTY.REQUESTS);
     const loadingState = document.getElementById(SELECTORS.LOADING.REQUESTS);
-    
+
     if (!container || !emptyState || !loadingState) {
         console.error('Required DOM elements not found for requests rendering');
         return false;
@@ -1264,17 +1319,43 @@ window.fetchAndRenderRequests = async (requestsToRender = null) => {
             loadingState.classList.remove('hidden');
             container.style.display = 'none';
             emptyState.classList.add('hidden');
-            
-            const data = await apiFetch(ENDPOINTS.REQUESTS);
+
+            let data;
+            try {
+                data = await apiFetch(ENDPOINTS.REQUESTS);
+            } catch (error) {
+                if (window.DemoData?.isAvailable?.() && window.DemoData?.getRequestsPayload) {
+                    console.warn('⚠️ Falling back to demo requests because the WireMock API request failed.', error);
+                    window.demoModeLastError = error;
+                    markDemoModeActive('requests-fallback');
+                    data = window.DemoData.getRequestsPayload();
+                } else {
+                    throw error;
+                }
+            }
+
+            if (data && data.__source) {
+                reqSource = data.__source;
+                if (reqSource === 'demo') {
+                    markDemoModeActive('requests-fallback');
+                }
+                try { delete data.__source; } catch (_) {}
+            }
+
             window.originalRequests = data.requests || [];
             window.allRequests = [...window.originalRequests];
         } else {
-            window.allRequests = requestsToRender;
-            reqSource = 'custom';
+            const sourceOverride = options?.source;
+            window.allRequests = Array.isArray(requestsToRender) ? [...requestsToRender] : [];
+            window.originalRequests = [...window.allRequests];
+            reqSource = sourceOverride || 'custom';
+            if (reqSource === 'demo') {
+                markDemoModeActive('manual-requests');
+            }
         }
-        
+
         loadingState.classList.add('hidden');
-        
+
         if (window.allRequests.length === 0) {
             emptyState.classList.remove('hidden');
             container.style.display = 'none';
@@ -3439,8 +3520,31 @@ window.forceRefreshCache = async () => {
 };
 
 // Missing HTML onclick functions
-window.loadMockData = () => {
-    NotificationManager.info('Demo mode not implemented yet');
+window.loadMockData = async () => {
+    if (!window.DemoData?.isAvailable?.() || !window.DemoData?.getDataset) {
+        NotificationManager.error('Demo dataset is not available in this build.');
+        return;
+    }
+
+    const dataset = window.DemoData.getDataset();
+    if (!dataset) {
+        NotificationManager.error('Unable to load the demo dataset.');
+        return;
+    }
+
+    markDemoModeActive('manual-trigger');
+    window.demoModeLastError = null;
+
+    const [mappingsLoaded, requestsLoaded] = await Promise.all([
+        fetchAndRenderMappings(dataset.mappings || [], { source: 'demo' }),
+        fetchAndRenderRequests(dataset.requests || [], { source: 'demo' })
+    ]);
+
+    if (mappingsLoaded && requestsLoaded) {
+        NotificationManager.success('Demo data loaded locally. Explore the interface freely.');
+    } else {
+        NotificationManager.warning('Demo data only loaded partially. Check the console for details.');
+    }
 };
 
 window.updateScenarioState = async () => {
