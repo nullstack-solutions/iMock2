@@ -713,11 +713,17 @@ const applyThemeToDom = (theme) => {
 
     body.setAttribute('data-theme', theme);
 
-    const themeIcon = document.getElementById('theme-icon');
-    if (themeIcon) {
+    const iconTargets = [
+        document.getElementById('theme-icon'),
+        document.getElementById('editor-theme-icon')
+    ].filter(Boolean);
+
+    if (iconTargets.length) {
         const target = theme === 'dark' ? '#icon-sun' : '#icon-moon';
-        themeIcon.setAttribute('href', target);
-        themeIcon.setAttribute('xlink:href', target);
+        iconTargets.forEach((icon) => {
+            icon.setAttribute('href', target);
+            icon.setAttribute('xlink:href', target);
+        });
     }
 };
 
