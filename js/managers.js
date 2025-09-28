@@ -15,10 +15,10 @@ if (!window.NotificationManager) {
         },
 
         ICONS: {
-            info: 'ℹ️',
-            success: '✅',
-            warning: '⚠️',
-            error: '⛔'
+            info: '[INFO]',
+            success: '[OK]',
+            warning: '[WARN]',
+            error: '[BLOCK]'
         },
 
         queue: [],
@@ -247,7 +247,7 @@ if (!window.NotificationManager) {
             const countEl = document.createElement('span');
             countEl.className = 'toast-count';
             if (payload.count > 1) {
-                countEl.textContent = `×${payload.count}`;
+                countEl.textContent = `x${payload.count}`;
                 countEl.setAttribute('aria-label', `${payload.count} occurrences`);
             }
 
@@ -258,7 +258,7 @@ if (!window.NotificationManager) {
             closeButton.type = 'button';
             closeButton.className = 'toast-close';
             closeButton.setAttribute('aria-label', 'Dismiss notification');
-            closeButton.textContent = '✕';
+            closeButton.textContent = 'x';
             closeButton.addEventListener('click', () => this.dismissToast(toast, payload, 'close'));
 
             if (payload.action) {
@@ -388,12 +388,12 @@ if (!window.NotificationManager) {
                 const content = dedupeEntry.toastEl.querySelector('.toast-content');
                 if (dedupeEntry.count > 1) {
                     if (countEl) {
-                        countEl.textContent = `×${dedupeEntry.count}`;
+                        countEl.textContent = `x${dedupeEntry.count}`;
                         countEl.setAttribute('aria-label', `${dedupeEntry.count} occurrences`);
                     } else if (content) {
                         const newCountEl = document.createElement('span');
                         newCountEl.className = 'toast-count';
-                        newCountEl.textContent = `×${dedupeEntry.count}`;
+                        newCountEl.textContent = `x${dedupeEntry.count}`;
                         newCountEl.setAttribute('aria-label', `${dedupeEntry.count} occurrences`);
                         content.appendChild(newCountEl);
                     }
@@ -455,7 +455,7 @@ window.TabManager = {
             const loadFn = window[config.loadFunction];
             if (typeof loadFn === 'function') {
                 await loadFn();
-                console.log(`✅ ${config.name} refreshed`);
+                console.log(`[OK] ${config.name} refreshed`);
             } else {
                 console.warn(`Load function not found: ${config.loadFunction}`);
             }
@@ -473,7 +473,7 @@ window.TabManager = {
             const clearFn = window[config.clearFunction];
             if (typeof clearFn === 'function') {
                 clearFn();
-                console.log(`🧹 ${config.name} filters cleared`);
+                console.log(`[CLEAN] ${config.name} filters cleared`);
             }
         } catch (error) {
             console.error(`Error clearing ${config.name} filters:`, error);
@@ -566,9 +566,18 @@ window.FilterManager = {
                     return urlA.localeCompare(urlB);
                 });
 
-                // Add a safety check before using renderMappingCard:
-                if (typeof window.renderMappingCard === 'function') {
-                    container.innerHTML = sortedMappings.map(mapping => window.renderMappingCard(mapping)).join('');
+                if (window.ListRenderer && typeof window.ListRenderer.render === 'function') {
+                    window.ListRenderer.render(container, sortedMappings, window.renderMappingCard);
+                } else if (typeof window.renderMappingCard === 'function') {
+                    container.innerHTML = '';
+                    const fragment = document.createDocumentFragment();
+                    sortedMappings.forEach(mapping => {
+                        const node = window.renderMappingCard(mapping);
+                        if (node instanceof Node) {
+                            fragment.appendChild(node);
+                        }
+                    });
+                    container.appendChild(fragment);
                 }
 
                 // Update UI elements
@@ -651,9 +660,18 @@ window.FilterManager = {
             // Re-render requests
             const container = document.getElementById(SELECTORS.LISTS.REQUESTS);
             if (container) {
-                // Add a safety check before using renderRequestCard:
-                if (typeof window.renderRequestCard === 'function') {
-                    container.innerHTML = window.allRequests.map(request => window.renderRequestCard(request)).join('');
+                if (window.ListRenderer && typeof window.ListRenderer.render === 'function') {
+                    window.ListRenderer.render(container, window.allRequests, window.renderRequestCard);
+                } else if (typeof window.renderRequestCard === 'function') {
+                    container.innerHTML = '';
+                    const fragment = document.createDocumentFragment();
+                    window.allRequests.forEach(request => {
+                        const node = window.renderRequestCard(request);
+                        if (node instanceof Node) {
+                            fragment.appendChild(node);
+                        }
+                    });
+                    container.appendChild(fragment);
                 }
 
                 // Update UI elements
@@ -672,7 +690,7 @@ window.FilterManager = {
                     updateRequestsCounter();
                 }
 
-                console.log(`🔍 Filtered requests: ${window.allRequests.length} items`);
+                console.log(`[SEARCH] Filtered requests: ${window.allRequests.length} items`);
             }
         }
     },
@@ -719,4 +737,4 @@ window.FilterManager = {
     }
 };
 
-console.log('✅ Managers.js loaded - NotificationManager, TabManager, FilterManager');
+console.log('[OK] Managers.js loaded - NotificationManager, TabManager, FilterManager');

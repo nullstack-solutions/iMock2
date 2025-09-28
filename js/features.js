@@ -66,13 +66,54 @@ window.cacheManager = {
     // Synchronization flag
     isSyncing: false,
 
+    // Interval handles for lifecycle management
+    cleanupIntervalId: null,
+    syncIntervalId: null,
+
     // Initialization
     init() {
+        const tracker = window.ResourceCleaner?.trackInterval?.bind(window.ResourceCleaner);
+        const registerCleanup = window.ResourceCleaner?.registerCleanup?.bind(window.ResourceCleaner);
+
+        const createInterval = (fn, delay) => {
+            const id = window.setInterval(fn, delay);
+            return tracker ? tracker(id) : id;
+        };
+
         // Periodically remove stale optimistic updates
-        setInterval(() => this.cleanupStaleOptimisticUpdates(), 5000);
+        this.cleanupIntervalId = createInterval(() => this.cleanupStaleOptimisticUpdates(), 5000);
 
         // Periodically synchronize with the server
-        setInterval(() => this.syncWithServer(), 60000);
+        this.syncIntervalId = createInterval(() => this.syncWithServer(), 60000);
+
+        if (registerCleanup) {
+            registerCleanup(() => this.destroy());
+        }
+    },
+
+    destroy() {
+        const clearTracked = window.ResourceCleaner?.clearInterval?.bind(window.ResourceCleaner);
+
+        if (this.cleanupIntervalId) {
+            if (clearTracked) {
+                clearTracked(this.cleanupIntervalId);
+            } else {
+                clearInterval(this.cleanupIntervalId);
+            }
+            this.cleanupIntervalId = null;
+        }
+
+        if (this.syncIntervalId) {
+            if (clearTracked) {
+                clearTracked(this.syncIntervalId);
+            } else {
+                clearInterval(this.syncIntervalId);
+            }
+            this.syncIntervalId = null;
+        }
+
+        this.optimisticQueue = [];
+        this.isSyncing = false;
     },
 
     // Add an optimistic update (simplified flow)
@@ -82,14 +123,14 @@ window.cacheManager = {
 
         // Lightweight logic - the server remains the source of truth
         this.optimisticQueue.push({ id, op, payload: m, ts: Date.now() });
-        console.log(`🎯 [CACHE] Added optimistic update: ${id}, operation: ${op}`);
+        console.log(`[TARGET] [CACHE] Added optimistic update: ${id}, operation: ${op}`);
     },
 
     // Remove the optimistic update after the server confirms it
     confirmOptimisticUpdate(id) {
         const i = this.optimisticQueue.findIndex(x => x.id === id);
         if (i >= 0) {
-            console.log(`✅ [CACHE] Confirmed optimistic update: ${id}`);
+            console.log(`[OK] [CACHE] Confirmed optimistic update: ${id}`);
             this.optimisticQueue.splice(i, 1);
         }
     },
@@ -100,7 +141,7 @@ window.cacheManager = {
         const initialLength = this.optimisticQueue.length;
         this.optimisticQueue = this.optimisticQueue.filter(item => {
             if (now - item.ts > this.optimisticTTL) {
-                console.log(`🧹 [CACHE] Removing stale optimistic update: ${item.id}`);
+                console.log(`[CLEAN] [CACHE] Removing stale optimistic update: ${item.id}`);
                 return false;
             }
             return true;
@@ -108,7 +149,7 @@ window.cacheManager = {
 
         const removedCount = initialLength - this.optimisticQueue.length;
         if (removedCount > 0) {
-            console.log(`🧹 [CACHE] Cleaned ${removedCount} stale optimistic updates`);
+            console.log(`[CLEAN] [CACHE] Cleaned ${removedCount} stale optimistic updates`);
             // Trigger a UI refresh if stale updates were removed
             this.rebuildCache();
         }
@@ -118,7 +159,7 @@ window.cacheManager = {
     removeOptimisticUpdate(id) {
         const i = this.optimisticQueue.findIndex(x => x.id === id);
         if (i >= 0) {
-            console.log(`🗑️ [CACHE] Removing optimistic update: ${id}`);
+            console.log(`[TRASH] [CACHE] Removing optimistic update: ${id}`);
             this.optimisticQueue.splice(i, 1);
         }
     },
@@ -126,12 +167,12 @@ window.cacheManager = {
     // Full cache rebuild
     async rebuildCache() {
         if (this.isSyncing) {
-            console.log('⏳ [CACHE] Already syncing, skipping rebuild');
+            console.log('[WAIT] [CACHE] Already syncing, skipping rebuild');
             return;
         }
 
         this.isSyncing = true;
-        console.log('🔄 [CACHE] Starting cache rebuild');
+        console.log('[REFRESH] [CACHE] Starting cache rebuild');
 
         try {
             // Pull the latest data from the server
@@ -162,7 +203,7 @@ window.cacheManager = {
             window.originalMappings = Array.from(this.cache.values());
             window.allMappings = [...window.originalMappings];
 
-            console.log(`✅ [CACHE] Rebuild complete: ${this.cache.size} mappings`);
+            console.log(`[OK] [CACHE] Rebuild complete: ${this.cache.size} mappings`);
 
             // Refresh the UI
             if (typeof window.fetchAndRenderMappings === 'function') {
@@ -170,7 +211,7 @@ window.cacheManager = {
             }
 
         } catch (error) {
-            console.error('❌ [CACHE] Rebuild failed:', error);
+            console.error('[ERROR] [CACHE] Rebuild failed:', error);
         } finally {
             this.isSyncing = false;
         }
@@ -179,11 +220,11 @@ window.cacheManager = {
     // Synchronize with the server
     async syncWithServer() {
         if (this.optimisticQueue.length === 0) {
-            console.log('✨ [CACHE] No optimistic updates to sync');
+            console.log('[INFO] [CACHE] No optimistic updates to sync');
             return;
         }
 
-        console.log(`🔄 [CACHE] Syncing ${this.optimisticQueue.length} optimistic updates`);
+        console.log(`[REFRESH] [CACHE] Syncing ${this.optimisticQueue.length} optimistic updates`);
         await this.rebuildCache();
     },
 
@@ -202,7 +243,7 @@ window.cacheManager = {
         this.cache.clear();
         this.optimisticQueue.length = 0;
         this.version = 0;
-        console.log('🧹 [CACHE] Cache cleared');
+        console.log('[CLEAN] [CACHE] Cache cleared');
     }
 };
 
@@ -212,7 +253,7 @@ window.cacheManager.init();
 function isCacheEnabled() {
     try {
         const checkbox = document.getElementById('cache-enabled');
-        const settings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
+        const settings = window.SettingsStore?.getCached?.() || {};
         return (settings.cacheEnabled !== false) && (checkbox ? checkbox.checked : true);
     } catch (error) {
         console.warn('Failed to resolve cache enabled state:', error);
@@ -240,7 +281,7 @@ window.connectToWireMock = async () => {
     
     // DON'T save connection settings here - they should already be saved from Settings page
     // Only use these values for the current connection attempt
-    console.log('🔗 Connecting with:', { host, port });
+    console.log('[LINK] Connecting with:', { host, port });
     
     // Update the base URL (with proper scheme/port normalization)
     if (typeof window.normalizeWiremockBaseUrl === 'function') {
@@ -363,7 +404,7 @@ window.checkHealthAndStartUptime = async () => {
                 healthIndicator.innerHTML = `<span>Response Time: </span><span class="healthy">${responseTime}ms</span>`;
             }
             
-            console.log(`✅ WireMock health check passed (${responseTime}ms), uptime started`);
+            console.log(`[OK] WireMock health check passed (${responseTime}ms), uptime started`);
         } else {
             throw new Error('WireMock is not healthy');
         }
@@ -467,20 +508,9 @@ window.stopUptime = function() {
 // --- COMPACT UTILITIES (trimmed from ~80 to 20 lines) ---
 
 const Utils = {
-    escapeHtml: (unsafe) => typeof unsafe !== 'string' ? String(unsafe) : 
-        unsafe.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'})[m]),
-    
-    formatJson: (obj, fallback = 'Invalid JSON', maxLength = 1000) => {
-        try { 
-            const jsonString = JSON.stringify(obj, null, 2);
-            if (jsonString.length > maxLength) {
-                return jsonString.substring(0, maxLength) + '\n... (truncated - ' + (jsonString.length - maxLength) + ' more characters)';
-            }
-            return jsonString;
-        } 
-        catch { return fallback; }
-    },
-    
+    escapeHtml: (unsafe) => typeof unsafe !== 'string' ? String(unsafe) :
+        unsafe.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m])),
+
     parseRequestTime: (date) => {
         if (!date) return new Date().toLocaleString('en-US');
         try {
@@ -488,9 +518,9 @@ const Utils = {
             return isNaN(d.getTime()) ? `Invalid: ${date}` : d.toLocaleString('en-US');
         } catch { return `Invalid: ${date}`; }
     },
-    
+
     getStatusClass: (status) => {
-        const code = parseInt(status) || 0;
+        const code = parseInt(status, 10) || 0;
         if (code >= 200 && code < 300) return 'success';
         if (code >= 300 && code < 400) return 'redirect';
         if (code >= 400 && code < 500) return 'client-error';
@@ -499,143 +529,391 @@ const Utils = {
     }
 };
 
-// Backward compatibility for existing code
 const escapeHtml = Utils.escapeHtml;
-const formatJson = Utils.formatJson;
-const parseRequestTime = Utils.parseRequestTime;
-const getStatusClass = Utils.getStatusClass;
+if (typeof window.escapeHtml !== 'function') {
+    window.escapeHtml = Utils.escapeHtml;
+}
 
-// --- UNIVERSAL UI COMPONENTS (replace ~100 lines of duplication) ---
+const LazyJsonFormatter = (() => {
+    const queue = [];
+    let scheduled = false;
+
+    const runTasks = (deadline) => {
+        scheduled = false;
+        const hasDeadline = deadline && typeof deadline.timeRemaining === 'function';
+        let start = Date.now();
+        while (queue.length && (
+            (hasDeadline && deadline.timeRemaining() > 4) ||
+            (!hasDeadline && Date.now() - start < 8)
+        )) {
+            const task = queue.shift();
+            try {
+                const jsonString = JSON.stringify(task.value, null, 2);
+                const truncated = jsonString.length > task.maxLength;
+                const previewText = truncated
+                    ? `${jsonString.slice(0, task.maxLength)}
+... (truncated - ${jsonString.length - task.maxLength} more characters)`
+                    : jsonString;
+                task.onResult({ previewText, truncated, fullText: truncated ? jsonString : previewText });
+            } catch (error) {
+                task.onError?.(error);
+            }
+        }
+        if (queue.length) {
+            schedule();
+        }
+    };
+
+    const schedule = () => {
+        if (scheduled) return;
+        scheduled = true;
+        if (typeof window.requestIdleCallback === 'function') {
+            window.requestIdleCallback(runTasks, { timeout: 1000 });
+        } else {
+            window.setTimeout(() => runTasks(), 16);
+        }
+    };
+
+    return {
+        enqueue(options) {
+            if (!options || typeof options.onResult !== 'function') {
+                throw new Error('LazyJsonFormatter requires an onResult callback');
+            }
+            queue.push({
+                value: options.value,
+                maxLength: options.maxLength ?? 1000,
+                onResult: options.onResult,
+                onError: options.onError
+            });
+            schedule();
+        }
+    };
+})();
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const XLINK_NS = 'http://www.w3.org/1999/xlink';
 
 const UIComponents = {
-    // Base card component replacing renderMappingCard and renderRequestCard
-    createCard: (type, data, actions = []) => {
-        const { id, method, url, status, name, time, extras = {} } = data;
-        return `
-            <div class="${type}-card" data-id="${Utils.escapeHtml(id)}">
-                <div class="${type}-header" onclick="window.toggleDetails('${Utils.escapeHtml(id)}', '${type}')">
-                    <div class="${type}-info">
-                        <div class="${type}-top-line">
-                            <span class="method-badge ${method.toLowerCase()}">
-                                <span class="collapse-arrow" id="arrow-${Utils.escapeHtml(id)}">▶</span> ${method}
-                            </span>
-                            ${name ? `<span class="${type}-name">${Utils.escapeHtml(name)}</span>` : ''}
-                            ${time ? `<span class="${type}-time">${time}</span>` : ''}
-                        </div>
-                        <div class="${type}-url-line">
-                            <span class="status-badge ${Utils.getStatusClass(status)}">${status}</span>
-                            <span class="${type}-url">${Utils.escapeHtml(url)}</span>
-                            ${extras.badges || ''}
-                        </div>
-                    </div>
-                    <div class="${type}-actions" onclick="event.stopPropagation()">
-                        ${actions.map(action => `
-                            <button class="btn btn-sm btn-${action.class}"
-                                    onclick="${action.handler}('${Utils.escapeHtml(id)}')"
-                                    title="${Utils.escapeHtml(action.title)}">${action.icon}</button>
-                        `).join('')}
-                    </div>
-                </div>
-                <div class="${type}-preview" id="preview-${Utils.escapeHtml(id)}" style="display: none;">
-                    ${extras.preview || ''}
-                </div>
-            </div>`;
+    createIcon(symbol, className = 'icon') {
+        const svg = document.createElementNS(SVG_NS, 'svg');
+        svg.setAttribute('class', className);
+        svg.setAttribute('aria-hidden', 'true');
+        svg.setAttribute('focusable', 'false');
+        const use = document.createElementNS(SVG_NS, 'use');
+        use.setAttributeNS(XLINK_NS, 'xlink:href', `#${symbol}`);
+        use.setAttribute('href', `#${symbol}`);
+        svg.appendChild(use);
+        return svg;
     },
-    
-    createPreviewSection: (title, items) => `
-        <div class="preview-section">
-            <h4>${title}</h4>
-            ${Object.entries(items).map(([key, value]) => {
-                if (!value) return '';
-                
-                if (typeof value === 'object') {
-                    const jsonString = JSON.stringify(value);
-                    // For large objects, show a summary and lazy load full content
-                    if (jsonString.length > 500) {
-                        const preview = Utils.formatJson(value, 'Invalid JSON', 200);
-                        const fullId = `full-${Math.random().toString(36).substr(2, 9)}`;
-                        return `<div class="preview-value">
-                            <strong>${key}:</strong>
-                            <pre>${preview}</pre>
-                            <button class="btn btn-secondary btn-small" onclick="toggleFullContent('${fullId}')" data-json="${Utils.escapeHtml(JSON.stringify(value))}" style="margin-top: 0.5rem; font-size: 0.8rem;">
-                                Show Full Content
-                            </button>
-                            <div id="${fullId}" style="display: none;"></div>
-                        </div>`;
-                    } else {
-                        return `<div class="preview-value"><strong>${key}:</strong><pre>${Utils.formatJson(value)}</pre></div>`;
-                    }
-                } else if (typeof value === 'string') {
-                    const trimmed = value.trim();
-                    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
-                        try {
-                            const parsedJson = JSON.parse(trimmed);
-                            const jsonString = JSON.stringify(parsedJson);
-                            if (jsonString.length > 500) {
-                                const preview = Utils.formatJson(parsedJson, 'Invalid JSON', 200);
-                                const fullId = `full-${Math.random().toString(36).substr(2, 9)}`;
-                                return `<div class="preview-value">
-                                    <strong>${key}:</strong>
-                                    <pre>${preview}</pre>
-                                    <button class="btn btn-secondary btn-small" onclick="toggleFullContent('${fullId}')" data-json="${Utils.escapeHtml(JSON.stringify(parsedJson))}" style="margin-top: 0.5rem; font-size: 0.8rem;">
-                                        Show Full Content
-                                    </button>
-                                    <div id="${fullId}" style="display: none;"></div>
-                                </div>`;
-                            }
-                            return `<div class="preview-value"><strong>${key}:</strong><pre>${Utils.formatJson(parsedJson)}</pre></div>`;
-                        } catch (e) {
-                            // If JSON parsing fails, fall back to original string rendering
-                        }
-                    }
 
-                    const escaped = Utils.escapeHtml(value);
-                    const formatted = escaped.includes('\n') ? `<pre>${escaped}</pre>` : escaped;
-                    return `<div class="preview-value"><strong>${key}:</strong> ${formatted}</div>`;
-                    } else {
-                    const safeValue = Utils.escapeHtml(String(value));
-                    return `<div class="preview-value"><strong>${key}:</strong> ${safeValue}</div>`;
+    createBadge(text, className = 'badge badge-secondary', title) {
+        const badge = document.createElement('span');
+        badge.className = className;
+        if (title) {
+            badge.title = title;
+        }
+        badge.textContent = text;
+        return badge;
+    },
+
+    createShowMoreButton(fullText) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'btn btn-secondary btn-small';
+        button.textContent = 'Show Full Content';
+        const fullId = `full-${Math.random().toString(36).slice(2)}`;
+        button.dataset.target = fullId;
+        button.dataset.json = fullText;
+        button.setAttribute('aria-expanded', 'false');
+        button.addEventListener('click', () => UIComponents.toggleFullContent(fullId, button));
+        return button;
+    },
+
+    appendValueContent(container, value) {
+        if (value === null || value === undefined || value === '') {
+            return;
+        }
+
+        if (value instanceof Node) {
+            container.appendChild(value);
+            return;
+        }
+
+        if (typeof value === 'object') {
+            const placeholder = document.createElement('pre');
+            placeholder.textContent = 'Preparing preview...';
+            container.appendChild(placeholder);
+
+            LazyJsonFormatter.enqueue({
+                value,
+                maxLength: 500,
+                onResult: ({ previewText, truncated, fullText }) => {
+                    placeholder.textContent = previewText;
+                    if (truncated) {
+                        const button = UIComponents.createShowMoreButton(fullText);
+                        container.appendChild(button);
+                        const fullContainer = document.createElement('div');
+                        fullContainer.id = button.dataset.target;
+                        fullContainer.style.display = 'none';
+                        container.appendChild(fullContainer);
+                    }
+                },
+                onError: (error) => {
+                    placeholder.textContent = `Error formatting JSON: ${error.message}`;
                 }
-            }).join('')}
-        </div>`,
-    
-    toggleDetails: (id, type) => {
+            });
+            return;
+        }
+
+        if (typeof value === 'string') {
+            const trimmed = value.trim();
+            if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+                try {
+                    const parsed = JSON.parse(trimmed);
+                    UIComponents.appendValueContent(container, parsed);
+                    return;
+                } catch (_) {
+                    // fall through to string rendering
+                }
+            }
+
+            if (value.includes('\n')) {
+                const pre = document.createElement('pre');
+                pre.textContent = value;
+                container.appendChild(pre);
+            } else {
+                const span = document.createElement('span');
+                span.textContent = value;
+                container.appendChild(span);
+            }
+            return;
+        }
+
+        const span = document.createElement('span');
+        span.textContent = String(value);
+        container.appendChild(span);
+    },
+
+    createCard(type, data, actions = []) {
+        const { id, method, url, status, name, time, extras = {} } = data;
+        const card = document.createElement('div');
+        card.className = `${type}-card`;
+        card.dataset.id = id;
+
+        const header = document.createElement('div');
+        header.className = `${type}-header`;
+        header.setAttribute('role', 'button');
+        header.setAttribute('tabindex', '0');
+        header.setAttribute('aria-controls', `preview-${id}`);
+        header.setAttribute('aria-expanded', 'false');
+
+        const handleToggle = (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            UIComponents.toggleDetails(id, type);
+        };
+
+        header.addEventListener('click', handleToggle);
+        header.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                handleToggle(event);
+            }
+        });
+
+        const info = document.createElement('div');
+        info.className = `${type}-info`;
+
+        const topLine = document.createElement('div');
+        topLine.className = `${type}-top-line`;
+
+        const methodBadge = document.createElement('span');
+        methodBadge.className = `method-badge ${String(method || '').toLowerCase()}`;
+        const arrow = document.createElement('span');
+        arrow.className = 'collapse-arrow';
+        arrow.id = `arrow-${id}`;
+        arrow.setAttribute('aria-hidden', 'true');
+        arrow.textContent = '>';
+        methodBadge.appendChild(arrow);
+        methodBadge.appendChild(document.createTextNode(` ${method}`));
+        topLine.appendChild(methodBadge);
+
+        if (name) {
+            const nameEl = document.createElement('span');
+            nameEl.className = `${type}-name`;
+            nameEl.textContent = name;
+            topLine.appendChild(nameEl);
+        }
+
+        if (time) {
+            const timeEl = document.createElement('span');
+            timeEl.className = `${type}-time`;
+            timeEl.textContent = time;
+            topLine.appendChild(timeEl);
+        }
+
+        info.appendChild(topLine);
+
+        const urlLine = document.createElement('div');
+        urlLine.className = `${type}-url-line`;
+
+        const statusBadge = document.createElement('span');
+        statusBadge.className = `status-badge ${Utils.getStatusClass(status)}`;
+        statusBadge.textContent = status;
+        statusBadge.setAttribute('aria-label', `Status ${status}`);
+        urlLine.appendChild(statusBadge);
+
+        const urlEl = document.createElement('span');
+        urlEl.className = `${type}-url`;
+        urlEl.textContent = url;
+        urlLine.appendChild(urlEl);
+
+        if (extras.badges) {
+            extras.badges.forEach((badge) => {
+                if (badge instanceof Node) {
+                    urlLine.appendChild(badge);
+                }
+            });
+        }
+
+        info.appendChild(urlLine);
+        header.appendChild(info);
+
+        const actionsContainer = document.createElement('div');
+        actionsContainer.className = `${type}-actions`;
+
+        actions.forEach((action) => {
+            if (!action || !action.handler) return;
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = `btn btn-sm btn-${action.class || 'secondary'}`;
+            const label = action.title || action.label || 'Action';
+            button.setAttribute('title', label);
+            button.setAttribute('aria-label', label);
+            button.addEventListener('click', (event) => {
+                event.stopPropagation();
+                const fn = window[action.handler];
+                if (typeof fn === 'function') {
+                    fn(id);
+                } else {
+                    console.warn(`Action handler not found: ${action.handler}`);
+                }
+            });
+            if (action.iconName) {
+                button.appendChild(UIComponents.createIcon(action.iconName, 'icon icon-sm'));
+            }
+            if (action.label) {
+                const sr = document.createElement('span');
+                sr.className = 'sr-only';
+                sr.textContent = action.label;
+                button.appendChild(sr);
+            }
+            actionsContainer.appendChild(button);
+        });
+
+        header.appendChild(actionsContainer);
+
+        const previewContainer = document.createElement('div');
+        previewContainer.className = `${type}-preview`;
+        previewContainer.id = `preview-${id}`;
+        previewContainer.style.display = 'none';
+
+        if (extras.previewSections) {
+            extras.previewSections.forEach((section) => {
+                if (section instanceof Node) {
+                    previewContainer.appendChild(section);
+                }
+            });
+        }
+
+        card.appendChild(header);
+        card.appendChild(previewContainer);
+
+        return card;
+    },
+
+    createPreviewSection(title, items) {
+        const section = document.createElement('div');
+        section.className = 'preview-section';
+
+        const heading = document.createElement('h4');
+        heading.textContent = title;
+        section.appendChild(heading);
+
+        Object.entries(items).forEach(([key, value]) => {
+            if (value === null || value === undefined || value === '') {
+                return;
+            }
+            const wrapper = document.createElement('div');
+            wrapper.className = 'preview-value';
+
+            const label = document.createElement('strong');
+            label.textContent = `${key}:`;
+            wrapper.appendChild(label);
+
+            const content = document.createElement('div');
+            content.className = 'preview-content show';
+            wrapper.appendChild(content);
+
+            UIComponents.appendValueContent(content, value);
+            section.appendChild(wrapper);
+        });
+
+        return section;
+    },
+
+    toggleDetails(id, type) {
         const preview = document.getElementById(`preview-${id}`);
         const arrow = document.getElementById(`arrow-${id}`);
-        if (preview && arrow) {
-            const isHidden = preview.style.display === 'none';
-            preview.style.display = isHidden ? 'block' : 'none';
-            arrow.textContent = isHidden ? '▼' : '▶';
+        if (!preview || !arrow) {
+            return;
+        }
+        const isHidden = preview.style.display === 'none';
+        preview.style.display = isHidden ? 'block' : 'none';
+        arrow.textContent = isHidden ? 'v' : '>';
+
+        const card = preview.closest(`.${type}-card`);
+        const header = card?.querySelector(`.${type}-header`);
+        if (header) {
+            header.setAttribute('aria-expanded', isHidden ? 'true' : 'false');
         }
     },
-    
-    toggleFullContent: (elementId) => {
+
+    toggleFullContent(elementId, trigger) {
         const element = document.getElementById(elementId);
-        const button = element.previousElementSibling;
-        
-        if (element.style.display === 'none') {
-            // Show full content
-            try {
-                const jsonData = button.getAttribute('data-json');
-                const parsedData = JSON.parse(jsonData);
-                element.innerHTML = `<pre style="max-height: 300px; overflow-y: auto; background: var(--bg-tertiary); padding: 1rem; border-radius: var(--radius-sm); margin-top: 0.5rem;">${Utils.escapeHtml(JSON.stringify(parsedData, null, 2))}</pre>`;
-                element.style.display = 'block';
+        if (!element) {
+            return;
+        }
+
+        const button = trigger instanceof HTMLElement ? trigger : document.querySelector(`button[data-target="${elementId}"]`);
+        const isHidden = element.style.display === 'none';
+
+        if (isHidden) {
+            if (!element.dataset.loaded) {
+                const json = button?.dataset?.json;
+                if (json) {
+                    const pre = document.createElement('pre');
+                    pre.textContent = json;
+                    element.replaceChildren(pre);
+                    element.dataset.loaded = 'true';
+                }
+            }
+            element.style.display = 'block';
+            if (button) {
                 button.textContent = 'Hide Full Content';
-            } catch (e) {
-                element.innerHTML = `<div class="preview-value warning">Error parsing JSON: ${Utils.escapeHtml(e.message)}</div>`;
-                element.style.display = 'block';
-                button.textContent = 'Hide';
+                button.setAttribute('aria-expanded', 'true');
             }
         } else {
-            // Hide full content
             element.style.display = 'none';
-            button.textContent = 'Show Full Content';
+            if (button) {
+                button.textContent = 'Show Full Content';
+                button.setAttribute('aria-expanded', 'false');
+            }
         }
     }
 };
 
-// Make UIComponents functions globally accessible for HTML onclick handlers
-window.toggleFullContent = UIComponents.toggleFullContent;
+window.toggleFullContent = (elementId, trigger) => UIComponents.toggleFullContent(elementId, trigger);
 window.toggleDetails = UIComponents.toggleDetails;
 
 // --- DATA LOADING AND PRESENTATION ---
@@ -665,7 +943,7 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                 const cached = await loadImockCacheBestOf3();
                 if (cached && cached.data && Array.isArray(cached.data.mappings)) {
                     // Cache hit - use cached data for quick UI, but always fetch fresh data for complete info
-                    console.log('🧩 [CACHE] Cache hit - using cached data for quick start, fetching fresh data');
+                    console.log('[CACHE] Cache hit - using cached data for quick start, fetching fresh data');
                     dataSource = 'cache';
 
                     // Start async fresh fetch for complete data (only if no optimistic updates in progress)
@@ -723,7 +1001,7 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                                 fetchAndRenderMappings(window.allMappings);
                             }
                         } catch (e) {
-                            console.warn('🧩 [CACHE] Failed to load fresh data:', e);
+                            console.warn('[CACHE] Failed to load fresh data:', e);
                         }
                     })();
 
@@ -733,7 +1011,7 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                     data = await fetchMappingsFromServer({ force: true });
                     dataSource = 'direct';
                     // regenerate cache asynchronously
-                    try { console.log('🧩 [CACHE] Async regenerate after cache miss'); regenerateImockCache(); } catch {}
+                    try { console.log('[CACHE] Async regenerate after cache miss'); regenerateImockCache(); } catch {}
                 }
             } else {
                 data = await fetchMappingsFromServer({ force: true });
@@ -744,17 +1022,17 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
 
             // Server data is now authoritative - optimistic updates are handled through UI updates only
             if (window.cacheManager.optimisticQueue.length > 0) {
-                console.log('🎯 [OPTIMISTIC] Applying optimistic updates to incoming data:', window.cacheManager.optimisticQueue.length, 'updates');
+                console.log('[TARGET] [OPTIMISTIC] Applying optimistic updates to incoming data:', window.cacheManager.optimisticQueue.length, 'updates');
 
                 incoming = incoming.map(serverMapping => {
                     const optimisticItem = window.cacheManager.optimisticQueue.find(x => x.id === (serverMapping.id || serverMapping.uuid));
                     if (optimisticItem) {
                         if (optimisticItem.op === 'delete') {
-                            console.log('🎯 [OPTIMISTIC] Removing deleted mapping from results:', serverMapping.id);
+                            console.log('[TARGET] [OPTIMISTIC] Removing deleted mapping from results:', serverMapping.id);
                             return null; // Mark for removal
                         }
                         // Use optimistic version
-                        console.log('🎯 [OPTIMISTIC] Using optimistic version for:', serverMapping.id);
+                        console.log('[TARGET] [OPTIMISTIC] Using optimistic version for:', serverMapping.id);
                         return optimisticItem.payload;
                     }
                     return serverMapping;
@@ -763,7 +1041,7 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                 // Add any new optimistic mappings that weren't on server
                 window.cacheManager.optimisticQueue.forEach(item => {
                     if (item.op !== 'delete' && !incoming.some(m => (m.id || m.uuid) === item.id)) {
-                        console.log('🎯 [OPTIMISTIC] Adding new optimistic mapping:', item.id);
+                        console.log('[TARGET] [OPTIMISTIC] Adding new optimistic mapping:', item.id);
                         incoming.unshift(item.payload);
                     }
                 });
@@ -774,7 +1052,7 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                 if (window.pendingDeletedIds && window.pendingDeletedIds.size > 0) {
                     const before = incoming.length;
                     incoming = incoming.filter(m => !window.pendingDeletedIds.has(m.id || m.uuid));
-                    if (before !== incoming.length) console.log('🧩 [CACHE] filtered pending-deleted from render:', before - incoming.length);
+                    if (before !== incoming.length) console.log('[CACHE] filtered pending-deleted from render:', before - incoming.length);
                 }
             } catch {}
             window.originalMappings = Array.isArray(incoming) ? incoming.filter(m => !isImockCacheMapping(m)) : [];
@@ -818,8 +1096,20 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
             const urlB = b.request?.url || b.request?.urlPattern || b.request?.urlPath || '';
             return urlA.localeCompare(urlB);
         });
-        console.log(`📦 Mappings render from: ${renderSource} — ${sortedMappings.length} items`);
-        container.innerHTML = sortedMappings.map(mapping => renderMappingCard(mapping)).join('');
+        console.log(`[PACKAGE] Mappings render from: ${renderSource} - ${sortedMappings.length} items`);
+        if (window.ListRenderer && typeof window.ListRenderer.render === 'function') {
+            window.ListRenderer.render(container, sortedMappings, window.renderMappingCard);
+        } else {
+            container.innerHTML = '';
+            const fragment = document.createDocumentFragment();
+            sortedMappings.forEach(mapping => {
+                const node = window.renderMappingCard(mapping);
+                if (node instanceof Node) {
+                    fragment.appendChild(node);
+                }
+            });
+            container.appendChild(fragment);
+        }
         updateMappingsCounter();
         // Reapply mapping filters if any are active, preserving user's view
         try {
@@ -850,43 +1140,43 @@ window.getMappingById = async (mappingId) => {
             throw new Error('Mapping ID is required');
         }
 
-        console.log(`📥 [getMappingById] Fetching mapping with ID: ${mappingId}`);
-        console.log(`📥 [getMappingById] Current wiremockBaseUrl:`, window.wiremockBaseUrl);
-        console.log(`📥 [getMappingById] window.allMappings available:`, Array.isArray(window.allMappings));
-        console.log(`📥 [getMappingById] Cache size:`, window.allMappings?.length || 0);
+        console.log(`[INBOX] [getMappingById] Fetching mapping with ID: ${mappingId}`);
+        console.log(`[INBOX] [getMappingById] Current wiremockBaseUrl:`, window.wiremockBaseUrl);
+        console.log(`[INBOX] [getMappingById] window.allMappings available:`, Array.isArray(window.allMappings));
+        console.log(`[INBOX] [getMappingById] Cache size:`, window.allMappings?.length || 0);
 
         // Try to get from cache first
         const cachedMapping = window.allMappings?.find(m => m.id === mappingId);
         if (cachedMapping) {
-            console.log(`📦 [getMappingById] Found mapping in cache: ${mappingId}`, cachedMapping);
+            console.log(`[PACKAGE] [getMappingById] Found mapping in cache: ${mappingId}`, cachedMapping);
             return cachedMapping;
         } else {
-            console.log(`📦 [getMappingById] Mapping not found in cache, will fetch from API`);
+            console.log(`[PACKAGE] [getMappingById] Mapping not found in cache, will fetch from API`);
         }
 
         // Fetch from WireMock API
-        console.log(`📡 [getMappingById] Making API call to: /mappings/${mappingId}`);
+        console.log(`[RADIO] [getMappingById] Making API call to: /mappings/${mappingId}`);
         const response = await apiFetch(`/mappings/${mappingId}`);
-        console.log(`📡 [getMappingById] Raw API response:`, response);
+        console.log(`[RADIO] [getMappingById] Raw API response:`, response);
 
         // Handle both wrapped and unwrapped responses
         const mapping = response && typeof response === 'object' && response.mapping
             ? response.mapping
             : response;
 
-        console.log(`📡 [getMappingById] Processed mapping:`, mapping);
+        console.log(`[RADIO] [getMappingById] Processed mapping:`, mapping);
 
         if (!mapping || typeof mapping !== 'object') {
-            console.log(`❌ [getMappingById] API returned invalid data for mapping ${mappingId}`);
+            console.log(`[ERROR] [getMappingById] API returned invalid data for mapping ${mappingId}`);
             throw new Error(`Mapping with ID ${mappingId} not found or invalid response`);
         }
 
-        console.log(`✅ [getMappingById] Successfully fetched mapping: ${mappingId}`, mapping);
+        console.log(`[OK] [getMappingById] Successfully fetched mapping: ${mappingId}`, mapping);
         return mapping;
 
     } catch (error) {
-        console.error(`❌ [getMappingById] Error fetching mapping ${mappingId}:`, error);
-        console.error(`❌ [getMappingById] Error details:`, {
+        console.error(`[ERROR] [getMappingById] Error fetching mapping ${mappingId}:`, error);
+        console.error(`[ERROR] [getMappingById] Error details:`, {
             message: error.message,
             status: error.status,
             statusText: error.statusText,
@@ -900,20 +1190,20 @@ window.getMappingById = async (mappingId) => {
 window.applyOptimisticMappingUpdate = (mappingLike) => {
     try {
         if (!mappingLike) {
-            console.warn('🎯 [OPTIMISTIC] No mapping data provided');
+            console.warn('[TARGET] [OPTIMISTIC] No mapping data provided');
             return;
         }
 
         const mapping = mappingLike.mapping || mappingLike;
         const mappingId = mapping?.id || mapping?.uuid;
         if (!mapping || !mappingId) {
-            console.warn('🎯 [OPTIMISTIC] Invalid mapping data - missing id:', mapping);
+            console.warn('[TARGET] [OPTIMISTIC] Invalid mapping data - missing id:', mapping);
             return;
         }
 
         // Ignore synthetic cache service mappings
         if (isImockCacheMapping(mapping)) {
-            console.log('🎯 [OPTIMISTIC] Skipping cache mapping update');
+            console.log('[TARGET] [OPTIMISTIC] Skipping cache mapping update');
             return;
         }
 
@@ -931,13 +1221,13 @@ window.applyOptimisticMappingUpdate = (mappingLike) => {
                     try {
                         window.cacheManager.addOptimisticUpdate(mapping, optimisticOperation);
                     } catch (queueError) {
-                        console.warn('🎯 [OPTIMISTIC] Failed to enqueue optimistic update:', queueError);
+                        console.warn('[TARGET] [OPTIMISTIC] Failed to enqueue optimistic update:', queueError);
                     }
                 }
                 seedCacheFromGlobals(window.cacheManager.cache);
                 const incoming = cloneMappingForCache(mapping);
                 if (!incoming) {
-                    console.warn('🎯 [OPTIMISTIC] Failed to clone mapping for cache:', mappingId);
+                    console.warn('[TARGET] [OPTIMISTIC] Failed to clone mapping for cache:', mappingId);
                 } else {
                     if (!incoming.id && mappingId) {
                         incoming.id = mappingId;
@@ -959,10 +1249,10 @@ window.applyOptimisticMappingUpdate = (mappingLike) => {
             refreshMappingsFromCache();
         }
 
-        console.log('🎯 [OPTIMISTIC] Applied update for mapping:', mappingId);
+        console.log('[TARGET] [OPTIMISTIC] Applied update for mapping:', mappingId);
 
     } catch (e) {
-        console.warn('🎯 [OPTIMISTIC] Update failed:', e);
+        console.warn('[TARGET] [OPTIMISTIC] Update failed:', e);
     }
 };
 
@@ -998,61 +1288,85 @@ window.backgroundRefreshMappings = async (useCache = false) => {
 
 // Compact mapping renderer through UIComponents (shortened from ~67 to 15 lines)
 window.renderMappingCard = function(mapping) {
-    if (!mapping || !mapping.id) {
+    if (!mapping || !(mapping.id || mapping.uuid)) {
         console.warn('Invalid mapping data:', mapping);
-        return '';
+        return null;
     }
-    
-    const actions = [
-        { class: 'secondary', handler: 'editMapping', title: 'Edit in Editor', icon: '📝' },
-        { class: 'primary', handler: 'openEditModal', title: 'Edit', icon: '✏️' },
-        { class: 'danger', handler: 'deleteMapping', title: 'Delete', icon: '🗑️' }
-    ];
-    
-    const data = {
-        id: mapping.id,
-        method: mapping.request?.method || 'GET',
-        url: mapping.request?.urlPath || mapping.request?.urlPathPattern || mapping.request?.urlPattern || mapping.request?.url || 'N/A',
-        status: mapping.response?.status || 200,
-        name: mapping.name || mapping.metadata?.name || `Mapping ${mapping.id.substring(0, 8)}`,
-        extras: {
-            preview: UIComponents.createPreviewSection('📥 Request', {
-                'Method': mapping.request?.method || 'GET',
-                'URL': mapping.request?.url || mapping.request?.urlPattern || mapping.request?.urlPath || mapping.request?.urlPathPattern,
-                'Headers': mapping.request?.headers,
-                'Body': mapping.request?.bodyPatterns || mapping.request?.body,
-                'Query Parameters': mapping.request?.queryParameters
-            }) + UIComponents.createPreviewSection('📤 Response', {
-                'Status': mapping.response?.status,
-                'Headers': mapping.response?.headers,
-                'Body': mapping.response?.jsonBody || mapping.response?.body,
-                'Delay': mapping.response?.fixedDelayMilliseconds ? `${mapping.response.fixedDelayMilliseconds}ms` : null
-            }) + UIComponents.createPreviewSection('Overview', {
-                'ID': mapping.id || mapping.uuid,
-                'Name': mapping.name || mapping.metadata?.name,
-                'Priority': mapping.priority,
-                'Persistent': mapping.persistent,
-                'Scenario': mapping.scenarioName,
-                'Required State': mapping.requiredScenarioState,
-                'New State': mapping.newScenarioState,
+
+    const mappingId = mapping.id || mapping.uuid;
+    const method = mapping.request?.method || 'GET';
+    const url = mapping.request?.urlPath || mapping.request?.urlPathPattern || mapping.request?.urlPattern || mapping.request?.url || 'N/A';
+    const status = mapping.response?.status || 200;
+    const name = mapping.name || mapping.metadata?.name || `Mapping ${mappingId.substring(0, 8)}`;
+
+    const previewSections = [
+        UIComponents.createPreviewSection('Request', {
+            'Method': method,
+            'URL': mapping.request?.url || mapping.request?.urlPattern || mapping.request?.urlPath || mapping.request?.urlPathPattern,
+            'Headers': mapping.request?.headers,
+            'Body': mapping.request?.bodyPatterns || mapping.request?.body,
+            'Query Parameters': mapping.request?.queryParameters
+        }),
+        UIComponents.createPreviewSection('Response', {
+            'Status': mapping.response?.status,
+            'Headers': mapping.response?.headers,
+            'Body': mapping.response?.jsonBody || mapping.response?.body,
+            'Delay': mapping.response?.fixedDelayMilliseconds ? `${mapping.response.fixedDelayMilliseconds}ms` : null
+        }),
+        UIComponents.createPreviewSection('Overview', {
+            'ID': mappingId,
+            'Name': name,
+            'Priority': mapping.priority,
+            'Persistent': mapping.persistent,
+            'Scenario': mapping.scenarioName,
+            'Required State': mapping.requiredScenarioState,
+            'New State': mapping.newScenarioState,
             'Created': (window.showMetaTimestamps !== false && mapping.metadata?.created) ? new Date(mapping.metadata.created).toLocaleString() : null,
             'Edited': (window.showMetaTimestamps !== false && mapping.metadata?.edited) ? new Date(mapping.metadata.edited).toLocaleString() : null,
-            'Source': mapping.metadata?.source ? `Edited from ${mapping.metadata.source}` : null,
-            })
-            ,
-            badges: [
-                (mapping.id || mapping.uuid) ? `<span class="badge badge-secondary" title="Mapping ID">${Utils.escapeHtml(((mapping.id || mapping.uuid).length > 12 ? (mapping.id || mapping.uuid).slice(0,8) + '…' + (mapping.id || mapping.uuid).slice(-4) : (mapping.id || mapping.uuid)))}</span>` : '',
-                (typeof mapping.priority === 'number') ? `<span class="badge badge-secondary" title="Priority">P${mapping.priority}</span>` : '',
-                (mapping.scenarioName) ? `<span class="badge badge-secondary" title="Scenario">${Utils.escapeHtml(mapping.scenarioName)}</span>` : '',
-                (window.showMetaTimestamps !== false && mapping.metadata?.created) ? `<span class="badge badge-secondary" title="Created">C: ${new Date(mapping.metadata.created).toLocaleString()}</span>` : '',
-                (window.showMetaTimestamps !== false && mapping.metadata?.edited) ? `<span class="badge badge-secondary" title="Edited">E: ${new Date(mapping.metadata.edited).toLocaleString()}</span>` : '',
-                (mapping.metadata?.source) ? `<span class="badge badge-info" title="Last edited from">${mapping.metadata.source.toUpperCase()}</span>` : ''
-            ].filter(Boolean).join(' ')
+            'Source': mapping.metadata?.source ? `Edited from ${mapping.metadata.source}` : null
+        })
+    ];
+
+    const badges = [];
+    const shortId = mappingId.length > 12 ? `${mappingId.slice(0, 8)}...${mappingId.slice(-4)}` : mappingId;
+    badges.push(UIComponents.createBadge(shortId, 'badge badge-secondary', 'Mapping ID'));
+
+    if (typeof mapping.priority === 'number') {
+        badges.push(UIComponents.createBadge(`P${mapping.priority}`, 'badge badge-secondary', 'Priority'));
+    }
+    if (mapping.scenarioName) {
+        badges.push(UIComponents.createBadge(mapping.scenarioName, 'badge badge-secondary', 'Scenario'));
+    }
+    if (window.showMetaTimestamps !== false && mapping.metadata?.created) {
+        badges.push(UIComponents.createBadge(`C: ${new Date(mapping.metadata.created).toLocaleString()}`, 'badge badge-secondary', 'Created'));
+    }
+    if (window.showMetaTimestamps !== false && mapping.metadata?.edited) {
+        badges.push(UIComponents.createBadge(`E: ${new Date(mapping.metadata.edited).toLocaleString()}`, 'badge badge-secondary', 'Edited'));
+    }
+    if (mapping.metadata?.source) {
+        badges.push(UIComponents.createBadge(mapping.metadata.source.toUpperCase(), 'badge badge-info', 'Last edited from'));
+    }
+
+    const actions = [
+        { class: 'secondary', handler: 'editMapping', title: 'Edit mapping in JSON editor', label: 'Edit in editor', iconName: 'icon-pencil' },
+        { class: 'primary', handler: 'openEditModal', title: 'Edit mapping', label: 'Edit mapping', iconName: 'icon-edit' },
+        { class: 'danger', handler: 'deleteMapping', title: 'Delete mapping', label: 'Delete mapping', iconName: 'icon-trash' }
+    ];
+
+    const data = {
+        id: mappingId,
+        method,
+        url,
+        status,
+        name,
+        extras: {
+            previewSections,
+            badges
         }
     };
-    
+
     return UIComponents.createCard('mapping', data, actions);
-}
+};
 
 // Update the mapping counter
 window.updateMappingsCounter = function() {
@@ -1074,7 +1388,7 @@ function updateDataSourceIndicator(source) {
             cls = 'badge badge-success';
             break;
         case 'cache_rebuilding':
-            text = 'Source: cache (rebuilding…)';
+            text = 'Source: cache (rebuilding...)';
             cls = 'badge badge-success';
             break;
         case 'remote':
@@ -1165,11 +1479,23 @@ window.fetchAndRenderRequests = async (requestsToRender = null) => {
         // Invalidate cache before re-rendering to ensure fresh DOM references
         window.invalidateElementCache(SELECTORS.LISTS.REQUESTS);
 
-        container.innerHTML = window.allRequests.map(request => renderRequestCard(request)).join('');
+        if (window.ListRenderer && typeof window.ListRenderer.render === 'function') {
+            window.ListRenderer.render(container, window.allRequests, window.renderRequestCard);
+        } else {
+            container.innerHTML = '';
+            const fragment = document.createDocumentFragment();
+            window.allRequests.forEach(request => {
+                const node = window.renderRequestCard(request);
+                if (node instanceof Node) {
+                    fragment.appendChild(node);
+                }
+            });
+            container.appendChild(fragment);
+        }
         updateRequestsCounter();
         // Source indicator + log, mirroring mappings
         if (typeof updateRequestsSourceIndicator === 'function') updateRequestsSourceIndicator(reqSource);
-        console.log(`📦 Requests render from: ${reqSource} — ${window.allRequests.length} items`);
+        console.log(`[PACKAGE] Requests render from: ${reqSource} - ${window.allRequests.length} items`);
 
         return true;
     } catch (error) {
@@ -1183,43 +1509,51 @@ window.fetchAndRenderRequests = async (requestsToRender = null) => {
 };
 
 // Compact request renderer through UIComponents (shortened from ~62 to 18 lines)
+
 window.renderRequestCard = function(request) {
     if (!request) {
         console.warn('Invalid request data:', request);
-        return '';
+        return null;
     }
-    
+
     const matched = request.wasMatched !== false;
     const clientIp = request.request?.clientIp || 'Unknown';
-    
+
+    const previewSections = [
+        UIComponents.createPreviewSection('Request', {
+            'Method': request.request?.method,
+            'URL': request.request?.url || request.request?.urlPath,
+            'Client IP': clientIp,
+            'Headers': request.request?.headers,
+            'Body': request.request?.body
+        }),
+        UIComponents.createPreviewSection('Response', {
+            'Status': request.responseDefinition?.status,
+            'Matched': matched ? 'Yes' : 'No',
+            'Headers': request.responseDefinition?.headers,
+            'Body': request.responseDefinition?.jsonBody || request.responseDefinition?.body
+        })
+    ];
+
+    const badges = [];
+    badges.push(UIComponents.createBadge(matched ? 'Matched' : 'Unmatched', matched ? 'badge badge-success' : 'badge badge-danger', 'Match result'));
+    badges.push(UIComponents.createBadge(`IP ${clientIp}`, 'badge badge-secondary', 'Client IP'));
+
     const data = {
         id: request.id || '',
         method: request.request?.method || 'GET',
         url: request.request?.url || request.request?.urlPath || 'N/A',
         status: request.responseDefinition?.status || (matched ? 200 : 404),
-        time: `${Utils.parseRequestTime(request.request.loggedDate)} <span class="request-ip">IP: ${Utils.escapeHtml(clientIp)}</span>`,
+        name: null,
+        time: Utils.parseRequestTime(request.request?.loggedDate || request.loggedDate),
         extras: {
-            badges: `
-                ${matched ? '<span class="badge badge-success">✓ Matched</span>' : 
-                          '<span class="badge badge-danger">❌ Unmatched</span>'}
-            `,
-            preview: UIComponents.createPreviewSection('📥 Request', {
-                'Method': request.request?.method,
-                'URL': request.request?.url || request.request?.urlPath,
-                'Client IP': clientIp,
-                'Headers': request.request?.headers,
-                'Body': request.request?.body
-            }) + UIComponents.createPreviewSection('📤 Response', {
-                'Status': request.responseDefinition?.status,
-                'Matched': matched ? 'Yes' : 'No',
-                'Headers': request.responseDefinition?.headers,
-                'Body': request.responseDefinition?.jsonBody || request.responseDefinition?.body
-            })
+            previewSections,
+            badges
         }
     };
-    
+
     return UIComponents.createCard('request', data, []);
-}
+};
 
 // Update the requests counter
 function updateRequestsCounter() {
@@ -1260,7 +1594,7 @@ window.openEditModal = async (identifier) => {
 
     let mapping = window.allMappings.find((candidate) => collectCandidateIdentifiers(candidate).includes(targetIdentifier));
     if (!mapping) {
-        console.warn('🔍 [OPEN MODAL DEBUG] Mapping not found by identifier lookup. Identifier:', identifier);
+        console.warn('[SEARCH] [OPEN MODAL DEBUG] Mapping not found by identifier lookup. Identifier:', identifier);
         NotificationManager.show('Mapping not found', NotificationManager.TYPES.ERROR);
         return;
     }
@@ -1273,8 +1607,8 @@ window.openEditModal = async (identifier) => {
         return;
     }
     
-    console.log('🔴 [OPEN MODAL DEBUG] openEditModal called for mapping identifier:', identifier);
-    console.log('🔴 [OPEN MODAL DEBUG] Found mapping (cached):', mapping);
+    console.log('[FAIL] [OPEN MODAL DEBUG] openEditModal called for mapping identifier:', identifier);
+    console.log('[FAIL] [OPEN MODAL DEBUG] Found mapping (cached):', mapping);
     
     // Prefill the form with cached data to render the UI instantly
     if (typeof window.populateEditMappingForm === 'function') {
@@ -1287,14 +1621,14 @@ window.openEditModal = async (identifier) => {
     // Then fetch the latest mapping version by UUID
     try {
         if (typeof window.setMappingEditorBusyState === 'function') {
-            window.setMappingEditorBusyState(true, 'Loading…');
+            window.setMappingEditorBusyState(true, 'Loading...');
         }
 
         const mappingIdForFetch = normalizeIdentifier(mapping.id) || normalizeIdentifier(mapping.uuid) || targetIdentifier;
         const latest = await apiFetch(`/mappings/${encodeURIComponent(mappingIdForFetch)}`);
         const latestMapping = latest?.mapping || latest; // support multiple response formats
         if (latestMapping && latestMapping.id) {
-            console.log('🔵 [OPEN MODAL DEBUG] Loaded latest mapping from server:', latestMapping);
+            console.log('[INFO] [OPEN MODAL DEBUG] Loaded latest mapping from server:', latestMapping);
             window.populateEditMappingForm(latestMapping);
             // Update the reference in allMappings to keep lists and operations consistent
             const idx = window.allMappings.findIndex((candidate) => candidate === mapping);
@@ -1321,7 +1655,7 @@ window.openEditModal = async (identifier) => {
     const modalTitleElement = document.getElementById(SELECTORS.MODAL.TITLE);
     if (modalTitleElement) modalTitleElement.textContent = 'Edit Mapping';
     
-    console.log('🔴 [OPEN MODAL DEBUG] openEditModal completed for mapping identifier:', identifier);
+    console.log('[FAIL] [OPEN MODAL DEBUG] openEditModal completed for mapping identifier:', identifier);
 };
 
 // REMOVED: updateMapping function moved to editor.js
@@ -1341,7 +1675,7 @@ window.deleteMapping = async (id) => {
     } catch (e) {
         // Handle 404: mapping already deleted
         if (e.message.includes('404')) {
-            console.log('🗑️ [DELETE] Mapping already deleted from server (404), updating cache locally');
+            console.log('[TRASH] [DELETE] Mapping already deleted from server (404), updating cache locally');
             updateOptimisticCache({ id }, 'delete');
             NotificationManager.success('Mapping was already deleted');
         } else {
@@ -1368,14 +1702,17 @@ window.clearRequests = async () => {
 
 
 // Compact filtering helpers via FilterManager
-window.applyFilters = () => FilterManager.applyMappingFilters();
+const debouncedApplyMappingFilters = window.createDebounce(() => FilterManager.applyMappingFilters(), 250);
+const debouncedApplyRequestFilters = window.createDebounce(() => FilterManager.applyRequestFilters(), 250);
+
+window.applyFilters = () => debouncedApplyMappingFilters();
 window.clearMappingFilters = () => {
     document.getElementById(SELECTORS.MAPPING_FILTERS.METHOD).value = '';
     document.getElementById(SELECTORS.MAPPING_FILTERS.URL).value = '';
     document.getElementById(SELECTORS.MAPPING_FILTERS.STATUS).value = '';
     FilterManager.applyMappingFilters();
 };
-window.applyRequestFilters = () => FilterManager.applyRequestFilters();
+window.applyRequestFilters = () => debouncedApplyRequestFilters();
 
 // Quick filter function for preset time ranges
 window.applyQuickFilter = () => {
@@ -1854,7 +2191,7 @@ window.renderScenarios = () => {
                     data-scenario="${scenarioIdentifierAttr}"
                     data-state="${stateAttr}"
                 >
-                    → ${displayedPossibleState}
+                    -> ${displayedPossibleState}
                 </button>
             `;
         }).join('');
@@ -1891,14 +2228,14 @@ window.renderScenarios = () => {
                     const urlLabel = url ? `<span class="scenario-mapping-url">${escapeHtml(url)}</span>` : '';
                     const metaLabel = methodLabel || urlLabel ? `
                         <div class="scenario-mapping-meta">
-                            ${[methodLabel, urlLabel].filter(Boolean).join(' · ')}
+                            ${[methodLabel, urlLabel].filter(Boolean).join(' - ')}
                         </div>
                     ` : '';
                     const requiredState = mapping?.requiredScenarioState || mapping?.requiredState || '';
                     const newState = mapping?.newScenarioState || mapping?.newState || '';
                     const transitionMarkup = [
                         requiredState ? `<span class="badge badge-warning" title="Required scenario state">Requires: ${escapeHtml(requiredState)}</span>` : '',
-                        newState ? `<span class="badge badge-info" title="Next scenario state">→ ${escapeHtml(newState)}</span>` : ''
+                        newState ? `<span class="badge badge-info" title="Next scenario state">-> ${escapeHtml(newState)}</span>` : ''
                     ].filter(Boolean).join(' ');
                     const transitions = transitionMarkup ? `
                         <div class="scenario-mapping-states">${transitionMarkup}</div>
@@ -1910,7 +2247,7 @@ window.renderScenarios = () => {
                                 data-scenario-action="edit-mapping"
                                 data-mapping-id="${mappingIdAttr}"
                             >
-                                📝 Edit mapping
+                                [NOTE] Edit mapping
                             </button>
                         </div>
                     ` : '';
@@ -1949,7 +2286,7 @@ window.renderScenarios = () => {
                         data-scenario="${scenarioIdentifierAttr}"
                         data-state="Started"
                     >
-                        🔄 Reset
+                        [REFRESH] Reset
                     </button>
                 </div>
             </div>
@@ -2082,22 +2419,45 @@ window.stopRecording = async () => {
 
         window.isRecording = false;
         window.recordedCount = 0;
-        
+
         // Refresh the UI
         const indicator = document.getElementById(SELECTORS.RECORDING.INDICATOR);
         if (indicator) indicator.style.display = 'none';
-        
+
         const count = response.mappings ? response.mappings.length : 0;
         NotificationManager.success(`Recording stopped! Captured ${count} mappings`);
-        
+
         // Refresh the mappings list
-            await fetchAndRenderMappings();
+        await fetchAndRenderMappings();
 
         return response.mappings || [];
     } catch (error) {
         console.error('Stop recording error:', error);
         NotificationManager.error(`Failed to stop recording: ${error.message}`);
         return [];
+    }
+};
+
+// Clear any recorded mappings from the UI and reset counters
+window.clearRecordings = async () => {
+    try {
+        const listEl = document.getElementById('recordings-list');
+        if (listEl) {
+            listEl.innerHTML = '';
+        }
+
+        const statusEl = document.getElementById('recording-status');
+        if (statusEl) {
+            statusEl.textContent = '';
+        }
+
+        window.recordedCount = 0;
+        window.isRecording = false;
+
+        NotificationManager.info('Recording history cleared.');
+    } catch (error) {
+        console.error('Clear recordings error:', error);
+        NotificationManager.error(`Failed to clear recordings: ${error.message}`);
     }
 };
 
@@ -2240,7 +2600,7 @@ window.handleEditSuccess = async (mapping) => {
     }, 1000);
 };
 
-console.log('✅ Features.js loaded - Business functions for mappings, requests, scenarios + WireMock 3.9.1+ API fixes');
+console.log('[OK] Features.js loaded - Business functions for mappings, requests, scenarios + WireMock 3.9.1+ API fixes');
 
 // Update connection status text with last successful request time
 window.updateLastSuccessUI = () => {
@@ -2366,10 +2726,10 @@ function simpleHash(str) {
 
 async function getCacheByFixedId() {
     try {
-        console.log('🧩 [CACHE] Trying fixed ID lookup...');
+        console.log('[CACHE] Trying fixed ID lookup...');
         const m = await apiFetch(`/mappings/${IMOCK_CACHE_ID}`);
         if (m && isImockCacheMapping(m)) return m;
-        console.log('🧩 [CACHE] Fixed ID miss');
+        console.log('[CACHE] Fixed ID miss');
     } catch {}
     return null;
 }
@@ -2381,7 +2741,7 @@ async function getCacheByMetadata() {
             { matchesJsonPath: "$[?(@.metadata.imock.type == 'cache')]" },
             { matchesJsonPath: { expression: "$[?(@.metadata.imock.type == 'cache')]" } },
         ];
-        console.log('🧩 [CACHE] Trying metadata lookup (JSONPath)...');
+        console.log('[CACHE] Trying metadata lookup (JSONPath)...');
         for (const body of tryBodies) {
             try {
                 const res = await apiFetch(ENDPOINTS.MAPPINGS_FIND_BY_METADATA, {
@@ -2391,18 +2751,18 @@ async function getCacheByMetadata() {
                 });
                 const list = res?.mappings || res?.items || [];
                 const found = list.find(isImockCacheMapping);
-                if (found) { console.log('🧩 [CACHE] Metadata hit'); return found; }
+                if (found) { console.log('[CACHE] Metadata hit'); return found; }
             } catch (e) {
                 // try next body shape
             }
         }
-        console.log('🧩 [CACHE] Metadata miss');
+        console.log('[CACHE] Metadata miss');
     } catch {}
     return null;
 }
 
 async function upsertImockCacheMapping(slim) {
-    console.log('🧩 [CACHE] Upsert cache mapping start');
+    console.log('[CACHE] Upsert cache mapping start');
     const meta = {
         imock: {
             type: 'cache',
@@ -2427,24 +2787,24 @@ async function upsertImockCacheMapping(slim) {
     };
     try {
         // Try update first; if 404, create
-        console.log('🧩 [CACHE] PUT /mappings/{id}');
+        console.log('[CACHE] PUT /mappings/{id}');
         const response = await apiFetch(`/mappings/${IMOCK_CACHE_ID}`, {
             method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(stub),
         });
-        console.log('🧩 [CACHE] Upsert done (PUT)');
+        console.log('[CACHE] Upsert done (PUT)');
         return response;
     } catch (e) {
-        console.log('🧩 [CACHE] PUT failed, POST /mappings');
+        console.log('[CACHE] PUT failed, POST /mappings');
         const response = await apiFetch('/mappings', {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(stub),
         });
-        console.log('🧩 [CACHE] Upsert done (POST)');
+        console.log('[CACHE] Upsert done (POST)');
         return response;
     }
 }
 
 async function regenerateImockCache(existingData = null) {
-    console.log('🧩 [CACHE] Regenerate cache start');
+    console.log('[CACHE] Regenerate cache start');
     const t0 = performance.now();
 
     // Get fresh data from server - server is now the source of truth
@@ -2455,7 +2815,7 @@ async function regenerateImockCache(existingData = null) {
 
     const mappings = all?.mappings || [];
 
-    console.log('🧩 [CACHE] Using fresh server data for cache regeneration');
+    console.log('[CACHE] Using fresh server data for cache regeneration');
 
     const slim = buildSlimList(mappings);
     let finalPayload = slim;
@@ -2466,43 +2826,43 @@ async function regenerateImockCache(existingData = null) {
             finalPayload = serverPayload;
         }
     } catch (e) {
-        console.warn('🧩 [CACHE] Upsert cache failed:', e);
+        console.warn('[CACHE] Upsert cache failed:', e);
     }
     const dt = Math.round(performance.now() - t0);
-    console.log(`🧩 [CACHE] Regenerate cache done (${(finalPayload?.mappings||[]).length} items) in ${dt}ms`);
+    console.log(`[CACHE] Regenerate cache done (${(finalPayload?.mappings||[]).length} items) in ${dt}ms`);
     return finalPayload;
 }
 
 async function loadImockCacheBestOf3() {
     // Preferred order: fixed ID, then find-by-metadata (JSONPath), else none
-    console.log('🧩 [CACHE] loadImockCacheBestOf3 start');
+    console.log('[CACHE] loadImockCacheBestOf3 start');
     const b = await getCacheByFixedId();
-    if (b && b.response?.jsonBody) { console.log('🧩 [CACHE] Using cache: fixed id'); return { source: 'cache', data: b.response.jsonBody }; }
+    if (b && b.response?.jsonBody) { console.log('[CACHE] Using cache: fixed id'); return { source: 'cache', data: b.response.jsonBody }; }
     const c = await getCacheByMetadata();
-    if (c && c.response?.jsonBody) { console.log('🧩 [CACHE] Using cache: metadata'); return { source: 'cache', data: c.response.jsonBody }; }
-    console.log('🧩 [CACHE] No cache found');
+    if (c && c.response?.jsonBody) { console.log('[CACHE] Using cache: metadata'); return { source: 'cache', data: c.response.jsonBody }; }
+    console.log('[CACHE] No cache found');
     return null;
 }
 
 // Resolve conflicts by querying the server for the authoritative version of a specific mapping
 async function resolveConflictWithServer(mappingId) {
     try {
-        console.log('🔍 [CONFLICT] Resolving conflict for', mappingId, 'with server query');
+        console.log('[SEARCH] [CONFLICT] Resolving conflict for', mappingId, 'with server query');
 
         // Query the specific mapping from server
         const serverResponse = await apiFetch(`/mappings/${mappingId}`);
         const serverMapping = serverResponse?.mapping || serverResponse;
 
         if (!serverMapping) {
-            console.warn('🔍 [CONFLICT] Server returned no mapping for', mappingId);
+            console.warn('[SEARCH] [CONFLICT] Server returned no mapping for', mappingId);
             return null; // No authoritative data available
         }
 
-        console.log('🔍 [CONFLICT] Server returned authoritative data for', mappingId);
+        console.log('[SEARCH] [CONFLICT] Server returned authoritative data for', mappingId);
         return serverMapping;
 
     } catch (error) {
-        console.warn('🔍 [CONFLICT] Server query failed for', mappingId, error);
+        console.warn('[SEARCH] [CONFLICT] Server query failed for', mappingId, error);
         return null; // Fall back to no resolution
     }
 }
@@ -2581,13 +2941,13 @@ function seedCacheFromGlobals(cache) {
 
             if (inserted > 0) {
                 seededFrom = source === window.originalMappings ? 'originalMappings' : 'allMappings';
-                console.log(`🧩 [CACHE] Seeded ${inserted} mappings into cache from ${seededFrom}`);
+                console.log(`[CACHE] Seeded ${inserted} mappings into cache from ${seededFrom}`);
                 break;
             }
         }
 
         if (!seededFrom && cache.size === 0) {
-            console.log('🧩 [CACHE] Nothing available to seed cache from globals');
+            console.log('[CACHE] Nothing available to seed cache from globals');
         }
     } catch (error) {
         console.warn('seedCacheFromGlobals failed:', error);
@@ -2768,20 +3128,20 @@ async function fetchExistingCacheMapping() {
 async function syncCacheMappingWithServer(mapping, operation) {
     try {
         if (!isCacheEnabled()) {
-            console.log('🧩 [CACHE] Remote cache sync skipped - cache disabled');
+            console.log('[CACHE] Remote cache sync skipped - cache disabled');
             return;
         }
 
         const existingMapping = await fetchExistingCacheMapping();
         if (!existingMapping || !existingMapping.response) {
-            console.log('🧩 [CACHE] Remote cache sync skipped - cache mapping missing');
+            console.log('[CACHE] Remote cache sync skipped - cache mapping missing');
             return;
         }
 
         const currentPayload = extractCacheJsonBody(existingMapping) || { mappings: [] };
         const updatedPayload = buildUpdatedCachePayload(currentPayload, mapping, operation);
         if (!updatedPayload) {
-            console.log('🧩 [CACHE] Remote cache sync skipped - unable to build payload');
+            console.log('[CACHE] Remote cache sync skipped - unable to build payload');
             return;
         }
 
@@ -2789,9 +3149,9 @@ async function syncCacheMappingWithServer(mapping, operation) {
         const finalPayload = extractCacheJsonBody(response) || updatedPayload;
         window.imockCacheSnapshot = finalPayload;
         window.cacheLastUpdate = Date.now();
-        console.log('🧩 [CACHE] Remote cache mapping updated via optimistic sync');
+        console.log('[CACHE] Remote cache mapping updated via optimistic sync');
     } catch (error) {
-        console.warn('🧩 [CACHE] syncCacheMappingWithServer failed:', error);
+        console.warn('[CACHE] syncCacheMappingWithServer failed:', error);
     }
 }
 
@@ -2802,7 +3162,7 @@ function enqueueCacheSync(mapping, operation) {
             .catch(() => { })
             .then(() => syncCacheMappingWithServer(mapping, operation));
     } catch (error) {
-        console.warn('🧩 [CACHE] enqueueCacheSync failed:', error);
+        console.warn('[CACHE] enqueueCacheSync failed:', error);
     }
 }
 
@@ -2932,25 +3292,32 @@ function scheduleCacheRebuild() {
     if (!isCacheEnabled()) {
       return;
     }
-    const settings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
+    const settings = window.SettingsStore?.getCached?.() || {};
     const delay = Number(settings.cacheRebuildDelay) || 1000;
-    clearTimeout(_cacheRebuildTimer);
-    _cacheRebuildTimer = setTimeout(async () => {
+    if (_cacheRebuildTimer) {
+      clearTimeout(_cacheRebuildTimer);
+      window.ResourceCleaner?.timeouts?.delete?.(_cacheRebuildTimer);
+    }
+    _cacheRebuildTimer = window.setTimeout(async () => {
       try {
         const existing = await fetchExistingCacheMapping();
         if (existing && extractCacheJsonBody(existing)) {
-          console.log('🧩 [CACHE] Skipping scheduled rebuild - cache mapping already exists');
+          console.log('[CACHE] Skipping scheduled rebuild - cache mapping already exists');
           return;
         }
         if (typeof window.refreshImockCache === 'function') {
           await window.refreshImockCache();
         }
       } catch (timerError) {
-        console.warn('🧩 [CACHE] Scheduled rebuild attempt failed:', timerError);
+        console.warn('[CACHE] Scheduled rebuild attempt failed:', timerError);
+      } finally {
+        window.ResourceCleaner?.timeouts?.delete?.(_cacheRebuildTimer);
+        _cacheRebuildTimer = null;
       }
     }, delay);
+    window.ResourceCleaner?.trackTimeout?.(_cacheRebuildTimer);
   } catch (error) {
-    console.warn('🧩 [CACHE] scheduleCacheRebuild failed:', error);
+    console.warn('[CACHE] scheduleCacheRebuild failed:', error);
   }
 }
 
@@ -2959,36 +3326,37 @@ let optimisticInProgress = false;
 let optimisticDelayRetries = 0;
 
 // Cache validation timer (check every minute, validate every 5 minutes)
-setInterval(() => {
+const cacheValidationInterval = window.setInterval(() => {
     const timeSinceLastUpdate = Date.now() - (window.cacheLastUpdate || 0);
     const optimisticOps = window.cacheOptimisticOperations || 0;
 
     // Validate if cache is older than 5 minutes OR has too many optimistic operations
     if (timeSinceLastUpdate > 5 * 60 * 1000 || optimisticOps > 20) {
-        console.log('🧩 [CACHE] Validation triggered - time:', Math.round(timeSinceLastUpdate/1000), 's, ops:', optimisticOps);
+        console.log('[CACHE] Validation triggered - time:', Math.round(timeSinceLastUpdate/1000), 's, ops:', optimisticOps);
         validateAndRefreshCache();
     }
 }, 60 * 1000); // Check every minute
+window.ResourceCleaner?.trackInterval?.(cacheValidationInterval);
 
 async function validateAndRefreshCache() {
     try {
-        console.log('🧩 [CACHE] Starting cache validation...');
+        console.log('[CACHE] Starting cache validation...');
 
     if (!isCacheEnabled()) {
-            console.log('🧩 [CACHE] Validation skipped - cache disabled');
+            console.log('[CACHE] Validation skipped - cache disabled');
             return;
         }
 
         const existing = await fetchExistingCacheMapping();
         if (existing && extractCacheJsonBody(existing)) {
-            console.log('🧩 [CACHE] Validation skipped - cache mapping already present');
+            console.log('[CACHE] Validation skipped - cache mapping already present');
             return;
         }
 
         // Cache mapping missing - rebuild from server data
         const freshData = await fetchMappingsFromServer({ force: true });
         if (!freshData?.mappings) {
-            console.warn('🧩 [CACHE] Failed to get fresh data for validation');
+            console.warn('[CACHE] Failed to get fresh data for validation');
             return;
         }
 
@@ -2999,10 +3367,10 @@ async function validateAndRefreshCache() {
         window.cacheOptimisticOperations = 0;
         window.cacheLastUpdate = Date.now();
 
-        console.log('🧩 [CACHE] Validation rebuilt cache because mapping was missing');
+        console.log('[CACHE] Validation rebuilt cache because mapping was missing');
 
     } catch (e) {
-        console.warn('🧩 [CACHE] Validation failed:', e);
+        console.warn('[CACHE] Validation failed:', e);
         // Don't reset counters on failure - try again later
     }
 }
@@ -3013,10 +3381,10 @@ window.refreshImockCache = async () => {
         if (optimisticDelayRetries++ > 10) {
             console.warn('[CACHE] forced refresh after optimistic delay cap');
         } else {
-            console.log('🔄 [CACHE] Optimistic update in progress, delaying cache refresh...');
+            console.log('[REFRESH] [CACHE] Optimistic update in progress, delaying cache refresh...');
             return new Promise(resolve => {
                 setTimeout(async () => {
-                    console.log('🔄 [CACHE] Retrying cache refresh after optimistic update delay');
+                    console.log('[REFRESH] [CACHE] Retrying cache refresh after optimistic update delay');
                     await window.refreshImockCache();
                     resolve();
                 }, 1000);
@@ -3027,43 +3395,43 @@ window.refreshImockCache = async () => {
     optimisticInProgress = true;
     try {
         window.cacheRebuilding = true;
-        console.log('🔄 [CACHE] Set cache rebuilding flag');
+        console.log('[REFRESH] [CACHE] Set cache rebuilding flag');
 
         try {
             if (isCacheEnabled()) {
                 updateDataSourceIndicator('cache_rebuilding');
-                console.log('🔄 [CACHE] Updated UI indicator to rebuilding');
+                console.log('[REFRESH] [CACHE] Updated UI indicator to rebuilding');
             }
         } catch (settingsError) {
-            console.warn('🔄 [CACHE] Failed to update UI indicator:', settingsError);
+            console.warn('[REFRESH] [CACHE] Failed to update UI indicator:', settingsError);
         }
 
-        console.log('🔄 [CACHE] Starting regeneration...');
+        console.log('[REFRESH] [CACHE] Starting regeneration...');
         const payload = await regenerateImockCache();
         window.imockCacheSnapshot = payload;
-        console.log('🔄 [CACHE] Regeneration completed');
+        console.log('[REFRESH] [CACHE] Regeneration completed');
 
         // Clear optimistic update queue after successful cache rebuild
-        console.log('🔄 [CACHE] Clearing optimistic update queue after rebuild');
+        console.log('[REFRESH] [CACHE] Clearing optimistic update queue after rebuild');
         window.cacheManager.optimisticQueue.length = 0;
 
         // Auto-refresh UI after cache update
         try {
             if (typeof window.fetchAndRenderMappings === 'function' && window.allMappings) {
-                console.log('🔄 [CACHE] Auto-refreshing UI after cache rebuild');
+                console.log('[REFRESH] [CACHE] Auto-refreshing UI after cache rebuild');
                 window.fetchAndRenderMappings(window.allMappings);
-                console.log('🔄 [CACHE] UI refresh completed');
+                console.log('[REFRESH] [CACHE] UI refresh completed');
             } else {
-                console.warn('🔄 [CACHE] UI refresh functions not available');
+                console.warn('[REFRESH] [CACHE] UI refresh functions not available');
             }
         } catch (uiError) {
-            console.warn('🔄 [CACHE] UI refresh after cache rebuild failed:', uiError);
+            console.warn('[REFRESH] [CACHE] UI refresh after cache rebuild failed:', uiError);
         }
     } catch (e) {
-        console.warn('🔄 [CACHE] refreshImockCache failed:', e);
+        console.warn('[REFRESH] [CACHE] refreshImockCache failed:', e);
     } finally {
         window.cacheRebuilding = false;
-        console.log('🔄 [CACHE] Cleared cache rebuilding flag');
+        console.log('[REFRESH] [CACHE] Cleared cache rebuilding flag');
         window.cacheLastUpdate = Date.now();
         window.cacheOptimisticOperations = 0;
         optimisticInProgress = false;
@@ -3071,10 +3439,10 @@ window.refreshImockCache = async () => {
         try {
             if (isCacheEnabled()) {
                 updateDataSourceIndicator('cache');
-                console.log('🔄 [CACHE] Updated UI indicator to cache');
+                console.log('[REFRESH] [CACHE] Updated UI indicator to cache');
             }
         } catch (settingsError) {
-            console.warn('🔄 [CACHE] Failed to reset UI indicator:', settingsError);
+            console.warn('[REFRESH] [CACHE] Failed to reset UI indicator:', settingsError);
         }
     }
 };
@@ -3098,7 +3466,7 @@ window.checkHealth = async () => {
             } else {
                 window.wiremockBaseUrl = `http://${host}:${port}/__admin`;
             }
-            console.log('🔧 [checkHealth] Updated WireMock URL from form:', window.wiremockBaseUrl);
+            console.log('[SETUP] [checkHealth] Updated WireMock URL from form:', window.wiremockBaseUrl);
         }
 
         await checkHealthAndStartUptime();
@@ -3111,7 +3479,6 @@ window.checkHealth = async () => {
 // Refresh mappings function for button compatibility
 window.refreshMappings = async () => {
     try {
-        const settings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
         const useCache = isCacheEnabled();
         const refreshed = await fetchAndRenderMappings(null, { useCache });
         if (refreshed) {
@@ -3259,7 +3626,7 @@ function padHostWithProtocol(value) {
 function setStatusMessage(elementId, type, message) {
     const el = document.getElementById(elementId);
     if (!el) return;
-    const prefix = type === 'success' ? '✅' : type === 'error' ? '❌' : 'ℹ️';
+    const prefix = type === 'success' ? '[OK]' : type === 'error' ? '[ERROR]' : '[INFO]';
     el.textContent = `${prefix} ${message}`;
 }
 

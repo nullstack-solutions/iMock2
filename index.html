@@ -15,9 +15,12 @@
     <link rel="stylesheet" href="styles/main.css">
 </head>
 <body data-theme="light">
+    <!-- Shared SVG icons are loaded from icons.svg -->
+
     <div class="header">
         <div class="logo">
-            🍎 iMock
+            <svg class="icon icon-lg" aria-hidden="true"><use href="icons.svg#icon-logo" xlink:href="icons.svg#icon-logo"></use></svg>
+            <span class="logo-text">iMock</span>
             <span class="version">v2.2</span>
         </div>
         <div class="status">
@@ -26,8 +29,8 @@
                 <span id="status-text">Disconnected</span>
                 <span id="health-indicator" style="display: none; margin-left: 10px; font-size: 0.9em;"></span>
             </div>
-            <button class="theme-toggle" onclick="if(typeof toggleTheme === 'function') toggleTheme()">
-                <span id="theme-icon">🌙</span>
+            <button class="theme-toggle" onclick="if(typeof toggleTheme === 'function') toggleTheme()" aria-label="Toggle theme">
+                <svg id="theme-icon" class="icon icon-md" aria-hidden="true"><use href="icons.svg#icon-moon" xlink:href="icons.svg#icon-moon"></use></svg>
             </button>
         </div>
     </div>
@@ -35,22 +38,28 @@
     <div class="container">
         <div class="sidebar">
             <div class="nav-item active" onclick="showPage('mappings', this)">
-                <span class="nav-icon">📋</span> Mappings
+                <svg class="icon nav-icon" aria-hidden="true"><use href="icons.svg#icon-mappings" xlink:href="icons.svg#icon-mappings"></use></svg>
+                <span>Mappings</span>
             </div>
             <div class="nav-item" onclick="showPage('requests', this)">
-                <span class="nav-icon">📥</span> Request Log
+                <svg class="icon nav-icon" aria-hidden="true"><use href="icons.svg#icon-requests" xlink:href="icons.svg#icon-requests"></use></svg>
+                <span>Request Log</span>
             </div>
             <div class="nav-item" onclick="showPage('scenarios', this)">
-                <span class="nav-icon">🎭</span> Scenarios
+                <svg class="icon nav-icon" aria-hidden="true"><use href="icons.svg#icon-scenarios" xlink:href="icons.svg#icon-scenarios"></use></svg>
+                <span>Scenarios</span>
             </div>
             <div class="nav-item" onclick="showPage('import-export', this)">
-                <span class="nav-icon">📦</span> Import/Export
+                <svg class="icon nav-icon" aria-hidden="true"><use href="icons.svg#icon-data" xlink:href="icons.svg#icon-data"></use></svg>
+                <span>Import/Export</span>
             </div>
             <div class="nav-item" onclick="showPage('recording', this)">
-                <span class="nav-icon">🎙️</span> Recording
+                <svg class="icon nav-icon" aria-hidden="true"><use href="icons.svg#icon-record" xlink:href="icons.svg#icon-record"></use></svg>
+                <span>Recording</span>
             </div>
             <div class="nav-item" onclick="showPage('settings', this)">
-                <span class="nav-icon">⚙️</span> Settings
+                <svg class="icon nav-icon" aria-hidden="true"><use href="icons.svg#icon-settings" xlink:href="icons.svg#icon-settings"></use></svg>
+                <span>Settings</span>
             </div>
         </div>
         
@@ -77,12 +86,16 @@
                             <div class="stat-label">Uptime</div>
                         </div>
                     </div>
-                    <div style="display: flex; gap: var(--space-3); align-items: center;">
+                    <div class="toolbar-actions">
                         <span id="data-source-indicator" class="badge badge-secondary" title="Current data source">Source: direct</span>
-                        <button class="btn btn-secondary" onclick="refreshMappings()">🔄 Refresh</button>
+                        <button class="btn btn-secondary" onclick="refreshMappings()">
+                            <svg class="icon icon-sm" aria-hidden="true"><use href="icons.svg#icon-refresh" xlink:href="icons.svg#icon-refresh"></use></svg>
+                            <span class="btn-label">Refresh</span>
+                        </button>
                         <button class="btn btn-secondary" onclick="forceRefreshCache()" title="Rebuild the service cache mapping and reload">
                             <span class="btn-spinner loading-spinner" aria-hidden="true"></span>
-                            <span class="btn-label">⚡ Force Refresh Cache</span>
+                            <svg class="icon icon-sm" aria-hidden="true"><use href="icons.svg#icon-bolt" xlink:href="icons.svg#icon-bolt"></use></svg>
+                            <span class="btn-label">Force Refresh Cache</span>
                         </button>
                         <button class="btn btn-primary" onclick="openAddMappingModal()" id="add-mapping-btn" disabled>+ Add Mapping</button>
                     </div>
@@ -102,8 +115,8 @@
                             <label class="form-label">Port</label>
                             <input type="number" class="form-input" id="wiremock-port" value="8080">
                         </div>
-                        <div class="form-group" style="display: flex; gap: var(--space-2); align-items: end;">
-                            <button class="btn btn-success" onclick="connectToWireMock()">Connect</button>
+                    <div class="form-group form-actions-group">
+                        <button class="btn btn-success" onclick="connectToWireMock()">Connect</button>
                             <button class="btn btn-secondary" onclick="loadMockData()">Demo Mode</button>
                             <button class="btn btn-warning" onclick="checkHealth()">Health Check</button>
                         </div>
@@ -154,11 +167,20 @@
             <div id="requests-page" class="hidden">
                 <div class="page-header">
                     <div class="page-title">Request Log</div>
-                    <div style="display: flex; gap: var(--space-2); align-items: center;">
+                    <div class="toolbar-actions">
                         <span id="requests-source-indicator" class="badge badge-secondary" title="Current data source">Requests: direct</span>
-                        <button class="btn btn-secondary" onclick="refreshRequests()">🔄 Refresh</button>
-                        <button class="btn btn-danger" onclick="clearRequests()">🗑️ Clear Log</button>
-                        <button class="btn btn-secondary" onclick="clearRequestFilters()">🧹 Clear Filters</button>
+                        <button class="btn btn-secondary" onclick="refreshRequests()">
+                            <svg class="icon icon-sm" aria-hidden="true"><use href="icons.svg#icon-refresh" xlink:href="icons.svg#icon-refresh"></use></svg>
+                            <span class="btn-label">Refresh</span>
+                        </button>
+                        <button class="btn btn-danger" onclick="clearRequests()">
+                            <svg class="icon icon-sm" aria-hidden="true"><use href="icons.svg#icon-trash" xlink:href="icons.svg#icon-trash"></use></svg>
+                            <span class="btn-label">Clear Log</span>
+                        </button>
+                        <button class="btn btn-secondary" onclick="clearRequestFilters()">
+                            <svg class="icon icon-sm" aria-hidden="true"><use href="icons.svg#icon-broom" xlink:href="icons.svg#icon-broom"></use></svg>
+                            <span class="btn-label">Clear Filters</span>
+                        </button>
                     </div>
                 </div>
                 
@@ -180,8 +202,8 @@
                             <label class="form-label">Status</label>
                             <select class="form-select" id="req-filter-status" onchange="applyRequestFilters()">
                                 <option value="">All Statuses</option>
-                                <option value="matched">✅ Matched</option>
-                                <option value="unmatched">❌ Unmatched</option>
+                                <option value="matched">Matched</option>
+                                <option value="unmatched">Unmatched</option>
                             </select>
                         </div>
                         <div class="form-group">
@@ -210,9 +232,9 @@
                     <div class="filter-grid" style="margin-top: var(--space-3);">
                         <div class="form-group">
                             <label class="form-label">Custom Time Range</label>
-                            <div style="display: flex; gap: var(--space-2);">
-                                <input type="datetime-local" class="form-input" id="req-filter-from" onchange="clearQuickFilter(); applyRequestFilters()" style="flex: 1;" placeholder="From">
-                                <input type="datetime-local" class="form-input" id="req-filter-to" onchange="clearQuickFilter(); applyRequestFilters()" style="flex: 1;" placeholder="To">
+                            <div class="responsive-inline-group">
+                                <input type="datetime-local" class="form-input" id="req-filter-from" onchange="clearQuickFilter(); applyRequestFilters()" placeholder="From">
+                                <input type="datetime-local" class="form-input" id="req-filter-to" onchange="clearQuickFilter(); applyRequestFilters()" placeholder="To">
                             </div>
                         </div>
                     </div>
@@ -234,9 +256,15 @@
             <div id="scenarios-page" class="hidden">
                 <div class="page-header">
                     <div class="page-title">Scenario Management</div>
-                    <div style="display: flex; gap: var(--space-2);">
-                        <button class="btn btn-secondary" onclick="refreshScenarios()">🔄 Refresh</button>
-                        <button class="btn btn-danger" onclick="resetAllScenarios()">🔄 Reset All</button>
+                    <div class="toolbar-actions">
+                        <button class="btn btn-secondary" onclick="refreshScenarios()">
+                            <svg class="icon icon-sm" aria-hidden="true"><use href="icons.svg#icon-refresh" xlink:href="icons.svg#icon-refresh"></use></svg>
+                            <span class="btn-label">Refresh</span>
+                        </button>
+                        <button class="btn btn-danger" onclick="resetAllScenarios()">
+                            <svg class="icon icon-sm" aria-hidden="true"><use href="icons.svg#icon-refresh" xlink:href="icons.svg#icon-refresh"></use></svg>
+                            <span class="btn-label">Reset All</span>
+                        </button>
                     </div>
                 </div>
                 
@@ -256,7 +284,7 @@
                             <input type="text" class="form-input" id="scenario-state" placeholder="Enter state name" list="scenario-state-options">
                             <datalist id="scenario-state-options"></datalist>
                         </div>
-                        <div class="form-group" style="display: flex; align-items: end;">
+                        <div class="form-group form-actions-group">
                             <button class="btn btn-primary" id="scenario-update-btn" onclick="updateScenarioState()">Update State</button>
                         </div>
                     </div>
@@ -280,11 +308,14 @@
                     <div class="page-title">Import/Export</div>
                 </div>
                 
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-6);">
+                <div class="card-grid card-grid-2">
                     <!-- Export Section -->
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">📤 Export Data</h3>
+                            <h3 class="card-title">
+                                <svg class="icon icon-md" aria-hidden="true"><use href="icons.svg#icon-download" xlink:href="icons.svg#icon-download"></use></svg>
+                                <span>Export Data</span>
+                            </h3>
                         </div>
                         <div class="form-group">
                             <label class="form-label">Export Format</label>
@@ -294,8 +325,14 @@
                             </select>
                         </div>
                         <div style="display: flex; flex-direction: column; gap: var(--space-3);">
-                            <button class="btn btn-primary" onclick="exportMappings()">📤 Export All Mappings</button>
-                            <button class="btn btn-secondary" onclick="exportRequests()">📤 Export Request Log</button>
+                            <button class="btn btn-primary" onclick="exportMappings()">
+                                <svg class="icon icon-sm" aria-hidden="true"><use href="icons.svg#icon-download" xlink:href="icons.svg#icon-download"></use></svg>
+                                <span class="btn-label">Export All Mappings</span>
+                            </button>
+                            <button class="btn btn-secondary" onclick="exportRequests()">
+                                <svg class="icon icon-sm" aria-hidden="true"><use href="icons.svg#icon-download" xlink:href="icons.svg#icon-download"></use></svg>
+                                <span class="btn-label">Export Request Log</span>
+                            </button>
                         </div>
                         <div id="export-result" style="margin-top: var(--space-4);"></div>
                         <p class="form-help" style="margin-top: var(--space-3);">
@@ -305,13 +342,19 @@
                     <!-- Import Section -->
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">📥 Import Data</h3>
+                            <h3 class="card-title">
+                                <svg class="icon icon-md" aria-hidden="true"><use href="icons.svg#icon-upload" xlink:href="icons.svg#icon-upload"></use></svg>
+                                <span>Import Data</span>
+                            </h3>
                         </div>
                         <div class="form-group">
                             <label class="form-label">Import File</label>
                             <div class="file-input-container">
                                 <input type="file" class="file-input" id="import-file" accept=".json,.yaml,.yml" onchange="updateFileDisplay()">
-                                <label for="import-file" class="btn btn-secondary" style="width: 100%; justify-content: center;">📁 Choose File</label>
+                                <label for="import-file" class="btn btn-secondary" style="width: 100%; justify-content: center;">
+                                    <svg class="icon icon-sm" aria-hidden="true"><use href="icons.svg#icon-folder" xlink:href="icons.svg#icon-folder"></use></svg>
+                                    <span class="btn-label">Choose File</span>
+                                </label>
                                 <div class="file-display" style="margin-top: var(--space-2); padding: var(--space-3); background: var(--bg-secondary); border-radius: var(--radius-md); text-align: center; color: var(--text-secondary);" id="file-display">
                                     <span class="file-placeholder">No file selected</span>
                                 </div>
@@ -330,7 +373,8 @@
                         <div class="form-group" id="import-actions" style="display: none;">
                             <button class="btn btn-primary" id="import-submit-btn" onclick="executeImportFromUi()">
                                 <span class="btn-spinner loading-spinner" aria-hidden="true"></span>
-                                <span class="btn-label">📥 Import</span>
+                                <svg class="icon icon-sm" aria-hidden="true"><use href="icons.svg#icon-upload" xlink:href="icons.svg#icon-upload"></use></svg>
+                                <span class="btn-label">Import</span>
                             </button>
                         </div>
                         <div id="import-result" style="margin-top: var(--space-4);"></div>
@@ -346,7 +390,10 @@
                 
                 <div class="card">
                     <div class="card-header">
-                        <h3 class="card-title">🎙️ Record API Calls</h3>
+                        <h3 class="card-title">
+                            <svg class="icon icon-md" aria-hidden="true"><use href="icons.svg#icon-record" xlink:href="icons.svg#icon-record"></use></svg>
+                            <span>Record API Calls</span>
+                        </h3>
                     </div>
                     <p style="margin-bottom: var(--space-4); color: var(--text-secondary);">Configure recording settings to capture real API calls and generate mappings automatically.</p>
                     <p class="form-help" style="margin-bottom: var(--space-4);">Need the classic recorder interface? Open <a id="recorder-link" href="" target="_blank" rel="noopener">configure host to enable link</a>.</p>
@@ -365,10 +412,19 @@
                         </div>
                     </div>
 
-                    <div style="display: flex; gap: var(--space-3); margin-top: var(--space-4);">
-                        <button class="btn btn-success" onclick="startRecording()">▶️ Start Recording</button>
-                        <button class="btn btn-danger" onclick="stopRecording()">⏹️ Stop Recording</button>
-                        <button class="btn btn-secondary" onclick="clearRecordings()">🗑️ Clear Recordings</button>
+                    <div class="toolbar-actions" style="margin-top: var(--space-4);">
+                        <button class="btn btn-success" onclick="startRecording()">
+                            <svg class="icon icon-sm" aria-hidden="true"><use href="icons.svg#icon-play" xlink:href="icons.svg#icon-play"></use></svg>
+                            <span class="btn-label">Start Recording</span>
+                        </button>
+                        <button class="btn btn-danger" onclick="stopRecording()">
+                            <svg class="icon icon-sm" aria-hidden="true"><use href="icons.svg#icon-stop" xlink:href="icons.svg#icon-stop"></use></svg>
+                            <span class="btn-label">Stop Recording</span>
+                        </button>
+                        <button class="btn btn-secondary" onclick="clearRecordings()">
+                            <svg class="icon icon-sm" aria-hidden="true"><use href="icons.svg#icon-trash" xlink:href="icons.svg#icon-trash"></use></svg>
+                            <span class="btn-label">Clear Recordings</span>
+                        </button>
                     </div>
 
                     <div id="recording-status" style="margin-top: var(--space-4);"></div>
@@ -385,11 +441,14 @@
                     <div class="page-title">Settings</div>
                 </div>
                 
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-6);">
+                <div class="card-grid card-grid-2">
                     <!-- General Settings -->
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">⚙️ General Settings</h3>
+                            <h3 class="card-title">
+                                <svg class="icon icon-md" aria-hidden="true"><use href="icons.svg#icon-settings" xlink:href="icons.svg#icon-settings"></use></svg>
+                                <span>General Settings</span>
+                            </h3>
                         </div>
                         <div class="form-group">
                             <label class="form-label">Theme</label>
@@ -413,7 +472,10 @@
                     <!-- Connection Settings -->
                     <div class="card">
                         <div class="card-header">
-                            <h3 class="card-title">🔗 Connection Settings</h3>
+                            <h3 class="card-title">
+                                <svg class="icon icon-md" aria-hidden="true"><use href="icons.svg#icon-data" xlink:href="icons.svg#icon-data"></use></svg>
+                                <span>Connection Settings</span>
+                            </h3>
                         </div>
                         <div class="form-group">
                             <label class="form-label">Default Host</label>
@@ -440,8 +502,14 @@
                 </div>
                 
                 <div style="margin-top: var(--space-6); text-align: center;">
-                    <button class="btn btn-primary" onclick="saveSettings()">💾 Save Settings</button>
-                    <button class="btn btn-secondary" onclick="resetSettings()">🔄 Reset to Defaults</button>
+                    <button class="btn btn-primary" onclick="saveSettings()">
+                        <svg class="icon icon-sm" aria-hidden="true"><use href="icons.svg#icon-download" xlink:href="icons.svg#icon-download"></use></svg>
+                        <span class="btn-label">Save Settings</span>
+                    </button>
+                    <button class="btn btn-secondary" onclick="resetSettings()">
+                        <svg class="icon icon-sm" aria-hidden="true"><use href="icons.svg#icon-refresh" xlink:href="icons.svg#icon-refresh"></use></svg>
+                        <span class="btn-label">Reset to Defaults</span>
+                    </button>
                 </div>
             </div>
         </div>
@@ -502,8 +570,14 @@
                     <span id="editor-dirty-indicator" class="dirty-indicator" style="display: none;">● Unsaved changes</span>
                 </div>
                 <div class="modal-header-actions">
-                    <button type="button" class="btn btn-secondary btn-sm" data-action="format-json">🎨 Format</button>
-                    <button type="button" class="btn btn-secondary btn-sm" data-action="minify-json">📦 Minify</button>
+                    <button type="button" class="btn btn-secondary btn-sm" data-action="format-json">
+                        <svg class="icon icon-sm" aria-hidden="true"><use href="icons.svg#icon-format" xlink:href="icons.svg#icon-format"></use></svg>
+                        <span class="btn-label">Format</span>
+                    </button>
+                    <button type="button" class="btn btn-secondary btn-sm" data-action="minify-json">
+                        <svg class="icon icon-sm" aria-hidden="true"><use href="icons.svg#icon-compress" xlink:href="icons.svg#icon-compress"></use></svg>
+                        <span class="btn-label">Minify</span>
+                    </button>
                     <button type="button" class="btn btn-primary" id="update-mapping-btn" onclick="updateMapping()">
                         <span class="btn-label">Update Mapping</span>
                         <span class="btn-spinner loading-spinner" aria-hidden="true"></span>

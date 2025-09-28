@@ -1,6 +1,6 @@
 'use strict';
 
-console.log('✅ All required modules loaded successfully');
+console.log('[OK] All required modules loaded successfully');
 
 // === CENTRALIZED DEFAULT SETTINGS ===
 // This is the SINGLE SOURCE OF TRUTH for all default values
@@ -26,10 +26,10 @@ const DEFAULT_SETTINGS = window.DEFAULT_SETTINGS;
 // === FUNCTIONS FOR EDITOR INTEGRATION ===
     
 window.editMapping = (mappingId) => {
-    console.log('🔧 Opening editor for mapping:', mappingId);
+    console.log('[SETUP] Opening editor for mapping:', mappingId);
 
     // Get current settings to pass to editor
-    const currentSettings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
+    const currentSettings = window.SettingsStore?.getCached?.() || {};
 
     // Option 1: Pass ALL settings (current behavior)
     const settingsParam = encodeURIComponent(JSON.stringify(currentSettings));
@@ -57,10 +57,11 @@ window.editMapping = (mappingId) => {
     NotificationManager.info(`Editor opened for mapping ${mappingId}`);
         
     // Track window closure to refresh counters
-    const checkClosed = setInterval(() => {
+    const checkClosed = window.setInterval(() => {
         if (editorWindow.closed) {
             clearInterval(checkClosed);
-            console.log('🔄 Editor closed, updating counters only');
+            window.ResourceCleaner?.intervals?.delete?.(checkClosed);
+            console.log('[REFRESH] Editor closed, updating counters only');
             // Only update counters, don't refresh data to preserve optimistic updates
             if (typeof window.updateMappingsCounter === 'function') {
                 window.updateMappingsCounter();
@@ -70,20 +71,24 @@ window.editMapping = (mappingId) => {
             }
         }
     }, 1000);
+    window.ResourceCleaner?.trackInterval?.(checkClosed);
 
     // Safety cleanup: clear interval after 5 minutes to prevent memory leaks
-    setTimeout(() => {
+    const timeoutHandle = window.setTimeout(() => {
         if (!editorWindow.closed) {
             clearInterval(checkClosed);
-            console.log('🔄 Editor interval cleaned up after timeout');
+            console.log('[REFRESH] Editor interval cleaned up after timeout');
         }
+        window.ResourceCleaner?.intervals?.delete?.(checkClosed);
+        window.ResourceCleaner?.timeouts?.delete?.(timeoutHandle);
     }, 5 * 60 * 1000); // 5 minutes
+    window.ResourceCleaner?.trackTimeout?.(timeoutHandle);
 };
 
 // === SETTINGS MANAGEMENT ===
 
 // Save settings from the settings page
-window.saveSettings = () => {
+window.saveSettings = async () => {
     try {
         // Collect settings from settings form (prioritize settings form values)
         const cacheCheckbox = document.getElementById('cache-enabled');
@@ -111,10 +116,14 @@ window.saveSettings = () => {
         if (hostInput) hostInput.value = settings.host;
         if (portInput) portInput.value = settings.port;
         
-        // Save to localStorage
-        localStorage.setItem('wiremock-settings', JSON.stringify(settings));
-        console.log('🔧 [main.js] Settings saved to localStorage:', settings);
-        console.log('🔧 [main.js] Request timeout field value:', document.getElementById('request-timeout')?.value);
+        // Persist securely
+        if (window.SettingsStore && typeof window.SettingsStore.save === 'function') {
+            await window.SettingsStore.save(settings);
+        } else {
+            console.warn('[main.js] SettingsStore unavailable; settings were not persisted.');
+        }
+        console.log('[SETUP] [main.js] Settings persisted:', settings);
+        console.log('[SETUP] [main.js] Request timeout field value:', document.getElementById('request-timeout')?.value);
 
         // Update global baseUrl immediately
         if (typeof window.normalizeWiremockBaseUrl === 'function') {
@@ -130,7 +139,7 @@ window.saveSettings = () => {
         broadcastSettingsUpdate(settings);
         
         NotificationManager.success('Settings saved successfully!');
-        console.log('💾 Settings saved:', settings);
+        console.log('[SAVE] Settings saved:', settings);
         
     } catch (error) {
         console.error('Error saving settings:', error);
@@ -139,9 +148,9 @@ window.saveSettings = () => {
 };
 
 // Reset settings to defaults
-window.resetSettings = () => {
+window.resetSettings = async () => {
     if (!confirm('Reset all settings to defaults?')) return;
-    
+
     try {
         // Update form fields
         if (document.getElementById('default-host')) document.getElementById('default-host').value = DEFAULT_SETTINGS.host;
@@ -153,7 +162,11 @@ window.resetSettings = () => {
         if (document.getElementById('refresh-interval')) document.getElementById('refresh-interval').value = DEFAULT_SETTINGS.refreshInterval;
 
         // Save defaults
-        localStorage.setItem('wiremock-settings', JSON.stringify(DEFAULT_SETTINGS));
+        if (window.SettingsStore && typeof window.SettingsStore.save === 'function') {
+            await window.SettingsStore.save(DEFAULT_SETTINGS);
+        } else {
+            console.warn('[main.js] SettingsStore unavailable; defaults were not persisted.');
+        }
 
         // Update global baseUrl
         window.wiremockBaseUrl = `http://${DEFAULT_SETTINGS.host}:${DEFAULT_SETTINGS.port}/__admin`;
@@ -165,7 +178,7 @@ window.resetSettings = () => {
         broadcastSettingsUpdate(DEFAULT_SETTINGS);
         
         NotificationManager.success('Settings reset to defaults!');
-        console.log('🔄 Settings reset to defaults');
+        console.log('[REFRESH] Settings reset to defaults');
         
     } catch (error) {
         console.error('Error resetting settings:', error);
@@ -174,10 +187,16 @@ window.resetSettings = () => {
 };
 
 // Load settings into form fields
-window.loadSettings = () => {
+window.loadSettings = async () => {
     try {
-        const settings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
-        console.log('🔧 [main.js] Loading settings from localStorage:', settings);
+        let settings = {};
+        if (window.SettingsStore && typeof window.SettingsStore.load === 'function') {
+            settings = await window.SettingsStore.load();
+        } else {
+            console.warn('[main.js] SettingsStore unavailable; using defaults.');
+            settings = { ...DEFAULT_SETTINGS };
+        }
+        console.log('[SETUP] [main.js] Loading settings from storage:', settings);
 
         // Load into settings form fields if they exist
         if (document.getElementById('default-host')) document.getElementById('default-host').value = settings.host || DEFAULT_SETTINGS.host;
@@ -197,7 +216,7 @@ window.loadSettings = () => {
         // Update global auth header
         window.authHeader = settings.authHeader || DEFAULT_SETTINGS.authHeader;
 
-        console.log('📋 Settings loaded into settings form');
+        console.log('[CLIPBOARD] Settings loaded into settings form');
 
         if (typeof window.updateRecorderLink === 'function') {
             try {
@@ -223,7 +242,7 @@ function broadcastSettingsUpdate(settings) {
         
         // Also try to directly message any child windows
         // Note: This won't work for windows opened from other tabs
-        console.log('📡 Broadcasting settings update to editor windows');
+        console.log('[RADIO] Broadcasting settings update to editor windows');
         
     } catch (error) {
         console.warn('Failed to broadcast settings update:', error);
@@ -233,12 +252,12 @@ function broadcastSettingsUpdate(settings) {
 // Initialize default WireMock URL
 if (!window.wiremockBaseUrl) {
     window.wiremockBaseUrl = `http://${DEFAULT_SETTINGS.host}:${DEFAULT_SETTINGS.port}/__admin`;
-    console.log('🔧 [main.js] Initialized default WireMock URL:', window.wiremockBaseUrl);
+    console.log('[SETUP] [main.js] Initialized default WireMock URL:', window.wiremockBaseUrl);
 }
 
 // Apply default values to HTML form fields from centralized settings
 window.applyDefaultsToForm = () => {
-    console.log('🔧 [applyDefaultsToForm] Setting form defaults from DEFAULT_SETTINGS');
+    console.log('[SETUP] [applyDefaultsToForm] Setting form defaults from DEFAULT_SETTINGS');
     
     // Connection settings
     const hostInput = document.getElementById('default-host');
@@ -257,7 +276,7 @@ window.applyDefaultsToForm = () => {
     if (autoRefreshInput) autoRefreshInput.checked = DEFAULT_SETTINGS.autoRefreshEnabled;
     if (intervalInput && !intervalInput.value) intervalInput.value = DEFAULT_SETTINGS.refreshInterval;
     
-    console.log('🔧 [applyDefaultsToForm] Form defaults applied');
+    console.log('[SETUP] [applyDefaultsToForm] Form defaults applied');
 };
 
 // Load settings when page loads
@@ -268,21 +287,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     applyDefaultsToForm();
     
     // Then load saved settings (will override defaults if settings exist)
-    loadSettings();
-    loadConnectionSettings();
+    await loadSettings();
+    await loadConnectionSettings();
     
     // Ensure settings are loaded before any operations
-    console.log('🔧 [main.js] Page loaded, defaults applied, settings initialized, ready for user interaction');
+    console.log('[SETUP] [main.js] Page loaded, defaults applied, settings initialized, ready for user interaction');
 });
 
 // Listen for settings changes from editor windows or other sources
 window.addEventListener('storage', (e) => {
-    if (e.key === 'wiremock-settings' && e.newValue) {
-        try {
-            const settings = JSON.parse(e.newValue);
-            console.log('🔧 [main.js] Settings updated from external source:', settings);
+    if (e.key === 'wiremock-settings') {
+        const handleSettingsUpdate = (settings) => {
+            if (!settings) return;
+            console.log('[SETUP] [main.js] Settings updated from external source:', settings);
 
-            // Update main connection form fields
             const hostInput = document.getElementById('wiremock-host');
             const portInput = document.getElementById('wiremock-port');
             if (hostInput && settings.host) {
@@ -292,17 +310,26 @@ window.addEventListener('storage', (e) => {
                 portInput.value = settings.port;
             }
 
-            // Update URL if we have valid settings
             if (settings.host && settings.port) {
                 if (typeof window.normalizeWiremockBaseUrl === 'function') {
                     window.wiremockBaseUrl = window.normalizeWiremockBaseUrl(settings.host, settings.port);
                 } else {
                     window.wiremockBaseUrl = `http://${settings.host}:${settings.port}/__admin`;
                 }
-                console.log('🔧 [main.js] URL updated from settings change:', window.wiremockBaseUrl);
+                console.log('[SETUP] [main.js] URL updated from settings change:', window.wiremockBaseUrl);
             }
-        } catch (error) {
-            console.error('🔧 [main.js] Error processing settings update:', error);
+        };
+
+        if (window.SettingsStore && typeof window.SettingsStore.load === 'function') {
+            window.SettingsStore.load().then(handleSettingsUpdate).catch(error => {
+                console.error('[SETUP] [main.js] Error processing settings update:', error);
+            });
+        } else if (e.newValue) {
+            try {
+                handleSettingsUpdate(JSON.parse(e.newValue));
+            } catch (error) {
+                console.error('[SETUP] [main.js] Error processing settings update:', error);
+            }
         }
     }
 });
@@ -315,7 +342,7 @@ window.addEventListener('message', (event) => {
     }
 
     if (event.data && event.data.type === 'imock-cache-refresh') {
-        console.log('📨 [main.js] Received cache refresh request from:', event.data.source);
+        console.log('[MAIL] [main.js] Received cache refresh request from:', event.data.source);
         if (typeof window.refreshImockCache === 'function') {
             window.refreshImockCache().catch(error => {
                 console.warn('Failed to refresh cache from message:', error);
@@ -324,19 +351,19 @@ window.addEventListener('message', (event) => {
     }
 
     if (event.data && event.data.type === 'imock-optimistic-mapping-update') {
-        console.log('🎯 [main.js] Received optimistic mapping update from:', event.data.source, event.data.mapping.id);
+        console.log('[TARGET] [main.js] Received optimistic mapping update from:', event.data.source, event.data.mapping.id);
         if (typeof window.applyOptimisticMappingUpdate === 'function') {
             window.applyOptimisticMappingUpdate(event.data.mapping);
             // Also trigger UI refresh to show changes immediately
             if (typeof window.fetchAndRenderMappings === 'function') {
-                console.log('🎯 [main.js] Triggering UI refresh after optimistic update');
+                console.log('[TARGET] [main.js] Triggering UI refresh after optimistic update');
                 window.fetchAndRenderMappings(window.allMappings);
             }
         }
     }
 
     if (event.data && event.data.type === 'imock-optimistic-cache-update') {
-        console.log('🧩 [main.js] Received optimistic cache update from:', event.data.source, event.data.operation, event.data.mapping?.id);
+        console.log('[CACHE] [main.js] Received optimistic cache update from:', event.data.source, event.data.operation, event.data.mapping?.id);
         if (typeof window.updateOptimisticCache === 'function') {
             window.updateOptimisticCache(event.data.mapping, event.data.operation);
         }
@@ -346,7 +373,7 @@ window.addEventListener('message', (event) => {
 // Listen for localStorage-based cache refresh triggers (cross-tab communication)
 window.addEventListener('storage', (e) => {
     if (e.key === 'imock-cache-refresh-trigger' && e.newValue) {
-        console.log('💾 [main.js] Received localStorage cache refresh trigger');
+        console.log('[SAVE] [main.js] Received localStorage cache refresh trigger');
         if (typeof window.refreshImockCache === 'function') {
             window.refreshImockCache().catch(error => {
                 console.warn('Failed to refresh cache from localStorage trigger:', error);
@@ -358,12 +385,12 @@ window.addEventListener('storage', (e) => {
     if (e.key === 'imock-optimistic-update' && e.newValue) {
         try {
             const data = JSON.parse(e.newValue);
-            console.log('🎯 [main.js] Received localStorage optimistic update from:', data.source, 'for mapping:', data.mapping?.id);
+            console.log('[TARGET] [main.js] Received localStorage optimistic update from:', data.source, 'for mapping:', data.mapping?.id);
             if (data.mapping && typeof window.applyOptimisticMappingUpdate === 'function') {
                 window.applyOptimisticMappingUpdate(data.mapping);
                 // Trigger UI refresh
                 if (typeof window.fetchAndRenderMappings === 'function' && window.allMappings) {
-                    console.log('🎯 [main.js] Triggering UI refresh after localStorage optimistic update');
+                    console.log('[TARGET] [main.js] Triggering UI refresh after localStorage optimistic update');
                     window.fetchAndRenderMappings(window.allMappings);
                 }
                 // Update counter if available
@@ -383,7 +410,7 @@ if (typeof BroadcastChannel !== 'undefined') {
         const cacheRefreshChannel = new BroadcastChannel('imock-cache-refresh');
         cacheRefreshChannel.addEventListener('message', (event) => {
             if (event.data && event.data.type === 'cache-refresh') {
-                console.log('📡 [main.js] Received BroadcastChannel cache refresh from:', event.data.source);
+                console.log('[RADIO] [main.js] Received BroadcastChannel cache refresh from:', event.data.source);
                 if (typeof window.refreshImockCache === 'function') {
                     window.refreshImockCache().catch(error => {
                         console.warn('Failed to refresh cache from BroadcastChannel:', error);
@@ -396,12 +423,12 @@ if (typeof BroadcastChannel !== 'undefined') {
         const optimisticUpdateChannel = new BroadcastChannel('imock-optimistic-updates');
         optimisticUpdateChannel.addEventListener('message', (event) => {
             if (event.data && event.data.type === 'optimistic-mapping-update') {
-                console.log('🎯 [main.js] Received BroadcastChannel optimistic update from:', event.data.source, event.data.mapping.id);
+                console.log('[TARGET] [main.js] Received BroadcastChannel optimistic update from:', event.data.source, event.data.mapping.id);
                 if (typeof window.applyOptimisticMappingUpdate === 'function') {
                     window.applyOptimisticMappingUpdate(event.data.mapping);
                     // Also trigger UI refresh to show changes immediately
                     if (typeof window.fetchAndRenderMappings === 'function') {
-                        console.log('🎯 [main.js] Triggering UI refresh after BroadcastChannel optimistic update');
+                        console.log('[TARGET] [main.js] Triggering UI refresh after BroadcastChannel optimistic update');
                         window.fetchAndRenderMappings(window.allMappings);
                     }
                 }
@@ -413,11 +440,17 @@ if (typeof BroadcastChannel !== 'undefined') {
 }
 
 // Load connection settings into main connection form
-function loadConnectionSettings() {
+async function loadConnectionSettings() {
     try {
-        const settings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
+        let settings = {};
+        if (window.SettingsStore && typeof window.SettingsStore.load === 'function') {
+            settings = await window.SettingsStore.load();
+        } else {
+            console.warn('[loadConnectionSettings] SettingsStore unavailable; using defaults.');
+            settings = { ...DEFAULT_SETTINGS };
+        }
 
-        console.log('🔧 [loadConnectionSettings] Loading settings:', settings);
+        console.log('[SETUP] [loadConnectionSettings] Loading settings:', settings);
 
         // Update main connection form - ONLY set values in form fields
         const hostInput = document.getElementById('wiremock-host');
@@ -425,19 +458,19 @@ function loadConnectionSettings() {
 
         if (hostInput && settings.host) {
             hostInput.value = settings.host;
-            console.log('🔧 [loadConnectionSettings] Set host input:', settings.host);
+            console.log('[SETUP] [loadConnectionSettings] Set host input:', settings.host);
         }
         if (portInput && settings.port) {
             portInput.value = settings.port;
-            console.log('🔧 [loadConnectionSettings] Set port input:', settings.port);
+            console.log('[SETUP] [loadConnectionSettings] Set port input:', settings.port);
         }
 
         // DON'T set window.wiremockBaseUrl here - let connectToWireMock() handle it
         // This prevents overriding user-entered values in the form
-        console.log('🔧 [loadConnectionSettings] Form fields updated, URL will be set by connectToWireMock()');
+        console.log('[SETUP] [loadConnectionSettings] Form fields updated, URL will be set by connectToWireMock()');
 
     } catch (error) {
         console.error('Error loading connection settings:', error);
-        console.log('🔧 [loadConnectionSettings] Error loading settings, form fields may remain empty');
+        console.log('[SETUP] [loadConnectionSettings] Error loading settings, form fields may remain empty');
     }
 }
