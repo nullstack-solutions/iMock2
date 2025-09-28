@@ -488,6 +488,11 @@ const Utils = {
     }
 };
 
+const escapeHtml = Utils.escapeHtml;
+if (typeof window.escapeHtml !== 'function') {
+    window.escapeHtml = Utils.escapeHtml;
+}
+
 const LazyJsonFormatter = (() => {
     const queue = [];
     let scheduled = false;
