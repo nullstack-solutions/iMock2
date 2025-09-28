@@ -1200,7 +1200,7 @@
 }
 
 .stat-number {
-    font-size: 0.95rem;
+    font-size: 0.85rem;
     font-weight: 700;
     color: var(--text-primary);
     line-height: 1.2;
