@@ -19,7 +19,7 @@
 }
 
 /* ===== BUTTONS ===== */
-.btn { 
+.btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -30,7 +30,7 @@
     font-size: var(--font-size-sm);
     font-weight: 600;
     cursor: pointer;
-    transition: all var(--transition-fast);
+    transition: background-color var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast), border-color var(--transition-fast);
     text-decoration: none;
     position: relative;
     overflow: hidden;
@@ -149,7 +149,7 @@
     font-size: var(--font-size-base);
     background: var(--bg-primary);
     color: var(--text-primary);
-    transition: all var(--transition-fast);
+    transition: background-color var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast), color var(--transition-fast);
 }
 
 .form-input:focus,
@@ -214,6 +214,8 @@
     overflow: hidden;
     box-shadow: var(--shadow-sm);
     border: 1px solid var(--border-primary);
+    contain: layout style;
+    content-visibility: auto;
 }
 
 /* ===== LIST ITEMS ===== */
@@ -236,7 +238,10 @@
     padding: 2rem;
     border-bottom: 1px solid var(--border-primary);
     position: relative;
-    transition: background-color var(--transition-fast);
+    transition: background-color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
+    contain: layout style paint;
+    content-visibility: auto;
+    contain-intrinsic-size: auto 160px;
 }
 
 .mapping-item:last-child, .request-item:last-child, 
@@ -256,14 +261,14 @@
     background: linear-gradient(135deg, rgba(var(--primary-400-rgb), 0.1), rgba(var(--primary-600-rgb), 0.05));
 }
 
-.mapping-header, .request-header, 
+.mapping-header, .request-header,
 .mapping-card .mapping-header, .request-card .request-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 1rem;
     cursor: pointer;
-    transition: all var(--transition-fast);
+    transition: background-color var(--transition-fast), transform var(--transition-fast), color var(--transition-fast);
     border-radius: var(--radius-md);
     padding: var(--space-2);
     margin: calc(-1 * var(--space-2));
@@ -394,7 +399,7 @@
     border-radius: var(--radius-lg);
     padding: var(--space-4);
     margin-bottom: var(--space-3);
-    transition: all var(--transition-fast);
+    transition: background-color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
 }
 
 .request-card:hover,

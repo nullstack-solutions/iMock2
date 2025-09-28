@@ -111,7 +111,7 @@
     font-weight: bold;
     color: var(--text-tertiary);
     cursor: pointer;
-    transition: all var(--transition-fast);
+    transition: color var(--transition-fast), background-color var(--transition-fast), transform var(--transition-fast);
     background: none;
     border: none;
     padding: var(--space-2);
@@ -179,7 +179,7 @@
     background: transparent;
     border-radius: var(--radius-md) var(--radius-md) 0 0;
     cursor: pointer;
-    transition: all var(--transition-fast);
+    transition: background-color var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast);
     font-weight: 600;
     color: var(--text-secondary);
     font-size: var(--font-size-sm);
@@ -386,7 +386,7 @@ pre {
     color: var(--text-primary);
     border-radius: var(--radius-md);
     cursor: pointer;
-    transition: all var(--transition-fast);
+    transition: background-color var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
     font-size: var(--font-size-sm);
     margin-right: var(--space-2);
     font-weight: 500;
@@ -500,7 +500,7 @@ pre {
     color: var(--text-primary);
     border-radius: var(--radius-sm);
     cursor: pointer;
-    transition: all var(--transition-fast);
+    transition: background-color var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
     font-weight: 500;
 }
 

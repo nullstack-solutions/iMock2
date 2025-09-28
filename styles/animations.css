@@ -203,15 +203,15 @@
 /* ===== TRANSITION CLASSES ===== */
 
 /* Standard transitions for interactive elements */
-.btn, 
-.form-input, 
-.form-select, 
+.btn,
+.form-input,
+.form-select,
 .form-textarea,
 .nav-item,
 .list-item,
 .card,
 .stat-card {
-    transition: all var(--transition-fast);
+    transition: background-color var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast), border-color var(--transition-fast);
 }
 
 /* Hover transform effects */

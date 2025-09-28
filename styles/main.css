@@ -121,47 +121,47 @@ body {
     transition: background-color var(--transition-normal), color var(--transition-normal);
 }
 
-/* ===== GLOBAL SCROLLBARS ===== */
-* {
+/* ===== TARGETED SCROLLBARS ===== */
+:is(body, .sidebar, .main-content) {
     scrollbar-width: thin;
     scrollbar-color: var(--primary-300) var(--bg-secondary);
 }
 
-*::-webkit-scrollbar {
+:is(body, .sidebar, .main-content)::-webkit-scrollbar {
     width: 10px;
     height: 10px;
 }
 
-*::-webkit-scrollbar-track {
+:is(body, .sidebar, .main-content)::-webkit-scrollbar-track {
     background: var(--bg-secondary);
     border-radius: var(--radius-md);
 }
 
-*::-webkit-scrollbar-thumb {
+:is(body, .sidebar, .main-content)::-webkit-scrollbar-thumb {
     background: var(--primary-300);
     border-radius: var(--radius-md);
     border: 2px solid transparent;
     background-clip: content-box;
 }
 
-*::-webkit-scrollbar-thumb:hover {
+:is(body, .sidebar, .main-content)::-webkit-scrollbar-thumb:hover {
     background: var(--primary-400);
     background-clip: content-box;
 }
 
-[data-theme="dark"] * {
+[data-theme="dark"] :is(body, .sidebar, .main-content) {
     scrollbar-color: var(--primary-500) var(--bg-tertiary);
 }
 
-[data-theme="dark"] *::-webkit-scrollbar-track {
+[data-theme="dark"] :is(body, .sidebar, .main-content)::-webkit-scrollbar-track {
     background: var(--bg-tertiary);
 }
 
-[data-theme="dark"] *::-webkit-scrollbar-thumb {
+[data-theme="dark"] :is(body, .sidebar, .main-content)::-webkit-scrollbar-thumb {
     background: var(--primary-500);
 }
 
-[data-theme="dark"] *::-webkit-scrollbar-thumb:hover {
+[data-theme="dark"] :is(body, .sidebar, .main-content)::-webkit-scrollbar-thumb:hover {
     background: var(--primary-400);
 }
 
@@ -236,7 +236,7 @@ body {
     padding: var(--space-2) var(--space-3);
     border-radius: var(--radius-md);
     cursor: pointer;
-    transition: all var(--transition-fast);
+    transition: background-color var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
     font-size: var(--font-size-sm);
 }
 
@@ -275,7 +275,7 @@ body {
     border-radius: var(--radius-lg);
     color: var(--text-secondary);
     cursor: pointer;
-    transition: all var(--transition-fast);
+    transition: background-color var(--transition-fast), color var(--transition-fast), transform var(--transition-fast);
     font-weight: 500;
 }
 
