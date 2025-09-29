@@ -10,12 +10,12 @@
 | ✅ | Scenario management | `loadScenarios`, `setScenarioState`, and `resetAllScenarios` surface Admin API actions with inline refresh on success.【F:js/features/scenarios.js†L55-L217】【F:index.html†L500-L521】 |
 | ✅ | Settings & theme | `loadSettings`, `saveSettings`, and the global `toggleTheme` persist host/port, timeout, auth header, cache toggles, and UI theme across sessions.【F:js/main.js†L85-L198】【F:js/core.js†L720-L796】 |
 | ✅ | Notifications & status UI | `NotificationManager` queues, dedupes, and renders toast feedback for cache, connection, and demo flows across the app.【F:js/managers.js†L6-L160】【F:js/managers.js†L310-L464】 |
-| ⚠️ | Cache service depth | `refreshImockCache`, optimistic queue cleanup, and scheduled validation rebuild cached mappings, but the pipeline still lacks live end-to-end verification.【F:js/features/cache.js†L120-L421】【F:js/features/cache.js†L433-L521】 |
-| ⚠️ | Recording workflow | `startRecording`, `stopRecording`, and `takeRecordingSnapshot` hit the endpoints, yet the Recording tab ignores its form inputs and never fills `recordings-list`.【F:js/features/recording.js†L5-L124】【F:index.html†L607-L640】 |
-| ⚠️ | Auto-refresh toggle | Settings capture interval preferences, but no scheduler runs, so updates stay manual unless cache refreshes are triggered elsewhere.【F:js/main.js†L85-L198】【F:js/main.js†L250-L371】 |
+| ✅ | Cache service monitoring | `cacheManager` now reports queue depth, rebuild status, and last sync time via the dashboard badge while optimistic updates reconcile with WireMock responses.【F:js/features/cache.js†L1-L360】【F:index.html†L204-L274】 |
+| ✅ | Recording workflow | `startRecordingFromUi`, `stopRecordingFromUi`, and `renderRecordedMappings` drive the Recording page end-to-end, capturing configs, streaming status, and rendering captured mappings.【F:js/features/recording.js†L1-L278】【F:index.html†L660-L724】 |
+| ✅ | Auto-refresh scheduler | `AutoRefreshService` honours the saved interval, updates the header badge, and refreshes mappings/requests/scenarios on cadence with pause-on-disconnect safeguards.【F:js/core.js†L400-L611】【F:index.html†L204-L212】 |
 | ✅ | Demo mode | `DemoMode.createLoader` pumps fixture mappings and requests through the normal renderers and mirrors status notifications for offline walkthroughs.【F:js/features/demo.js†L17-L112】【F:js/features.js†L160-L212】 |
 | ✅ | Import/export workflows | `executeImportFromUi`, `exportMappings`, and `exportRequests` normalise payloads, stream downloads, and refresh counters when the Import/Export buttons fire.【F:js/features.js†L418-L539】【F:index.html†L525-L603】 |
-| 🚧 | Near-miss helpers | `findNearMissesForRequest`, `findNearMissesForPattern`, and `getNearMissesForUnmatched` still lack dashboard wiring, so triage stays manual.【F:js/features/near-misses.js†L1-L44】 |
+| ✅ | Near-miss analysis | The Request Log near-miss card populates unmatched requests, runs pattern checks, and renders mismatch summaries inline for quick triage.【F:index.html†L420-L520】【F:js/features/near-misses.js†L1-L253】 |
 
 ## JSON editor
 | Status | Area | Details |
@@ -27,12 +27,12 @@
 | ⚠️ | Offline worker pool | `WorkerPool` skips instantiation on `file://`, so heavy JSON operations fall back to the main thread when the editor runs directly from disk.【F:editor/performance-optimizations.js†L121-L214】 |
 
 ## Backlog highlights
-- Wire the Recording tab inputs and list rendering to the existing helper responses.【F:index.html†L607-L640】【F:js/features/recording.js†L5-L124】
 - Broaden the **Demo Mode** fixtures to include scenarios, recordings, and cache timelines so offline demos show end-to-end flows.【F:js/features/demo.js†L17-L112】【F:js/demo-data.js†L1-L200】
 - Break down the remaining oversized modules (for example `managers.js`) into focused services that stay under the 800-line target while keeping the 20/80 hotspots covered.【F:js/managers.js†L1-L861】
-- Surface near-miss helper outputs in the dashboard for unmatched triage.【F:js/features/near-misses.js†L1-L44】
 - Harden history hashing (swap 32-bit FNV for 64-bit or `crypto.subtle.digest`) and consider optional diff storage to shrink exports.【F:editor/monaco-enhanced.js†L40-L210】
-- Expose cache health (source indicator, optimistic queue depth) directly in the UI while the cache pipeline matures.【F:js/features/cache.js†L420-L521】
+- Expose the request analytics endpoints (`/requests/count`, `/requests/find`) through dashboard widgets for operations teams.【F:js/features.js†L1558-L1622】
+- Provide quick actions on recorded mappings (bulk download, tagging, promote to library) to streamline playback workflows.【F:js/features/recording.js†L1-L278】
+- Allow auto-refresh granularity per tab and pause/resume controls for low-traffic environments.【F:js/core.js†L400-L611】【F:index.html†L204-L212】
 
 ## Testing
 - **Automated** – Focus coverage on the extracted business-logic modules using the VM harnesses in `cache-workflow.spec.js` and `business-logic.spec.js` as baselines.【F:tests/cache-workflow.spec.js†L1-L160】【F:tests/business-logic.spec.js†L1-L194】

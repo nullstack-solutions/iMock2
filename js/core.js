@@ -405,7 +405,213 @@ let authHeader = ''; // Authorization header for all API requests
 window.authHeader = authHeader; // Make globally accessible
 window.startTime = null; // Make globally accessible for uptime tracking
 window.uptimeInterval = null; // Make globally accessible for uptime tracking
-let autoRefreshInterval = null;
+const AutoRefreshService = {
+    intervalId: null,
+    intervalMs: 0,
+    settings: { enabled: false, interval: 0 },
+    isTicking: false,
+    lastRun: null,
+    nextRun: null,
+    isConnected: false,
+
+    configure(options = {}) {
+        const enabled = Boolean(options.enabled);
+        const rawInterval = Number.parseInt(options.interval, 10);
+        const intervalSeconds = Number.isFinite(rawInterval) ? rawInterval : 0;
+
+        if (!enabled || intervalSeconds <= 0) {
+            this.stop();
+            this.settings = { enabled: false, interval: 0 };
+            updateAutoRefreshIndicator({ enabled: false });
+            return;
+        }
+
+        const sanitizedSeconds = Math.max(intervalSeconds, 5);
+        this.settings = { enabled: true, interval: sanitizedSeconds };
+        this.intervalMs = sanitizedSeconds * 1000;
+        this.start();
+    },
+
+    start() {
+        this.stop();
+        if (!this.settings.enabled || this.intervalMs <= 0) {
+            updateAutoRefreshIndicator({ enabled: false });
+            return;
+        }
+
+        this.intervalId = window.LifecycleManager?.setInterval
+            ? window.LifecycleManager.setInterval(() => this.tick(), this.intervalMs)
+            : window.setInterval(() => this.tick(), this.intervalMs);
+
+        this.nextRun = Date.now() + this.intervalMs;
+        updateAutoRefreshIndicator({
+            enabled: true,
+            interval: this.settings.interval,
+            status: this.isConnected ? 'scheduled' : 'paused',
+            nextRun: this.nextRun,
+            lastRun: this.lastRun,
+        });
+
+        if (this.isConnected) {
+            // Run an initial refresh without waiting for the first interval.
+            this.tick();
+        }
+    },
+
+    stop() {
+        if (this.intervalId) {
+            if (window.LifecycleManager?.clearInterval) {
+                window.LifecycleManager.clearInterval(this.intervalId);
+            } else {
+                clearInterval(this.intervalId);
+            }
+        }
+        this.intervalId = null;
+        this.nextRun = null;
+    },
+
+    async tick() {
+        if (!this.settings.enabled || this.isTicking) {
+            return;
+        }
+
+        if (!this.isConnected) {
+            this.nextRun = Date.now() + this.intervalMs;
+            updateAutoRefreshIndicator({
+                enabled: true,
+                interval: this.settings.interval,
+                status: 'paused',
+                nextRun: this.nextRun,
+                lastRun: this.lastRun,
+            });
+            return;
+        }
+
+        this.isTicking = true;
+        updateAutoRefreshIndicator({
+            enabled: true,
+            interval: this.settings.interval,
+            status: 'running',
+            lastRun: this.lastRun,
+        });
+
+        const useCache = typeof window.isCacheEnabled === 'function' ? window.isCacheEnabled() : false;
+        const tasks = [];
+        if (typeof fetchAndRenderMappings === 'function') {
+            tasks.push(fetchAndRenderMappings(null, { useCache }).catch(error => {
+                console.warn('Auto-refresh mappings failed:', error);
+            }));
+        }
+        if (typeof fetchAndRenderRequests === 'function') {
+            tasks.push(fetchAndRenderRequests().catch(error => {
+                console.warn('Auto-refresh requests failed:', error);
+            }));
+        }
+        if (typeof loadScenarios === 'function') {
+            tasks.push(loadScenarios().catch(error => {
+                console.warn('Auto-refresh scenarios failed:', error);
+            }));
+        }
+
+        try {
+            await Promise.allSettled(tasks);
+        } finally {
+            this.isTicking = false;
+            this.lastRun = Date.now();
+            this.nextRun = this.lastRun + this.intervalMs;
+            updateAutoRefreshIndicator({
+                enabled: true,
+                interval: this.settings.interval,
+                status: 'scheduled',
+                nextRun: this.nextRun,
+                lastRun: this.lastRun,
+            });
+        }
+    },
+
+    handleConnectionChange(connected) {
+        this.isConnected = Boolean(connected);
+        if (!this.settings.enabled) {
+            updateAutoRefreshIndicator({ enabled: false });
+            return;
+        }
+
+        if (this.isConnected && !this.intervalId) {
+            this.start();
+            return;
+        }
+
+        updateAutoRefreshIndicator({
+            enabled: true,
+            interval: this.settings.interval,
+            status: this.isConnected ? 'scheduled' : 'paused',
+            nextRun: this.nextRun,
+            lastRun: this.lastRun,
+        });
+    }
+};
+
+window.AutoRefreshService = AutoRefreshService;
+
+function formatAutoRefreshTime(timestamp) {
+    if (!timestamp) {
+        return '';
+    }
+    try {
+        return new Date(timestamp).toLocaleTimeString();
+    } catch (_) {
+        return '';
+    }
+}
+
+window.updateAutoRefreshIndicator = (state = {}) => {
+    const indicator = document.getElementById('auto-refresh-indicator');
+    if (!indicator) {
+        return;
+    }
+
+    const enabled = Boolean(state.enabled);
+    if (!enabled) {
+        indicator.textContent = 'Auto-refresh: off';
+        indicator.className = 'badge badge-secondary';
+        return;
+    }
+
+    const interval = state.interval || AutoRefreshService.settings.interval;
+    const nextRunTime = formatAutoRefreshTime(state.nextRun || AutoRefreshService.nextRun);
+    const lastRunTime = formatAutoRefreshTime(state.lastRun || AutoRefreshService.lastRun);
+    const status = state.status || (AutoRefreshService.isConnected ? 'scheduled' : 'paused');
+
+    let text = `Auto-refresh: every ${interval}s`;
+    if (status === 'running') {
+        text += ' (running…)';
+    } else if (status === 'paused') {
+        text += ' (paused)';
+    } else if (nextRunTime) {
+        text += ` (next ${nextRunTime})`;
+    }
+    if (lastRunTime && status !== 'running') {
+        text += ` · last ${lastRunTime}`;
+    }
+
+    let cls = 'badge badge-success';
+    if (status === 'paused') {
+        cls = 'badge badge-warning';
+    } else if (status === 'running') {
+        cls = 'badge badge-info';
+    }
+
+    indicator.textContent = text;
+    indicator.className = cls;
+};
+
+window.applyAutoRefreshSettings = (settings = {}) => {
+    const enabled = settings.autoRefreshEnabled ?? settings.enabled ?? false;
+    const interval = settings.refreshInterval ?? settings.interval ?? 0;
+    AutoRefreshService.configure({ enabled, interval });
+};
+
+window.connectionState = { connected: false };
 
 // Global feature-level state
 window.allMappings = [];

@@ -247,6 +247,8 @@
                     </div>
                     <div style="display: flex; gap: var(--space-3); align-items: center;">
                         <span id="data-source-indicator" class="badge badge-secondary" title="Current data source">Source: direct</span>
+                        <span id="cache-monitor-indicator" class="badge badge-secondary" title="Cache service status">Cache: idle</span>
+                        <span id="auto-refresh-indicator" class="badge badge-secondary" title="Auto-refresh schedule">Auto-refresh: off</span>
                         <button class="btn btn-secondary" onclick="refreshMappings()">
                             <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-refresh"></use></svg>
                             <span>Refresh</span>
@@ -447,7 +449,7 @@
                             </select>
                         </div>
                     </div>
-                    
+
                     <!-- Second row: Time Range -->
                     <div class="filter-grid" style="margin-top: var(--space-3);">
                         <div class="form-group">
@@ -458,8 +460,79 @@
                             </div>
                         </div>
                     </div>
+
+                    <div class="card card-static" id="near-miss-card" style="margin-top: var(--space-4);">
+                        <div class="card-header">
+                            <h3 class="card-title">
+                                <svg class="icon icon-inline" aria-hidden="true" focusable="false"><use href="#icon-search"></use></svg>
+                                Near-miss Analysis
+                            </h3>
+                        </div>
+                        <p class="form-help" style="margin-bottom: var(--space-4);">Use WireMock's near-miss endpoints to investigate requests that almost matched an existing stub.</p>
+
+                        <div class="form-row">
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label">Unmatched request</label>
+                                <select class="form-select" id="near-miss-request-select">
+                                    <option value="">Select unmatched request</option>
+                                </select>
+                                <p class="form-help">List refreshes whenever the request log updates.</p>
+                            </div>
+                            <div class="form-group" style="display: flex; align-items: flex-end;">
+                                <button class="btn btn-primary" onclick="analyzeNearMissForSelectedRequest()">
+                                    <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-request-in"></use></svg>
+                                    <span>Analyse Request</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="form-row" style="margin-top: var(--space-3);">
+                            <div class="form-group" style="flex: 1;">
+                                <label class="form-label">URL pattern</label>
+                                <input type="text" class="form-input" id="near-miss-pattern" placeholder="/api/.* or .*login">
+                                <p class="form-help">Supports the same glob, regex, and exact match syntax as WireMock requests.</p>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Method</label>
+                                <select class="form-select" id="near-miss-pattern-method">
+                                    <option value="">Any</option>
+                                    <option value="GET">GET</option>
+                                    <option value="POST">POST</option>
+                                    <option value="PUT">PUT</option>
+                                    <option value="DELETE">DELETE</option>
+                                    <option value="PATCH">PATCH</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="display: flex; align-items: flex-end;">
+                                <button class="btn btn-secondary" onclick="runNearMissPatternAnalysis()">
+                                    <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-trending-up"></use></svg>
+                                    <span>Analyse Pattern</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div style="display: flex; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-3);">
+                            <button class="btn btn-secondary" onclick="loadUnmatchedNearMisses()">
+                                <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-database"></use></svg>
+                                <span>Fetch All Unmatched Near Misses</span>
+                            </button>
+                            <button class="btn btn-secondary" onclick="clearNearMissResults()">
+                                <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-broom"></use></svg>
+                                <span>Clear Results</span>
+                            </button>
+                        </div>
+
+                        <div id="near-miss-status" class="form-help" style="margin-top: var(--space-3);"></div>
+
+                        <div id="near-miss-empty" class="empty-state hidden" style="margin-top: var(--space-4);">
+                            <h3>No near misses yet</h3>
+                            <p>Run one of the analysis actions above to inspect potential matches.</p>
+                        </div>
+
+                        <div id="near-miss-results" class="cards-container" style="margin-top: var(--space-4);"></div>
+                    </div>
                 </div>
-                
+
                 <div id="requests-loading" class="loading hidden">Loading requests...</div>
                 <div id="requests-list-container">
                     <div id="requests-empty" class="empty-state hidden">
@@ -634,29 +707,86 @@
                         </div>
                     </div>
 
-                    <div style="display: flex; gap: var(--space-3); margin-top: var(--space-4);">
-                        <button class="btn btn-success" onclick="startRecording()">
+                    <div class="form-row" style="margin-top: var(--space-3);">
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label">URL pattern filter</label>
+                            <input type="text" class="form-input" id="record-url-pattern" placeholder="/api/.* or .*users">
+                            <p class="form-help">Leave blank to capture every request routed through the proxy.</p>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Method filter</label>
+                            <select class="form-select" id="record-filter-method">
+                                <option value="ANY">Any</option>
+                                <option value="GET">GET</option>
+                                <option value="POST">POST</option>
+                                <option value="PUT">PUT</option>
+                                <option value="DELETE">DELETE</option>
+                                <option value="PATCH">PATCH</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-row" style="margin-top: var(--space-3);">
+                        <div class="form-group">
+                            <label class="form-label">
+                                <input type="checkbox" id="record-persist" checked> Persist generated stubs
+                            </label>
+                            <p class="form-help">Uncheck to discard recorded mappings on the next mappings reset.</p>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">
+                                <input type="checkbox" id="record-scenarios" checked> Repeat as scenarios
+                            </label>
+                            <p class="form-help">Enable to model sequential responses when the same request repeats.</p>
+                        </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label">Capture headers</label>
+                            <input type="text" class="form-input" id="record-capture-headers" placeholder="Authorization,X-Request-Id">
+                            <p class="form-help">Comma-separated header names preserved in generated stubs.</p>
+                        </div>
+                    </div>
+
+                    <div class="form-row" style="margin-top: var(--space-3);">
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label">Transformers (optional)</label>
+                            <input type="text" class="form-input" id="record-transformers" placeholder="response-template">
+                            <p class="form-help">Comma-separated transformer names applied while saving each stub.</p>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; gap: var(--space-3); margin-top: var(--space-4); flex-wrap: wrap;">
+                        <button class="btn btn-success" onclick="startRecordingFromUi()">
                             <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-play"></use></svg>
                             <span>Start Recording</span>
                         </button>
-                        <button class="btn btn-danger" onclick="stopRecording()">
+                        <button class="btn btn-danger" onclick="stopRecordingFromUi()">
                             <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-stop"></use></svg>
                             <span>Stop Recording</span>
                         </button>
-                        <button class="btn btn-secondary" onclick="clearRecordings()">
+                        <button class="btn btn-secondary" onclick="takeSnapshotFromUi()">
+                            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-clipboard"></use></svg>
+                            <span>Take Snapshot</span>
+                        </button>
+                        <button class="btn btn-secondary" onclick="refreshRecordingStatus()">
+                            <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-info"></use></svg>
+                            <span>Refresh Status</span>
+                        </button>
+                        <button class="btn btn-secondary" onclick="clearRecordedMappings()">
                             <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-trash"></use></svg>
                             <span>Clear Recordings</span>
                         </button>
                     </div>
 
-                    <div id="recording-status" style="margin-top: var(--space-4);"></div>
-                    </div>
-
-                <div id="recordings-list" style="margin-top: var(--space-6);">
-                    <!-- Recorded mappings will appear here -->
+                    <div id="recording-status" class="form-help" style="margin-top: var(--space-4);"></div>
                 </div>
+
+                <div id="recordings-empty" class="empty-state hidden" style="margin-top: var(--space-6);">
+                    <h3>No recordings yet</h3>
+                    <p>Start a recording or take a snapshot to generate mappings automatically.</p>
+                </div>
+                <div class="cards-container" id="recordings-list" style="margin-top: var(--space-6); display: none;"></div>
             </div>
-            
+
             <!-- SETTINGS PAGE -->
             <div id="settings-page" class="hidden">
                 <div class="page-header">

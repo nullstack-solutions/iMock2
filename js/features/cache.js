@@ -2,6 +2,83 @@
 
 // === ENHANCED CACHING MECHANISM ===
 
+const cacheMonitorState = {
+    status: 'idle',
+    queue: 0,
+    lastSync: null,
+    version: 0,
+};
+
+function formatCacheTimestamp(timestamp) {
+    if (!timestamp) {
+        return '';
+    }
+    try {
+        return new Date(timestamp).toLocaleTimeString();
+    } catch (_) {
+        return '';
+    }
+}
+
+function renderCacheMonitor() {
+    const indicator = document.getElementById('cache-monitor-indicator');
+    if (!indicator) {
+        return;
+    }
+
+    const { status, queue, lastSync, version } = cacheMonitorState;
+    let text = 'Cache: idle';
+    let cls = 'badge badge-secondary';
+
+    switch (status) {
+        case 'syncing':
+            text = 'Cache: syncing…';
+            cls = 'badge badge-warning';
+            break;
+        case 'ready':
+            text = 'Cache: ready';
+            cls = 'badge badge-success';
+            break;
+        case 'updating':
+            text = 'Cache: updating';
+            cls = 'badge badge-info';
+            break;
+        case 'error':
+            text = 'Cache: error';
+            cls = 'badge badge-danger';
+            break;
+        default:
+            text = 'Cache: idle';
+            cls = 'badge badge-secondary';
+    }
+
+    const details = [];
+    if (typeof queue === 'number') {
+        details.push(`queue ${queue}`);
+    }
+    if (version) {
+        details.push(`v${version}`);
+    }
+    const syncTime = formatCacheTimestamp(lastSync);
+    if (syncTime) {
+        details.push(`last ${syncTime}`);
+    }
+
+    if (details.length > 0) {
+        text += ` (${details.join(' · ')})`;
+    }
+
+    indicator.textContent = text;
+    indicator.className = cls;
+}
+
+function setCacheMonitorState(patch = {}) {
+    Object.assign(cacheMonitorState, patch);
+    renderCacheMonitor();
+}
+
+window.updateCacheMonitorIndicator = setCacheMonitorState;
+
 // Optimized change tracking system
 window.cacheManager = {
     // Primary data cache
@@ -37,6 +114,12 @@ window.cacheManager = {
 
         // Periodically synchronize with the server
         this.syncInterval = window.LifecycleManager.setInterval(() => this.syncWithServer(), 60000);
+
+        setCacheMonitorState({
+            status: 'idle',
+            queue: this.optimisticQueue.length,
+            version: this.version,
+        });
     },
 
     // Add an optimistic update (simplified flow)
@@ -47,6 +130,10 @@ window.cacheManager = {
         // Lightweight logic - the server remains the source of truth
         this.optimisticQueue.push({ id, op, payload: m, ts: Date.now() });
         console.log(`🎯 [CACHE] Added optimistic update: ${id}, operation: ${op}`);
+        setCacheMonitorState({
+            status: 'updating',
+            queue: this.optimisticQueue.length,
+        });
     },
 
     // Remove the optimistic update after the server confirms it
@@ -55,6 +142,10 @@ window.cacheManager = {
         if (i >= 0) {
             console.log(`✅ [CACHE] Confirmed optimistic update: ${id}`);
             this.optimisticQueue.splice(i, 1);
+            setCacheMonitorState({
+                status: 'updating',
+                queue: this.optimisticQueue.length,
+            });
         }
     },
 
@@ -75,6 +166,8 @@ window.cacheManager = {
             console.log(`🧹 [CACHE] Cleaned ${removedCount} stale optimistic updates`);
             // Trigger a UI refresh if stale updates were removed
             this.rebuildCache();
+        } else {
+            setCacheMonitorState({ queue: this.optimisticQueue.length });
         }
     },
 
@@ -84,6 +177,7 @@ window.cacheManager = {
         if (i >= 0) {
             console.log(`🗑️ [CACHE] Removing optimistic update: ${id}`);
             this.optimisticQueue.splice(i, 1);
+            setCacheMonitorState({ queue: this.optimisticQueue.length });
         }
     },
 
@@ -96,6 +190,7 @@ window.cacheManager = {
 
         this.isSyncing = true;
         console.log('🔄 [CACHE] Starting cache rebuild');
+        setCacheMonitorState({ status: 'syncing' });
 
         try {
             // Pull the latest data from the server
@@ -135,8 +230,16 @@ window.cacheManager = {
                 window.fetchAndRenderMappings(window.allMappings);
             }
 
+            setCacheMonitorState({
+                status: 'ready',
+                queue: this.optimisticQueue.length,
+                lastSync: Date.now(),
+                version: this.version,
+            });
+
         } catch (error) {
             console.error('❌ [CACHE] Rebuild failed:', error);
+            setCacheMonitorState({ status: 'error' });
         } finally {
             this.isSyncing = false;
         }
@@ -146,10 +249,15 @@ window.cacheManager = {
     async syncWithServer() {
         if (this.optimisticQueue.length === 0) {
             console.log('✨ [CACHE] No optimistic updates to sync');
+            setCacheMonitorState({
+                status: 'ready',
+                queue: this.optimisticQueue.length,
+            });
             return;
         }
 
         console.log(`🔄 [CACHE] Syncing ${this.optimisticQueue.length} optimistic updates`);
+        setCacheMonitorState({ status: 'syncing' });
         await this.rebuildCache();
     },
 
@@ -169,6 +277,11 @@ window.cacheManager = {
         this.optimisticQueue.length = 0;
         this.version = 0;
         console.log('🧹 [CACHE] Cache cleared');
+        setCacheMonitorState({
+            status: 'idle',
+            queue: 0,
+            version: 0,
+        });
     }
 };
 
@@ -185,6 +298,8 @@ function isCacheEnabled() {
         return false;
     }
 }
+
+window.isCacheEnabled = isCacheEnabled;
 
 
 // --- CORE APPLICATION FUNCTIONS ---
@@ -256,6 +371,11 @@ window.connectToWireMock = async () => {
 
         await loadScenarios();
 
+        if (typeof window.AutoRefreshService?.handleConnectionChange === 'function') {
+            window.connectionState.connected = true;
+            window.AutoRefreshService.handleConnectionChange(true);
+        }
+
         if (mappingsLoaded && requestsLoaded) {
             NotificationManager.success('Connected to WireMock successfully!');
         } else {
@@ -268,10 +388,15 @@ window.connectToWireMock = async () => {
     } catch (error) {
         console.error('Connection error:', error);
         NotificationManager.error(`Connection error: ${error.message}`);
-        
+
         // Stop uptime tracking on failure
         stopUptime();
-        
+
+        if (typeof window.AutoRefreshService?.handleConnectionChange === 'function') {
+            window.connectionState.connected = false;
+            window.AutoRefreshService.handleConnectionChange(false);
+        }
+
         // Reset connection state
         const statusDot = document.getElementById(SELECTORS.CONNECTION.STATUS_DOT);
         const statusText = document.getElementById(SELECTORS.CONNECTION.STATUS_TEXT);
@@ -425,6 +550,11 @@ function refreshMappingsFromCache({ maintainFilters = true } = {}) {
         if (typeof updateDataSourceIndicator === 'function') {
             updateDataSourceIndicator('cache');
         }
+
+        setCacheMonitorState({
+            status: 'ready',
+            queue: window.cacheManager?.optimisticQueue?.length ?? cacheMonitorState.queue,
+        });
     } catch (error) {
         console.warn('refreshMappingsFromCache failed:', error);
     }
@@ -516,6 +646,11 @@ function updateOptimisticCache(mapping, operation, options = {}) {
         window.cacheLastUpdate = Date.now();
         if (typeof window.cacheManager?.version === 'number') {
             window.cacheManager.version += 1;
+            setCacheMonitorState({
+                status: 'updating',
+                queue: window.cacheManager.optimisticQueue.length,
+                version: window.cacheManager.version,
+            });
         }
         refreshMappingsFromCache();
         enqueueCacheSync(mapping, normalizedOperation);
