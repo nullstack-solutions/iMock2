@@ -104,7 +104,7 @@ window.clearRecordings = async () => {
     if (!confirm('Clear all recorded requests?')) return;
 
     try {
-        await apiFetch(ENDPOINTS.REQUESTS_RESET, { method: 'POST' });
+        await apiFetch(ENDPOINTS.REQUESTS, { method: 'DELETE' });
         window.recordedCount = 0;
 
         const list = document.getElementById('recordings-list');
