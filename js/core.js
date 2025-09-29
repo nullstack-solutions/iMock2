@@ -103,14 +103,19 @@ window.SELECTORS = {
 
     // Recording
     RECORDING: {
-        URL: 'recording-url',
-        CAPTURE_HEADERS: 'capture-headers',
-        CAPTURE_BODY: 'capture-body',
-        URL_FILTER: 'url-filter',
-        INDICATOR: 'recording-indicator',
         TARGET: 'recording-target',
+        MODE: 'recording-mode',
+        METHOD: 'recording-filter-method',
+        INCLUDE_PATTERN: 'recording-include-pattern',
+        EXCLUDE_PATTERN: 'recording-exclude-pattern',
+        HEADERS: 'recording-capture-headers',
+        CAPTURE_BODY: 'recording-capture-body',
+        PERSIST: 'recording-persist',
+        INDICATOR: 'recording-indicator',
+        STATUS: 'recording-status',
         COUNT: 'recording-count',
-        STOP_BTN: 'stop-recording-btn'
+        LIST: 'recordings-list',
+        CLEAR_BTN: 'clear-recordings-btn'
     },
 
     // Settings
@@ -377,6 +382,7 @@ window.ENDPOINTS = {
     RECORDINGS_STOP: '/recordings/stop', // Requires POST
     RECORDINGS_STATUS: '/recordings/status', // Uses GET
     RECORDINGS_SNAPSHOT: '/recordings/snapshot', // Requires POST
+    RECORDINGS_DELETE: '/recordings', // DELETE to purge generated stubs
 
     // Scenario endpoints
     SCENARIOS: '/scenarios',

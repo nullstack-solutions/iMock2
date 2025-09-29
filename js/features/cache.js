@@ -47,6 +47,7 @@ window.cacheManager = {
         // Lightweight logic - the server remains the source of truth
         this.optimisticQueue.push({ id, op, payload: m, ts: Date.now() });
         console.log(`🎯 [CACHE] Added optimistic update: ${id}, operation: ${op}`);
+        updateCacheMonitorUI({ message: 'Optimistic updates awaiting confirmation.' });
     },
 
     // Remove the optimistic update after the server confirms it
@@ -55,6 +56,7 @@ window.cacheManager = {
         if (i >= 0) {
             console.log(`✅ [CACHE] Confirmed optimistic update: ${id}`);
             this.optimisticQueue.splice(i, 1);
+            updateCacheMonitorUI();
         }
     },
 
@@ -76,6 +78,7 @@ window.cacheManager = {
             // Trigger a UI refresh if stale updates were removed
             this.rebuildCache();
         }
+        updateCacheMonitorUI();
     },
 
     // Remove a specific optimistic update
@@ -84,6 +87,7 @@ window.cacheManager = {
         if (i >= 0) {
             console.log(`🗑️ [CACHE] Removing optimistic update: ${id}`);
             this.optimisticQueue.splice(i, 1);
+            updateCacheMonitorUI();
         }
     },
 
@@ -96,6 +100,7 @@ window.cacheManager = {
 
         this.isSyncing = true;
         console.log('🔄 [CACHE] Starting cache rebuild');
+        updateCacheMonitorUI({ status: 'rebuilding', message: 'Synchronising cache with WireMock…' });
 
         try {
             // Pull the latest data from the server
@@ -134,9 +139,11 @@ window.cacheManager = {
             if (typeof window.fetchAndRenderMappings === 'function') {
                 window.fetchAndRenderMappings(window.allMappings);
             }
+            updateCacheMonitorUI({ status: 'ready' });
 
         } catch (error) {
             console.error('❌ [CACHE] Rebuild failed:', error);
+            updateCacheMonitorUI({ status: 'error', message: 'Cache rebuild failed. Check console for details.' });
         } finally {
             this.isSyncing = false;
         }
@@ -146,6 +153,7 @@ window.cacheManager = {
     async syncWithServer() {
         if (this.optimisticQueue.length === 0) {
             console.log('✨ [CACHE] No optimistic updates to sync');
+            updateCacheMonitorUI();
             return;
         }
 
@@ -174,6 +182,99 @@ window.cacheManager = {
 
 // Initialize the cache manager
 window.cacheManager.init();
+
+function formatRelativeTime(timestamp) {
+    if (!timestamp) return '—';
+    const diff = Date.now() - timestamp;
+    if (diff < 0) return '0s ago';
+    const seconds = Math.floor(diff / 1000);
+    if (seconds < 5) return 'just now';
+    if (seconds < 60) return `${seconds}s ago`;
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) {
+        const remaining = seconds % 60;
+        return remaining ? `${minutes}m ${remaining}s ago` : `${minutes}m ago`;
+    }
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = minutes % 60;
+    return remainingMinutes ? `${hours}h ${remainingMinutes}m ago` : `${hours}h ago`;
+}
+
+function updateCacheMonitorUI({ status, message } = {}) {
+    const container = document.getElementById('cache-monitor');
+    if (!container) return;
+
+    const badge = document.getElementById('cache-monitor-mode');
+    const lastRefreshEl = document.getElementById('cache-monitor-last-refresh');
+    const queueEl = document.getElementById('cache-monitor-queue');
+    const nextCheckEl = document.getElementById('cache-monitor-next-check');
+    const footnoteEl = document.getElementById('cache-monitor-footnote');
+
+    const cacheEnabled = typeof isCacheEnabled === 'function' ? isCacheEnabled() : false;
+
+    if (!cacheEnabled) {
+        if (badge) {
+            badge.textContent = 'Cache: disabled';
+            badge.className = 'badge badge-secondary';
+        }
+        if (lastRefreshEl) lastRefreshEl.textContent = '—';
+        if (queueEl) queueEl.textContent = '0';
+        if (nextCheckEl) nextCheckEl.textContent = '—';
+        if (footnoteEl) footnoteEl.textContent = 'Enable cache in Settings to track cache state.';
+        return;
+    }
+
+    let badgeText = 'Cache: ready';
+    let badgeClass = 'badge badge-success';
+
+    if (status === 'rebuilding' || window.cacheRebuilding) {
+        badgeText = 'Cache: rebuilding…';
+        badgeClass = 'badge badge-warning';
+    } else if (status === 'error') {
+        badgeText = 'Cache: error';
+        badgeClass = 'badge badge-danger';
+    }
+
+    if (badge) {
+        badge.textContent = badgeText;
+        badge.className = badgeClass;
+    }
+
+    if (lastRefreshEl) {
+        lastRefreshEl.textContent = formatRelativeTime(window.cacheLastUpdate);
+    }
+
+    if (queueEl) {
+        const queueSize = window.cacheManager?.optimisticQueue?.length || 0;
+        queueEl.textContent = String(queueSize);
+    }
+
+    if (nextCheckEl) {
+        const nextCheck = window.cacheNextValidationCheck;
+        if (nextCheck) {
+            const seconds = Math.max(0, Math.round((nextCheck - Date.now()) / 1000));
+            nextCheckEl.textContent = seconds === 0 ? 'due now' : `in ${seconds}s`;
+        } else {
+            nextCheckEl.textContent = '—';
+        }
+    }
+
+    if (footnoteEl) {
+        if (message) {
+            footnoteEl.textContent = message;
+        } else if (window.cacheManager?.optimisticQueue?.length) {
+            const queueSize = window.cacheManager.optimisticQueue.length;
+            footnoteEl.textContent = `${queueSize} optimistic update${queueSize === 1 ? '' : 's'} awaiting confirmation.`;
+        } else if (window.cacheLastUpdate) {
+            footnoteEl.textContent = `Cache ready · refreshed ${formatRelativeTime(window.cacheLastUpdate)}`;
+        } else {
+            footnoteEl.textContent = 'Cache has not been rebuilt yet.';
+        }
+    }
+}
+
+window.updateCacheMonitorUI = updateCacheMonitorUI;
+updateCacheMonitorUI();
 
 function isCacheEnabled() {
     try {
@@ -438,6 +539,9 @@ function updateOptimisticCache(mapping, operation, options = {}) {
             return;
         }
 
+        window.cacheOptimisticOperations = (window.cacheOptimisticOperations || 0) + 1;
+        updateCacheMonitorUI({ message: 'Applying optimistic cache update…' });
+
         if (!window.cacheManager || !(window.cacheManager.cache instanceof Map)) {
             console.warn('updateOptimisticCache skipped - cacheManager unavailable');
             return;
@@ -519,6 +623,7 @@ function updateOptimisticCache(mapping, operation, options = {}) {
         }
         refreshMappingsFromCache();
         enqueueCacheSync(mapping, normalizedOperation);
+        updateCacheMonitorUI();
     } catch (error) {
         console.warn('updateOptimisticCache failed:', error);
     }
@@ -558,9 +663,12 @@ let optimisticInProgress = false;
 let optimisticDelayRetries = 0;
 
 // Cache validation timer (check every minute, validate every 5 minutes)
+window.cacheNextValidationCheck = Date.now() + 60 * 1000;
 window.cacheValidationInterval = window.LifecycleManager.setInterval(() => {
+    window.cacheNextValidationCheck = Date.now() + 60 * 1000;
     const timeSinceLastUpdate = Date.now() - (window.cacheLastUpdate || 0);
     const optimisticOps = window.cacheOptimisticOperations || 0;
+    updateCacheMonitorUI();
 
     // Validate if cache is older than 5 minutes OR has too many optimistic operations
     if (timeSinceLastUpdate > 5 * 60 * 1000 || optimisticOps > 20) {
@@ -572,15 +680,18 @@ window.cacheValidationInterval = window.LifecycleManager.setInterval(() => {
 async function validateAndRefreshCache() {
     try {
         console.log('🧩 [CACHE] Starting cache validation...');
+        updateCacheMonitorUI({ status: 'rebuilding', message: 'Validating cache mapping…' });
 
     if (!isCacheEnabled()) {
             console.log('🧩 [CACHE] Validation skipped - cache disabled');
+            updateCacheMonitorUI();
             return;
         }
 
         const existing = await fetchExistingCacheMapping();
         if (existing && extractCacheJsonBody(existing)) {
             console.log('🧩 [CACHE] Validation skipped - cache mapping already present');
+            updateCacheMonitorUI({ status: 'ready', message: 'Cache mapping already present.' });
             return;
         }
 
@@ -599,10 +710,12 @@ async function validateAndRefreshCache() {
         window.cacheLastUpdate = Date.now();
 
         console.log('🧩 [CACHE] Validation rebuilt cache because mapping was missing');
+        updateCacheMonitorUI({ status: 'ready', message: 'Cache rebuilt after validation.' });
 
     } catch (e) {
         console.warn('🧩 [CACHE] Validation failed:', e);
         // Don't reset counters on failure - try again later
+        updateCacheMonitorUI({ status: 'error', message: 'Cache validation failed.' });
     }
 }
 
@@ -627,6 +740,7 @@ window.refreshImockCache = async () => {
     try {
         window.cacheRebuilding = true;
         console.log('🔄 [CACHE] Set cache rebuilding flag');
+        updateCacheMonitorUI({ status: 'rebuilding', message: 'Regenerating cache mapping…' });
 
         try {
             if (isCacheEnabled()) {
@@ -660,6 +774,7 @@ window.refreshImockCache = async () => {
         }
     } catch (e) {
         console.warn('🔄 [CACHE] refreshImockCache failed:', e);
+        updateCacheMonitorUI({ status: 'error', message: 'Cache regeneration failed.' });
     } finally {
         window.cacheRebuilding = false;
         console.log('🔄 [CACHE] Cleared cache rebuilding flag');
@@ -667,6 +782,7 @@ window.refreshImockCache = async () => {
         window.cacheOptimisticOperations = 0;
         optimisticInProgress = false;
         optimisticDelayRetries = 0;
+        updateCacheMonitorUI();
         try {
             if (isCacheEnabled()) {
                 updateDataSourceIndicator('cache');

@@ -23,6 +23,12 @@ window.DEFAULT_SETTINGS = {
 // Make it available as a module-level constant too for backward compatibility
 const DEFAULT_SETTINGS = window.DEFAULT_SETTINGS;
 
+const autoRefreshHandles = { tick: null, countdown: null };
+let autoRefreshIntervalMs = 0;
+let autoRefreshNextTick = null;
+let autoRefreshInFlight = false;
+const MIN_AUTO_REFRESH_MS = 5000;
+
 // === FUNCTIONS FOR EDITOR INTEGRATION ===
     
 window.editMapping = (mappingId) => {
@@ -80,6 +86,99 @@ window.editMapping = (mappingId) => {
     }, 5 * 60 * 1000); // 5 minutes
 };
 
+function clearAutoRefreshTimers() {
+    if (autoRefreshHandles.tick && window.LifecycleManager?.clearInterval) {
+        window.LifecycleManager.clearInterval(autoRefreshHandles.tick);
+    }
+    if (autoRefreshHandles.countdown && window.LifecycleManager?.clearInterval) {
+        window.LifecycleManager.clearInterval(autoRefreshHandles.countdown);
+    }
+    autoRefreshHandles.tick = null;
+    autoRefreshHandles.countdown = null;
+    autoRefreshNextTick = null;
+    autoRefreshIntervalMs = 0;
+    updateAutoRefreshIndicatorState({ enabled: false });
+}
+
+function updateAutoRefreshIndicatorState({ enabled = false, intervalMs = autoRefreshIntervalMs } = {}) {
+    const indicator = document.getElementById('auto-refresh-indicator');
+    if (!indicator) {
+        return;
+    }
+
+    if (!enabled || !intervalMs) {
+        indicator.textContent = 'Auto-refresh: off';
+        indicator.className = 'badge badge-secondary';
+        return;
+    }
+
+    const intervalSeconds = Math.max(1, Math.round(intervalMs / 1000));
+    const nextInSeconds = autoRefreshNextTick
+        ? Math.max(0, Math.round((autoRefreshNextTick - Date.now()) / 1000))
+        : intervalSeconds;
+
+    indicator.textContent = `Auto-refresh: every ${intervalSeconds}s (next in ${nextInSeconds}s)`;
+    indicator.className = 'badge badge-success';
+}
+
+function scheduleAutoRefresh(settings = {}) {
+    try {
+        const enabled = Boolean(settings.autoRefreshEnabled);
+        const rawInterval = Number(settings.refreshInterval);
+
+        if (!enabled || !rawInterval || Number.isNaN(rawInterval)) {
+            clearAutoRefreshTimers();
+            return;
+        }
+
+        if (!window.LifecycleManager?.setInterval) {
+            console.warn('LifecycleManager unavailable, auto-refresh disabled.');
+            clearAutoRefreshTimers();
+            return;
+        }
+
+        const intervalMs = Math.max(MIN_AUTO_REFRESH_MS, rawInterval * 1000);
+        clearAutoRefreshTimers();
+        autoRefreshIntervalMs = intervalMs;
+        autoRefreshNextTick = Date.now() + intervalMs;
+
+        const performRefresh = async () => {
+            if (autoRefreshInFlight) {
+                return;
+            }
+            autoRefreshInFlight = true;
+            try {
+                const useCache = typeof window.isCacheEnabled === 'function' ? window.isCacheEnabled() : false;
+                if (typeof window.fetchAndRenderMappings === 'function') {
+                    await window.fetchAndRenderMappings(null, { useCache });
+                }
+                if (typeof window.fetchAndRenderRequests === 'function') {
+                    await window.fetchAndRenderRequests();
+                }
+            } catch (error) {
+                console.warn('Auto-refresh cycle failed:', error);
+            } finally {
+                autoRefreshInFlight = false;
+                autoRefreshNextTick = Date.now() + autoRefreshIntervalMs;
+                updateAutoRefreshIndicatorState({ enabled: true, intervalMs: autoRefreshIntervalMs });
+            }
+        };
+
+        autoRefreshHandles.tick = window.LifecycleManager.setInterval(performRefresh, intervalMs);
+        autoRefreshHandles.countdown = window.LifecycleManager.setInterval(() => {
+            updateAutoRefreshIndicatorState({ enabled: true, intervalMs });
+        }, 1000);
+
+        updateAutoRefreshIndicatorState({ enabled: true, intervalMs });
+        performRefresh().catch(error => console.warn('Auto-refresh initial cycle failed:', error));
+    } catch (error) {
+        console.warn('scheduleAutoRefresh failed:', error);
+        clearAutoRefreshTimers();
+    }
+}
+
+window.scheduleAutoRefresh = scheduleAutoRefresh;
+
 // === SETTINGS MANAGEMENT ===
 
 // Save settings from the settings page
@@ -128,7 +227,9 @@ window.saveSettings = () => {
 
         // Broadcast settings update to any open editor windows
         broadcastSettingsUpdate(settings);
-        
+
+        scheduleAutoRefresh(settings);
+
         NotificationManager.success('Settings saved successfully!');
         console.log('💾 Settings saved:', settings);
         
@@ -163,7 +264,9 @@ window.resetSettings = () => {
 
         // Broadcast update
         broadcastSettingsUpdate(DEFAULT_SETTINGS);
-        
+
+        scheduleAutoRefresh(DEFAULT_SETTINGS);
+
         NotificationManager.success('Settings reset to defaults!');
         console.log('🔄 Settings reset to defaults');
         
@@ -206,6 +309,8 @@ window.loadSettings = () => {
                 console.warn('Failed to update recorder link:', linkError);
             }
         }
+
+        scheduleAutoRefresh(settings);
 
     } catch (error) {
         console.error('Error loading settings:', error);
