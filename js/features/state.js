@@ -211,4 +211,19 @@
     window.fetchMappingsFromServer = fetchMappingsFromServer;
 
     window.FeaturesState = state;
+
+    if (typeof window.dispatchEvent === 'function') {
+        let readyEvent;
+        if (typeof window.CustomEvent === 'function') {
+            readyEvent = new CustomEvent('features:state-ready', { detail: { state } });
+        } else if (typeof document !== 'undefined' && document.createEvent) {
+            readyEvent = document.createEvent('Event');
+            readyEvent.initEvent('features:state-ready', false, false);
+            readyEvent.detail = { state };
+        }
+
+        if (readyEvent) {
+            window.dispatchEvent(readyEvent);
+        }
+    }
 })(typeof window !== 'undefined' ? window : globalThis);
