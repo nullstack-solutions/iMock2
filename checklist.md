@@ -29,12 +29,14 @@
 ## Backlog highlights
 - Wire the Recording tab inputs and list rendering to the existing helper responses.【F:index.html†L324-L413】【F:js/features.js†L1624-L1704】
 - Implement Import/Export handlers or hide the buttons until the workflows exist.【F:index.html†L120-L211】【F:js/features.js†L2686-L2727】
-- Add a functional Demo Mode data loader for offline demos.【F:js/features.js†L2728-L2738】
+- Stand up a **Demo Mode** mock client so that every dashboard tab, modal, and editor can be demonstrated without a backend. This includes seeding sample mappings/requests and routing Demo button flows through fixtures instead of live fetches.【F:js/features.js†L2728-L2738】
+- Refactor oversized scripts (>1000 lines) into business-oriented modules that cap out around 800 lines, prioritising the 20% of code that drives 80% of usage (connection, mappings, requests, demo).【F:js/features.js†L1-L2738】【F:js/managers.js†L1-L870】
 - Surface near-miss helper outputs in the dashboard for unmatched triage.【F:js/features.js†L1708-L1760】
 - Harden history hashing (swap 32-bit FNV for 64-bit or `crypto.subtle.digest`) and consider optional diff storage to shrink exports.【F:editor/monaco-enhanced.js†L40-L360】
 - Expose cache health (source indicator, optimistic queue depth) directly in the UI while the cache pipeline matures.【F:js/features.js†L2480-L2662】
 
 ## Testing
-- **Automated** – `node tests/cache-workflow.spec.js` validates optimistic cache create/update/delete flows for mappings.【F:tests/cache-workflow.spec.js†L1-L138】
+- **Automated** – Shift upcoming coverage toward business logic modules (store, cache, request/mapping services) with lightweight harnesses that run against mocked clients. Existing `node tests/cache-workflow.spec.js` remains the starting point.【F:tests/cache-workflow.spec.js†L1-L138】
+- **Demo harness** – Wire the Demo button to a mocked API client so all modals, editors, and notifications can be exercised offline during development.
 - **Manual smoke** – Follow the flow in `docs/README.md#manual-smoke-check` to cover connection, mappings CRUD, request log filters, scenarios, and JSON Studio tooling.【F:docs/README.md†L72-L111】
 

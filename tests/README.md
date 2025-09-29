@@ -1,6 +1,7 @@
 # WireMock UI testing guide
 
 ## Automated regression
+- `node tests/business-logic.spec.js` – validates core business helpers like tab totals, snapshot refresh hooks, and demo mode signals without needing the DOM-heavy modules.
 - `node tests/cache-workflow.spec.js` – exercises the optimistic cache workflow (create/update/delete) inside a VM sandbox to ensure `updateOptimisticCache` and `cacheManager` keep mappings, optimistic queues, and rendered cards aligned.【F:tests/cache-workflow.spec.js†L1-L138】
 
 ## Manual verification
