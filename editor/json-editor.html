@@ -454,12 +454,28 @@
     <!-- WireMock URL initialization - moved to initializeFromURL -->
 
     <!-- WireMock Integration -->
-    <script src="../js/main.js"></script>
+    <script src="../js/vendor-js-yaml.min.js"></script>
     <script src="../js/core.js"></script>
     <script src="../js/managers.js"></script>
+    <script src="../js/demo-data.js"></script>
+    <script src="../js/features/state.js"></script>
+    <script src="../js/features/utils.js"></script>
+    <script src="../js/features/filters.js"></script>
+    <script src="../js/features/cache.js"></script>
+    <script src="../js/features/mappings.js"></script>
+    <script src="../js/features/requests.js"></script>
+    <script src="../js/features/scenarios.js"></script>
+    <script src="../js/features/recording.js"></script>
+    <script src="../js/features/management.js"></script>
+    <script src="../js/features/request-api.js"></script>
+    <script src="../js/features/near-misses.js"></script>
+    <script src="../js/features/wiremock-extras.js"></script>
+    <script src="../js/features/demo.js"></script>
     <script src="../js/features.js"></script>
+    <script src="../js/main.js"></script>
 
     <!-- Monaco Enhanced (our main editor) -->
+    <script src="monaco-template-library.js"></script>
     <script src="monaco-enhanced.js"></script>
 
     <script>
@@ -1806,54 +1822,100 @@
         console.log('🚀 [DEBUG] Script block executing...');
         console.log('🚀 Setting up URL initialization...');
 
-        // Wait for all scripts to be fully loaded, then initialize
-        const initializeWhenReady = () => {
-            console.log('🚀 Checking if all components are ready...');
-            console.log('🚀 window.getMappingById:', typeof window.getMappingById);
-            console.log('🚀 window.monacoInitializer:', !!window.monacoInitializer);
-            console.log('🚀 window.wiremockBaseUrl:', !!window.wiremockBaseUrl);
+        let initializationAttempts = 0;
+        let initializationTimer = null;
+        let initializationComplete = false;
 
-            // window.wiremockBaseUrl will be set by initializeFromURL, so we don't require it here
-            if (window.getMappingById && window.monacoInitializer) {
-                console.log('✅ Core components ready, calling initializeFromURL');
-                initializeFromURL();
+        function dependenciesReady() {
+            const hasMappingLookup = typeof window.getMappingById === 'function';
+            const hasMonaco = Boolean(window.monacoInitializer && typeof window.monacoInitializer.getActiveEditor === 'function');
+
+            console.log('🚀 Checking readiness', { hasMappingLookup, hasMonaco });
+            return hasMappingLookup && hasMonaco;
+        }
+
+        function clearInitializationTimer() {
+            if (initializationTimer !== null) {
+                clearInterval(initializationTimer);
+                initializationTimer = null;
+            }
+        }
+
+        function onFeaturesReady() {
+            handleInitializationSuccess('features:state-ready');
+        }
+
+        function onMonacoReady() {
+            handleInitializationSuccess('monaco:ready');
+        }
+
+        function handleInitializationSuccess(source) {
+            if (initializationComplete) {
                 return true;
             }
-            return false;
-        };
 
-        // Try immediately
-        if (!initializeWhenReady()) {
-            // If not ready, wait and try again
-            let attempts = 0;
-            const tryInit = () => {
-                attempts++;
-                console.log(`🚀 Initialization attempt ${attempts}`);
+            if (!dependenciesReady()) {
+                return false;
+            }
 
-                if (initializeWhenReady()) {
-                    return; // Success
-                }
+            initializationComplete = true;
+            clearInitializationTimer();
+            window.removeEventListener('features:state-ready', onFeaturesReady);
+            window.removeEventListener('monaco:ready', onMonacoReady);
+            console.log(`✅ Core components ready via ${source}. Initializing editor context.`);
+            initializeFromURL();
+            return true;
+        }
 
-                if (attempts < 100) { // Try for up to 10 seconds
-                    setTimeout(tryInit, 100);
-                } else {
-                    console.error('❌ Failed to initialize URL parameters after 100 attempts');
-                    // Show error in editor
-                    if (window.monacoInitializer && window.monacoInitializer.getActiveEditor) {
-                        const editor = window.monacoInitializer.getActiveEditor();
-                        if (editor) {
-                            editor.setValue(`{
-  "_error": "Failed to initialize editor",
-  "_message": "Components failed to load properly",
-  "_getMappingById": ${typeof window.getMappingById},
-  "_monacoInitializer": ${!!window.monacoInitializer},
-  "_wiremockBaseUrl": "${window.wiremockBaseUrl || 'NOT_SET'}"
-}`);
-                        }
+        function handleInitializationFailure() {
+            if (initializationComplete) {
+                return;
+            }
+
+            console.error('❌ Failed to initialize URL parameters after 30 seconds');
+            if (window.monacoInitializer && typeof window.monacoInitializer.getActiveEditor === 'function') {
+                const editor = window.monacoInitializer.getActiveEditor();
+                if (editor) {
+                    const payload = {
+                        _error: 'Failed to initialize editor',
+                        _message: 'Components failed to load properly',
+                        _getMappingById: typeof window.getMappingById,
+                        _monacoInitializer: !!window.monacoInitializer,
+                        _wiremockBaseUrl: window.wiremockBaseUrl || 'NOT_SET'
+                    };
+                    try {
+                        editor.setValue(JSON.stringify(payload, null, 2));
+                    } catch (error) {
+                        console.warn('Unable to write initialization failure to editor:', error);
                     }
                 }
-            };
-            setTimeout(tryInit, 100);
+            }
+        }
+
+        function scheduleInitializationPoll() {
+            if (initializationTimer !== null) {
+                return;
+            }
+
+            initializationTimer = setInterval(() => {
+                initializationAttempts += 1;
+                console.log(`🚀 Initialization attempt ${initializationAttempts}`);
+
+                if (handleInitializationSuccess(`poll-${initializationAttempts}`)) {
+                    return;
+                }
+
+                if (initializationAttempts >= 300) { // 30 seconds
+                    clearInitializationTimer();
+                    handleInitializationFailure();
+                }
+            }, 100);
+        }
+
+        if (!handleInitializationSuccess('immediate')) {
+            scheduleInitializationPoll();
+            window.addEventListener('features:state-ready', onFeaturesReady);
+            window.addEventListener('monaco:ready', onMonacoReady);
         }
     </script>
 </body>

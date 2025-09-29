@@ -360,8 +360,8 @@ window.ENDPOINTS = {
     MAPPINGS_UNMATCHED: '/mappings/unmatched', // Added in 3.13.x
 
     // Request endpoints
-    REQUESTS: '/requests',
-    REQUESTS_RESET: '/requests/reset', // Deprecated
+    REQUESTS: '/requests', // DELETE to clear request journal
+    REQUESTS_RESET: '/requests/reset', // Deprecated legacy endpoint
     REQUESTS_COUNT: '/requests/count', // Requires POST
     REQUESTS_REMOVE: '/requests/remove',
     REQUESTS_FIND: '/requests/find', // Requires POST

@@ -96,7 +96,7 @@ sandbox.fetch = async () => ({
 
 const context = vm.createContext(sandbox);
 
-for (const script of ['js/core.js', 'js/features.js']) {
+for (const script of ['js/core.js', 'js/managers.js', 'js/demo-data.js', 'js/features/state.js', 'js/features/utils.js', 'js/features/filters.js', 'js/features/cache.js', 'js/features/mappings.js', 'js/features/requests.js', 'js/features/scenarios.js', 'js/features/recording.js', 'js/features/management.js', 'js/features/request-api.js', 'js/features/near-misses.js', 'js/features/wiremock-extras.js', 'js/features.js']) {
     const code = fs.readFileSync(path.join(__dirname, '..', script), 'utf8');
     vm.runInContext(code, context, { filename: script });
 }
