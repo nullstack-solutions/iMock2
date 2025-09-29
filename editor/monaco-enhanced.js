@@ -5596,14 +5596,59 @@ function buildJSONPointerLocator(text) {
 
 // Global initializer instance
 const monacoInitializer = new MonacoInitializer();
+let monacoInitializationPromise = null;
+let monacoReadyEventDispatched = false;
+
+function dispatchMonacoReadyEvent() {
+    if (monacoReadyEventDispatched) {
+        return;
+    }
+    monacoReadyEventDispatched = true;
+
+    if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') {
+        return;
+    }
+
+    let readyEvent = null;
+    if (typeof window.CustomEvent === 'function') {
+        readyEvent = new CustomEvent('monaco:ready', { detail: { initializer: monacoInitializer } });
+    } else if (typeof document !== 'undefined' && typeof document.createEvent === 'function') {
+        readyEvent = document.createEvent('Event');
+        readyEvent.initEvent('monaco:ready', false, false);
+        readyEvent.detail = { initializer: monacoInitializer };
+    }
+
+    if (readyEvent) {
+        window.dispatchEvent(readyEvent);
+    }
+}
+
+function bootstrapMonacoInitializer() {
+    if (!monacoInitializationPromise) {
+        try {
+            monacoInitializationPromise = monacoInitializer.initialize();
+        } catch (error) {
+            console.error(error);
+            monacoInitializationPromise = Promise.reject(error);
+        }
+
+        monacoInitializationPromise
+            .then(dispatchMonacoReadyEvent)
+            .catch((error) => {
+                console.error(error);
+            });
+    }
+
+    return monacoInitializationPromise;
+}
 
 // Auto-initialize when DOM is ready
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
-        monacoInitializer.initialize().catch(console.error);
+        bootstrapMonacoInitializer();
     });
 } else {
-    monacoInitializer.initialize().catch(console.error);
+    bootstrapMonacoInitializer();
 }
 
 // Export for use in other modules
