@@ -31,7 +31,7 @@ _Last updated: 2025-09-24_
 | ⚠️ | Cache service | `refreshImockCache`, `regenerateImockCache`, and the scheduled validation rebuild WireMock’s cache mapping and reset optimistic queues, but the flow still relies on live endpoints for full verification.【F:js/features.js†L1988-L2107】【F:js/features.js†L2584-L2662】 |
 | ⚠️ | Recording workflow | `startRecording`, `stopRecording`, and `takeRecordingSnapshot` successfully call the recording endpoints, yet `recording-url`, filters, and `recordings-list` in the UI remain unpopulated placeholders.【F:js/features.js†L1624-L1704】【F:index.html†L324-L413】 |
 | ⚠️ | Auto-refresh | Settings capture `auto-refresh` preferences, but no interval is started, so datasets refresh only on manual actions or cache rebuilds.【F:js/main.js†L250-L344】 |
-| 🚧 | Demo mode | `loadMockData` only raises an informational toast; it does not populate demo mappings or requests.【F:js/features.js†L2728-L2738】 |
+| ✅ | Demo mode | `DemoMode.createLoader` seeds the dashboard with fixture mappings and requests so the Demo button works without a backend.【F:js/features/demo.js†L1-L112】【F:js/features.js†L157-L189】 |
 | 🚧 | Import/export buttons | The Import/Export page wires buttons to `exportMappings`, `exportRequests`, `importMappings`, and `importAndReplace`, yet these functions are undefined and trigger errors when clicked.【F:index.html†L120-L211】【F:js/features.js†L2686-L2727】 |
 | 🚧 | Near-miss tooling | Helper functions (`findNearMissesForRequest`, `findNearMissesForPattern`, `getNearMissesForUnmatched`) exist without UI integration, so unmatched analysis is still manual.【F:js/features.js†L1708-L1760】 |
 
@@ -41,7 +41,7 @@ _Last updated: 2025-09-24_
 | ✅ | Monaco workspace | `MonacoInitializer` loads the editor, applies the WireMock schema, and creates single and diff editors with automatic layout support.【F:editor/monaco-enhanced.js†L1-L118】【F:editor/json-editor.html†L12-L158】 |
 | ✅ | JSON operations | Worker-backed helpers format, minify, validate, and diff JSON, with a fallback that still runs these actions in environments where workers are unavailable.【F:editor/monaco-enhanced.js†L94-L158】【F:editor/performance-optimizations.js†L1-L120】 |
 | ✅ | Compare mode & utilities | Toolbar controls switch between editor/compare, load files per side, export YAML, and toggle performance monitoring hooks for cache-aware editing workflows.【F:editor/json-editor.html†L20-L158】【F:editor/performance-optimizations.js†L122-L240】 |
-| ⚠️ | Templates & history | The Templates and History modals are present in the markup, but no script populates `templateGrid` or `historyList`, leaving both views empty.【F:editor/json-editor.html†L166-L215】 |
+| ✅ | Templates & history | `MonacoTemplateLibrary` feeds `renderTemplateLibrary`, while `MonacoInitializer` snapshots history entries to drive the modals and restore actions.【F:editor/monaco-template-library.js†L1-L214】【F:editor/monaco-enhanced.js†L585-L685】【F:editor/monaco-enhanced.js†L1059-L1160】 |
 | ⚠️ | Worker pool limits | `WorkerPool` skips instantiation when the app runs from `file://`, so heavy JSON operations fall back to the main thread in offline use.【F:editor/performance-optimizations.js†L121-L214】 |
 
 ## API coverage snapshot
@@ -61,9 +61,9 @@ _Last updated: 2025-09-24_
 ## Known gaps & follow-up items
 - Wire up the Recording tab inputs (`recording-url`, filters) and display results inside `recordings-list` instead of relying on toast notifications alone.【F:index.html†L324-L413】【F:js/features.js†L1624-L1704】
 - Implement Import/Export handlers or hide the buttons until the download/upload logic exists to prevent runtime errors.【F:index.html†L120-L211】【F:js/features.js†L2686-L2727】
-- Add a Demo Mode data loader so the dashboard can be exercised without a live WireMock server.【F:js/features.js†L2728-L2738】
+- Extend Demo Mode fixtures to cover scenarios, recordings, and cache health so offline demos mirror live behaviour.【F:js/features/demo.js†L1-L112】【F:js/demo-data.js†L1-L240】
 - Surface near-miss helper results in the UI to assist unmatched request triage.【F:js/features.js†L1708-L1760】
-- Populate the JSON editor Templates and History modals with data and controls for inserting fragments or viewing saved revisions.【F:editor/json-editor.html†L166-L215】
+- Grow the JSON editor template catalog and expose quick actions for pinning favourite snippets.【F:editor/monaco-template-library.js†L1-L214】【F:editor/monaco-enhanced.js†L1059-L1160】
 - Consider exposing cache state (current source, optimistic queue depth) directly in the dashboard for easier monitoring while the cache pipeline evolves.【F:js/features.js†L2480-L2662】
 
 ## Testing & manual verification

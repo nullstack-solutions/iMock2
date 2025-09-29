@@ -13,7 +13,7 @@
 | ⚠️ | Cache service depth | `refreshImockCache`, `regenerateImockCache`, and scheduled validation rebuild the cache mapping and reset optimistic queues, but the integration still needs live end-to-end validation.【F:js/features.js†L1988-L2107】【F:js/features.js†L2584-L2662】 |
 | ⚠️ | Recording workflow | `startRecording`, `stopRecording`, and `takeRecordingSnapshot` hit the endpoints, yet the Recording tab ignores input fields and never populates `recordings-list`.【F:js/features.js†L1624-L1704】【F:index.html†L324-L413】 |
 | ⚠️ | Auto-refresh toggle | Settings capture interval preferences, but no interval timer runs, so updates remain manual unless the cache pipeline triggers them.【F:js/main.js†L250-L344】 |
-| 🚧 | Demo mode | `loadMockData` only raises a toast and does not stage sample mappings or requests.【F:js/features.js†L2728-L2738】 |
+| ✅ | Demo mode | `DemoMode.createLoader` pumps fixture mappings/requests through the normal renderers so the Demo button works fully offline.【F:js/features/demo.js†L1-L112】【F:js/features.js†L157-L189】 |
 | 🚧 | Import/export buttons | UI buttons call undefined `exportMappings`, `exportRequests`, `importMappings`, and `importAndReplace`, resulting in console errors when clicked.【F:index.html†L120-L211】【F:js/features.js†L2686-L2727】 |
 | 🚧 | Near-miss helpers | `findNearMissesForRequest`, `findNearMissesForPattern`, and `getNearMissesForUnmatched` exist without UI glue, leaving unmatched analysis manual.【F:js/features.js†L1708-L1760】 |
 
@@ -29,7 +29,7 @@
 ## Backlog highlights
 - Wire the Recording tab inputs and list rendering to the existing helper responses.【F:index.html†L324-L413】【F:js/features.js†L1624-L1704】
 - Implement Import/Export handlers or hide the buttons until the workflows exist.【F:index.html†L120-L211】【F:js/features.js†L2686-L2727】
-- Stand up a **Demo Mode** mock client so that every dashboard tab, modal, and editor can be demonstrated without a backend. This includes seeding sample mappings/requests and routing Demo button flows through fixtures instead of live fetches.【F:js/features.js†L2728-L2738】
+- Broaden the **Demo Mode** fixtures to include scenarios, recordings, and cache timelines so offline demos show end-to-end flows.【F:js/features/demo.js†L1-L112】【F:js/demo-data.js†L1-L240】
 - Refactor oversized scripts (>1000 lines) into business-oriented modules that cap out around 800 lines, prioritising the 20% of code that drives 80% of usage (connection, mappings, requests, demo).【F:js/features.js†L1-L2738】【F:js/managers.js†L1-L870】
 - Surface near-miss helper outputs in the dashboard for unmatched triage.【F:js/features.js†L1708-L1760】
 - Harden history hashing (swap 32-bit FNV for 64-bit or `crypto.subtle.digest`) and consider optional diff storage to shrink exports.【F:editor/monaco-enhanced.js†L40-L360】
@@ -37,6 +37,6 @@
 
 ## Testing
 - **Automated** – Shift upcoming coverage toward business logic modules (store, cache, request/mapping services) with lightweight harnesses that run against mocked clients. Existing `node tests/cache-workflow.spec.js` remains the starting point.【F:tests/cache-workflow.spec.js†L1-L138】
-- **Demo harness** – Wire the Demo button to a mocked API client so all modals, editors, and notifications can be exercised offline during development.
+- **Demo harness** – Extend the new demo-mode tests and fixtures to cover advanced flows (scenarios, recordings) so offline demos stay in sync with production code.【F:js/features/demo.js†L1-L112】【F:tests/business-logic.spec.js†L1-L210】
 - **Manual smoke** – Follow the flow in `docs/README.md#manual-smoke-check` to cover connection, mappings CRUD, request log filters, scenarios, and JSON Studio tooling.【F:docs/README.md†L72-L111】
 

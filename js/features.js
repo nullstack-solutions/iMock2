@@ -154,32 +154,39 @@
             }
         };
 
+        const demoLoader = window.DemoMode && typeof window.DemoMode.createLoader === 'function'
+            ? window.DemoMode.createLoader({
+                markDemoModeActive,
+                notificationManager: NotificationManager,
+                fetchAndRenderMappings,
+                fetchAndRenderRequests,
+                isDatasetAvailable: () => window.DemoData?.isAvailable?.(),
+                getDataset: () => window.DemoData?.getDataset?.(),
+            })
+            : null;
+
         // Missing HTML onclick functions
         window.loadMockData = async () => {
-            if (!window.DemoData?.isAvailable?.() || !window.DemoData?.getDataset) {
-                NotificationManager.error('Demo dataset is not available in this build.');
-                return;
+            if (!demoLoader) {
+                NotificationManager.error('Demo mode is not available in this build.');
+                return {
+                    status: 'unavailable',
+                    mappingsLoaded: false,
+                    requestsLoaded: false,
+                    errors: [],
+                };
             }
 
-            const dataset = window.DemoData.getDataset();
-            if (!dataset) {
-                NotificationManager.error('Unable to load the demo dataset.');
-                return;
-            }
-
-            markDemoModeActive('manual-trigger');
             window.demoModeLastError = null;
+            const result = await demoLoader();
 
-            const [mappingsLoaded, requestsLoaded] = await Promise.all([
-                fetchAndRenderMappings(dataset.mappings || [], { source: 'demo' }),
-                fetchAndRenderRequests(dataset.requests || [], { source: 'demo' })
-            ]);
-
-            if (mappingsLoaded && requestsLoaded) {
-                NotificationManager.success('Demo data loaded locally. Explore the interface freely.');
-            } else {
-                NotificationManager.warning('Demo data only loaded partially. Check the console for details.');
+            if (result && result.status !== 'success') {
+                const [firstError] = Array.isArray(result.errors) ? result.errors : [];
+                window.demoModeLastError = firstError || result.status;
             }
+
+            window.demoModeLastResult = result;
+            return result;
         };
 
         window.updateScenarioState = async () => {
