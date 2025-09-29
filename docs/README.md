@@ -1,6 +1,8 @@
 # iMock Documentation
 
-_Last updated: 2025-09-24_
+_Last updated: 2025-10-09_
+
+> 📌 **Новый отчёт:** актуальный статус рефакторинга доступен в [docs/refactor-status.md](refactor-status.md).
 
 ## Quick start
 ### Prerequisites
