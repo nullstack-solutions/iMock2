@@ -117,15 +117,9 @@ const baseMapping = (id, extra = {}) => ({
 
 const getRenderedIds = () => (context.__lastRender || []).map((m) => m.id);
 
+const queuedTests = [];
 const runTest = (name, fn) => {
-    try {
-        fn();
-        console.log(`✔ ${name}`);
-    } catch (error) {
-        console.error(`✖ ${name}`);
-        console.error(error);
-        process.exit(1);
-    }
+    queuedTests.push({ name, fn });
 };
 
 runTest('create hydrates cache from globals before inserting new mapping', () => {
@@ -226,6 +220,52 @@ runTest('updateOptimisticCache confirms queue entries by default', () => {
     const stored = context.cacheManager.cache.get('z');
     assert.strictEqual(stored.response.status, 204);
 });
+runTest('background refresh filters pending deletions before rendering', async () => {
+    context.__lastRender = null;
+    context.cacheManager.cache.clear();
+    vm.runInContext('pendingDeletedIds.clear(); pendingDeletedIds.add("gone");', context);
 
-console.log('✅ Cache workflow pipeline tests passed');
-process.exit(0);
+    let snapshotCalls = 0;
+    let syncCalls = 0;
+    let indexCalls = 0;
+    context.refreshMappingTabSnapshot = () => { snapshotCalls += 1; };
+    context.syncCacheWithMappings = () => { syncCalls += 1; };
+    context.rebuildMappingIndex = () => { indexCalls += 1; };
+
+    const originalFetchAndRender = context.fetchAndRenderMappings;
+    let renderedPayload = null;
+    context.fetchAndRenderMappings = (data) => {
+        renderedPayload = Array.isArray(data) ? [...data] : data;
+        context.__lastRender = data;
+    };
+
+    const serverPayload = [baseMapping('gone'), baseMapping('keep')];
+    context.fetchMappingsFromServer = async () => ({ mappings: serverPayload });
+
+    await context.backgroundRefreshMappings(false);
+
+    assert.ok(Array.isArray(renderedPayload));
+    assert.strictEqual(renderedPayload.some(m => m.id === 'gone'), false);
+    assert.strictEqual(context.allMappings.some(m => m.id === 'gone'), false);
+    assert.ok(snapshotCalls > 0 && syncCalls > 0 && indexCalls > 0);
+
+    context.fetchAndRenderMappings = originalFetchAndRender;
+});
+
+(async () => {
+    for (const { name, fn } of queuedTests) {
+        try {
+            const result = fn();
+            if (result && typeof result.then === 'function') {
+                await result;
+            }
+            console.log(`✔ ${name}`);
+        } catch (error) {
+            console.error(`✖ ${name}`);
+            console.error(error);
+            process.exit(1);
+        }
+    }
+    console.log('✅ Cache workflow pipeline tests passed');
+    process.exit(0);
+})();

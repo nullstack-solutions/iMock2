@@ -546,7 +546,26 @@ window.backgroundRefreshMappings = async (useCache = false) => {
             data = await fetchMappingsFromServer({ force: true });
             source = 'direct';
         }
-        const incoming = data.mappings || [];
+        let incoming = data.mappings || [];
+
+        // Prevent pending deletions from flickering back in while server/cache sync completes
+        try {
+            if (window.pendingDeletedIds instanceof Set && window.pendingDeletedIds.size > 0) {
+                const before = incoming.length;
+                incoming = incoming.filter(mapping => {
+                    if (!mapping || typeof mapping !== 'object') {
+                        return true;
+                    }
+                    const mappingId = mapping.id || mapping.uuid;
+                    return !window.pendingDeletedIds.has(mappingId);
+                });
+                if (before !== incoming.length) {
+                    console.log('🧩 [CACHE] background refresh filtered pending-deleted mappings:', before - incoming.length);
+                }
+            }
+        } catch (pendingError) {
+            console.warn('🧩 [CACHE] Failed to filter pending deletions during background refresh:', pendingError);
+        }
         window.originalMappings = Array.isArray(incoming) ? incoming.filter(m => !isImockCacheMapping(m)) : [];
         refreshMappingTabSnapshot();
         syncCacheWithMappings(window.originalMappings);
