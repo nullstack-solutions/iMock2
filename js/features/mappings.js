@@ -177,7 +177,7 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
         return false;
     }
 
-    let renderSource = 'unknown';
+    let renderSource = null;
 
     try {
         if (mappingsToRender === null) {
@@ -248,7 +248,7 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                                 rebuildMappingIndex(window.originalMappings);
 
                                 // Re-render UI with merged complete data
-                                fetchAndRenderMappings(window.allMappings);
+                                fetchAndRenderMappings(window.allMappings, { source: 'direct' });
                             }
                         } catch (e) {
                             console.warn('🧩 [CACHE] Failed to load fresh data:', e);
@@ -321,12 +321,12 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
             // Update data source indicator in UI
             renderSource = dataSource;
         } else {
-            const sourceOverride = options?.source;
+            const sourceOverride = typeof options?.source === 'string' ? options.source : null;
             window.allMappings = Array.isArray(mappingsToRender) ? [...mappingsToRender] : [];
             window.originalMappings = [...window.allMappings];
             refreshMappingTabSnapshot();
             rebuildMappingIndex(window.originalMappings);
-            renderSource = sourceOverride || 'custom';
+            renderSource = sourceOverride;
             if (renderSource === 'demo') {
                 markDemoModeActive('manual-mappings');
             }
@@ -362,14 +362,17 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
             const urlB = b.request?.url || b.request?.urlPattern || b.request?.urlPath || '';
             return urlA.localeCompare(urlB);
         });
-        console.log(`📦 Mappings render from: ${renderSource} — ${sortedMappings.length} items`);
+        const logSource = renderSource || 'previous';
+        console.log(`📦 Mappings render from: ${logSource} — ${sortedMappings.length} items`);
         renderList(container, sortedMappings, {
             renderItem: renderMappingMarkup,
             getKey: getMappingRenderKey,
             getSignature: getMappingRenderSignature
         });
         updateMappingsCounter();
-        updateDataSourceIndicator(renderSource);
+        if (renderSource) {
+            updateDataSourceIndicator(renderSource);
+        }
         // Reapply mapping filters if any are active, preserving user's view
         try {
             const hasFilters = (document.getElementById(SELECTORS.MAPPING_FILTERS.METHOD)?.value || '')
@@ -543,7 +546,26 @@ window.backgroundRefreshMappings = async (useCache = false) => {
             data = await fetchMappingsFromServer({ force: true });
             source = 'direct';
         }
-        const incoming = data.mappings || [];
+        let incoming = data.mappings || [];
+
+        // Prevent pending deletions from flickering back in while server/cache sync completes
+        try {
+            if (window.pendingDeletedIds instanceof Set && window.pendingDeletedIds.size > 0) {
+                const before = incoming.length;
+                incoming = incoming.filter(mapping => {
+                    if (!mapping || typeof mapping !== 'object') {
+                        return true;
+                    }
+                    const mappingId = mapping.id || mapping.uuid;
+                    return !window.pendingDeletedIds.has(mappingId);
+                });
+                if (before !== incoming.length) {
+                    console.log('🧩 [CACHE] background refresh filtered pending-deleted mappings:', before - incoming.length);
+                }
+            }
+        } catch (pendingError) {
+            console.warn('🧩 [CACHE] Failed to filter pending deletions during background refresh:', pendingError);
+        }
         window.originalMappings = Array.isArray(incoming) ? incoming.filter(m => !isImockCacheMapping(m)) : [];
         refreshMappingTabSnapshot();
         syncCacheWithMappings(window.originalMappings);
