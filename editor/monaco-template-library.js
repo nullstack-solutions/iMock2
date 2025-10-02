@@ -233,6 +233,139 @@
                 tags: ['proxy', 'passthrough']
             }
         }
+    },
+    {
+        id: 'graphql-query',
+        title: 'GraphQL query stub',
+        description: 'Matches a GraphQL operation by name and echoes selected fields back to the client.',
+        category: 'integration',
+        highlight: 'POST · /graphql · response-template',
+        feature: {
+            path: ['request', 'bodyPatterns', 0, 'matchesJsonPath'],
+            label: 'request.bodyPatterns[0].matchesJsonPath'
+        },
+        content: {
+            name: 'GraphQL GetCustomer',
+            request: {
+                method: 'POST',
+                urlPath: '/graphql',
+                headers: {
+                    'Content-Type': {
+                        contains: 'application/json'
+                    }
+                },
+                bodyPatterns: [
+                    {
+                        matchesJsonPath: '$.query',
+                        expression: "$[?(@ =~ /query\\s+GetCustomer/)]"
+                    },
+                    {
+                        matchesJsonPath: '$.variables.customerId'
+                    }
+                ]
+            },
+            response: {
+                status: 200,
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                jsonBody: {
+                    data: {
+                        customer: {
+                            id: "{{jsonPath request.body '$.variables.customerId'}}",
+                            name: 'GraphQL Demo',
+                            tier: 'GOLD',
+                            updatedAt: "{{now offset='0' pattern=\"yyyy-MM-dd\"}}"
+                        }
+                    }
+                },
+                transformers: ['response-template']
+            }
+        }
+    },
+    {
+        id: 'soap-service',
+        title: 'SOAP service response',
+        description: 'Illustrates XPath body matching and XML response bodies for SOAP integrations.',
+        category: 'enterprise',
+        highlight: 'POST · /services/CustomerService',
+        feature: {
+            path: ['request', 'bodyPatterns', 0, 'matchesXPath'],
+            label: 'request.bodyPatterns[0].matchesXPath'
+        },
+        content: {
+            name: 'SOAP getCustomer',
+            request: {
+                method: 'POST',
+                urlPattern: '/services/CustomerService.*',
+                headers: {
+                    'Content-Type': {
+                        contains: 'text/xml'
+                    }
+                },
+                bodyPatterns: [
+                    {
+                        matchesXPath: "//soap:Envelope/soap:Body/ns:getCustomer",
+                        namespaces: {
+                            soap: 'http://schemas.xmlsoap.org/soap/envelope/',
+                            ns: 'http://example.org/customer'
+                        }
+                    }
+                ]
+            },
+            response: {
+                status: 200,
+                headers: {
+                    'Content-Type': 'text/xml; charset=UTF-8'
+                },
+                body: `<?xml version="1.0" encoding="UTF-8"?>\n<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">\n  <soap:Body>\n    <ns:getCustomerResponse xmlns:ns="http://example.org/customer">\n      <ns:customerId>{{xPath request.body "//ns:getCustomer/ns:customerId/text()"}}</ns:customerId>\n      <ns:status>ACTIVE</ns:status>\n    </ns:getCustomerResponse>\n  </soap:Body>\n</soap:Envelope>`
+            }
+        }
+    },
+    {
+        id: 'stateful-scenario',
+        title: 'Scenario driven stub',
+        description: 'Shows how to transition WireMock scenarios after a request has been served.',
+        category: 'advanced',
+        highlight: 'GET · /api/dashboard · scenarios',
+        feature: {
+            path: ['scenarioName'],
+            label: 'scenarioName'
+        },
+        content: {
+            name: 'Unlock dashboard after login',
+            scenarioName: 'user-journey',
+            requiredScenarioState: 'LoggedIn',
+            newScenarioState: 'DashboardUnlocked',
+            request: {
+                method: 'GET',
+                urlPath: '/api/dashboard'
+            },
+            response: {
+                status: 200,
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                jsonBody: {
+                    modules: ['accounts', 'insights', 'shortcuts'],
+                    welcome: 'Welcome back, scenario tester!'
+                }
+            },
+            postServeActions: {
+                webhook: {
+                    method: 'POST',
+                    url: 'http://localhost:9000/audit/logins',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        event: 'dashboard_unlocked',
+                        scenario: '{{scenarioName}}',
+                        state: '{{newScenarioState}}'
+                    })
+                }
+            }
+        }
     }
 ];
 

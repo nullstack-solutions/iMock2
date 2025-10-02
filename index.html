@@ -245,8 +245,9 @@
                             </div>
                         </div>
                     </div>
-                    <div style="display: flex; gap: var(--space-3); align-items: center;">
+                    <div style="display: flex; gap: var(--space-3); align-items: center; flex-wrap: wrap;">
                         <span id="data-source-indicator" class="badge badge-secondary" title="Current data source">Source: direct</span>
+                        <span id="auto-refresh-indicator" class="badge badge-secondary" title="Auto-refresh status">Auto-refresh: off</span>
                         <button class="btn btn-secondary" onclick="refreshMappings()">
                             <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-refresh"></use></svg>
                             <span>Refresh</span>
@@ -261,6 +262,16 @@
                             <span>Add Mapping</span>
                         </button>
                     </div>
+                </div>
+
+                <div id="cache-monitor" class="cache-monitor" role="status" aria-live="polite">
+                    <div class="cache-monitor-row">
+                        <span id="cache-monitor-mode" class="badge badge-secondary">Cache: disabled</span>
+                        <span>Last refresh: <strong id="cache-monitor-last-refresh">—</strong></span>
+                        <span>Optimistic queue: <strong id="cache-monitor-queue">0</strong></span>
+                        <span>Next validation: <strong id="cache-monitor-next-check">—</strong></span>
+                    </div>
+                    <div id="cache-monitor-footnote" class="cache-monitor-footnote">Waiting for first cache event…</div>
                 </div>
 
                 <div class="card" id="connection-setup">
@@ -459,7 +470,47 @@
                         </div>
                     </div>
                 </div>
-                
+
+                <div class="card card-static near-miss-card">
+                    <div class="card-header">
+                        <h3 class="card-title">
+                            <svg class="icon icon-inline" aria-hidden="true" focusable="false"><use href="#icon-search"></use></svg>
+                            Near-miss Analysis
+                        </h3>
+                    </div>
+                    <p class="form-help" style="margin-bottom: var(--space-4);">Compare unmatched traffic against your mappings to see why a request almost matched. Paste a payload or generate a summary straight from WireMock.</p>
+                    <div class="near-miss-grid">
+                        <div class="near-miss-column">
+                            <h4>Unmatched summary</h4>
+                            <p class="form-help">Fetch the latest near misses for all unmatched requests currently stored in the journal.</p>
+                            <button type="button" class="btn btn-secondary" onclick="analyzeUnmatchedNearMisses()">
+                                <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-trending-up"></use></svg>
+                                <span>Analyse unmatched requests</span>
+                            </button>
+                        </div>
+                        <div class="near-miss-column">
+                            <label class="form-label" for="near-miss-request-input">Request JSON</label>
+                            <textarea id="near-miss-request-input" class="form-input near-miss-input" rows="6" placeholder='{"request":{"method":"GET","url": "/api/example"}}'></textarea>
+                            <div class="near-miss-actions">
+                                <button type="button" class="btn btn-secondary btn-sm" onclick="analyzeRequestNearMiss()">
+                                    <span>Analyse request payload</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="near-miss-column">
+                            <label class="form-label" for="near-miss-pattern-input">Mapping pattern JSON</label>
+                            <textarea id="near-miss-pattern-input" class="form-input near-miss-input" rows="6" placeholder='{"request":{"urlPathPattern":"/api/.*"}}'></textarea>
+                            <div class="near-miss-actions">
+                                <button type="button" class="btn btn-secondary btn-sm" onclick="analyzePatternNearMiss()">
+                                    <span>Analyse pattern</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="near-miss-status" class="near-miss-status"></div>
+                    <div id="near-miss-results" class="near-miss-results"></div>
+                </div>
+
                 <div id="requests-loading" class="loading hidden">Loading requests...</div>
                 <div id="requests-list-container">
                     <div id="requests-empty" class="empty-state hidden">
@@ -620,39 +671,94 @@
                     <p style="margin-bottom: var(--space-4); color: var(--text-secondary);">Configure recording settings to capture real API calls and generate mappings automatically.</p>
                     <p class="form-help" style="margin-bottom: var(--space-4);">Need the classic recorder interface? Open <a id="recorder-link" href="" target="_blank" rel="noopener">configure host to enable link</a>.</p>
 
-                    <div class="form-row">
+                    <div class="recording-status-bar">
+                        <span class="badge badge-secondary" id="recording-indicator">Idle</span>
+                        <span class="recording-status-text" id="recording-count">No recordings yet</span>
+                        <div class="recording-status-actions">
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="refreshRecordingStatus()">
+                                <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-refresh"></use></svg>
+                                <span>Check status</span>
+                            </button>
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="handleRecordingSnapshot()">
+                                <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-save"></use></svg>
+                                <span>Snapshot</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="recording-form-grid">
                         <div class="form-group">
-                            <label class="form-label">Target URL</label>
-                            <input type="text" class="form-input" id="record-target-url" placeholder="https://api.example.com">
+                            <label class="form-label" for="recording-target">Target URL</label>
+                            <input type="text" class="form-input" id="recording-target" placeholder="https://api.example.com">
+                            <p class="form-help">Requests are proxied to this host while WireMock captures the traffic.</p>
                         </div>
                         <div class="form-group">
-                            <label class="form-label">Recording Mode</label>
-                            <select class="form-select" id="record-mode">
-                                <option value="record">Record</option>
-                                <option value="snapshot">Snapshot</option>
+                            <label class="form-label" for="recording-mode">Recording Mode</label>
+                            <select class="form-select" id="recording-mode">
+                                <option value="record">Continuous recording</option>
+                                <option value="snapshot">Snapshot from journal</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="recording-filter-method">HTTP method filter</label>
+                            <select class="form-select" id="recording-filter-method">
+                                <option value="ANY">Any method</option>
+                                <option value="GET">GET</option>
+                                <option value="POST">POST</option>
+                                <option value="PUT">PUT</option>
+                                <option value="PATCH">PATCH</option>
+                                <option value="DELETE">DELETE</option>
+                                <option value="HEAD">HEAD</option>
+                                <option value="OPTIONS">OPTIONS</option>
                             </select>
                         </div>
                     </div>
 
-                    <div style="display: flex; gap: var(--space-3); margin-top: var(--space-4);">
+                    <div class="recording-form-grid">
+                        <div class="form-group">
+                            <label class="form-label" for="recording-include-pattern">Include URL pattern</label>
+                            <input type="text" class="form-input" id="recording-include-pattern" placeholder=".*">
+                            <p class="form-help">Only matching URLs will be captured. Leave blank to capture everything.</p>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="recording-exclude-pattern">Exclude URL pattern</label>
+                            <input type="text" class="form-input" id="recording-exclude-pattern" placeholder="/internal/.*">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="recording-capture-headers">Capture headers</label>
+                            <input type="text" class="form-input" id="recording-capture-headers" placeholder="Authorization,X-Correlation-Id">
+                            <p class="form-help">Comma-separated header names to persist alongside the recording.</p>
+                        </div>
+                    </div>
+
+                    <div class="recording-options">
+                        <label class="form-label">
+                            <input type="checkbox" id="recording-capture-body"> Capture request and response bodies
+                        </label>
+                        <label class="form-label">
+                            <input type="checkbox" id="recording-persist" checked> Persist captured stubs to disk
+                        </label>
+                    </div>
+
+                    <div class="recording-actions">
                         <button class="btn btn-success" onclick="startRecording()">
                             <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-play"></use></svg>
-                            <span>Start Recording</span>
+                            <span>Start</span>
                         </button>
                         <button class="btn btn-danger" onclick="stopRecording()">
                             <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-stop"></use></svg>
-                            <span>Stop Recording</span>
+                            <span>Stop</span>
                         </button>
-                        <button class="btn btn-secondary" onclick="clearRecordings()">
+                        <button class="btn btn-secondary" id="clear-recordings-btn" onclick="clearRecordings()">
                             <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-trash"></use></svg>
-                            <span>Clear Recordings</span>
+                            <span>Clear recordings</span>
                         </button>
                     </div>
 
-                    <div id="recording-status" style="margin-top: var(--space-4);"></div>
-                    </div>
+                    <div id="recording-status" class="recording-status-message"></div>
+                </div>
 
-                <div id="recordings-list" style="margin-top: var(--space-6);">
+                <div id="recordings-list" class="recordings-list">
                     <!-- Recorded mappings will appear here -->
                 </div>
             </div>
