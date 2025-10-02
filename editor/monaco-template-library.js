@@ -233,6 +233,120 @@
                 tags: ['proxy', 'passthrough']
             }
         }
+    },
+    {
+        id: 'graphql-query',
+        title: 'GraphQL query stub',
+        description: 'Matches GraphQL operations by name and returns a canned payload with dynamic timestamps.',
+        category: 'graphql',
+        highlight: 'POST · /graphql · operationName',
+        feature: {
+            path: ['request', 'bodyPatterns', 0, 'matchesJsonPath'],
+            label: 'request.bodyPatterns[0].matchesJsonPath'
+        },
+        content: {
+            name: 'GraphQL product catalogue',
+            request: {
+                method: 'POST',
+                urlPath: '/graphql',
+                headers: {
+                    'Content-Type': {
+                        contains: 'application/json'
+                    }
+                },
+                bodyPatterns: [
+                    {
+                        matchesJsonPath: "$.operationName",
+                        expression: "$[?(@.operationName == 'GetProducts')]"
+                    }
+                ]
+            },
+            response: {
+                status: 200,
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                jsonBody: {
+                    data: {
+                        products: [
+                            { id: 'SKU-1', name: 'Premium plan', price: 49.99 },
+                            { id: 'SKU-2', name: 'Enterprise plan', price: 199.99 }
+                        ]
+                    },
+                    meta: {
+                        generatedAt: "{{now offset='0' pattern=\"yyyy-MM-dd'T'HH:mm:ssXXX\"}}"
+                    }
+                }
+            }
+        }
+    },
+    {
+        id: 'soap-fault-response',
+        title: 'SOAP fault response',
+        description: 'Demonstrates SOAPAction header matching with an XML fault payload and custom status.',
+        category: 'integration',
+        highlight: 'POST · /services/orderService · SOAP Fault',
+        feature: {
+            path: ['response', 'body'],
+            label: 'response.body (XML)'
+        },
+        content: {
+            name: 'SOAP order fault',
+            request: {
+                method: 'POST',
+                urlPath: '/services/orderService',
+                headers: {
+                    'Content-Type': {
+                        contains: 'text/xml'
+                    },
+                    'SOAPAction': {
+                        equalTo: 'createOrder'
+                    }
+                }
+            },
+            response: {
+                status: 500,
+                headers: {
+                    'Content-Type': 'text/xml; charset=utf-8'
+                },
+                body: '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">\n  <soap:Body>\n    <soap:Fault>\n      <faultcode>soap:Server</faultcode>\n      <faultstring>ORDER_ALREADY_EXISTS</faultstring>\n    </soap:Fault>\n  </soap:Body>\n</soap:Envelope>'
+            },
+            metadata: {
+                tags: ['soap', 'integration', 'fault']
+            }
+        }
+    },
+    {
+        id: 'scenario-sequenced-responses',
+        title: 'Scenario with sequenced responses',
+        description: 'Returns different bodies for the same endpoint using WireMock scenarios to mimic stateful workflows.',
+        category: 'stateful',
+        highlight: 'GET · /api/provisioning · scenario',
+        feature: {
+            path: ['newScenarioState'],
+            label: 'scenario progression'
+        },
+        content: {
+            name: 'Provisioning pipeline',
+            scenarioName: 'Provisioning',
+            requiredScenarioState: 'Started',
+            newScenarioState: 'Ready',
+            request: {
+                method: 'GET',
+                urlPath: '/api/provisioning/status'
+            },
+            response: {
+                status: 200,
+                jsonBody: {
+                    status: 'READY',
+                    readyAt: "{{now offset='0' pattern=\"yyyy-MM-dd\"}}"
+                }
+            },
+            postServeActions: {},
+            metadata: {
+                notes: 'Pair with a second stub using requiredScenarioState: Ready for completion response.'
+            }
+        }
     }
 ];
 

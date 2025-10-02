@@ -58,10 +58,13 @@ window.fetchAndRenderRequests = async (requestsToRender = null, options = {}) =>
         if (window.allRequests.length === 0) {
             emptyState.classList.remove('hidden');
             container.style.display = 'none';
+            if (typeof window.populateNearMissRequestOptions === 'function') {
+                try { window.populateNearMissRequestOptions(window.allRequests); } catch (err) { console.warn('Near-miss options update failed:', err); }
+            }
             updateRequestsCounter();
             return true;
         }
-        
+
         emptyState.classList.add('hidden');
         container.style.display = 'block';
 
@@ -73,6 +76,9 @@ window.fetchAndRenderRequests = async (requestsToRender = null, options = {}) =>
             getKey: getRequestRenderKey,
             getSignature: getRequestRenderSignature
         });
+        if (typeof window.populateNearMissRequestOptions === 'function') {
+            try { window.populateNearMissRequestOptions(window.allRequests); } catch (err) { console.warn('Near-miss options update failed:', err); }
+        }
         updateRequestsCounter();
         // Source indicator + log, mirroring mappings
         if (typeof updateRequestsSourceIndicator === 'function') updateRequestsSourceIndicator(reqSource);

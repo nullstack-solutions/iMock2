@@ -128,10 +128,14 @@ window.saveSettings = () => {
 
         // Broadcast settings update to any open editor windows
         broadcastSettingsUpdate(settings);
-        
+
+        if (typeof window.applyAutoRefreshSettings === 'function') {
+            window.applyAutoRefreshSettings(settings);
+        }
+
         NotificationManager.success('Settings saved successfully!');
         console.log('💾 Settings saved:', settings);
-        
+
     } catch (error) {
         console.error('Error saving settings:', error);
         NotificationManager.error('Failed to save settings');
@@ -163,7 +167,11 @@ window.resetSettings = () => {
 
         // Broadcast update
         broadcastSettingsUpdate(DEFAULT_SETTINGS);
-        
+
+        if (typeof window.applyAutoRefreshSettings === 'function') {
+            window.applyAutoRefreshSettings(DEFAULT_SETTINGS);
+        }
+
         NotificationManager.success('Settings reset to defaults!');
         console.log('🔄 Settings reset to defaults');
         
@@ -205,6 +213,10 @@ window.loadSettings = () => {
             } catch (linkError) {
                 console.warn('Failed to update recorder link:', linkError);
             }
+        }
+
+        if (typeof window.applyAutoRefreshSettings === 'function') {
+            window.applyAutoRefreshSettings(settings);
         }
 
     } catch (error) {
