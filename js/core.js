@@ -265,7 +265,7 @@ window.debounce = function debounce(fn, wait = 150, options = {}) {
         if (!(container instanceof Element) || !Array.isArray(items)) {
             return;
         }
-        const { renderItem, getKey, getSignature } = options;
+        const { renderItem, getKey, getSignature, onItemChanged, onItemRemoved } = options;
         if (typeof renderItem !== 'function') {
             return;
         }
@@ -295,6 +295,15 @@ window.debounce = function debounce(fn, wait = 150, options = {}) {
                 return;
             }
 
+            const previousSignature = existing ? existing.dataset.renderSignature || null : null;
+            if (existing && typeof onItemChanged === 'function' && previousSignature !== signature) {
+                try {
+                    onItemChanged(keyString, item, signature, previousSignature);
+                } catch (callbackError) {
+                    console.warn('renderList onItemChanged failed:', callbackError);
+                }
+            }
+
             const markup = renderItem(item);
             const node = toElement(markup);
             if (!node) {
@@ -307,7 +316,16 @@ window.debounce = function debounce(fn, wait = 150, options = {}) {
             existingNodes.delete(keyString);
         });
 
-        existingNodes.forEach(node => node.remove());
+        existingNodes.forEach((node, key) => {
+            node.remove();
+            if (typeof onItemRemoved === 'function') {
+                try {
+                    onItemRemoved(String(key), node);
+                } catch (callbackError) {
+                    console.warn('renderList onItemRemoved failed:', callbackError);
+                }
+            }
+        });
 
         const scheduleRender = () => {
             container.replaceChildren(fragment);
