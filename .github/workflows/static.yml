@@ -3,40 +3,35 @@ name: Deploy Pages (prod + test)
 
 on:
   push:
-    branches:
-      - "main"
-      - "test"
-  workflow_dispatch:
+    branches: [main, test]
 
-# Required permissions for GitHub Pages deployments
 permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-# Follow the GitHub Pages guidance for single-flight deployments
-concurrency:
-  group: pages
-  cancel-in-progress: false
+  contents: write
 
 jobs:
   deploy:
-    environment:
-      name: ${{ github.ref_name == 'main' && 'github-pages' || format('preview-{0}', github.ref_name) }}
-      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
+    env:
+      TARGET_DIR: ${{ github.ref_name == 'main' && '' || 'test' }} # ''=корень, иначе /test
+
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+      - uses: actions/checkout@v4
+
+      # TODO: вставь сборку, чтобы артефакты легли в ./dist
+      # пример для статического без сборки — копируем исходники в dist, исключая dist/.git/.github:
+      - name: Prepare files
+        run: |
+          rm -rf dist
+          mkdir -p dist
+          rsync -a --delete \
+            --exclude 'dist' --exclude '.git' --exclude '.github' \
+            ./ dist/
+
+      - name: Deploy to gh-pages/<TARGET_DIR>
+        uses: JamesIves/github-pages-deploy-action@v4
         with:
-          # Upload the repository contents (or replace with your build output directory)
-          path: '.'
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
-        with:
-          preview: ${{ github.ref_name != 'main' }}
+          branch: gh-pages
+          folder: dist
+          target-folder: ${{ env.TARGET_DIR }}
+          clean: true
+          token: ${{ secrets.GITHUB_TOKEN }}
