@@ -203,6 +203,61 @@ runTest('applyOptimisticMappingUpdate seeds cache from globals before writing', 
     assert.strictEqual(queued.op, 'create');
 });
 
+runTest('fresh optimistic mapping survives direct refresh until server returns it', async () => {
+    context.__lastRender = null;
+    context.cacheManager.cache.clear();
+    context.cacheManager.optimisticQueue.length = 0;
+
+    const baseline = baseMapping('baseline');
+    context.originalMappings = [baseline];
+    context.allMappings = [baseline];
+
+    const optimistic = baseMapping('shadow', {
+        metadata: { created: '2024-01-01T00:00:00Z', edited: '2024-02-02T00:00:00Z', source: 'ui' }
+    });
+
+    context.applyOptimisticMappingUpdate(optimistic);
+
+    // Simulate confirmation by clearing the optimistic queue before the server echoes the mapping back.
+    context.cacheManager.optimisticQueue.length = 0;
+
+    const isMapLike = (value) => value && Object.prototype.toString.call(value) === '[object Map]';
+
+    let shadowStore = context.optimisticShadowMappings;
+    assert.ok(isMapLike(shadowStore));
+    assert.strictEqual(shadowStore.has('shadow'), true);
+
+    let callCount = 0;
+    const serverSnapshots = [
+        [baseMapping('baseline')],
+        [
+            baseMapping('baseline'),
+            baseMapping('shadow', {
+                metadata: { created: '2024-01-01T00:00:00Z', edited: '2024-03-03T00:00:00Z', source: 'server' }
+            })
+        ]
+    ];
+
+    context.fetchMappingsFromServer = async () => {
+        const payload = serverSnapshots[Math.min(callCount++, serverSnapshots.length - 1)];
+        return { mappings: payload };
+    };
+
+    await context.backgroundRefreshMappings(false);
+    shadowStore = context.optimisticShadowMappings;
+    assert.ok(isMapLike(shadowStore));
+    assert.strictEqual(context.allMappings.some(m => m.id === 'shadow'), true);
+    assert.strictEqual(shadowStore.has('shadow'), true);
+
+    await context.backgroundRefreshMappings(false);
+    assert.strictEqual(callCount >= 2, true);
+    assert.strictEqual(context.allMappings.filter(m => m.id === 'shadow').length, 1);
+    shadowStore = context.optimisticShadowMappings;
+    if (isMapLike(shadowStore)) {
+        assert.strictEqual(shadowStore.has('shadow'), false);
+    }
+});
+
 runTest('updateOptimisticCache confirms queue entries by default', () => {
     context.__lastRender = null;
     context.cacheManager.cache.clear();
