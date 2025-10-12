@@ -17,8 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # TODO: вставь сборку, чтобы артефакты легли в ./dist
-      # пример для статического без сборки — копируем исходники в dist, исключая dist/.git/.github:
+      # Prepare files for deployment
       - name: Prepare files
         run: |
           rm -rf dist
@@ -27,11 +26,10 @@ jobs:
             --exclude 'dist' --exclude '.git' --exclude '.github' \
             ./ dist/
 
-      - name: Deploy to gh-pages/<TARGET_DIR>
-        uses: JamesIves/github-pages-deploy-action@v4
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
         with:
-          branch: gh-pages
-          folder: dist
-          target-folder: ${{ env.TARGET_DIR }}
-          clean: true
-          token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          destination_dir: ${{ env.TARGET_DIR }}
+          keep_files: false
