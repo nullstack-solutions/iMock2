@@ -1,6 +1,6 @@
 # iMock Documentation
 
-_Last updated: 2025-10-09_
+_Last updated: 2025-10-12_
 
 > 📌 **Новый отчёт:** актуальный статус рефакторинга доступен в [docs/refactor-status.md](refactor-status.md).
 
@@ -21,6 +21,11 @@ _Last updated: 2025-10-09_
 
 ### Automated regression
 - Run `node tests/cache-workflow.spec.js` from the project root. The spec loads `js/core.js` and `js/features.js` in a VM sandbox to assert that optimistic cache operations keep the cache map, optimistic queue, and rendered mappings in sync through create, update, and delete flows.
+
+## Deployment automation
+- Pushes to the `main` branch trigger the GitHub Pages workflow in `.github/workflows/static.yml`, deploying the latest build to the production `github-pages` environment with the canonical site URL.
+- Pushes to `staging` or `test` run the same workflow but flip the deploy step into preview mode. GitHub Pages generates an isolated preview URL per branch, exposed in the workflow summary, so you can validate changes without impacting production.
+- To publish a preview, push commits to `staging` (or `test`) or dispatch the workflow manually from the Actions tab while selecting the desired ref. Merge into `main` when you are satisfied to promote the change to production.
 
 ## Feature map
 ### Dashboard
@@ -78,4 +83,3 @@ _Last updated: 2025-10-09_
 3. Switch to **Request Log**, refresh, apply method/status filters, and clear the log (if permissions allow) to ensure the list rehydrates correctly.【F:index.html†L120-L238】【F:js/features.js†L1102-L1296】
 4. Visit **Scenarios**, refresh, change a scenario state, and use **Reset** to confirm Admin API hooks respond and re-render the list.【F:index.html†L240-L322】【F:js/features.js†L1488-L1556】
 5. Open the standalone JSON Studio, load a mapping or paste JSON, then use **Format**, **Validate**, **Compare**, and **Save** (if connected to WireMock) to exercise Monaco operations.【F:editor/json-editor.html†L12-L215】【F:editor/monaco-enhanced.js†L1-L158】
-
