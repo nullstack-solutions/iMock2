@@ -14,6 +14,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Prepare deployment files
+        run: |
+          mkdir -p _deploy
+          shopt -s extglob nullglob
+          cp -r *.html *.ico *.json editor styles js apps packages _deploy/ 2>/dev/null || true
+          rm -rf _deploy/.git* _deploy/.github
+
       # PROD → корень gh-pages
       - name: Deploy PROD to gh-pages root
         if: github.ref_name == 'main'
@@ -21,12 +28,10 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_branch: gh-pages
-          publish_dir: .
+          publish_dir: ./_deploy
           destination_dir: .
           keep_files: false
-          exclude_assets: '.git,.github'
           enable_jekyll: false
-          cname: ''
 
       # TEST → gh-pages/test
       - name: Deploy TEST to gh-pages/test
@@ -35,8 +40,7 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_branch: gh-pages
-          publish_dir: .
+          publish_dir: ./_deploy
           destination_dir: test
           keep_files: true
-          exclude_assets: '.git,.github'
           enable_jekyll: false
