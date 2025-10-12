@@ -2,7 +2,7 @@
 
 _Last updated: 2025-10-12_
 
-> 📌 **Новый отчёт:** актуальный статус рефакторинга доступен в [docs/refactor-status.md](refactor-status.md).
+> 📌 **New report:** actual statuses of refactoring available at [docs/refactor-status.md](refactor-status.md).
 
 ## Quick start
 ### Prerequisites
