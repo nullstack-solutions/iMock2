@@ -12,21 +12,26 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     env:
-      TARGET_DIR: ${{ github.ref_name == 'main' && '' || 'test' }} # '' = корень сайта
+      TARGET_DIR: ${{ github.ref_name == 'main' && '' || 'test' }} # ''=корень, иначе /test
+
     steps:
       - uses: actions/checkout@v4
 
-      # если есть сборка — собери в ./dist (вставь свои шаги)
+      # TODO: вставь сборку, чтобы артефакты легли в ./dist
+      # пример для статического без сборки — копируем исходники в dist, исключая dist/.git/.github:
       - name: Prepare files
         run: |
+          rm -rf dist
           mkdir -p dist
-          cp -r ./* dist/ || true
+          rsync -a --delete \
+            --exclude 'dist' --exclude '.git' --exclude '.github' \
+            ./ dist/
 
-      - name: Deploy to gh-pages
+      - name: Deploy to gh-pages/<TARGET_DIR>
         uses: JamesIves/github-pages-deploy-action@v4
         with:
           branch: gh-pages
           folder: dist
-          target-folder: ${{ env.TARGET_DIR }} # '' или 'test'
+          target-folder: ${{ env.TARGET_DIR }}
           clean: true
           token: ${{ secrets.GITHUB_TOKEN }}
