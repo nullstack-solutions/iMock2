@@ -372,8 +372,10 @@ function applyOptimisticShadowMappings(incoming) {
                 }
             }
         } else {
-            entry.ts = now;
             merged.unshift(entry.mapping);
+            if (!Number.isFinite(entry.ts)) {
+                entry.ts = now;
+            }
         }
     }
 
