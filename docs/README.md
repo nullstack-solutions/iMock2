@@ -23,9 +23,9 @@ _Last updated: 2025-10-12_
 - Run `node tests/cache-workflow.spec.js` from the project root. The spec loads `js/core.js` and `js/features.js` in a VM sandbox to assert that optimistic cache operations keep the cache map, optimistic queue, and rendered mappings in sync through create, update, and delete flows.
 
 ## Deployment automation
-- Pushes to the `main` branch trigger the GitHub Pages workflow in `.github/workflows/static.yml`, deploying the latest build to the production `github-pages` environment with the canonical site URL.
-- Pushes to `staging` or `test` run the same workflow but flip the deploy step into preview mode. GitHub Pages generates an isolated preview URL per branch, exposed in the workflow summary, so you can validate changes without impacting production.
-- To publish a preview, push commits to `staging` (or `test`) or dispatch the workflow manually from the Actions tab while selecting the desired ref. Merge into `main` when you are satisfied to promote the change to production.
+- Pushes to the `main` branch trigger the GitHub Pages workflow in `.github/workflows/static.yml`, deploying the latest build to the production `github-pages` environment with the canonical site URL. The workflow mirrors the [official GitHub Pages template](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site#publishing-with-a-custom-github-actions-workflow), including the single-flight concurrency guard recommended by GitHub.
+- Pushes to the `test` branch run the same workflow but toggle the deploy step into preview mode. GitHub Pages generates an isolated preview URL for the test branch, exposed in the workflow summary, so you can validate changes without impacting production.
+- To publish a preview, push commits to `test` or dispatch the workflow manually from the Actions tab while selecting the desired ref. Merge into `main` when you are satisfied to promote the change to production.
 
 ## Feature map
 ### Dashboard
@@ -35,7 +35,7 @@ _Last updated: 2025-10-12_
 | ✅ | Mapping management | `fetchAndRenderMappings`, `openEditModal`, and the optimistic cache helpers (`updateOptimisticCache`, `cacheManager`) fetch data, seed the cache from WireMock, keep counters aligned, and reconcile changes from the modal workflow.【F:js/features.js†L28-L249】【F:js/features.js†L2480-L2580】 |
 | ✅ | Request log tools | `fetchAndRenderRequests`, `renderRequestCard`, and `clearRequests` drive the list, filtering hooks, and cleanup actions exposed on the Request Log page.【F:js/features.js†L1102-L1296】【F:index.html†L144-L238】 |
 | ✅ | Scenario controls | `loadScenarios`, `setScenarioState`, and `resetAllScenarios` call the Admin API, render available states, and refresh after changes.【F:js/features.js†L1488-L1556】【F:index.html†L240-L322】 |
-| ⚠️ | Cache service | `refreshImockCache`, `regenerateImockCache`, and the scheduled validation rebuild WireMock’s cache mapping and reset optimistic queues, but the flow still relies on live endpoints for full verification.【F:js/features.js†L1988-L2107】【F:js/features.js†L2584-L2662】 |
+| ⚠️ | Cache service | `refreshImockCache`, `regenerateImockCache`, and the scheduled validation rebuild WireMock's cache mapping and reset optimistic queues, but the flow still relies on live endpoints for full verification.【F:js/features.js†L1988-L2107】【F:js/features.js†L2584-L2662】 |
 | ⚠️ | Recording workflow | `startRecording`, `stopRecording`, and `takeRecordingSnapshot` successfully call the recording endpoints, yet `recording-url`, filters, and `recordings-list` in the UI remain unpopulated placeholders.【F:js/features.js†L1624-L1704】【F:index.html†L324-L413】 |
 | ⚠️ | Auto-refresh | Settings capture `auto-refresh` preferences, but no interval is started, so datasets refresh only on manual actions or cache rebuilds.【F:js/main.js†L250-L344】 |
 | ✅ | Demo mode | `DemoMode.createLoader` seeds the dashboard with fixture mappings and requests so the Demo button works without a backend.【F:js/features/demo.js†L1-L112】【F:js/features.js†L157-L189】 |
