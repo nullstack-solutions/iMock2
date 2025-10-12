@@ -717,17 +717,6 @@ function getMappingRenderSignature(mapping) {
     const request = mapping.request || {};
     const response = mapping.response || {};
     const metadata = mapping.metadata || {};
-    const stringifyForSignature = (value) => {
-        if (value === undefined || value === null) {
-            return '';
-        }
-        try {
-            const str = typeof value === 'string' ? value : JSON.stringify(value);
-            return str.length > 300 ? `${str.slice(0, 300)}…` : str;
-        } catch {
-            return '';
-        }
-    };
     return [
         request.method || '',
         request.url || request.urlPattern || request.urlPath || request.urlPathPattern || '',
@@ -737,13 +726,7 @@ function getMappingRenderSignature(mapping) {
         mapping.priority ?? '',
         mapping.scenarioName || '',
         metadata.edited || metadata.created || '',
-        metadata.source || '',
-        stringifyForSignature(request.headers),
-        stringifyForSignature(request.bodyPatterns || request.body || ''),
-        stringifyForSignature(request.queryParameters),
-        stringifyForSignature(response.headers),
-        stringifyForSignature(response.jsonBody !== undefined ? response.jsonBody : response.body || ''),
-        stringifyForSignature(metadata.additionalMetadata || metadata.tags || metadata.description || '')
+        metadata.source || ''
     ].join('|');
 }
 

@@ -1,40 +1,16 @@
 'use strict';
 
-function isOptimisticShadowMap(value) {
-    return value && typeof value === 'object'
-        && typeof value.forEach === 'function'
-        && typeof value.size === 'number'
-        && Object.prototype.toString.call(value) === '[object Map]';
-}
-
-// Persist preview expansion state across re-renders so cache refreshes don't
-// unexpectedly collapse open mappings.
-if (!(window.mappingPreviewState instanceof Set)) {
-    window.mappingPreviewState = new Set();
-}
-
-// Track when we've surfaced a toast for an updated mapping to avoid spamming.
-if (!(window.mappingPreviewToastState instanceof Map)) {
-    window.mappingPreviewToastState = new Map();
-}
-
-// Preserve optimistic mapping payloads while the server catches up so that
-// background refreshes don't temporarily drop freshly edited/created items.
-if (!isOptimisticShadowMap(window.optimisticShadowMappings)) {
-    window.optimisticShadowMappings = new Map();
-}
-
 const UIComponents = {
     // Base card component replacing renderMappingCard and renderRequestCard
     createCard: (type, data, actions = []) => {
-        const { id, method, url, status, name, time, extras = {}, expanded = false } = data;
+        const { id, method, url, status, name, time, extras = {} } = data;
         return `
-            <div class="${type}-card${expanded ? ' is-expanded' : ''}" data-id="${Utils.escapeHtml(id)}">
+            <div class="${type}-card" data-id="${Utils.escapeHtml(id)}">
                 <div class="${type}-header" onclick="window.toggleDetails('${Utils.escapeHtml(id)}', '${type}')">
                     <div class="${type}-info">
                         <div class="${type}-top-line">
                             <span class="method-badge ${method.toLowerCase()}">
-                                <span class="collapse-arrow" id="arrow-${Utils.escapeHtml(id)}">${expanded ? '▼' : '▶'}</span> ${method}
+                                <span class="collapse-arrow" id="arrow-${Utils.escapeHtml(id)}">▶</span> ${method}
                             </span>
                             ${name ? `<span class="${type}-name">${Utils.escapeHtml(name)}</span>` : ''}
                             ${time ? `<span class="${type}-time">${time}</span>` : ''}
@@ -56,7 +32,7 @@ const UIComponents = {
                         `).join('')}
                     </div>
                 </div>
-                <div class="${type}-preview" id="preview-${Utils.escapeHtml(id)}" style="display: ${expanded ? 'block' : 'none'};">
+                <div class="${type}-preview" id="preview-${Utils.escapeHtml(id)}" style="display: none;">
                     ${extras.preview || ''}
                 </div>
             </div>`;
@@ -144,7 +120,6 @@ const UIComponents = {
         </div>`,
     
     toggleDetails: (id, type) => {
-        const normalizedId = String(id ?? '');
         const preview = document.getElementById(`preview-${id}`);
         const arrow = document.getElementById(`arrow-${id}`);
         const willShow = preview ? preview.style.display === 'none' : false;
@@ -155,20 +130,6 @@ const UIComponents = {
 
         if (arrow) {
             arrow.textContent = willShow ? '▼' : '▶';
-        }
-
-        if (type === 'mapping') {
-            const card = preview ? preview.closest(`.${type}-card`) : null;
-            if (card) {
-                card.classList.toggle('is-expanded', willShow);
-            }
-            if (window.mappingPreviewState instanceof Set) {
-                if (willShow) {
-                    window.mappingPreviewState.add(normalizedId);
-                } else {
-                    window.mappingPreviewState.delete(normalizedId);
-                }
-            }
         }
 
         UIComponents.setCardState(type, id, 'is-expanded', willShow);
@@ -202,240 +163,6 @@ const UIComponents = {
 // Make UIComponents functions globally accessible for HTML onclick handlers
 window.toggleFullContent = UIComponents.toggleFullContent;
 window.toggleDetails = UIComponents.toggleDetails;
-
-function getOptimisticShadowTtl() {
-    const ttl = Number(window.cacheManager?.optimisticTTL);
-    if (Number.isFinite(ttl) && ttl > 0) {
-        return Math.max(ttl, 45000);
-    }
-    const fallback = Number(window.DEFAULT_SETTINGS?.optimisticCacheAgeLimit);
-    if (Number.isFinite(fallback) && fallback > 0) {
-        return Math.max(fallback, 45000);
-    }
-    return 60000;
-}
-
-function cloneMappingForOptimisticShadow(mapping) {
-    if (!mapping || typeof mapping !== 'object') {
-        return null;
-    }
-    try {
-        if (typeof structuredClone === 'function') {
-            return structuredClone(mapping);
-        }
-    } catch {}
-    try {
-        return JSON.parse(JSON.stringify(mapping));
-    } catch {}
-    return { ...mapping };
-}
-
-function rememberOptimisticShadowMapping(mapping, operation) {
-    if (!isOptimisticShadowMap(window.optimisticShadowMappings)) {
-        window.optimisticShadowMappings = new Map();
-    }
-    if (!mapping || typeof mapping !== 'object') {
-        return;
-    }
-    const mappingId = mapping.id || mapping.uuid;
-    if (!mappingId) {
-        return;
-    }
-    const normalizedOperation = typeof operation === 'string' ? operation.toLowerCase() : 'update';
-    if (normalizedOperation === 'delete') {
-        window.optimisticShadowMappings.delete(String(mappingId));
-        return;
-    }
-    const payload = cloneMappingForOptimisticShadow(mapping);
-    if (!payload) {
-        return;
-    }
-    if (typeof payload.__optimisticTs !== 'number') {
-        Object.defineProperty(payload, '__optimisticTs', {
-            value: Date.now(),
-            writable: false,
-            enumerable: false,
-            configurable: true
-        });
-    }
-    window.optimisticShadowMappings.set(String(mappingId), {
-        ts: Date.now(),
-        op: normalizedOperation === 'create' ? 'create' : 'update',
-        mapping: payload
-    });
-}
-
-function getOptimisticShadowTimestamp(mapping) {
-    if (!mapping || typeof mapping !== 'object') {
-        return Number.NaN;
-    }
-    const metadata = mapping.metadata || {};
-    const candidates = [metadata.edited, metadata.updated, metadata.updatedAt, metadata.created, metadata.timestamp];
-    for (const candidate of candidates) {
-        if (!candidate) {
-            continue;
-        }
-        if (candidate instanceof Date) {
-            const value = candidate.getTime();
-            if (Number.isFinite(value)) {
-                return value;
-            }
-        }
-        const parsed = Date.parse(candidate);
-        if (Number.isFinite(parsed)) {
-            return parsed;
-        }
-        const numeric = Number(candidate);
-        if (Number.isFinite(numeric)) {
-            return numeric;
-        }
-    }
-    if (typeof mapping.__optimisticTs === 'number') {
-        return mapping.__optimisticTs;
-    }
-    return Number.NaN;
-}
-
-function applyOptimisticShadowMappings(incoming) {
-    if (!Array.isArray(incoming)) {
-        return incoming;
-    }
-    if (!isOptimisticShadowMap(window.optimisticShadowMappings) || window.optimisticShadowMappings.size === 0) {
-        return incoming;
-    }
-
-    const now = Date.now();
-    const ttl = getOptimisticShadowTtl();
-    const merged = [...incoming];
-
-    for (const [rawId, entry] of Array.from(window.optimisticShadowMappings.entries())) {
-        const normalizedId = String(rawId || '');
-        if (!entry || typeof entry !== 'object') {
-            window.optimisticShadowMappings.delete(normalizedId);
-            continue;
-        }
-
-        if (entry.mapping == null) {
-            const index = merged.findIndex(m => String(m?.id || m?.uuid || '') === normalizedId);
-            if (index !== -1) {
-                merged.splice(index, 1);
-            }
-            window.optimisticShadowMappings.delete(normalizedId);
-            continue;
-        }
-
-        if (!Number.isFinite(entry.ts) || now - entry.ts > ttl) {
-            window.optimisticShadowMappings.delete(normalizedId);
-            continue;
-        }
-
-        const index = merged.findIndex(m => String(m?.id || m?.uuid || '') === normalizedId);
-        if (index !== -1) {
-            let shouldUseOptimistic = false;
-            let shouldRetainEntry = true;
-
-            if (typeof getMappingRenderSignature === 'function') {
-                try {
-                    const liveSignature = getMappingRenderSignature(merged[index]);
-                    const optimisticSignature = getMappingRenderSignature(entry.mapping);
-                    if (liveSignature === optimisticSignature) {
-                        window.optimisticShadowMappings.delete(normalizedId);
-                        continue;
-                    }
-                } catch {}
-            }
-
-            if ((entry.op || 'update') === 'create') {
-                shouldRetainEntry = false;
-            } else {
-                const serverTs = getOptimisticShadowTimestamp(merged[index]);
-                const optimisticTs = getOptimisticShadowTimestamp(entry.mapping);
-                if (Number.isFinite(optimisticTs)) {
-                    if (!Number.isFinite(serverTs) || optimisticTs > serverTs) {
-                        shouldUseOptimistic = true;
-                    } else {
-                        shouldRetainEntry = false;
-                    }
-                } else {
-                    shouldRetainEntry = false;
-                }
-            }
-
-            if (shouldUseOptimistic) {
-                entry.ts = now;
-                merged[index] = entry.mapping;
-            } else {
-                if (!shouldRetainEntry) {
-                    window.optimisticShadowMappings.delete(normalizedId);
-                } else {
-                    entry.ts = now;
-                }
-            }
-        } else {
-            merged.unshift(entry.mapping);
-            if (!Number.isFinite(entry.ts)) {
-                entry.ts = now;
-            }
-        }
-    }
-
-    return merged;
-}
-
-function pruneOptimisticShadowMappings(currentList) {
-    if (!isOptimisticShadowMap(window.optimisticShadowMappings) || window.optimisticShadowMappings.size === 0) {
-        return;
-    }
-    if (!Array.isArray(currentList) || currentList.length === 0) {
-        return;
-    }
-    const byId = new Map();
-    currentList.forEach(item => {
-        if (item && typeof item === 'object') {
-            const id = String(item.id || item.uuid || '');
-            if (id) {
-                byId.set(id, item);
-            }
-        }
-    });
-    for (const [id, entry] of Array.from(window.optimisticShadowMappings.entries())) {
-        if (!byId.has(id)) {
-            continue;
-        }
-        if (!entry || typeof entry !== 'object') {
-            window.optimisticShadowMappings.delete(id);
-            continue;
-        }
-        if ((entry.op || 'update') === 'create') {
-            continue;
-        }
-        if (!entry.mapping || typeof entry.mapping !== 'object') {
-            window.optimisticShadowMappings.delete(id);
-            continue;
-        }
-        const live = byId.get(id);
-        if (!live) {
-            window.optimisticShadowMappings.delete(id);
-            continue;
-        }
-        try {
-            if (typeof getMappingRenderSignature === 'function' && entry.mapping) {
-                const liveSignature = getMappingRenderSignature(live);
-                const optimisticSignature = getMappingRenderSignature(entry.mapping);
-                if (liveSignature === optimisticSignature) {
-                    window.optimisticShadowMappings.delete(id);
-                    continue;
-                }
-            }
-        } catch {}
-
-        const liveTs = getOptimisticShadowTimestamp(live);
-        const optimisticTs = getOptimisticShadowTimestamp(entry.mapping);
-        if (Number.isFinite(liveTs) && (!Number.isFinite(optimisticTs) || liveTs >= optimisticTs)) {
-            window.optimisticShadowMappings.delete(id);
-        }
-    }
-}
 
 // --- DATA LOADING AND PRESENTATION ---
 
@@ -578,8 +305,6 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                 });
             }
 
-            incoming = applyOptimisticShadowMappings(incoming);
-
             // Hide any items marked as pending-deleted to avoid stale cache flicker
             try {
                 if (window.pendingDeletedIds && window.pendingDeletedIds.size > 0) {
@@ -593,7 +318,6 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
             syncCacheWithMappings(window.originalMappings);
             window.allMappings = window.originalMappings;
             rebuildMappingIndex(window.originalMappings);
-            pruneOptimisticShadowMappings(window.originalMappings);
             // Update data source indicator in UI
             renderSource = dataSource;
         } else {
@@ -602,7 +326,6 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
             window.originalMappings = [...window.allMappings];
             refreshMappingTabSnapshot();
             rebuildMappingIndex(window.originalMappings);
-            pruneOptimisticShadowMappings(window.originalMappings);
             renderSource = sourceOverride;
             if (renderSource === 'demo') {
                 markDemoModeActive('manual-mappings');
@@ -644,9 +367,7 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
         renderList(container, sortedMappings, {
             renderItem: renderMappingMarkup,
             getKey: getMappingRenderKey,
-            getSignature: getMappingRenderSignature,
-            onItemChanged: handleMappingItemChanged,
-            onItemRemoved: handleMappingItemRemoved
+            getSignature: getMappingRenderSignature
         });
         updateMappingsCounter();
         if (renderSource) {
@@ -761,7 +482,6 @@ window.applyOptimisticMappingUpdate = (mappingLike) => {
         const cacheAvailable = window.cacheManager && window.cacheManager.cache instanceof Map;
         const optimisticOperation = cacheAvailable && window.cacheManager.cache.has(mappingId) ? 'update' : 'create';
 
-        rememberOptimisticShadowMapping(mapping, optimisticOperation);
 
         // Use updateOptimisticCache if available, otherwise fallback to legacy/manual logic
         if (typeof updateOptimisticCache === 'function') {
@@ -828,8 +548,6 @@ window.backgroundRefreshMappings = async (useCache = false) => {
         }
         let incoming = data.mappings || [];
 
-        incoming = applyOptimisticShadowMappings(incoming);
-
         // Prevent pending deletions from flickering back in while server/cache sync completes
         try {
             if (window.pendingDeletedIds instanceof Set && window.pendingDeletedIds.size > 0) {
@@ -853,7 +571,6 @@ window.backgroundRefreshMappings = async (useCache = false) => {
         syncCacheWithMappings(window.originalMappings);
         window.allMappings = window.originalMappings;
         rebuildMappingIndex(window.originalMappings);
-        pruneOptimisticShadowMappings(window.originalMappings);
         updateDataSourceIndicator(source);
         // re-render without loading state
         fetchAndRenderMappings(window.allMappings);
@@ -875,16 +592,12 @@ window.renderMappingCard = function(mapping) {
         { class: 'danger', handler: 'deleteMapping', title: 'Delete', icon: 'trash' }
     ];
     
-    const normalizedId = String(mapping.id || mapping.uuid || '');
-    const isExpanded = window.mappingPreviewState instanceof Set && window.mappingPreviewState.has(normalizedId);
-
     const data = {
         id: mapping.id,
         method: mapping.request?.method || 'GET',
         url: mapping.request?.urlPath || mapping.request?.urlPathPattern || mapping.request?.urlPattern || mapping.request?.url || 'N/A',
         status: mapping.response?.status || 200,
         name: mapping.name || mapping.metadata?.name || `Mapping ${mapping.id.substring(0, 8)}`,
-        expanded: isExpanded,
         extras: {
             preview: UIComponents.createPreviewSection(`${Icons.render('request-in', { className: 'icon-inline' })} Request`, {
                 'Method': mapping.request?.method || 'GET',
@@ -1020,40 +733,6 @@ function updateRequestsSourceIndicator(source) {
     }
     el.textContent = text;
     el.className = cls;
-}
-
-function handleMappingItemChanged(id, mapping) {
-    const normalizedId = String(id || '');
-    if (!(window.mappingPreviewState instanceof Set) || !window.mappingPreviewState.has(normalizedId)) {
-        return;
-    }
-
-    if (window.mappingPreviewToastState instanceof Map) {
-        const now = Date.now();
-        const last = window.mappingPreviewToastState.get(normalizedId) || 0;
-        if (now - last < 4000) {
-            return;
-        }
-        window.mappingPreviewToastState.set(normalizedId, now);
-    }
-
-    const label = mapping?.name || mapping?.metadata?.name || normalizedId;
-    if (window.NotificationManager && typeof window.NotificationManager.info === 'function') {
-        window.NotificationManager.info(`Mapping "${label}" refreshed with latest data.`);
-    }
-}
-
-function handleMappingItemRemoved(id) {
-    const normalizedId = String(id || '');
-    if (window.mappingPreviewState instanceof Set) {
-        window.mappingPreviewState.delete(normalizedId);
-    }
-    if (window.mappingPreviewToastState instanceof Map) {
-        window.mappingPreviewToastState.delete(normalizedId);
-    }
-    if (isOptimisticShadowMap(window.optimisticShadowMappings)) {
-        window.optimisticShadowMappings.delete(normalizedId);
-    }
 }
 
 // Compact detail toggles via UIComponents
