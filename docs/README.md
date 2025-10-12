@@ -22,6 +22,11 @@ _Last updated: 2025-10-09_
 ### Automated regression
 - Run `node tests/cache-workflow.spec.js` from the project root. The spec loads `js/core.js` and `js/features.js` in a VM sandbox to assert that optimistic cache operations keep the cache map, optimistic queue, and rendered mappings in sync through create, update, and delete flows.
 
+## Deployment automation
+- Pushes to the `main` branch trigger the GitHub Pages workflow in `.github/workflows/static.yml`, deploying the latest build to the production `github-pages` environment with the canonical site URL.
+- Pushes to `staging` or `test` run the same workflow but flip the deploy step into preview mode. GitHub Pages generates an isolated preview URL per branch, exposed in the workflow summary, so you can validate changes without impacting production.
+- To publish a preview, push commits to `staging` (or `test`) or dispatch the workflow manually from the Actions tab while selecting the desired ref. Merge into `main` when you are satisfied to promote the change to production.
+
 ## Feature map
 ### Dashboard
 | Status | Area | Key implementation | Notes |
