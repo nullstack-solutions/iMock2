@@ -11,13 +11,9 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    env:
-      TARGET_DIR: ${{ github.ref_name == 'main' && '' || 'test' }} # ''=корень, иначе /test
-
     steps:
       - uses: actions/checkout@v4
 
-      # Prepare files for deployment
       - name: Prepare files
         run: |
           rm -rf dist
@@ -26,10 +22,24 @@ jobs:
             --exclude 'dist' --exclude '.git' --exclude '.github' \
             ./ dist/
 
-      - name: Deploy to GitHub Pages
+      # PROD → корень gh-pages
+      - name: Deploy PROD to gh-pages root
+        if: github.ref_name == 'main'
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
           publish_dir: ./dist
-          destination_dir: ${{ env.TARGET_DIR }}
+          destination_dir: .      # корень
+          keep_files: false
+
+      # TEST → gh-pages/test
+      - name: Deploy TEST to gh-pages/test
+        if: github.ref_name == 'test'
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: ./dist
+          destination_dir: test   # подкаталог
           keep_files: false
