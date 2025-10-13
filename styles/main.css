@@ -325,7 +325,6 @@ body[data-theme="light"] {
     padding: var(--space-4) var(--space-6) var(--space-6);
 }
 
-
 .sidebar {
     width: 280px;
     background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(29, 78, 216, 0.04)), var(--surface-panel);

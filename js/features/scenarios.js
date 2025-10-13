@@ -715,4 +715,3 @@ window.renderScenarios = () => {
         scenarioListHandlerAttached = true;
     }
 };
-
