@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Editor Debug</title>
+    <link rel="icon" type="image/x-icon" href="../favicon.ico">
+</head>
+<body>
+    <h1>Editor Debug Information</h1>
+    <div id="debug-info"></div>
+
+    <script>
+        const debug = document.getElementById('debug-info');
+
+        function addInfo(label, value) {
+            debug.innerHTML += `<div><strong>${label}:</strong> ${JSON.stringify(value, null, 2)}</div><hr>`;
+        }
+
+        // Check URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        addInfo('URL Parameters', Object.fromEntries(urlParams.entries()));
+
+        // Check localStorage
+        try {
+            const settings = localStorage.getItem('wiremock-settings');
+            addInfo('WireMock Settings', settings ? JSON.parse(settings) : 'Not found');
+        } catch (e) {
+            addInfo('WireMock Settings Error', e.message);
+        }
+
+        // Check if scripts loaded
+        addInfo('window.wiremockBaseUrl', window.wiremockBaseUrl);
+        addInfo('window.getMappingById', typeof window.getMappingById);
+        addInfo('window.apiFetch', typeof window.apiFetch);
+
+        // Test API call
+        if (window.wiremockBaseUrl && window.apiFetch) {
+            const mappingId = urlParams.get('mappingId') || 'test-id';
+            addInfo('Testing API Call', `Fetching /mappings/${mappingId}`);
+
+            window.apiFetch(`/mappings/${mappingId}`)
+                .then(result => {
+                    addInfo('API Call Success', result);
+                })
+                .catch(error => {
+                    addInfo('API Call Error', {
+                        message: error.message,
+                        status: error.status,
+                        statusText: error.statusText
+                    });
+                });
+        } else {
+            addInfo('API Not Ready', 'wiremockBaseUrl or apiFetch not available');
+        }
+    </script>
+</body>
+</html>
