@@ -89,6 +89,13 @@ function normalizeScenario(scenario, index) {
         scenario?._links?.state?.href
     );
 
+    const explicitResetEndpoint = normalizeScenarioLink(
+        scenario.resetEndpoint ||
+        scenario?._links?.['reset-state']?.href ||
+        scenario?._links?.resetState?.href ||
+        scenario?._links?.reset?.href
+    );
+
     return {
         ...scenario,
         id: identifier || decodedId || rawId,
@@ -102,7 +109,8 @@ function normalizeScenario(scenario, index) {
         state: normalizedState,
         possibleStates: normalizedStates,
         mappings: normalizedMappings,
-        stateEndpoint: explicitStateEndpoint
+        stateEndpoint: explicitStateEndpoint,
+        resetEndpoint: explicitResetEndpoint
     };
 }
 
@@ -351,6 +359,65 @@ window.setScenarioState = async (scenarioIdentifier, newState) => {
     }
 };
 
+async function resetScenarioState(scenarioIdentifier) {
+    if (typeof scenarioIdentifier !== 'string' || !scenarioIdentifier.trim()) {
+        NotificationManager.warning('Unable to determine which scenario to reset.');
+        return false;
+    }
+
+    const candidateIdentifier = scenarioIdentifier.trim();
+    const targetScenario = getScenarioByIdentifier(candidateIdentifier);
+
+    if (!targetScenario) {
+        NotificationManager.error('Scenario not found. Please refresh the list.');
+        return false;
+    }
+
+    const rawEndpointIdentifier = targetScenario?.identifier
+        || targetScenario?.decodedId
+        || targetScenario?.decodedName
+        || candidateIdentifier;
+    const endpointIdentifier = safeDecode(rawEndpointIdentifier) || rawEndpointIdentifier;
+
+    const displayName = targetScenario?.displayName
+        || targetScenario?.decodedName
+        || targetScenario?.name
+        || targetScenario?.decodedId
+        || targetScenario?.id
+        || safeDecode(candidateIdentifier)
+        || candidateIdentifier;
+
+    const directResetEndpoint = typeof targetScenario?.resetEndpoint === 'string'
+        ? targetScenario.resetEndpoint
+        : '';
+
+    const resetEndpointBuilder = typeof window.buildScenarioResetEndpoint === 'function'
+        ? window.buildScenarioResetEndpoint
+        : (name) => `${ENDPOINTS.SCENARIOS}/${encodeURIComponent(name)}/reset`;
+
+    const resetEndpoint = directResetEndpoint
+        || (endpointIdentifier ? resetEndpointBuilder(endpointIdentifier) : '');
+
+    if (!resetEndpoint) {
+        NotificationManager.error('Unable to determine the scenario reset endpoint.');
+        return false;
+    }
+
+    setScenariosLoading(true);
+
+    try {
+        await apiFetch(resetEndpoint, { method: 'POST' });
+        NotificationManager.success(`Scenario "${displayName}" has been reset.`);
+        await loadScenarios();
+        return true;
+    } catch (error) {
+        console.error('Reset scenario state error:', error);
+        NotificationManager.error(`Scenario reset failed: ${error.message}`);
+        setScenariosLoading(false);
+        return false;
+    }
+}
+
 window.renderScenarios = () => {
     const listEl = document.getElementById(SELECTORS.LISTS.SCENARIOS);
     const emptyEl = document.getElementById('scenarios-empty');
@@ -449,55 +516,58 @@ window.renderScenarios = () => {
         const isExpanded = scenarioExpansionState[scenarioKey] !== false;
         const scenarioKeyAttr = escapeHtml(scenarioKey);
 
-        const transitionButtons = possibleStates.reduce((acc, state) => {
-            if (!state || state === scenario.state) return acc;
+        const canTargetScenario = typeof scenarioIdentifier === 'string' && scenarioIdentifier.trim().length > 0;
+        const seenStates = new Set();
+        const displayStates = [];
+        const pushDisplayState = (state) => {
+            if (typeof state !== 'string') return;
+            const normalized = state.trim();
+            if (!normalized || seenStates.has(normalized)) return;
+            seenStates.add(normalized);
+            displayStates.push(normalized);
+        };
+
+        pushDisplayState(scenario.state || '');
+        possibleStates.forEach(pushDisplayState);
+
+        const statePillsMarkup = displayStates.map((state) => {
             const stateAttr = escapeHtml(state);
-            const displayedPossibleState = escapeHtml(state);
-            acc.push(`
+            const isCurrent = state === scenario.state;
+            const baseClass = 'scenario-state-pill';
+            if (isCurrent) {
+                return `<span class="${baseClass} is-active" data-current="true">${stateAttr}</span>`;
+            }
+            if (!canTargetScenario) {
+                return `<span class="${baseClass}">${stateAttr}</span>`;
+            }
+            return `
                 <button
                     type="button"
-                    class="btn btn-sm btn-secondary"
+                    class="${baseClass}"
                     data-scenario-action="transition"
                     data-scenario="${scenarioIdentifierAttr}"
                     data-state="${stateAttr}"
                 >
-                    → ${displayedPossibleState}
+                    ${stateAttr}
                 </button>
-            `);
-            return acc;
-        }, []);
+            `;
+        }).join('');
 
-        const resetButtonMarkup = `
+        const resetButtonMarkup = canTargetScenario ? `
             <button
                 type="button"
-                class="btn btn-sm btn-danger"
-                data-scenario-action="transition"
+                class="scenario-reset-btn"
+                data-scenario-action="reset"
                 data-scenario="${scenarioIdentifierAttr}"
-                data-state="Started"
             >
                 🔄 Reset
             </button>
-        `;
-
-        const quickActionButtons = [...transitionButtons, resetButtonMarkup].filter(Boolean);
-        const quickActionsMarkup = quickActionButtons.join('');
-        const summaryActionsMarkup = quickActionsMarkup || `
-            <span class="scenario-summary-empty">No quick actions</span>
-        `;
-        const bodyActionsMarkup = quickActionsMarkup ? `
-            <div class="scenario-actions">${quickActionsMarkup}</div>
         ` : '';
 
-        const possibleStatesMarkup = possibleStates.length ? `
-            <div class="scenario-possible-states">
-                <div class="scenario-section-title">Possible states</div>
-                <div class="scenario-state-badges">
-                    ${possibleStates.map((state) => {
-                        const isCurrent = state === scenario.state;
-                        const badgeClass = isCurrent ? 'badge badge-success' : 'badge badge-secondary';
-                        return `<span class="${badgeClass}">${escapeHtml(state)}</span>`;
-                    }).join('')}
-                </div>
+        const summaryControlsMarkup = (statePillsMarkup || resetButtonMarkup) ? `
+            <div class="scenario-summary-controls">
+                <div class="scenario-state-pill-list">${statePillsMarkup}</div>
+                ${resetButtonMarkup}
             </div>
         ` : '';
 
@@ -575,21 +645,19 @@ window.renderScenarios = () => {
                         <span class="scenario-toggle-icon">${toggleIcon}</span>
                     </button>
                     <div class="scenario-summary-main">
-                        <div class="scenario-name">${displayedName}</div>
-                        <div class="scenario-state">State: ${displayedState}</div>
-                    </div>
-                    <div class="scenario-summary-actions">
-                        ${summaryActionsMarkup}
+                        <div class="scenario-summary-header">
+                            <div class="scenario-name">${displayedName}</div>
+                            <div class="scenario-state">State: ${displayedState}</div>
+                        </div>
+                        ${summaryControlsMarkup}
                     </div>
                 </div>
                 <div class="scenario-body">
                     ${descriptionMarkup}
-                    ${possibleStatesMarkup}
                     <div class="scenario-mappings">
                         <div class="scenario-section-title">Stub mappings</div>
                         ${mappingListMarkup}
                     </div>
-                    ${bodyActionsMarkup}
                 </div>
             </div>
         `;
@@ -625,6 +693,18 @@ window.renderScenarios = () => {
                 } finally {
                     button.disabled = false;
                 }
+            } else if (action === 'reset') {
+                const scenarioIdentifierValue = button.dataset.scenario || '';
+                if (!scenarioIdentifierValue.trim()) {
+                    return;
+                }
+
+                button.disabled = true;
+                try {
+                    await resetScenarioState(scenarioIdentifierValue);
+                } finally {
+                    button.disabled = false;
+                }
             } else if (action === 'edit-mapping') {
                 const mappingIdValue = button.dataset.mappingId;
                 if (mappingIdValue && typeof window.openEditModal === 'function') {
@@ -635,4 +715,3 @@ window.renderScenarios = () => {
         scenarioListHandlerAttached = true;
     }
 };
-

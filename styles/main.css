@@ -325,7 +325,6 @@ body[data-theme="light"] {
     padding: var(--space-4) var(--space-6) var(--space-6);
 }
 
-
 .sidebar {
     width: 280px;
     background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(29, 78, 216, 0.04)), var(--surface-panel);
@@ -530,7 +529,7 @@ body[data-theme="light"] {
 
 .scenario-summary {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: var(--space-4);
     flex-wrap: wrap;
     padding-bottom: var(--space-2);
@@ -545,22 +544,95 @@ body[data-theme="light"] {
 .scenario-summary-main {
     display: flex;
     flex-direction: column;
-    gap: var(--space-1);
+    gap: var(--space-2);
     flex: 1;
     min-width: 0;
 }
 
-.scenario-summary-actions {
+.scenario-summary-header {
     display: flex;
     flex-wrap: wrap;
-    justify-content: flex-end;
-    gap: var(--space-2);
-    margin-left: auto;
+    align-items: baseline;
+    gap: var(--space-3);
 }
 
-.scenario-summary-empty {
+.scenario-summary-header .scenario-name {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.scenario-summary-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.scenario-state-pill-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.scenario-state-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.35rem 0.85rem;
+    border-radius: 999px;
+    border: 1px solid var(--border-secondary);
+    background: var(--bg-tertiary);
     color: var(--text-secondary);
     font-size: var(--font-size-sm);
+    line-height: 1.1;
+    transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
+    text-decoration: none;
+}
+
+button.scenario-state-pill {
+    cursor: pointer;
+}
+
+button.scenario-state-pill:hover,
+button.scenario-state-pill:focus {
+    background: rgba(var(--primary-500-rgb), 0.12);
+    border-color: var(--border-accent);
+    color: var(--text-primary);
+    box-shadow: 0 0 0 1px rgba(var(--primary-500-rgb), 0.35);
+    outline: none;
+}
+
+.scenario-state-pill.is-active {
+    background: rgba(var(--primary-500-rgb), 0.18);
+    border-color: rgba(var(--primary-500-rgb), 0.45);
+    color: var(--text-primary);
+    cursor: default;
+}
+
+.scenario-reset-btn {
+    border: 1px solid var(--border-secondary);
+    background: transparent;
+    color: var(--text-secondary);
+    padding: 0.35rem 0.85rem;
+    border-radius: 999px;
+    font-size: var(--font-size-sm);
+    line-height: 1.1;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    cursor: pointer;
+    transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.scenario-reset-btn:hover,
+.scenario-reset-btn:focus {
+    background: rgba(var(--primary-500-rgb), 0.12);
+    border-color: var(--border-accent);
+    color: var(--primary-300);
+    box-shadow: 0 0 0 1px rgba(var(--primary-500-rgb), 0.25);
+    outline: none;
 }
 
 .scenario-toggle-btn {
@@ -623,7 +695,6 @@ body[data-theme="light"] {
     margin-bottom: var(--space-2);
 }
 
-.scenario-state-badges,
 .scenario-mapping-states {
     display: flex;
     flex-wrap: wrap;
@@ -671,12 +742,6 @@ body[data-theme="light"] {
     border-radius: var(--radius-md);
     color: var(--text-secondary);
     font-size: var(--font-size-sm);
-}
-
-.scenario-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-2);
 }
 
 [data-theme="dark"] .scenario-item {
