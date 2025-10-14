@@ -63,8 +63,11 @@ function normalizeScenario(scenario, index) {
     const decodedId = safeDecode(rawId);
     const decodedName = safeDecode(rawName);
 
-    const identifier = decodedId || decodedName || rawId || rawName || '';
-    const displayName = decodedName || decodedId || rawName || rawId || `Scenario ${index + 1}`;
+    const resolvedName = decodedName || rawName || '';
+    const resolvedId = decodedId || rawId || '';
+
+    const identifier = resolvedName || resolvedId || rawName || rawId || '';
+    const displayName = resolvedName || resolvedId || rawName || rawId || `Scenario ${index + 1}`;
 
     const normalizedState = safeDecode(scenario.state) || scenario.state || 'Started';
     const normalizedStates = Array.isArray(scenario.possibleStates)
@@ -106,6 +109,7 @@ function normalizeScenario(scenario, index) {
         originalName: rawName || decodedName,
         decodedId,
         decodedName,
+        endpointName: resolvedName || resolvedId || '',
         state: normalizedState,
         possibleStates: normalizedStates,
         mappings: normalizedMappings,
@@ -119,6 +123,34 @@ function normalizeScenarioList(list) {
     return list
         .map((scenario, index) => normalizeScenario(scenario, index))
         .filter(Boolean);
+}
+
+function resolveScenarioIdentifierValue(scenario) {
+    if (!scenario || typeof scenario !== 'object') {
+        return '';
+    }
+
+    const candidates = [
+        scenario.identifier,
+        scenario.endpointName,
+        scenario.decodedName,
+        scenario.name,
+        scenario.originalName,
+        scenario.decodedId,
+        scenario.id,
+        scenario.originalId
+    ];
+
+    for (const candidate of candidates) {
+        if (typeof candidate === 'string') {
+            const trimmed = candidate.trim();
+            if (trimmed) {
+                return trimmed;
+            }
+        }
+    }
+
+    return '';
 }
 
 function getScenarioByIdentifier(identifier) {
@@ -136,12 +168,13 @@ function getScenarioByIdentifier(identifier) {
     return scenarios.find((scenario) => {
         const candidates = [
             scenario?.identifier,
-            scenario?.id,
-            scenario?.name,
-            scenario?.decodedId,
+            scenario?.endpointName,
             scenario?.decodedName,
-            scenario?.originalId,
-            scenario?.originalName
+            scenario?.name,
+            scenario?.originalName,
+            scenario?.decodedId,
+            scenario?.id,
+            scenario?.originalId
         ];
 
         return candidates.some((candidate) => {
@@ -273,14 +306,18 @@ window.setScenarioState = async (scenarioIdentifier, newState) => {
 
     const targetScenario = getScenarioByIdentifier(candidateIdentifier);
     const rawEndpointIdentifier = targetScenario?.identifier
-        || targetScenario?.decodedId
+        || targetScenario?.endpointName
         || targetScenario?.decodedName
+        || targetScenario?.name
+        || targetScenario?.decodedId
+        || targetScenario?.id
         || candidateIdentifier;
     const endpointIdentifier = safeDecode(rawEndpointIdentifier) || rawEndpointIdentifier;
 
     const displayName = targetScenario?.displayName
         || targetScenario?.decodedName
         || targetScenario?.name
+        || targetScenario?.originalName
         || targetScenario?.decodedId
         || targetScenario?.id
         || safeDecode(candidateIdentifier)
@@ -316,8 +353,11 @@ window.setScenarioState = async (scenarioIdentifier, newState) => {
 
     if (scenarioSelect) {
         const selectValue = targetScenario?.identifier
-            || targetScenario?.decodedId
+            || targetScenario?.endpointName
             || targetScenario?.decodedName
+            || targetScenario?.name
+            || targetScenario?.decodedId
+            || targetScenario?.id
             || endpointIdentifier;
         scenarioSelect.value = selectValue;
         updateScenarioStateSuggestions(selectValue);
@@ -374,14 +414,18 @@ async function resetScenarioState(scenarioIdentifier) {
     }
 
     const rawEndpointIdentifier = targetScenario?.identifier
-        || targetScenario?.decodedId
+        || targetScenario?.endpointName
         || targetScenario?.decodedName
+        || targetScenario?.name
+        || targetScenario?.decodedId
+        || targetScenario?.id
         || candidateIdentifier;
     const endpointIdentifier = safeDecode(rawEndpointIdentifier) || rawEndpointIdentifier;
 
     const displayName = targetScenario?.displayName
         || targetScenario?.decodedName
         || targetScenario?.name
+        || targetScenario?.originalName
         || targetScenario?.decodedId
         || targetScenario?.id
         || safeDecode(candidateIdentifier)
@@ -453,9 +497,7 @@ window.renderScenarios = () => {
     if (selectEl) {
         const options = ['<option value="">Select Scenario</option>']
             .concat(normalizedScenarios.map((scenario) => {
-                const scenarioIdentifier = typeof scenario?.identifier === 'string'
-                    ? scenario.identifier
-                    : (typeof scenario?.decodedId === 'string' ? scenario.decodedId : (typeof scenario?.id === 'string' ? scenario.id : ''));
+                const scenarioIdentifier = resolveScenarioIdentifierValue(scenario);
                 const scenarioLabel = typeof scenario?.displayName === 'string'
                     ? scenario.displayName
                     : (typeof scenario?.name === 'string' ? scenario.name : (typeof scenario?.decodedName === 'string' ? scenario.decodedName : 'Unnamed scenario'));
@@ -467,12 +509,7 @@ window.renderScenarios = () => {
         if (previousSelection) {
             const matchedScenario = getScenarioByIdentifier(previousSelection);
             if (matchedScenario) {
-                selectEl.value = matchedScenario.identifier
-                    || matchedScenario.decodedId
-                    || matchedScenario.decodedName
-                    || matchedScenario.id
-                    || matchedScenario.name
-                    || '';
+                selectEl.value = resolveScenarioIdentifierValue(matchedScenario) || '';
             }
         }
     }
@@ -490,9 +527,7 @@ window.renderScenarios = () => {
 
     listEl.style.display = '';
     listEl.innerHTML = normalizedScenarios.map((scenario, index) => {
-        const scenarioIdentifier = typeof scenario?.identifier === 'string'
-            ? scenario.identifier
-            : (typeof scenario?.decodedId === 'string' ? scenario.decodedId : (typeof scenario?.id === 'string' ? scenario.id : ''));
+        const scenarioIdentifier = resolveScenarioIdentifierValue(scenario);
         const scenarioIdentifierAttr = escapeHtml(scenarioIdentifier);
         const displayLabel = typeof scenario?.displayName === 'string'
             ? scenario.displayName
