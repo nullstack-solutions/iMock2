@@ -669,7 +669,7 @@ window.apiFetch = async (endpoint, options = {}) => {
 // Page navigation helpers
 window.showPage = (pageId, element) => {
     document.querySelectorAll('.main-content > div[id$="-page"]').forEach(p => p.classList.add('hidden'));
-    
+
     const targetPage = document.getElementById(SELECTORS.PAGES[pageId.toUpperCase()]);
     if (targetPage) {
         targetPage.classList.remove('hidden');
@@ -677,17 +677,76 @@ window.showPage = (pageId, element) => {
         console.warn(`Page not found: ${pageId}`);
         return;
     }
-    
+
     document.querySelectorAll('.sidebar .nav-item').forEach(i => i.classList.remove('active'));
     if (element) {
         element.classList.add('active');
     }
-    
+
     // Removed forced refresh on tab switch - data will only refresh:
     // 1. On initial connection (connectToWireMock)
     // 2. By manual refresh buttons
     // 3. Via auto-refresh interval (if enabled)
     // This prevents unnecessary API calls when switching tabs
+};
+
+// Sidebar collapse helpers
+const SIDEBAR_COLLAPSED_CLASS = 'sidebar-collapsed';
+const SIDEBAR_STATE_STORAGE_KEY = 'imock-sidebar-state';
+
+const updateSidebarToggleButton = (isCollapsed) => {
+    const toggleButton = document.querySelector('.sidebar-toggle');
+    if (!toggleButton) {
+        return;
+    }
+
+    const label = isCollapsed ? 'Expand sidebar' : 'Collapse sidebar';
+    toggleButton.setAttribute('aria-expanded', String(!isCollapsed));
+    toggleButton.setAttribute('aria-label', label);
+    toggleButton.setAttribute('title', label);
+
+    const iconUse = toggleButton.querySelector('use');
+    if (iconUse) {
+        iconUse.setAttribute('href', isCollapsed ? '#icon-sidebar-expand' : '#icon-sidebar-collapse');
+    }
+};
+
+const applySidebarState = (shouldCollapse, { persist = true } = {}) => {
+    const bodyElement = document.body;
+    if (!bodyElement) {
+        return;
+    }
+
+    bodyElement.classList.toggle(SIDEBAR_COLLAPSED_CLASS, shouldCollapse);
+    updateSidebarToggleButton(shouldCollapse);
+
+    if (!persist) {
+        return;
+    }
+
+    try {
+        localStorage.setItem(SIDEBAR_STATE_STORAGE_KEY, shouldCollapse ? 'collapsed' : 'expanded');
+    } catch (error) {
+        console.warn('Unable to persist sidebar state:', error);
+    }
+};
+
+window.toggleSidebar = () => {
+    const isCollapsed = document.body?.classList.contains(SIDEBAR_COLLAPSED_CLASS);
+    applySidebarState(!isCollapsed);
+};
+
+window.initializeSidebarPreference = () => {
+    let storedState = null;
+
+    try {
+        storedState = localStorage.getItem(SIDEBAR_STATE_STORAGE_KEY);
+    } catch (error) {
+        console.warn('Unable to read sidebar state from storage:', error);
+    }
+
+    const shouldCollapse = storedState === 'collapsed';
+    applySidebarState(shouldCollapse, { persist: false });
 };
 
 // Modal helpers
