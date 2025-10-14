@@ -120,7 +120,7 @@ window.SELECTORS = {
         TIMEOUT: 'settings-timeout',
         AUTO_REFRESH: 'auto-refresh',
         THEME: 'theme-select',
-        AUTH_HEADER: 'auth-header',
+        CUSTOM_HEADERS: 'custom-headers',
         CACHE_ENABLED: 'cache-enabled'
     },
 
@@ -405,6 +405,78 @@ window.ENDPOINTS = {
     SHUTDOWN: '/shutdown'
 };
 
+const ensureCustomHeaderObject = (value) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        return {};
+    }
+
+    return Object.keys(value).reduce((acc, key) => {
+        const normalizedKey = String(key).trim();
+        if (!normalizedKey) {
+            return acc;
+        }
+        acc[normalizedKey] = value[key];
+        return acc;
+    }, {});
+};
+
+const migrateLegacySettings = (rawSettings) => {
+    if (!rawSettings || typeof rawSettings !== 'object' || Array.isArray(rawSettings)) {
+        return {};
+    }
+
+    const normalized = { ...rawSettings };
+    const customHeaders = ensureCustomHeaderObject(normalized.customHeaders);
+
+    if (typeof normalized.authHeader === 'string' && normalized.authHeader.trim()) {
+        const authValue = normalized.authHeader.trim();
+        if (!Object.prototype.hasOwnProperty.call(customHeaders, 'Authorization')) {
+            customHeaders.Authorization = authValue;
+        }
+        delete normalized.authHeader;
+        if (!normalized.customHeadersRaw || typeof normalized.customHeadersRaw !== 'string' || !normalized.customHeadersRaw.trim()) {
+            try {
+                normalized.customHeadersRaw = JSON.stringify(customHeaders, null, 2);
+            } catch (error) {
+                console.warn('Failed to serialize migrated custom headers:', error);
+                normalized.customHeadersRaw = '';
+            }
+        }
+    }
+
+    normalized.customHeaders = customHeaders;
+
+    if (typeof normalized.customHeadersRaw !== 'string') {
+        normalized.customHeadersRaw = '';
+    }
+
+    if (normalized.autoConnect === undefined) {
+        normalized.autoConnect = true;
+    } else {
+        normalized.autoConnect = normalized.autoConnect !== false;
+    }
+
+    return normalized;
+};
+
+window.normalizeWiremockSettings = (settings) => migrateLegacySettings(settings);
+
+window.readWiremockSettings = () => {
+    try {
+        const raw = localStorage.getItem('wiremock-settings');
+        if (!raw) {
+            return {};
+        }
+        const parsed = JSON.parse(raw);
+        return migrateLegacySettings(parsed);
+    } catch (error) {
+        console.warn('Failed to read stored settings, returning empty object:', error);
+        return {};
+    }
+};
+
+window.getWiremockSettings = window.readWiremockSettings;
+
 // Helper to build the documented scenario state endpoint
 window.buildScenarioStateEndpoint = (scenarioName) => {
     const rawName = typeof scenarioName === 'string' ? scenarioName : '';
@@ -419,8 +491,7 @@ window.buildScenarioStateEndpoint = (scenarioName) => {
 let wiremockBaseUrl = '';
 // Use centralized default if available, fallback to hardcoded value
 let requestTimeout = window.DEFAULT_SETTINGS?.requestTimeout ? parseInt(window.DEFAULT_SETTINGS.requestTimeout) : 69000;
-let authHeader = ''; // Authorization header for all API requests
-window.authHeader = authHeader; // Make globally accessible
+window.customHeaders = ensureCustomHeaderObject(window.DEFAULT_SETTINGS?.customHeaders || {});
 window.startTime = null; // Make globally accessible for uptime tracking
 window.uptimeInterval = null; // Make globally accessible for uptime tracking
 let autoRefreshInterval = null;
@@ -480,7 +551,7 @@ window.apiFetch = async (endpoint, options = {}) => {
     const controller = new AbortController();
 
     // Read timeout from settings, fallback to centralized default
-    const timeoutSettings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
+    const timeoutSettings = (typeof window.readWiremockSettings === 'function') ? window.readWiremockSettings() : {};
     const defaultTimeout = window.DEFAULT_SETTINGS?.requestTimeout ? parseInt(window.DEFAULT_SETTINGS.requestTimeout) : 69000;
     const currentTimeout = timeoutSettings.requestTimeout ? parseInt(timeoutSettings.requestTimeout) : defaultTimeout;
     console.log(`⏱️ [API] Using request timeout: ${currentTimeout}ms (from settings: ${timeoutSettings.requestTimeout || `default ${defaultTimeout}`})`);
@@ -490,14 +561,11 @@ window.apiFetch = async (endpoint, options = {}) => {
     const fullUrl = `${window.wiremockBaseUrl}${endpoint}`;
     const method = options.method || 'GET';
 
-    // Prepare headers with auth header if available
-    // Retrieve the authHeader from settings on every request
-    const authSettings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
-    const currentAuthHeader = authSettings.authHeader || window.authHeader || '';
+    const customHeaderSettings = ensureCustomHeaderObject(timeoutSettings.customHeaders || window.customHeaders);
 
     const headers = {
         'Content-Type': 'application/json',
-        ...(currentAuthHeader && { 'Authorization': currentAuthHeader }),
+        ...customHeaderSettings,
         ...options.headers
     };
     
@@ -508,7 +576,6 @@ window.apiFetch = async (endpoint, options = {}) => {
         baseUrl: window.wiremockBaseUrl,
         endpoint,
         headers: headers,
-        authHeaderValue: currentAuthHeader,
         options: options.body ? { ...options, body: JSON.parse(options.body || '{}') } : options,
         timestamp: new Date().toISOString()
     });
@@ -602,7 +669,7 @@ window.apiFetch = async (endpoint, options = {}) => {
 // Page navigation helpers
 window.showPage = (pageId, element) => {
     document.querySelectorAll('.main-content > div[id$="-page"]').forEach(p => p.classList.add('hidden'));
-    
+
     const targetPage = document.getElementById(SELECTORS.PAGES[pageId.toUpperCase()]);
     if (targetPage) {
         targetPage.classList.remove('hidden');
@@ -610,17 +677,76 @@ window.showPage = (pageId, element) => {
         console.warn(`Page not found: ${pageId}`);
         return;
     }
-    
+
     document.querySelectorAll('.sidebar .nav-item').forEach(i => i.classList.remove('active'));
     if (element) {
         element.classList.add('active');
     }
-    
+
     // Removed forced refresh on tab switch - data will only refresh:
     // 1. On initial connection (connectToWireMock)
     // 2. By manual refresh buttons
     // 3. Via auto-refresh interval (if enabled)
     // This prevents unnecessary API calls when switching tabs
+};
+
+// Sidebar collapse helpers
+const SIDEBAR_COLLAPSED_CLASS = 'sidebar-collapsed';
+const SIDEBAR_STATE_STORAGE_KEY = 'imock-sidebar-state';
+
+const updateSidebarToggleButton = (isCollapsed) => {
+    const toggleButton = document.querySelector('.sidebar-toggle');
+    if (!toggleButton) {
+        return;
+    }
+
+    const label = isCollapsed ? 'Expand sidebar' : 'Collapse sidebar';
+    toggleButton.setAttribute('aria-expanded', String(!isCollapsed));
+    toggleButton.setAttribute('aria-label', label);
+    toggleButton.setAttribute('title', label);
+
+    const iconUse = toggleButton.querySelector('use');
+    if (iconUse) {
+        iconUse.setAttribute('href', isCollapsed ? '#icon-sidebar-expand' : '#icon-sidebar-collapse');
+    }
+};
+
+const applySidebarState = (shouldCollapse, { persist = true } = {}) => {
+    const bodyElement = document.body;
+    if (!bodyElement) {
+        return;
+    }
+
+    bodyElement.classList.toggle(SIDEBAR_COLLAPSED_CLASS, shouldCollapse);
+    updateSidebarToggleButton(shouldCollapse);
+
+    if (!persist) {
+        return;
+    }
+
+    try {
+        localStorage.setItem(SIDEBAR_STATE_STORAGE_KEY, shouldCollapse ? 'collapsed' : 'expanded');
+    } catch (error) {
+        console.warn('Unable to persist sidebar state:', error);
+    }
+};
+
+window.toggleSidebar = () => {
+    const isCollapsed = document.body?.classList.contains(SIDEBAR_COLLAPSED_CLASS);
+    applySidebarState(!isCollapsed);
+};
+
+window.initializeSidebarPreference = () => {
+    let storedState = null;
+
+    try {
+        storedState = localStorage.getItem(SIDEBAR_STATE_STORAGE_KEY);
+    } catch (error) {
+        console.warn('Unable to read sidebar state from storage:', error);
+    }
+
+    const shouldCollapse = storedState === 'collapsed';
+    applySidebarState(shouldCollapse, { persist: false });
 };
 
 // Modal helpers
@@ -756,7 +882,7 @@ const applyThemeToDom = (theme) => {
 const persistThemePreference = (preference) => {
     localStorage.setItem('theme', preference);
     try {
-        const current = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
+        const current = (typeof window.readWiremockSettings === 'function') ? window.readWiremockSettings() : {};
         localStorage.setItem('wiremock-settings', JSON.stringify({ ...current, theme: preference }));
     } catch (_) {}
 };
@@ -832,13 +958,13 @@ document.addEventListener('keydown', (e) => {
     }
 });
 
-// Debug function to check auth header
-window.debugAuthHeader = () => {
-    console.log('🔍 Auth Header Debug:', {
-        'window.authHeader': window.authHeader,
-        'typeof': typeof window.authHeader,
-        'length': window.authHeader?.length,
-        'localStorage': JSON.parse(localStorage.getItem('wiremock-settings') || '{}').authHeader
+// Debug function to inspect custom headers
+window.debugCustomHeaders = () => {
+    const settings = (typeof window.readWiremockSettings === 'function') ? window.readWiremockSettings() : {};
+    console.log('🔍 Custom Headers Debug:', {
+        'window.customHeaders': window.customHeaders,
+        'settings.customHeaders': settings.customHeaders,
+        'settings.customHeadersRaw': settings.customHeadersRaw
     });
 };
 

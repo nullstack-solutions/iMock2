@@ -75,7 +75,7 @@
                 method: 'PUT',
                 urlPattern: '/api/users/\\d+',
                 headers: {
-                    Authorization: 'Bearer ***'
+                    'X-Demo-Auth': 'Bearer ***'
                 }
             },
             response: {
@@ -172,7 +172,7 @@
                 body: JSON.stringify({ status: 'cancelled' }),
                 headers: {
                     'Content-Type': ['application/json'],
-                    Authorization: ['Bearer demo-token']
+                    'X-Demo-Auth': ['Bearer demo-token']
                 },
                 clientIp: '192.168.10.20'
             },
@@ -192,7 +192,7 @@
                 url: '/api/sessions/abc123',
                 loggedDate: iso(1000 * 60 * 2),
                 headers: {
-                    Authorization: ['Bearer demo-token'],
+                    'X-Demo-Auth': ['Bearer demo-token'],
                     Host: ['demo.wiremock.local']
                 },
                 clientIp: '192.168.10.22'
