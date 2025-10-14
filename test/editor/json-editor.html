@@ -1779,11 +1779,16 @@
                 }
 
                 // Show error in editor as comment
+                const storedSettings = (typeof window.readWiremockSettings === 'function') ? window.readWiremockSettings() : {};
+                const customHeadersForError = (storedSettings.customHeaders && Object.keys(storedSettings.customHeaders).length > 0)
+                    ? JSON.stringify(storedSettings.customHeaders)
+                    : '"NOT_SET"';
+
                 const errorContent = `{
   "_error": "Failed to load mapping with ID: ${mappingId}",
   "_message": "${error.message.replace(/"/g, '\\"')}",
   "_wiremock_url": "${window.wiremockBaseUrl || 'NOT_SET'}",
-  "_auth_header": "${(JSON.parse(localStorage.getItem('wiremock-settings') || '{}')).authHeader || 'NOT_SET'}",
+  "_custom_headers": ${customHeadersForError},
   "_timestamp": "${new Date().toISOString()}",
   "_debug_info": "Check browser console (F12) for detailed logs",
   "_possible_issues": [

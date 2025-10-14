@@ -8,10 +8,12 @@ window.DEFAULT_SETTINGS = {
     host: 'localhost',
     port: '8080',
     requestTimeout: '69000',
-    authHeader: '',
+    customHeaders: {},
+    customHeadersRaw: '',
     cacheEnabled: true,
     autoRefreshEnabled: false,
     refreshInterval: '0',
+    autoConnect: true,
     // Default cache timing settings
     cacheRebuildDelay: '1000',
     cacheValidationDelay: '1500',
@@ -23,13 +25,240 @@ window.DEFAULT_SETTINGS = {
 // Make it available as a module-level constant too for backward compatibility
 const DEFAULT_SETTINGS = window.DEFAULT_SETTINGS;
 
+window.customHeaders = { ...(DEFAULT_SETTINGS.customHeaders || {}) };
+
+let autoConnectInitiated = false;
+
+function getStoredSettings() {
+    if (typeof window.readWiremockSettings === 'function') {
+        return window.readWiremockSettings();
+    }
+
+    try {
+        const raw = localStorage.getItem('wiremock-settings');
+        if (!raw) {
+            return {};
+        }
+        const parsed = JSON.parse(raw);
+        if (typeof window.normalizeWiremockSettings === 'function') {
+            return window.normalizeWiremockSettings(parsed);
+        }
+        return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (error) {
+        console.warn('Failed to parse stored settings, falling back to defaults:', error);
+        return {};
+    }
+}
+
+function parseCustomHeadersInput(rawValue) {
+    const trimmed = (rawValue || '').trim();
+    if (!trimmed) {
+        return { headers: {}, raw: '' };
+    }
+
+    try {
+        const parsed = JSON.parse(trimmed);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+            throw new Error('Custom headers must be a JSON object.');
+        }
+        return { headers: parsed, raw: trimmed };
+    } catch (jsonError) {
+        const lines = trimmed.split(/\n+/);
+        const headers = {};
+        let valid = true;
+
+        for (const line of lines) {
+            if (!line.trim()) continue;
+            const separatorIndex = line.indexOf(':');
+            if (separatorIndex === -1) {
+                valid = false;
+                break;
+            }
+            const key = line.slice(0, separatorIndex).trim();
+            const value = line.slice(separatorIndex + 1).trim();
+            if (!key) {
+                valid = false;
+                break;
+            }
+            headers[key] = value;
+        }
+
+        if (valid && Object.keys(headers).length > 0) {
+            return { headers, raw: trimmed };
+        }
+
+        throw new Error('Custom headers must be valid JSON or "Key: Value" pairs.');
+    }
+}
+
+function serializeCustomHeaders(settings) {
+    if (!settings) return '';
+    if (settings.customHeadersRaw) return settings.customHeadersRaw;
+    if (settings.customHeaders && typeof settings.customHeaders === 'object' && !Array.isArray(settings.customHeaders)) {
+        try {
+            return JSON.stringify(settings.customHeaders, null, 2);
+        } catch (error) {
+            console.warn('Failed to serialize custom headers:', error);
+        }
+    }
+    return '';
+}
+
+function shouldAutoConnect(settings) {
+    return Boolean(settings && settings.host && settings.port && settings.autoConnect !== false);
+}
+
+function showOnboardingOverlay() {
+    const overlay = document.getElementById('onboarding-overlay');
+    if (!overlay) return;
+
+    overlay.classList.remove('hidden');
+    requestAnimationFrame(() => {
+        overlay.classList.add('visible');
+    });
+    if (document.body) {
+        document.body.classList.add('onboarding-active');
+    }
+
+    const hostField = overlay.querySelector('#onboarding-host');
+    if (hostField) {
+        hostField.focus();
+    }
+}
+
+function hideOnboardingOverlay() {
+    const overlay = document.getElementById('onboarding-overlay');
+    if (!overlay) return;
+
+    overlay.classList.remove('visible');
+    setTimeout(() => {
+        overlay.classList.add('hidden');
+    }, 220);
+    if (document.body) {
+        document.body.classList.remove('onboarding-active');
+    }
+}
+
+function attemptAutoConnect(settings, options = {}) {
+    if (!shouldAutoConnect(settings)) {
+        return;
+    }
+
+    if (autoConnectInitiated && !options.force) {
+        return;
+    }
+
+    autoConnectInitiated = true;
+
+    const triggerConnection = () => {
+        try {
+            const result = typeof window.connectToWireMock === 'function' ? window.connectToWireMock() : null;
+            if (result && typeof result.catch === 'function') {
+                result.catch((error) => {
+                    console.error('Auto-connect failed:', error);
+                    autoConnectInitiated = false;
+                });
+            }
+        } catch (error) {
+            console.error('Auto-connect encountered an error:', error);
+            autoConnectInitiated = false;
+        }
+    };
+
+    if (options.immediate) {
+        triggerConnection();
+    } else {
+        setTimeout(triggerConnection, 150);
+    }
+}
+
+function initializeOnboardingFlow() {
+    const overlay = document.getElementById('onboarding-overlay');
+    const form = document.getElementById('onboarding-form');
+    const hostField = document.getElementById('onboarding-host');
+    const portField = document.getElementById('onboarding-port');
+    const headersField = document.getElementById('onboarding-headers');
+    const autoConnectField = document.getElementById('onboarding-auto-connect');
+
+    const settings = getStoredSettings();
+    const hasConfiguration = Boolean(settings.host && settings.port);
+
+    if (hostField) hostField.value = settings.host || DEFAULT_SETTINGS.host || '';
+    if (portField) portField.value = settings.port || DEFAULT_SETTINGS.port || '';
+    if (headersField) headersField.value = serializeCustomHeaders(settings);
+    if (autoConnectField) autoConnectField.checked = settings.autoConnect !== false;
+
+    if (!hasConfiguration) {
+        showOnboardingOverlay();
+    } else {
+        attemptAutoConnect(settings);
+    }
+
+    if (form) {
+        form.addEventListener('submit', (event) => {
+            event.preventDefault();
+
+            const hostValue = hostField?.value.trim();
+            const portValue = portField?.value.trim();
+
+            if (!hostValue) {
+                if (typeof NotificationManager !== 'undefined') {
+                    NotificationManager.error('Host is required.');
+                }
+                hostField?.focus();
+                return;
+            }
+
+            let customHeaderValues;
+            try {
+                customHeaderValues = parseCustomHeadersInput(headersField?.value ?? '');
+            } catch (error) {
+                console.error('Failed to parse onboarding headers:', error);
+                if (typeof NotificationManager !== 'undefined') {
+                    NotificationManager.error(error.message);
+                }
+                headersField?.focus();
+                return;
+            }
+
+            const mergedSettings = {
+                ...DEFAULT_SETTINGS,
+                ...getStoredSettings(),
+                host: hostValue,
+                port: portValue || DEFAULT_SETTINGS.port,
+                customHeaders: customHeaderValues.headers,
+                customHeadersRaw: customHeaderValues.raw,
+                autoConnect: autoConnectField ? autoConnectField.checked : DEFAULT_SETTINGS.autoConnect
+            };
+
+            localStorage.setItem('wiremock-settings', JSON.stringify(mergedSettings));
+            window.customHeaders = { ...(mergedSettings.customHeaders || {}) };
+
+            loadSettings();
+            loadConnectionSettings();
+
+            hideOnboardingOverlay();
+
+            if (shouldAutoConnect(mergedSettings)) {
+                attemptAutoConnect(mergedSettings, { immediate: true, force: true });
+            } else if (typeof NotificationManager !== 'undefined') {
+                NotificationManager.info('Connection saved. You can connect from the dashboard when you are ready.');
+            }
+        }, { once: false });
+    }
+}
+
+window.initializeOnboardingFlow = initializeOnboardingFlow;
+window.attemptAutoConnect = attemptAutoConnect;
+
+
 // === FUNCTIONS FOR EDITOR INTEGRATION ===
     
 window.editMapping = (mappingId) => {
     console.log('🔧 Opening editor for mapping:', mappingId);
 
     // Get current settings to pass to editor
-    const currentSettings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
+    const currentSettings = getStoredSettings();
 
     // Option 1: Pass ALL settings (current behavior)
     const settingsParam = encodeURIComponent(JSON.stringify(currentSettings));
@@ -82,18 +311,90 @@ window.editMapping = (mappingId) => {
 
 // === SETTINGS MANAGEMENT ===
 
+function computeSwaggerUiUrl(host, port) {
+    const rawHost = (host ?? '').toString().trim();
+    const rawPort = (port ?? '').toString().trim();
+
+    if (!rawHost && !rawPort) {
+        return null;
+    }
+
+    try {
+        const baseUrl = (typeof window.normalizeWiremockBaseUrl === 'function')
+            ? window.normalizeWiremockBaseUrl(rawHost, rawPort)
+            : `http://${rawHost || 'localhost'}:${rawPort || '8080'}/__admin`;
+
+        if (!baseUrl) {
+            return null;
+        }
+
+        return `${baseUrl.replace(/\/?$/, '')}/swagger-ui/`;
+    } catch (error) {
+        console.warn('Failed to compute Swagger UI URL:', error);
+        return null;
+    }
+}
+
+window.updateSwaggerUILink = (host, port) => {
+    const link = document.getElementById('swagger-ui-link');
+    const hint = document.getElementById('swagger-ui-link-hint');
+
+    if (!link) {
+        return;
+    }
+
+    const currentHost = host ?? document.getElementById('default-host')?.value ?? '';
+    const currentPort = port ?? document.getElementById('default-port')?.value ?? '';
+    const url = computeSwaggerUiUrl(currentHost, currentPort);
+
+    if (url) {
+        link.href = url;
+        link.textContent = url;
+        link.classList.remove('is-disabled');
+        link.removeAttribute('aria-disabled');
+
+        if (hint) {
+            hint.textContent = 'Opens the WireMock Admin Swagger UI in a new tab.';
+        }
+    } else {
+        link.removeAttribute('href');
+        link.textContent = 'Define host and port to enable Swagger UI link';
+        link.classList.add('is-disabled');
+        link.setAttribute('aria-disabled', 'true');
+
+        if (hint) {
+            hint.textContent = 'We build this link from your saved connection details.';
+        }
+    }
+};
+
 // Save settings from the settings page
 window.saveSettings = () => {
     try {
         // Collect settings from settings form (prioritize settings form values)
         const cacheCheckbox = document.getElementById('cache-enabled');
         const autoRefreshCheckbox = document.getElementById('auto-refresh-enabled');
+        const autoConnectCheckbox = document.getElementById('auto-connect-enabled');
+        const customHeadersInput = document.getElementById('custom-headers');
+
+        let customHeadersResult;
+        try {
+            customHeadersResult = parseCustomHeadersInput(customHeadersInput?.value ?? '');
+        } catch (parseError) {
+            console.error('Failed to parse custom headers:', parseError);
+            if (typeof NotificationManager !== 'undefined') {
+                NotificationManager.error(parseError.message);
+            }
+            customHeadersInput?.focus();
+            return;
+        }
 
         const settings = {
+            ...DEFAULT_SETTINGS,
+            ...getStoredSettings(),
             host: document.getElementById('default-host')?.value || DEFAULT_SETTINGS.host,
             port: document.getElementById('default-port')?.value || DEFAULT_SETTINGS.port,
             requestTimeout: document.getElementById('request-timeout')?.value || DEFAULT_SETTINGS.requestTimeout,
-            authHeader: document.getElementById('auth-header')?.value || DEFAULT_SETTINGS.authHeader,
             cacheEnabled: cacheCheckbox?.checked ?? DEFAULT_SETTINGS.cacheEnabled,
             autoRefreshEnabled: autoRefreshCheckbox?.checked ?? DEFAULT_SETTINGS.autoRefreshEnabled,
             refreshInterval: document.getElementById('refresh-interval')?.value || DEFAULT_SETTINGS.refreshInterval,
@@ -102,15 +403,18 @@ window.saveSettings = () => {
             cacheValidationDelay: document.getElementById('cache-validation-delay')?.value || DEFAULT_SETTINGS.cacheValidationDelay,
             optimisticCacheAgeLimit: document.getElementById('optimistic-cache-age-limit')?.value || DEFAULT_SETTINGS.optimisticCacheAgeLimit,
             cacheCountDiffThreshold: document.getElementById('cache-count-diff-threshold')?.value || DEFAULT_SETTINGS.cacheCountDiffThreshold,
-            backgroundFetchDelay: document.getElementById('background-fetch-delay')?.value || DEFAULT_SETTINGS.backgroundFetchDelay
+            backgroundFetchDelay: document.getElementById('background-fetch-delay')?.value || DEFAULT_SETTINGS.backgroundFetchDelay,
+            autoConnect: autoConnectCheckbox?.checked ?? DEFAULT_SETTINGS.autoConnect,
+            customHeaders: customHeadersResult.headers,
+            customHeadersRaw: customHeadersResult.raw
         };
-        
+
         // Also update the main connection form to reflect the saved settings
         const hostInput = document.getElementById('wiremock-host');
         const portInput = document.getElementById('wiremock-port');
         if (hostInput) hostInput.value = settings.host;
         if (portInput) portInput.value = settings.port;
-        
+
         // Save to localStorage
         localStorage.setItem('wiremock-settings', JSON.stringify(settings));
         console.log('🔧 [main.js] Settings saved to localStorage:', settings);
@@ -124,14 +428,18 @@ window.saveSettings = () => {
         }
 
         // Update global auth header immediately
-        window.authHeader = settings.authHeader || '';
+        window.customHeaders = { ...(settings.customHeaders || {}) };
 
         // Broadcast settings update to any open editor windows
         broadcastSettingsUpdate(settings);
-        
+
         NotificationManager.success('Settings saved successfully!');
         console.log('💾 Settings saved:', settings);
-        
+
+        if (typeof window.updateSwaggerUILink === 'function') {
+            window.updateSwaggerUILink(settings.host, settings.port);
+        }
+
     } catch (error) {
         console.error('Error saving settings:', error);
         NotificationManager.error('Failed to save settings');
@@ -147,10 +455,11 @@ window.resetSettings = () => {
         if (document.getElementById('default-host')) document.getElementById('default-host').value = DEFAULT_SETTINGS.host;
         if (document.getElementById('default-port')) document.getElementById('default-port').value = DEFAULT_SETTINGS.port;
         if (document.getElementById('request-timeout')) document.getElementById('request-timeout').value = DEFAULT_SETTINGS.requestTimeout;
-        if (document.getElementById('auth-header')) document.getElementById('auth-header').value = DEFAULT_SETTINGS.authHeader;
         if (document.getElementById('cache-enabled')) document.getElementById('cache-enabled').checked = DEFAULT_SETTINGS.cacheEnabled;
         if (document.getElementById('auto-refresh-enabled')) document.getElementById('auto-refresh-enabled').checked = DEFAULT_SETTINGS.autoRefreshEnabled;
         if (document.getElementById('refresh-interval')) document.getElementById('refresh-interval').value = DEFAULT_SETTINGS.refreshInterval;
+        if (document.getElementById('custom-headers')) document.getElementById('custom-headers').value = DEFAULT_SETTINGS.customHeadersRaw || '';
+        if (document.getElementById('auto-connect-enabled')) document.getElementById('auto-connect-enabled').checked = DEFAULT_SETTINGS.autoConnect;
 
         // Save defaults
         localStorage.setItem('wiremock-settings', JSON.stringify(DEFAULT_SETTINGS));
@@ -159,14 +468,18 @@ window.resetSettings = () => {
         window.wiremockBaseUrl = `http://${DEFAULT_SETTINGS.host}:${DEFAULT_SETTINGS.port}/__admin`;
 
         // Update global auth header
-        window.authHeader = DEFAULT_SETTINGS.authHeader || '';
+        window.customHeaders = { ...(DEFAULT_SETTINGS.customHeaders || {}) };
 
         // Broadcast update
         broadcastSettingsUpdate(DEFAULT_SETTINGS);
-        
+
+        if (typeof window.updateSwaggerUILink === 'function') {
+            window.updateSwaggerUILink(DEFAULT_SETTINGS.host, DEFAULT_SETTINGS.port);
+        }
+
         NotificationManager.success('Settings reset to defaults!');
         console.log('🔄 Settings reset to defaults');
-        
+
     } catch (error) {
         console.error('Error resetting settings:', error);
         NotificationManager.error('Failed to reset settings');
@@ -176,14 +489,13 @@ window.resetSettings = () => {
 // Load settings into form fields
 window.loadSettings = () => {
     try {
-        const settings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
+        const settings = getStoredSettings();
         console.log('🔧 [main.js] Loading settings from localStorage:', settings);
 
         // Load into settings form fields if they exist
         if (document.getElementById('default-host')) document.getElementById('default-host').value = settings.host || DEFAULT_SETTINGS.host;
         if (document.getElementById('default-port')) document.getElementById('default-port').value = settings.port || DEFAULT_SETTINGS.port;
         if (document.getElementById('request-timeout')) document.getElementById('request-timeout').value = settings.requestTimeout || DEFAULT_SETTINGS.requestTimeout;
-        if (document.getElementById('auth-header')) document.getElementById('auth-header').value = settings.authHeader || DEFAULT_SETTINGS.authHeader;
         if (document.getElementById('cache-enabled')) document.getElementById('cache-enabled').checked = settings.cacheEnabled !== undefined ? settings.cacheEnabled : DEFAULT_SETTINGS.cacheEnabled;
         if (document.getElementById('auto-refresh-enabled')) document.getElementById('auto-refresh-enabled').checked = settings.autoRefreshEnabled !== undefined ? settings.autoRefreshEnabled : DEFAULT_SETTINGS.autoRefreshEnabled;
         if (document.getElementById('refresh-interval')) document.getElementById('refresh-interval').value = settings.refreshInterval || DEFAULT_SETTINGS.refreshInterval;
@@ -193,11 +505,19 @@ window.loadSettings = () => {
         if (document.getElementById('optimistic-cache-age-limit')) document.getElementById('optimistic-cache-age-limit').value = settings.optimisticCacheAgeLimit || DEFAULT_SETTINGS.optimisticCacheAgeLimit;
         if (document.getElementById('cache-count-diff-threshold')) document.getElementById('cache-count-diff-threshold').value = settings.cacheCountDiffThreshold || DEFAULT_SETTINGS.cacheCountDiffThreshold;
         if (document.getElementById('background-fetch-delay')) document.getElementById('background-fetch-delay').value = settings.backgroundFetchDelay || DEFAULT_SETTINGS.backgroundFetchDelay;
+        if (document.getElementById('custom-headers')) document.getElementById('custom-headers').value = serializeCustomHeaders(settings);
+        if (document.getElementById('auto-connect-enabled')) document.getElementById('auto-connect-enabled').checked = settings.autoConnect !== false;
 
         // Update global auth header
-        window.authHeader = settings.authHeader || DEFAULT_SETTINGS.authHeader;
+        window.customHeaders = (settings.customHeaders && typeof settings.customHeaders === 'object' && !Array.isArray(settings.customHeaders))
+            ? { ...settings.customHeaders }
+            : { ...(DEFAULT_SETTINGS.customHeaders || {}) };
 
         console.log('📋 Settings loaded into settings form');
+
+        if (typeof window.updateSwaggerUILink === 'function') {
+            window.updateSwaggerUILink(settings.host, settings.port);
+        }
 
         if (typeof window.updateRecorderLink === 'function') {
             try {
@@ -244,19 +564,21 @@ window.applyDefaultsToForm = () => {
     const hostInput = document.getElementById('default-host');
     const portInput = document.getElementById('default-port');
     const timeoutInput = document.getElementById('request-timeout');
-    const authInput = document.getElementById('auth-header');
     const cacheInput = document.getElementById('cache-enabled');
     const autoRefreshInput = document.getElementById('auto-refresh-enabled');
     const intervalInput = document.getElementById('refresh-interval');
-    
+    const customHeadersInput = document.getElementById('custom-headers');
+    const autoConnectInput = document.getElementById('auto-connect-enabled');
+
     if (hostInput && !hostInput.value) hostInput.value = DEFAULT_SETTINGS.host;
     if (portInput && !portInput.value) portInput.value = DEFAULT_SETTINGS.port;
     if (timeoutInput && !timeoutInput.value) timeoutInput.value = DEFAULT_SETTINGS.requestTimeout;
-    if (authInput && !authInput.value) authInput.value = DEFAULT_SETTINGS.authHeader;
     if (cacheInput) cacheInput.checked = DEFAULT_SETTINGS.cacheEnabled;
     if (autoRefreshInput) autoRefreshInput.checked = DEFAULT_SETTINGS.autoRefreshEnabled;
     if (intervalInput && !intervalInput.value) intervalInput.value = DEFAULT_SETTINGS.refreshInterval;
-    
+    if (customHeadersInput && !customHeadersInput.value) customHeadersInput.value = DEFAULT_SETTINGS.customHeadersRaw || '';
+    if (autoConnectInput) autoConnectInput.checked = DEFAULT_SETTINGS.autoConnect;
+
     console.log('🔧 [applyDefaultsToForm] Form defaults applied');
 };
 
@@ -271,12 +593,32 @@ document.addEventListener('DOMContentLoaded', async () => {
     loadSettings();
     loadConnectionSettings();
 
+    if (typeof window.updateSwaggerUILink === 'function') {
+        window.updateSwaggerUILink();
+    }
+
+    const settingsHostInput = document.getElementById('default-host');
+    const settingsPortInput = document.getElementById('default-port');
+
+    const updateSwaggerLinkFromInputs = () => {
+        if (typeof window.updateSwaggerUILink === 'function') {
+            window.updateSwaggerUILink();
+        }
+    };
+
+    settingsHostInput?.addEventListener('input', updateSwaggerLinkFromInputs);
+    settingsPortInput?.addEventListener('input', updateSwaggerLinkFromInputs);
+    settingsHostInput?.addEventListener('change', updateSwaggerLinkFromInputs);
+    settingsPortInput?.addEventListener('change', updateSwaggerLinkFromInputs);
+
     // Ensure settings are loaded before any operations
     console.log('🔧 [main.js] Page loaded, defaults applied, settings initialized, ready for user interaction');
 
     if (typeof window.initializeFilterTabs === 'function') {
         window.initializeFilterTabs();
     }
+
+    initializeOnboardingFlow();
 });
 
 // Listen for settings changes from editor windows or other sources
@@ -304,6 +646,16 @@ window.addEventListener('storage', (e) => {
                     window.wiremockBaseUrl = `http://${settings.host}:${settings.port}/__admin`;
                 }
                 console.log('🔧 [main.js] URL updated from settings change:', window.wiremockBaseUrl);
+            }
+
+            if (typeof window.updateSwaggerUILink === 'function') {
+                window.updateSwaggerUILink(settings.host, settings.port);
+            }
+
+            if (settings.customHeaders && typeof settings.customHeaders === 'object' && !Array.isArray(settings.customHeaders)) {
+                window.customHeaders = { ...settings.customHeaders };
+            } else {
+                window.customHeaders = {};
             }
         } catch (error) {
             console.error('🔧 [main.js] Error processing settings update:', error);
@@ -419,7 +771,7 @@ if (typeof BroadcastChannel !== 'undefined') {
 // Load connection settings into main connection form
 function loadConnectionSettings() {
     try {
-        const settings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
+        const settings = getStoredSettings();
 
         console.log('🔧 [loadConnectionSettings] Loading settings:', settings);
 
