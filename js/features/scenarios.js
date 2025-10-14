@@ -391,14 +391,19 @@ async function resetScenarioState(scenarioIdentifier) {
         ? targetScenario.resetEndpoint
         : '';
 
-    const resetEndpointBuilder = typeof window.buildScenarioResetEndpoint === 'function'
-        ? window.buildScenarioResetEndpoint
-        : (name) => `${ENDPOINTS.SCENARIOS}/${encodeURIComponent(name)}/reset`;
+    const directStateEndpoint = typeof targetScenario?.stateEndpoint === 'string'
+        ? targetScenario.stateEndpoint
+        : '';
 
-    const resetEndpoint = directResetEndpoint
-        || (endpointIdentifier ? resetEndpointBuilder(endpointIdentifier) : '');
+    const stateEndpointBuilder = typeof window.buildScenarioStateEndpoint === 'function'
+        ? window.buildScenarioStateEndpoint
+        : (name) => `${ENDPOINTS.SCENARIOS}/${encodeURIComponent(name)}/state`;
 
-    if (!resetEndpoint) {
+    const resolvedEndpoint = directResetEndpoint
+        || directStateEndpoint
+        || (endpointIdentifier ? stateEndpointBuilder(endpointIdentifier) : '');
+
+    if (!resolvedEndpoint) {
         NotificationManager.error('Unable to determine the scenario reset endpoint.');
         return false;
     }
@@ -406,8 +411,12 @@ async function resetScenarioState(scenarioIdentifier) {
     setScenariosLoading(true);
 
     try {
-        await apiFetch(resetEndpoint, { method: 'POST' });
-        NotificationManager.success(`Scenario "${displayName}" has been reset.`);
+        const requestOptions = directResetEndpoint
+            ? { method: 'POST' }
+            : { method: 'PUT' };
+
+        await apiFetch(resolvedEndpoint, requestOptions);
+        NotificationManager.success(`Scenario "${displayName}" has been reset to its initial state.`);
         await loadScenarios();
         return true;
     } catch (error) {
