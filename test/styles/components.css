@@ -226,6 +226,14 @@
     color: var(--text-secondary);
 }
 
+.onboarding-footnote2 {
+    display: block;
+    margin-top: var(--space-1);
+    font-size: var(--font-size-xs);
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
 .btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
