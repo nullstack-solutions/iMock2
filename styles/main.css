@@ -470,8 +470,20 @@ body[data-theme="light"] {
 }
 
 /* ===== UTILITIES ===== */
-.hidden { 
-    display: none !important; 
+.hidden {
+    display: none !important;
+}
+
+body.onboarding-active {
+    overflow: hidden;
+}
+
+body.onboarding-active .header,
+body.onboarding-active .container {
+    filter: blur(12px);
+    pointer-events: none;
+    user-select: none;
+    transition: filter 0.3s ease;
 }
 
 .sr-only { 

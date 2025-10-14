@@ -712,13 +712,24 @@
                             <input type="number" class="form-input" id="request-timeout" value="" min="1000" max="600000">
                         </div>
                         <div class="form-group">
-                            <label class="form-label">Authorization Header</label>
-                            <input type="text" class="form-input" id="auth-header" placeholder="Bearer token123 or Basic dXNlcjpwYXNz">
-                            <small class="form-help">Optional. Will be added to all WireMock API requests</small>
+                            <label class="form-label">Custom Headers</label>
+                            <textarea class="form-input" id="custom-headers" rows="4" placeholder='Authorization: Bearer token123'></textarea>
+                            <small class="form-help">Optional JSON object or key:value pairs applied to every request (include Authorization here if needed)</small>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Swagger UI</label>
+                            <a id="swagger-ui-link" class="form-link" target="_blank" rel="noopener">Define host and port to enable Swagger UI link</a>
+                            <small id="swagger-ui-link-hint" class="form-help">We build this link from your saved connection details.</small>
                         </div>
                         <div class="form-group">
                             <label class="form-label">
                                 <input type="checkbox" id="cache-enabled"> Enable Cache </label>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">
+                                <input type="checkbox" id="auto-connect-enabled" checked> Auto-connect on launch
+                            </label>
+                            <small class="form-help">When enabled the dashboard reconnects automatically using saved settings</small>
                         </div>
                     </div>
                 </div>
@@ -962,6 +973,38 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" onclick="hideModal('mapping-details-modal')">Close</button>
             </div>
+        </div>
+    </div>
+
+    <div id="onboarding-overlay" class="onboarding-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
+        <div class="onboarding-panel">
+            <div class="onboarding-header">
+                <h2 id="onboarding-title">Welcome to iMock</h2>
+                <p>This lightweight WireMock client is evolving fast &mdash; crafted by QA teams for QA teams.</p>
+            </div>
+            <form id="onboarding-form" class="onboarding-form">
+                <div class="onboarding-group">
+                    <label for="onboarding-host">WireMock URL</label>
+                    <input id="onboarding-host" type="text" class="form-input" placeholder="https://mock.example.com" required>
+                </div>
+                <div class="onboarding-group">
+                    <label for="onboarding-port">Port</label>
+                    <input id="onboarding-port" type="number" class="form-input" min="1" max="65535" placeholder="8080">
+                </div>
+                <div class="onboarding-group">
+                    <label for="onboarding-headers">Custom Headers (optional)</label>
+                    <textarea id="onboarding-headers" class="form-input" rows="3" placeholder='{"X-Env":"QA"}'></textarea>
+                    <span class="onboarding-hint">JSON or Key: Value lines will be sent with every request.</span>
+                </div>
+                <div class="onboarding-toggle">
+                    <label>
+                        <input type="checkbox" id="onboarding-auto-connect" checked>
+                        Auto-connect on this device
+                    </label>
+                </div>
+                <button type="submit" class="btn btn-primary onboarding-submit">Save &amp; Connect</button>
+            </form>
+            <p class="onboarding-footnote">From QA to QA: drop in your server details, we will fetch your mappings instantly.</p>
         </div>
     </div>
 

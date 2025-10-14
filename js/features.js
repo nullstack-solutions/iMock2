@@ -97,7 +97,7 @@
         // Refresh mappings function for button compatibility
         window.refreshMappings = async () => {
             try {
-                const settings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
+                const settings = (typeof window.readWiremockSettings === 'function') ? window.readWiremockSettings() : {};
                 const useCache = isCacheEnabled();
                 const refreshed = await fetchAndRenderMappings(null, { useCache });
                 if (refreshed) {
