@@ -585,10 +585,14 @@ window.applyDefaultsToForm = () => {
 // Load settings when page loads
 document.addEventListener('DOMContentLoaded', async () => {
     await new Promise(resolve => requestAnimationFrame(resolve));
-    
+
+    if (typeof window.initializeSidebarPreference === 'function') {
+        window.initializeSidebarPreference();
+    }
+
     // First apply defaults to empty form fields
     applyDefaultsToForm();
-    
+
     // Then load saved settings (will override defaults if settings exist)
     loadSettings();
     loadConnectionSettings();
