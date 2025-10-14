@@ -178,7 +178,7 @@ window.cacheManager.init();
 function isCacheEnabled() {
     try {
         const checkbox = document.getElementById('cache-enabled');
-        const settings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
+        const settings = (typeof window.readWiremockSettings === 'function') ? window.readWiremockSettings() : {};
         return (settings.cacheEnabled !== false) && (checkbox ? checkbox.checked : true);
     } catch (error) {
         console.warn('Failed to resolve cache enabled state:', error);
@@ -531,7 +531,7 @@ function scheduleCacheRebuild() {
     if (!isCacheEnabled()) {
       return;
     }
-    const settings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
+    const settings = (typeof window.readWiremockSettings === 'function') ? window.readWiremockSettings() : {};
     const delay = Number(settings.cacheRebuildDelay) || 1000;
     clearTimeout(_cacheRebuildTimer);
     _cacheRebuildTimer = setTimeout(async () => {
