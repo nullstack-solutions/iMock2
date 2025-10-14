@@ -5,6 +5,37 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>iMock - Wiremock UI TEST</title>
 
+    <!-- Inject a base tag dynamically so GitHub Pages previews under /test/ reuse the same assets -->
+    <script>
+        (function injectBaseHref() {
+            var existingBase = document.querySelector('base[data-generated="imock-base"]') || document.querySelector('base');
+            if (existingBase) {
+                window.__IMOCK_ASSET_BASE = existingBase.href || existingBase.getAttribute('href') || '';
+                return;
+            }
+
+            var baseHref = '';
+
+            try {
+                baseHref = new URL('.', window.location.href).href;
+            } catch (error) {
+                var pathname = (window.location && typeof window.location.pathname === 'string') ? window.location.pathname : '/';
+                var directory = pathname.replace(/[^/]*$/, '');
+                if (!/\/$/.test(directory)) {
+                    directory += '/';
+                }
+                baseHref = directory || './';
+            }
+
+            var base = document.createElement('base');
+            base.setAttribute('data-generated', 'imock-base');
+            base.href = baseHref;
+            document.head.appendChild(base);
+
+            window.__IMOCK_ASSET_BASE = baseHref;
+        })();
+    </script>
+
     <!-- Favicon -->
     <link rel="icon" type="image/x-icon" href="favicon.ico">
 
