@@ -27,7 +27,7 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
       - name: Validate HTML
         uses: Cyb3r-Jak3/html5validator-action@v7
@@ -76,7 +76,7 @@ jobs:
           cache: 'npm'
 
       - name: Install
-        run: npm ci
+        run: npm install
 
       - name: Build
         run: npm run build

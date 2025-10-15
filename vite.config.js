@@ -70,7 +70,7 @@ export default defineConfig(({ mode }) => ({
     chunkSizeWarningLimit: 500
   },
   server: {
-    port: 8080,
+    port: 5173,
     open: true,
     cors: true,
     proxy: {
