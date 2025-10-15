@@ -212,7 +212,8 @@ class VirtualScroller {
             element.style.top = `${actualIndex * this.itemHeight}px`;
             element.style.left = '0';
             element.style.right = '0';
-            element.style.height = `${this.itemHeight}px`;
+            // Don't set fixed height - let content determine height
+            // element.style.height = `${this.itemHeight}px`;
 
             // Add data attribute for debugging
             element.dataset.virtualIndex = actualIndex;
