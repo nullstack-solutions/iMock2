@@ -751,6 +751,10 @@ function renderMappingMarkup(mapping) {
     return typeof window.renderMappingCard === 'function' ? window.renderMappingCard(mapping) : '';
 }
 
+if (typeof window !== 'undefined') {
+    window.renderMappingMarkup = window.renderMappingMarkup || renderMappingMarkup;
+}
+
 function getRequestRenderKey(request) {
     if (!request || typeof request !== 'object') {
         return '';
@@ -777,6 +781,10 @@ function getRequestRenderSignature(request) {
 
 function renderRequestMarkup(request) {
     return typeof window.renderRequestCard === 'function' ? window.renderRequestCard(request) : '';
+}
+
+if (typeof window !== 'undefined') {
+    window.renderRequestMarkup = window.renderRequestMarkup || renderRequestMarkup;
 }
 
 window.FilterManager = {
