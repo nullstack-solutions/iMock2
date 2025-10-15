@@ -77,7 +77,6 @@ class VirtualScroller {
         this._attachEvents();
         this._render();
 
-        console.log(`[VirtualScroller] Initialized with ${this.items.length} items, rendering ${this.visibleCount} visible`);
     }
 
     /**
@@ -102,9 +101,9 @@ class VirtualScroller {
 
         this.container.appendChild(this.wrapper);
 
-        // Calculate total height
+        // Calculate total height (used for scroll calculations)
         this.totalHeight = this.items.length * this.itemHeight;
-        this.wrapper.style.height = `${this.totalHeight}px`;
+        // Don't set wrapper height - padding will control it
     }
 
     /**
@@ -181,10 +180,17 @@ class VirtualScroller {
      */
     _render() {
         const visibleItems = this.items.slice(this.startIndex, this.endIndex);
-        console.log(`[VirtualScroller] _render called: ${visibleItems.length} items (${this.startIndex}-${this.endIndex})`);
 
         // Clear wrapper content
         this.wrapper.innerHTML = '';
+
+        // Calculate padding to maintain scroll position
+        const paddingTop = this.startIndex * this.itemHeight;
+        const paddingBottom = (this.items.length - this.endIndex) * this.itemHeight;
+
+        // Apply padding instead of absolute positioning
+        this.wrapper.style.paddingTop = `${paddingTop}px`;
+        this.wrapper.style.paddingBottom = `${paddingBottom}px`;
 
         // Create document fragment for batch DOM insertion
         const fragment = document.createDocumentFragment();
@@ -200,7 +206,6 @@ class VirtualScroller {
             if (!element) {
                 // Create new element
                 const html = this.renderItem(item, actualIndex);
-                console.log(`[VirtualScroller] renderItem for index ${actualIndex}, HTML length: ${html?.length || 0}`);
 
                 if (!html || typeof html !== 'string') {
                     console.warn('[VirtualScroller] renderItem returned non-string:', typeof html, item);
@@ -218,18 +223,10 @@ class VirtualScroller {
 
                 // Cache element
                 this.renderedItems.set(itemId, element);
-                console.log(`[VirtualScroller] Created element for ${itemId}, tag: ${element.tagName}`);
-            } else {
-                console.log(`[VirtualScroller] Using cached element for ${itemId}`);
             }
 
-            // Position element
-            element.style.position = 'absolute';
-            element.style.top = `${actualIndex * this.itemHeight}px`;
-            element.style.left = '0';
-            element.style.right = '0';
-            // Don't set fixed height - let content determine height
-            // element.style.height = `${this.itemHeight}px`;
+            // Use relative positioning - keep in normal document flow
+            // No need to set position/top/left - elements stack naturally
 
             // Add data attribute for debugging
             element.dataset.virtualIndex = actualIndex;
@@ -239,8 +236,6 @@ class VirtualScroller {
 
         // Batch insert
         this.wrapper.appendChild(fragment);
-        console.log(`[VirtualScroller] Inserted ${fragment.childNodes.length} nodes into wrapper`);
-        console.log(`[VirtualScroller] Wrapper now has ${this.wrapper.children.length} children`);
 
         // Cleanup cache if it's too large (keep only 2x visible items)
         if (this.renderedItems.size > this.visibleCount * 2) {
@@ -271,9 +266,6 @@ class VirtualScroller {
             this.renderedItems.delete(id);
         });
 
-        if (excessCount > 0) {
-            console.log(`[VirtualScroller] Cleaned ${excessCount} cached elements`);
-        }
     }
 
     /**
@@ -286,7 +278,7 @@ class VirtualScroller {
 
         this.items = newItems || [];
         this.totalHeight = this.items.length * this.itemHeight;
-        this.wrapper.style.height = `${this.totalHeight}px`;
+        // Don't set wrapper height - padding will control it
 
         // Clear cache since items changed
         this.renderedItems.clear();
@@ -299,8 +291,6 @@ class VirtualScroller {
         }
 
         this._updateScrollPosition();
-
-        console.log(`[VirtualScroller] Updated to ${this.items.length} items`);
     }
 
     /**
@@ -409,8 +399,6 @@ class VirtualScroller {
             }
             this.wrapper.remove();
         }
-
-        console.log('[VirtualScroller] Destroyed');
     }
 }
 
