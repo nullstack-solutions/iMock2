@@ -527,47 +527,15 @@
 .cards-container {
     background: linear-gradient(150deg, rgba(38, 38, 38, 0.92), rgba(16, 16, 16, 0.78)), var(--surface-elevated);
     border-radius: var(--radius-xl);
-    overflow: hidden;
     box-shadow: var(--shadow-md);
     border: 1px solid rgba(255, 255, 255, 0.06);
-    contain: layout style;
-    content-visibility: auto;
-    /* No fixed height - let content determine container height */
-    position: relative;
-}
-
-/* Virtual Scroller wrapper for proper scrolling */
-.virtual-scroller-wrapper {
-    /* No fixed height - content determines wrapper height */
+    /* Enable independent scrolling within container */
+    max-height: calc(100vh - 300px);
     overflow-y: auto;
-    position: relative;
-    scroll-behavior: smooth;
-    max-height: calc(100vh - 200px); /* Only max-height to prevent infinite growth */
-}
-
-/* Main content area should allow page scroll */
-.main-content {
-    min-height: calc(100vh - 80px); /* Ensure content is at least viewport height minus header */
-}
-
-/* Page container should allow normal scrolling */
-.container {
-    min-height: 100vh;
-}
-
-/* Ensure virtual scroller containers work with page scroll */
-#mappings-list.virtual-scroller-wrapper,
-#requests-list.virtual-scroller-wrapper {
-    max-height: none; /* Remove fixed height */
-    overflow-y: visible; /* Let page handle scrolling */
+    overflow-x: hidden;
     position: relative;
 }
 
-/* For virtual scroller to work properly, constrain only when there are many items */
-.virtual-scroller-wrapper.has-many-items {
-    max-height: calc(100vh - 250px); /* Constraint only for large lists */
-    overflow-y: auto;
-}
 
 /* ===== LIST ITEMS ===== */
 .list-item {
