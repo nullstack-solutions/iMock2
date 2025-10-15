@@ -68,17 +68,12 @@ window.fetchAndRenderRequests = async (requestsToRender = null, options = {}) =>
         // Invalidate cache before re-rendering to ensure fresh DOM references
         window.invalidateElementCache(SELECTORS.LISTS.REQUESTS);
 
-        // Use Virtual Scroller for better performance with large lists
-        if (typeof window.initRequestsVirtualScroller === 'function') {
-            window.initRequestsVirtualScroller(window.allRequests, container);
-        } else {
-            // Fallback to traditional renderList
-            renderList(container, window.allRequests, {
-                renderItem: renderRequestMarkup,
-                getKey: getRequestRenderKey,
-                getSignature: getRequestRenderSignature
-            });
-        }
+        // Render requests list
+        renderList(container, window.allRequests, {
+            renderItem: renderRequestMarkup,
+            getKey: getRequestRenderKey,
+            getSignature: getRequestRenderSignature
+        });
         updateRequestsCounter();
         // Source indicator + log, mirroring mappings
         if (typeof updateRequestsSourceIndicator === 'function') updateRequestsSourceIndicator(reqSource);

@@ -647,19 +647,14 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
         const logSource = renderSource || 'previous';
         console.log(`📦 Mappings render from: ${logSource} — ${sortedMappings.length} items`);
 
-        // Use Virtual Scroller for better performance with large lists
-        if (typeof window.initMappingsVirtualScroller === 'function') {
-            window.initMappingsVirtualScroller(sortedMappings, container);
-        } else {
-            // Fallback to traditional renderList
-            renderList(container, sortedMappings, {
-                renderItem: renderMappingMarkup,
-                getKey: getMappingRenderKey,
-                getSignature: getMappingRenderSignature,
-                onItemChanged: handleMappingItemChanged,
-                onItemRemoved: handleMappingItemRemoved
-            });
-        }
+        // Render mappings list
+        renderList(container, sortedMappings, {
+            renderItem: renderMappingMarkup,
+            getKey: getMappingRenderKey,
+            getSignature: getMappingRenderSignature,
+            onItemChanged: handleMappingItemChanged,
+            onItemRemoved: handleMappingItemRemoved
+        });
         updateMappingsCounter();
         if (renderSource) {
             updateDataSourceIndicator(renderSource);

@@ -459,21 +459,6 @@
     text-decoration: none;
 }
 
-/* ===== VIRTUAL SCROLLER ===== */
-.virtual-scroller-wrapper {
-    position: relative;
-    width: 100%;
-}
-
-.cards-container.is-scrolling {
-    pointer-events: none; /* Disable interactions during fast scroll */
-}
-
-.cards-container.is-scrolling .mapping-card,
-.cards-container.is-scrolling .request-card {
-    will-change: transform; /* Hint browser for optimization */
-}
-
 /* ===== CARDS ===== */
 .card {
     background: linear-gradient(135deg, rgba(59, 130, 246, 0.14), rgba(29, 78, 216, 0.06)), var(--surface-card);
@@ -542,14 +527,11 @@
 .cards-container {
     background: linear-gradient(150deg, rgba(38, 38, 38, 0.92), rgba(16, 16, 16, 0.78)), var(--surface-elevated);
     border-radius: var(--radius-xl);
-    overflow-y: auto; /* Changed from overflow: hidden to allow scrolling */
-    overflow-x: hidden;
+    overflow: hidden;
     box-shadow: var(--shadow-md);
     border: 1px solid rgba(255, 255, 255, 0.06);
-    /* contain: layout style; Removed - conflicts with virtual scroller */
+    contain: layout style;
     content-visibility: auto;
-    max-height: 800px; /* Add max height for scrolling */
-    position: relative; /* For absolute positioning of virtual scroller items */
 }
 
 /* ===== LIST ITEMS ===== */
