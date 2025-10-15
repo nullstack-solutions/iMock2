@@ -532,28 +532,41 @@
     border: 1px solid rgba(255, 255, 255, 0.06);
     contain: layout style;
     content-visibility: auto;
-    /* Virtual Scroller container constraints */
-    height: calc(100vh - 300px); /* Full viewport minus header/filters */
-    max-height: calc(100vh - 300px);
-    overflow-y: auto;
+    /* No fixed height - let content determine container height */
     position: relative;
 }
 
 /* Virtual Scroller wrapper for proper scrolling */
 .virtual-scroller-wrapper {
-    height: 100%;
+    /* No fixed height - content determines wrapper height */
     overflow-y: auto;
     position: relative;
     scroll-behavior: smooth;
+    max-height: calc(100vh - 200px); /* Only max-height to prevent infinite growth */
 }
 
-/* Ensure virtual scroller containers have proper height */
+/* Main content area should allow page scroll */
+.main-content {
+    min-height: calc(100vh - 80px); /* Ensure content is at least viewport height minus header */
+}
+
+/* Page container should allow normal scrolling */
+.container {
+    min-height: 100vh;
+}
+
+/* Ensure virtual scroller containers work with page scroll */
 #mappings-list.virtual-scroller-wrapper,
 #requests-list.virtual-scroller-wrapper {
-    height: calc(100vh - 350px); /* Adjust for page header and filters */
-    max-height: calc(100vh - 350px);
-    overflow-y: auto;
+    max-height: none; /* Remove fixed height */
+    overflow-y: visible; /* Let page handle scrolling */
     position: relative;
+}
+
+/* For virtual scroller to work properly, constrain only when there are many items */
+.virtual-scroller-wrapper.has-many-items {
+    max-height: calc(100vh - 250px); /* Constraint only for large lists */
+    overflow-y: auto;
 }
 
 /* ===== LIST ITEMS ===== */
