@@ -112,4 +112,48 @@ const cacheResult = await window.loadImockCacheBestOf3();
 assert.deepEqual(cacheResult, { source: 'cache', data: { mappings: [{ id: 'cached-entry' }] } });
 assert.equal(apiCalls.length, 1, 'Only fixed ID lookup should be used when it returns data');
 
+assert.equal(typeof window.syncCacheWithMappings, 'function', 'syncCacheWithMappings should be attached to window');
+
+const cache = new Map();
+window.cacheManager = { cache, optimisticQueue: [] };
+
+cache.set('legacy', {
+    id: 'legacy',
+    request: { method: 'GET', url: '/legacy' },
+    response: { status: 200 },
+    metadata: { foo: 'bar' },
+});
+
+cache.set('stale', {
+    id: 'stale',
+    request: { method: 'DELETE', url: '/stale' },
+    response: { status: 410 },
+});
+
+window.syncCacheWithMappings([
+    {
+        id: 'legacy',
+        request: { url: '/updated' },
+        response: { body: 'hello' },
+        metadata: { baz: 'qux' },
+    },
+    {
+        id: 'new',
+        request: { method: 'POST', url: '/new' },
+        response: { status: 201 },
+        metadata: { fresh: true },
+    },
+]);
+
+const legacy = cache.get('legacy');
+assert.deepEqual(legacy.request, { method: 'GET', url: '/updated' }, 'Existing requests should merge nested properties');
+assert.deepEqual(legacy.response, { status: 200, body: 'hello' }, 'Existing responses should merge nested properties');
+assert.deepEqual(legacy.metadata, { foo: 'bar', baz: 'qux' }, 'Metadata should merge without loss');
+
+const newest = cache.get('new');
+assert.equal(newest.request.method, 'POST');
+assert.equal(newest.response.status, 201);
+assert.equal(cache.has('stale'), false, 'Entries missing from the sync payload should be pruned');
+assert.equal(typeof window.cacheLastUpdate, 'number', 'Successful sync should timestamp the update');
+
 console.log('✅ global definitions test passed');
