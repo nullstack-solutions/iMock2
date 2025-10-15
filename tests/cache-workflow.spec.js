@@ -1,7 +1,10 @@
-const assert = require('assert');
-const fs = require('fs');
-const path = require('path');
-const vm = require('vm');
+import assert from 'node:assert';
+import fs from 'node:fs';
+import path from 'node:path';
+import vm from 'node:vm';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const sandbox = {
     console,
@@ -163,6 +166,57 @@ runTest('update merges existing mapping and refreshes UI from cache snapshot', (
     assert.strictEqual(stored.metadata.edited, '2024-02-02T00:00:00Z');
     assert.strictEqual(getRenderedIds().join(','), 'x');
     assert.strictEqual(context.allMappings[0].response.status, 418);
+});
+
+runTest('updateOptimisticCache keeps imock cache snapshot in sync', () => {
+    context.__lastRender = null;
+    context.cacheManager.cache.clear();
+    context.imockCacheSnapshot = { mappings: [] };
+
+    const created = baseMapping('snap');
+    context.updateOptimisticCache(created, 'create');
+
+    assert.ok(Array.isArray(context.imockCacheSnapshot.mappings));
+    assert.strictEqual(context.imockCacheSnapshot.mappings.some(m => m.id === 'snap'), true);
+
+    context.updateOptimisticCache({ id: 'snap' }, 'delete');
+
+    assert.strictEqual(context.imockCacheSnapshot.mappings.some(m => m.id === 'snap'), false);
+});
+
+runTest('syncCacheMappingWithServer creates cache payload when mapping missing', async () => {
+    context.cacheManager.cache.clear();
+    context.imockCacheSnapshot = { mappings: [] };
+
+    const originalIsCacheEnabled = context.isCacheEnabled;
+    const originalFetchExisting = context.fetchExistingCacheMapping;
+    const originalApiFetch = context.apiFetch;
+
+    context.isCacheEnabled = () => true;
+    context.fetchExistingCacheMapping = async () => null;
+
+    const calls = [];
+    context.apiFetch = async (url, options = {}) => {
+        calls.push({ url, options });
+        if (options && options.body) {
+            const parsed = JSON.parse(options.body);
+            return { response: { jsonBody: parsed.response?.jsonBody || parsed } };
+        }
+        return {};
+    };
+
+    const mapping = baseMapping('server-sync');
+    await context.syncCacheMappingWithServer(mapping, 'create');
+
+    assert.ok(calls.length >= 1);
+    const lastCall = calls[calls.length - 1];
+    const payload = JSON.parse(lastCall.options.body);
+    assert.ok(payload.response?.jsonBody?.mappings?.some(m => m.id === 'server-sync'));
+    assert.ok(context.imockCacheSnapshot.mappings.some(m => m.id === 'server-sync'));
+
+    context.isCacheEnabled = originalIsCacheEnabled;
+    context.fetchExistingCacheMapping = originalFetchExisting;
+    context.apiFetch = originalApiFetch;
 });
 
 runTest('delete hydrates cache then removes mapping and updates UI', () => {

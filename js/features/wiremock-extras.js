@@ -316,6 +316,7 @@ async function loadImockCacheBestOf3() {
 if (typeof window !== 'undefined') {
     window.loadImockCacheBestOf3 = window.loadImockCacheBestOf3 || loadImockCacheBestOf3;
     window.syncCacheWithMappings = window.syncCacheWithMappings || syncCacheWithMappings;
+    window.updateImockCacheSnapshot = window.updateImockCacheSnapshot || updateImockCacheSnapshot;
 }
 
 
@@ -584,6 +585,50 @@ function buildUpdatedCachePayload(existingPayload, mapping, operation) {
     }
 }
 
+function resolveSlimPayloadFromGlobals() {
+    try {
+        if (typeof window !== 'undefined') {
+            const snapshot = window.imockCacheSnapshot;
+            if (snapshot && Array.isArray(snapshot.mappings)) {
+                return { mappings: cloneSlimMappingsList(snapshot.mappings) };
+            }
+
+            const cacheSnapshot = buildCacheSnapshot();
+            if (Array.isArray(cacheSnapshot) && cacheSnapshot.length > 0) {
+                return buildSlimList(cacheSnapshot);
+            }
+
+            if (Array.isArray(window.originalMappings) && window.originalMappings.length > 0) {
+                return buildSlimList(window.originalMappings);
+            }
+
+            if (Array.isArray(window.allMappings) && window.allMappings.length > 0) {
+                return buildSlimList(window.allMappings);
+            }
+        }
+    } catch (error) {
+        console.warn('resolveSlimPayloadFromGlobals failed:', error);
+    }
+
+    return { mappings: [] };
+}
+
+function updateImockCacheSnapshot(mapping, operation) {
+    try {
+        if (typeof window === 'undefined') {
+            return;
+        }
+
+        const basePayload = resolveSlimPayloadFromGlobals();
+        const updated = buildUpdatedCachePayload(basePayload, mapping, operation);
+        if (updated) {
+            window.imockCacheSnapshot = updated;
+        }
+    } catch (error) {
+        console.warn('updateImockCacheSnapshot failed:', error);
+    }
+}
+
 async function fetchExistingCacheMapping() {
     try {
         let cacheMapping = await getCacheByFixedId();
@@ -608,17 +653,14 @@ async function syncCacheMappingWithServer(mapping, operation) {
         }
 
         const existingMapping = await fetchExistingCacheMapping();
-        if (!existingMapping || !existingMapping.response) {
-            console.log('🧩 [CACHE] Remote cache sync skipped - cache mapping missing');
-            return;
-        }
-
-        const currentPayload = extractCacheJsonBody(existingMapping) || { mappings: [] };
+        const currentPayload = extractCacheJsonBody(existingMapping) || resolveSlimPayloadFromGlobals();
         const updatedPayload = buildUpdatedCachePayload(currentPayload, mapping, operation);
         if (!updatedPayload) {
             console.log('🧩 [CACHE] Remote cache sync skipped - unable to build payload');
             return;
         }
+
+        updateImockCacheSnapshot(mapping, operation);
 
         const response = await upsertImockCacheMapping(updatedPayload);
         const finalPayload = extractCacheJsonBody(response) || updatedPayload;
