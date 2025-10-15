@@ -43,7 +43,7 @@ function initMappingsVirtualScroller(mappings, container) {
         container: container,
         items: mappings,
         itemHeight: 160, // Approximate height of a mapping card
-        renderItem: renderMappingMarkup,
+        renderItem: window.renderMappingCard,
         getItemId: (mapping) => mapping.id || mapping.uuid,
         bufferSize: 3,
         onScroll: (scrollTop, startIndex, endIndex) => {
