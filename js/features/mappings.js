@@ -764,43 +764,8 @@ window.applyOptimisticMappingUpdate = (mappingLike) => {
 
         rememberOptimisticShadowMapping(mapping, optimisticOperation);
 
-        // Use updateOptimisticCache if available, otherwise fallback to legacy/manual logic
-        if (typeof updateOptimisticCache === 'function') {
-            updateOptimisticCache(mapping, optimisticOperation, { queueMode: 'add' });
-        } else {
-            // Fallback to legacy direct mutation if the new helper is unavailable
-            if (cacheAvailable) {
-                if (typeof window.cacheManager?.addOptimisticUpdate === 'function') {
-                    try {
-                        window.cacheManager.addOptimisticUpdate(mapping, optimisticOperation);
-                    } catch (queueError) {
-                        console.warn('🎯 [OPTIMISTIC] Failed to enqueue optimistic update:', queueError);
-                    }
-                }
-                seedCacheFromGlobals(window.cacheManager.cache);
-                const incoming = cloneMappingForCache(mapping);
-                if (!incoming) {
-                    console.warn('🎯 [OPTIMISTIC] Failed to clone mapping for cache:', mappingId);
-                } else {
-                    if (!incoming.id && mappingId) {
-                        incoming.id = mappingId;
-                    }
-                    if (!incoming.uuid && (mapping.uuid || mappingId)) {
-                        incoming.uuid = mapping.uuid || mappingId;
-                    }
-
-                    if (window.cacheManager.cache.has(mappingId)) {
-                        const merged = mergeMappingData(window.cacheManager.cache.get(mappingId), incoming);
-                        window.cacheManager.cache.set(mappingId, merged);
-                    } else {
-                        window.cacheManager.cache.set(mappingId, incoming);
-                    }
-                }
-            }
-
-            window.cacheLastUpdate = Date.now();
-            refreshMappingsFromCache();
-        }
+        // Update optimistic cache
+        updateOptimisticCache(mapping, optimisticOperation, { queueMode: 'add' });
 
         console.log('🎯 [OPTIMISTIC] Applied update for mapping:', mappingId);
 
