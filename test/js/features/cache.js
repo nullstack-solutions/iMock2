@@ -122,10 +122,9 @@ window.cacheManager = {
                 }
             }
 
-            // Update the global arrays
-            window.originalMappings = Array.from(this.cache.values());
+            // MEMORY OPTIMIZATION: No need to assign - getters pull from cache automatically
+            // window.allMappings and window.originalMappings are getters → Array.from(cache.values())
             refreshMappingTabSnapshot();
-            window.allMappings = window.originalMappings;
             rebuildMappingIndex(window.originalMappings);
 
             console.log(`✅ [CACHE] Rebuild complete: ${this.cache.size} mappings`);
@@ -372,12 +371,17 @@ window.startHealthMonitoring = () => {
 function refreshMappingsFromCache({ maintainFilters = true } = {}) {
     try {
 
-        // Use full cache snapshot logic for consistency
+        // MEMORY OPTIMIZATION: Update cacheManager.cache instead of getters
         const sanitized = buildCacheSnapshot();
 
-        window.originalMappings = sanitized;
+        // Populate cacheManager.cache (getters will reflect this automatically)
+        window.cacheManager.cache.clear();
+        sanitized.forEach(mapping => {
+            const id = mapping.id || mapping.uuid;
+            if (id) window.cacheManager.cache.set(id, mapping);
+        });
+
         refreshMappingTabSnapshot();
-        window.allMappings = sanitized;
         rebuildMappingIndex(window.originalMappings);
 
         const methodFilter = document.getElementById(SELECTORS.MAPPING_FILTERS.METHOD)?.value || '';

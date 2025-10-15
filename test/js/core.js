@@ -497,7 +497,8 @@ window.uptimeInterval = null; // Make globally accessible for uptime tracking
 let autoRefreshInterval = null;
 
 // Global feature-level state
-window.allMappings = [];
+// MEMORY OPTIMIZATION: allMappings is now a getter defined in state.js
+// window.allMappings = []; // REMOVED - now getter
 window.allRequests = [];
 window.allScenarios = [];
 window.isRecording = false;
