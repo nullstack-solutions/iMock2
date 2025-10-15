@@ -191,18 +191,14 @@ function isCacheEnabled() {
 
 // Enhanced WireMock connection routine with accurate uptime handling
 window.connectToWireMock = async () => {
-    // Try main page elements first, then fallback to settings page elements
+    // Get host/port from settings or input fields
+    const settings = (typeof window.readWiremockSettings === 'function') ? window.readWiremockSettings() : {};
     const hostInput = document.getElementById('wiremock-host') || document.getElementById(SELECTORS.CONNECTION.HOST);
     const portInput = document.getElementById('wiremock-port') || document.getElementById(SELECTORS.CONNECTION.PORT);
-    
-    if (!hostInput || !portInput) {
-        console.error('Connection input elements not found');
-        NotificationManager.error('Error: connection fields not found');
-        return;
-    }
-    
-    const host = hostInput.value.trim() || 'localhost';
-    const port = portInput.value.trim() || '8080';
+
+    // Use saved settings or input values
+    const host = hostInput?.value.trim() || settings.wiremockHost || 'localhost';
+    const port = portInput?.value.trim() || settings.wiremockPort || '8080';
     
     // DON'T save connection settings here - they should already be saved from Settings page
     // Only use these values for the current connection attempt
