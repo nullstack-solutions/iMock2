@@ -194,15 +194,37 @@ window.connectToWireMock = async () => {
     // Try main page elements first, then fallback to settings page elements
     const hostInput = document.getElementById('wiremock-host') || document.getElementById(SELECTORS.CONNECTION.HOST);
     const portInput = document.getElementById('wiremock-port') || document.getElementById(SELECTORS.CONNECTION.PORT);
-    
-    if (!hostInput || !portInput) {
-        console.error('Connection input elements not found');
-        NotificationManager.error('Error: connection fields not found');
+    const storedSettings = (typeof window.readWiremockSettings === 'function') ? window.readWiremockSettings() : {};
+
+    const hasStoredConnection = Boolean((storedSettings.host && String(storedSettings.host).trim()) ||
+        (storedSettings.port && String(storedSettings.port).trim()));
+
+    if (!hostInput && !portInput && !hasStoredConnection) {
+        console.error('Connection inputs unavailable and no stored settings present');
+        NotificationManager.error('Configure your WireMock connection in Settings before connecting.');
         return;
     }
-    
-    const host = hostInput.value.trim() || 'localhost';
-    const port = portInput.value.trim() || '8080';
+
+    let host = hostInput?.value?.trim();
+    let port = portInput?.value?.trim();
+
+    if (!host && typeof storedSettings.host === 'string') {
+        host = storedSettings.host.trim();
+    }
+
+    if (!port && storedSettings.port !== undefined && storedSettings.port !== null) {
+        port = String(storedSettings.port).trim();
+    }
+
+    if (!host) {
+        host = 'localhost';
+    }
+
+    if (!port) {
+        const hasScheme = /^(https?:)\/\//i.test(host);
+        const scheme = hasScheme ? host.split(':')[0] : 'http';
+        port = scheme === 'https' ? '443' : '8080';
+    }
     
     // DON'T save connection settings here - they should already be saved from Settings page
     // Only use these values for the current connection attempt
