@@ -176,6 +176,7 @@ class VirtualScroller {
      */
     _render() {
         const visibleItems = this.items.slice(this.startIndex, this.endIndex);
+        console.log(`[VirtualScroller] _render called: ${visibleItems.length} items (${this.startIndex}-${this.endIndex})`);
 
         // Clear wrapper content
         this.wrapper.innerHTML = '';
@@ -194,17 +195,27 @@ class VirtualScroller {
             if (!element) {
                 // Create new element
                 const html = this.renderItem(item, actualIndex);
+                console.log(`[VirtualScroller] renderItem for index ${actualIndex}, HTML length: ${html?.length || 0}`);
+
+                if (!html || typeof html !== 'string') {
+                    console.warn('[VirtualScroller] renderItem returned non-string:', typeof html, item);
+                    return;
+                }
+
                 const template = document.createElement('template');
                 template.innerHTML = html.trim();
                 element = template.content.firstElementChild;
 
                 if (!element) {
-                    console.warn('[VirtualScroller] renderItem returned invalid HTML for item:', item);
+                    console.warn('[VirtualScroller] renderItem returned invalid HTML for item:', item, 'HTML:', html.substring(0, 200));
                     return;
                 }
 
                 // Cache element
                 this.renderedItems.set(itemId, element);
+                console.log(`[VirtualScroller] Created element for ${itemId}, tag: ${element.tagName}`);
+            } else {
+                console.log(`[VirtualScroller] Using cached element for ${itemId}`);
             }
 
             // Position element
@@ -223,6 +234,8 @@ class VirtualScroller {
 
         // Batch insert
         this.wrapper.appendChild(fragment);
+        console.log(`[VirtualScroller] Inserted ${fragment.childNodes.length} nodes into wrapper`);
+        console.log(`[VirtualScroller] Wrapper now has ${this.wrapper.children.length} children`);
 
         // Cleanup cache if it's too large (keep only 2x visible items)
         if (this.renderedItems.size > this.visibleCount * 2) {
