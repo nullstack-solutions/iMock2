@@ -590,7 +590,7 @@
 .request-item.is-expanded,
 .request-item.is-editing {
     background: var(--gradient-card-hover);
-    box-shadow: 0 24px 45px rgba(2, 6, 23, 0.4), 0 0 0 1px rgba(59, 130, 246, 0.5), 0 0 0 6px rgba(59, 130, 246, 0.16);
+    box-shadow: 0 12px 24px rgba(2, 6, 23, 0.3), 0 0 0 1px rgba(59, 130, 246, 0.3), 0 0 0 4px rgba(59, 130, 246, 0.08);
     border-color: rgba(59, 130, 246, 0.38);
     z-index: 20; /* Expanded cards above other cards */
     position: relative; /* Enable z-index */

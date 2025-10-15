@@ -204,17 +204,8 @@ window.connectToWireMock = async () => {
     // Only use these values for the current connection attempt
     console.log('🔗 Connecting with:', { host, port });
     
-    // Update the base URL (with proper scheme/port normalization)
-    if (typeof window.normalizeWiremockBaseUrl === 'function') {
-        window.wiremockBaseUrl = window.normalizeWiremockBaseUrl(host, port);
-    } else {
-        // Fall back to the previous behavior (in case script load order changes)
-        const hasScheme = /^(https?:)\/\//i.test(host);
-        const scheme = hasScheme ? host.split(':')[0] : 'http';
-        const cleanHost = hasScheme ? host.replace(/^(https?:)\/\//i, '') : host;
-        const finalPort = (port && String(port).trim()) || (scheme === 'https' ? '443' : '8080');
-        window.wiremockBaseUrl = `${scheme}://${cleanHost}:${finalPort}/__admin`;
-    }
+    // Normalize base URL (proper scheme/port normalization)
+    window.wiremockBaseUrl = window.normalizeWiremockBaseUrl(host, port);
     
     try {
         let renderSource = 'unknown';
@@ -287,22 +278,14 @@ window.checkHealthAndStartUptime = async () => {
         let responseTime = 0;
         let isHealthy = false;
 
-        // Try /health first (WireMock 3.x) then fall back to /mappings (compatible with 2.x)
-        try {
-            const response = await apiFetch(ENDPOINTS.HEALTH);
-            responseTime = Math.round(performance.now() - startTime);
-            isHealthy = typeof response === 'object' && (
-                (typeof response.status === 'string' && ['up','healthy','ok'].includes(response.status.toLowerCase())) ||
-                response.healthy === true
-            );
-            console.log('[HEALTH] initial check:', { rawStatus: response?.status, healthyFlag: response?.healthy, isHealthy });
-        } catch (primaryError) {
-            // Fallback: verify core API availability via /mappings
-            const fallback = await fetchMappingsFromServer();
-            responseTime = Math.round(performance.now() - startTime);
-            // Treat a JSON object response (WireMock default) as healthy
-            isHealthy = typeof fallback === 'object';
-        }
+        // Check /health endpoint (WireMock 3.x standard)
+        const response = await apiFetch(ENDPOINTS.HEALTH);
+        responseTime = Math.round(performance.now() - startTime);
+        isHealthy = typeof response === 'object' && (
+            (typeof response.status === 'string' && ['up','healthy','ok'].includes(response.status.toLowerCase())) ||
+            response.healthy === true
+        );
+        console.log('[HEALTH] initial check:', { rawStatus: response?.status, healthyFlag: response?.healthy, isHealthy });
 
         if (isHealthy) {
             // Start uptime only after a successful health check
@@ -349,20 +332,13 @@ window.startHealthMonitoring = () => {
             let responseTime = 0;
             let isHealthyNow = false;
 
-            try {
-                const healthResponse = await apiFetch(ENDPOINTS.HEALTH);
-                responseTime = Math.round(performance.now() - startTime);
-                isHealthyNow = typeof healthResponse === 'object' && (
-                    (typeof healthResponse.status === 'string' && ['up','healthy','ok'].includes(healthResponse.status.toLowerCase())) ||
-                    healthResponse.healthy === true
-                );
-                console.log('[HEALTH] periodic check:', { rawStatus: healthResponse?.status, healthyFlag: healthResponse?.healthy, isHealthyNow });
-            } catch (primaryError) {
-                // Fallback to /mappings
-                const fallback = await fetchMappingsFromServer();
-                responseTime = Math.round(performance.now() - startTime);
-                isHealthyNow = typeof fallback === 'object';
-            }
+            const healthResponse = await apiFetch(ENDPOINTS.HEALTH);
+            responseTime = Math.round(performance.now() - startTime);
+            isHealthyNow = typeof healthResponse === 'object' && (
+                (typeof healthResponse.status === 'string' && ['up','healthy','ok'].includes(healthResponse.status.toLowerCase())) ||
+                healthResponse.healthy === true
+            );
+            console.log('[HEALTH] periodic check:', { rawStatus: healthResponse?.status, healthyFlag: healthResponse?.healthy, isHealthyNow });
 
             const healthIndicator = document.getElementById(SELECTORS.HEALTH.INDICATOR);
             if (healthIndicator) {
