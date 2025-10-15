@@ -30,7 +30,7 @@ jobs:
         run: npm install --no-audit --no-fund
 
       - name: Validate HTML
-        uses: Cyb3r-Jak3/html5validator-action@v7
+        uses: cyb3r-jak3/html5validator-action@v0.8.3
         with:
           root: .
           css: false
@@ -54,12 +54,44 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Determine diff range
+        id: diff
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD="${{ github.event.pull_request.head.sha }}"
+          else
+            BASE="${{ github.event.before }}"
+            HEAD="${{ github.sha }}"
+          fi
+
+          if [ -z "$BASE" ] || [ -z "$HEAD" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "No diff range available; skipping secret scan."
+            exit 0
+          fi
+
+          if [ "$BASE" = "$HEAD" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Base and head commits are identical; skipping secret scan."
+            exit 0
+          fi
+
+          echo "base=$BASE" >> "$GITHUB_OUTPUT"
+          echo "head=$HEAD" >> "$GITHUB_OUTPUT"
+
+      - name: Skip secret scan
+        if: steps.diff.outputs.skip == 'true'
+        run: echo "Skipping TruffleHog scan due to matching base/head commits."
+
       - name: Scan for secrets
+        if: steps.diff.outputs.skip != 'true'
         uses: trufflesecurity/trufflehog@main
         with:
           path: ./
-          base: ${{ github.event.repository.default_branch }}
-          head: HEAD
+          base: ${{ steps.diff.outputs.base }}
+          head: ${{ steps.diff.outputs.head }}
 
   build:
     name: Test Build
@@ -96,7 +128,7 @@ jobs:
           fi
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: build-${{ github.sha }}
           path: dist/
