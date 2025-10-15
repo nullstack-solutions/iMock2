@@ -316,7 +316,7 @@ async function loadImockCacheBestOf3() {
 if (typeof window !== 'undefined') {
     window.loadImockCacheBestOf3 = window.loadImockCacheBestOf3 || loadImockCacheBestOf3;
     window.syncCacheWithMappings = window.syncCacheWithMappings || syncCacheWithMappings;
-}
+
 
 // Resolve conflicts by querying the server for the authoritative version of a specific mapping
 async function resolveConflictWithServer(mappingId) {
