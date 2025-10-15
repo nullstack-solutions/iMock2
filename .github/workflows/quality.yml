@@ -1,0 +1,103 @@
+name: Quality Checks
+
+on:
+  pull_request:
+    branches: [main, test]
+  push:
+    branches: [main, test]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  lint:
+    name: Lint Code
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate HTML
+        uses: Cyb3r-Jak3/html5validator-action@v7
+        with:
+          root: .
+          css: false
+        continue-on-error: true
+
+      - name: Lint JavaScript
+        run: npx eslint js/**/*.js --max-warnings 20
+        continue-on-error: true
+
+      - name: Lint CSS
+        run: npx stylelint "styles/**/*.css" --max-warnings 30
+        continue-on-error: true
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scan for secrets
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+
+  build:
+    name: Test Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Bundle size check
+        run: |
+          SIZE=$(du -sb dist | cut -f1)
+          echo "📦 Bundle size: $SIZE bytes"
+
+          if [ $SIZE -gt 2000000 ]; then
+            echo "::warning::Bundle > 2MB"
+          fi
+
+          if [ $SIZE -gt 5000000 ]; then
+            echo "::error::Bundle > 5MB"
+            exit 1
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: build-${{ github.sha }}
+          path: dist/
+          retention-days: 7
