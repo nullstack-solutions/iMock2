@@ -43,7 +43,7 @@ function initRequestsVirtualScroller(requests, container) {
         container: container,
         items: requests,
         itemHeight: 160, // Approximate height of a request card
-        renderItem: renderRequestMarkup,
+        renderItem: window.renderRequestCard,
         getItemId: (request) => request.id || `${request.request?.loggedDate}-${request.request?.url}`,
         bufferSize: 3,
         onScroll: (scrollTop, startIndex, endIndex) => {
