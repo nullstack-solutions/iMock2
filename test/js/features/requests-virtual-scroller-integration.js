@@ -36,19 +36,22 @@ function initRequestsVirtualScroller(requests, container) {
         return;
     }
 
+    // Add class for large lists to enable proper scrolling
+    container.classList.add('has-many-items');
+
     // Create virtual scroller
-    console.log(`[VirtualScroller] Creating virtual scroller for ${requests.length} requests`);
+    console.log(`[VirtualScroller] Creating virtual scroller for ${requests.length} items`);
 
     window.requestsVirtualScroller = new VirtualScroller({
         container: container,
         items: requests,
-        itemHeight: 160, // Approximate height of a request card
+        itemHeight: 140, // Approximate height of a request card
         renderItem: window.renderRequestCard,
-        getItemId: (request) => request.id || `${request.request?.loggedDate}-${request.request?.url}`,
+        getItemId: (request) => request.id,
         bufferSize: 3,
         onScroll: (scrollTop, startIndex, endIndex) => {
             // Optional: log scroll position for debugging
-            // console.log(`Scroll: ${scrollTop}px, showing requests ${startIndex}-${endIndex}`);
+            // console.log(`Scroll: ${scrollTop}px, showing items ${startIndex}-${endIndex}`);
         }
     });
 

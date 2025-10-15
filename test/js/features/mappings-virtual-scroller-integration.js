@@ -36,6 +36,9 @@ function initMappingsVirtualScroller(mappings, container) {
         return;
     }
 
+    // Add class for large lists to enable proper scrolling
+    container.classList.add('has-many-items');
+
     // Create virtual scroller
     console.log(`[VirtualScroller] Creating virtual scroller for ${mappings.length} items`);
 
