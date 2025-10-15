@@ -489,8 +489,10 @@ function executeMappingFilters() {
     const filters = { method, url, status };
     window.FilterManager.saveFilterState('mappings', filters);
 
+    // MEMORY OPTIMIZATION: window.allMappings is now a getter, can't be assigned
+    // Filters create temporary views without modifying the cache
+
     if (!Array.isArray(window.originalMappings) || window.originalMappings.length === 0) {
-        window.allMappings = [];
         const emptyState = document.getElementById(SELECTORS.EMPTY.MAPPINGS);
         const container = document.getElementById(SELECTORS.LISTS.MAPPINGS);
         if (emptyState) emptyState.classList.remove('hidden');
@@ -505,6 +507,7 @@ function executeMappingFilters() {
     const loweredUrl = url.toLowerCase();
     const hasFilters = Boolean(method || url || status);
 
+    // Create filtered view without modifying cache
     const filteredMappings = hasFilters
         ? window.originalMappings.filter(mapping => {
             if (!mapping) {
@@ -537,7 +540,7 @@ function executeMappingFilters() {
         })
         : window.originalMappings;
 
-    window.allMappings = hasFilters ? filteredMappings : window.originalMappings;
+    // Render filtered view directly (don't assign to window.allMappings)
 
     const container = document.getElementById(SELECTORS.LISTS.MAPPINGS);
     const emptyState = document.getElementById(SELECTORS.EMPTY.MAPPINGS);
@@ -547,7 +550,8 @@ function executeMappingFilters() {
         return;
     }
 
-    const sortedMappings = [...window.allMappings].sort((a, b) => {
+    // Use filtered view for rendering
+    const sortedMappings = [...filteredMappings].sort((a, b) => {
         const priorityA = a?.priority ?? 1;
         const priorityB = b?.priority ?? 1;
         if (priorityA !== priorityB) return priorityA - priorityB;

@@ -605,26 +605,14 @@
                         if (!mappingData) return;
                         const m = mappingData.mapping || mappingData;
                         if (!m || !m.id) return;
-                        if (!Array.isArray(window.allMappings)) window.allMappings = [];
-                        if (!Array.isArray(window.originalMappings)) window.originalMappings = [];
+                        // MEMORY OPTIMIZATION: allMappings/originalMappings are getters, can't be assigned
 
                         // drop service cache mapping if ever present
                         if (typeof isImockCacheMapping === 'function' && isImockCacheMapping(m)) return; // never render the service mapping
 
-                        // Update or add entry in allMappings
-                        const idx = window.allMappings.findIndex(x => (x.id || x.uuid) === (m.id || m.uuid));
-                        if (idx >= 0) {
-                            window.allMappings[idx] = m;
-                        } else {
-                            window.allMappings.unshift(m);
-                        }
-
-                        // Update originalMappings as well for consistency
-                        const origIdx = window.originalMappings.findIndex(x => (x.id || x.uuid) === (m.id || m.uuid));
-                        if (origIdx >= 0) {
-                            window.originalMappings[origIdx] = m;
-                        } else {
-                            window.originalMappings.unshift(m);
+                        // MEMORY OPTIMIZATION: Update cacheManager.cache directly
+                        if (window.cacheManager && window.cacheManager.cache instanceof Map) {
+                            window.cacheManager.cache.set(m.id, m);
                         }
 
                         console.log('🎯 [OPTIMISTIC] Cache updated successfully in editor context');
