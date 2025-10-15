@@ -69,16 +69,7 @@ window.fetchAndRenderRequests = async (requestsToRender = null, options = {}) =>
         window.invalidateElementCache(SELECTORS.LISTS.REQUESTS);
 
         // Use Virtual Scroller for performance with large lists
-        if (typeof window.initRequestsVirtualScroller === 'function') {
-            window.initRequestsVirtualScroller(window.allRequests, container);
-        } else {
-            // Fallback to traditional rendering
-            renderList(container, window.allRequests, {
-                renderItem: renderRequestMarkup,
-                getKey: getRequestRenderKey,
-                getSignature: getRequestRenderSignature
-            });
-        }
+        window.initRequestsVirtualScroller(window.allRequests, container);
         updateRequestsCounter();
         // Source indicator + log, mirroring mappings
         if (typeof updateRequestsSourceIndicator === 'function') updateRequestsSourceIndicator(reqSource);
