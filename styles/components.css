@@ -459,6 +459,21 @@
     text-decoration: none;
 }
 
+/* ===== VIRTUAL SCROLLER ===== */
+.virtual-scroller-wrapper {
+    position: relative;
+    width: 100%;
+}
+
+.cards-container.is-scrolling {
+    pointer-events: none; /* Disable interactions during fast scroll */
+}
+
+.cards-container.is-scrolling .mapping-card,
+.cards-container.is-scrolling .request-card {
+    will-change: transform; /* Hint browser for optimization */
+}
+
 /* ===== CARDS ===== */
 .card {
     background: linear-gradient(135deg, rgba(59, 130, 246, 0.14), rgba(29, 78, 216, 0.06)), var(--surface-card);
