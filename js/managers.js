@@ -710,6 +710,10 @@ function getMappingRenderKey(mapping) {
     return String(mapping.id || mapping.uuid || mapping.stubId || '');
 }
 
+if (typeof window !== 'undefined') {
+    window.getMappingRenderKey = window.getMappingRenderKey || getMappingRenderKey;
+}
+
 function getMappingRenderSignature(mapping) {
     if (!mapping || typeof mapping !== 'object') {
         return '';
@@ -747,6 +751,10 @@ function getMappingRenderSignature(mapping) {
     ].join('|');
 }
 
+if (typeof window !== 'undefined') {
+    window.getMappingRenderSignature = window.getMappingRenderSignature || getMappingRenderSignature;
+}
+
 function renderMappingMarkup(mapping) {
     return typeof window.renderMappingCard === 'function' ? window.renderMappingCard(mapping) : '';
 }
@@ -760,6 +768,10 @@ function getRequestRenderKey(request) {
         return '';
     }
     return String(request.id || request.requestId || request.mappingUuid || request.request?.id || request.request?.loggedDate || request.loggedDate || '');
+}
+
+if (typeof window !== 'undefined') {
+    window.getRequestRenderKey = window.getRequestRenderKey || getRequestRenderKey;
 }
 
 function getRequestRenderSignature(request) {
@@ -785,6 +797,7 @@ function renderRequestMarkup(request) {
 
 if (typeof window !== 'undefined') {
     window.renderRequestMarkup = window.renderRequestMarkup || renderRequestMarkup;
+    window.getRequestRenderSignature = window.getRequestRenderSignature || getRequestRenderSignature;
 }
 
 window.FilterManager = {
