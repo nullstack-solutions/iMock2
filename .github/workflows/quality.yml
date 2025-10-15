@@ -30,7 +30,7 @@ jobs:
         run: npm install --no-audit --no-fund
 
       - name: Validate HTML
-        uses: cyb3r-jak3/html5validator-action@v0.8.0
+        uses: cyb3r-jak3/html5validator-action@v8.0.0
         with:
           root: .
           css: false
