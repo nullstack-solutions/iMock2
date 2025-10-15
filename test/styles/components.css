@@ -532,6 +532,28 @@
     border: 1px solid rgba(255, 255, 255, 0.06);
     contain: layout style;
     content-visibility: auto;
+    /* Virtual Scroller container constraints */
+    height: calc(100vh - 300px); /* Full viewport minus header/filters */
+    max-height: calc(100vh - 300px);
+    overflow-y: auto;
+    position: relative;
+}
+
+/* Virtual Scroller wrapper for proper scrolling */
+.virtual-scroller-wrapper {
+    height: 100%;
+    overflow-y: auto;
+    position: relative;
+    scroll-behavior: smooth;
+}
+
+/* Ensure virtual scroller containers have proper height */
+#mappings-list.virtual-scroller-wrapper,
+#requests-list.virtual-scroller-wrapper {
+    height: calc(100vh - 350px); /* Adjust for page header and filters */
+    max-height: calc(100vh - 350px);
+    overflow-y: auto;
+    position: relative;
 }
 
 /* ===== LIST ITEMS ===== */
