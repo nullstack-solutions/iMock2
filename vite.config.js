@@ -4,6 +4,18 @@ import { fileURLToPath } from 'url';
 import { visualizer } from 'rollup-plugin-visualizer';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
+const DEFAULT_DEV_SERVER_PORT = 5173;
+const resolvedDevServerPort = Number(process.env.VITE_DEV_SERVER_PORT) || DEFAULT_DEV_SERVER_PORT;
+const resolvedWiremockTarget =
+  process.env.VITE_WIREMOCK_URL || `http://localhost:${process.env.VITE_WIREMOCK_PORT || 8080}`;
+
+const wiremockUrl = new URL(resolvedWiremockTarget);
+const wiremockPort = wiremockUrl.port
+  ? Number(wiremockUrl.port)
+  : wiremockUrl.protocol === 'https:'
+    ? 443
+    : 80;
+const devServerPort = wiremockPort === resolvedDevServerPort ? DEFAULT_DEV_SERVER_PORT : resolvedDevServerPort;
 
 export default defineConfig(({ mode }) => ({
   root: '.',
@@ -70,12 +82,12 @@ export default defineConfig(({ mode }) => ({
     chunkSizeWarningLimit: 500
   },
   server: {
-    port: 5173,
+    port: devServerPort,
     open: true,
     cors: true,
     proxy: {
       '/__admin': {
-        target: 'http://localhost:8080',
+        target: resolvedWiremockTarget,
         changeOrigin: true,
         configure: (proxy) => {
           proxy.on('error', (err) => {
