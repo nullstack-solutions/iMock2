@@ -184,11 +184,11 @@ class VirtualScroller {
         // Clear wrapper content
         this.wrapper.innerHTML = '';
 
-        // Calculate padding to maintain scroll position
+        // Calculate padding to maintain scroll height
         const paddingTop = this.startIndex * this.itemHeight;
         const paddingBottom = (this.items.length - this.endIndex) * this.itemHeight;
 
-        // Apply padding instead of absolute positioning
+        // Apply padding to maintain scrollbar position
         this.wrapper.style.paddingTop = `${paddingTop}px`;
         this.wrapper.style.paddingBottom = `${paddingBottom}px`;
 
