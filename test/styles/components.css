@@ -807,11 +807,10 @@
 .mapping-preview {
     margin-top: var(--space-4);
     padding: var(--space-4);
-    background: rgba(22, 22, 22, 0.95); /* Changed from 0.03 to 0.95 - solid background */
+    background: rgba(22, 22, 22, 0.95); /* Solid background to prevent transparency */
     border-radius: var(--radius-xl);
     border: 1px solid rgba(255, 255, 255, 0.06);
-    max-height: 600px; /* Constrain height to prevent overflow */
-    overflow-y: auto; /* Allow scrolling within preview */
+    /* No max-height or overflow - preview scrolls with the container */
     position: relative; /* Ensure proper stacking */
     z-index: 10; /* Stay above other cards */
 }
