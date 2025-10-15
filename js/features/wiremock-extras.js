@@ -150,6 +150,10 @@ function isImockCacheMapping(m) {
     } catch { return false; }
 }
 
+if (typeof window !== 'undefined') {
+    window.isImockCacheMapping = window.isImockCacheMapping || isImockCacheMapping;
+}
+
 function pickUrl(req) {
     return req?.urlPath || req?.urlPathPattern || req?.urlPattern || req?.url || 'N/A';
 }
@@ -307,6 +311,10 @@ async function loadImockCacheBestOf3() {
     if (c && c.response?.jsonBody) { console.log('🧩 [CACHE] Using cache: metadata'); return { source: 'cache', data: c.response.jsonBody }; }
     console.log('🧩 [CACHE] No cache found');
     return null;
+}
+
+if (typeof window !== 'undefined') {
+    window.loadImockCacheBestOf3 = window.loadImockCacheBestOf3 || loadImockCacheBestOf3;
 }
 
 // Resolve conflicts by querying the server for the authoritative version of a specific mapping
