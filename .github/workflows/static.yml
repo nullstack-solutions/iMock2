@@ -1,46 +1,82 @@
-# Deploy static content to GitHub Pages for production and test branches
-name: Deploy Pages (prod + test)
+name: Deploy to GitHub Pages
 
 on:
   push:
     branches: [main, test]
+  workflow_dispatch:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  deploy:
+  build-and-deploy:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Prepare deployment files
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Build project
+        run: npm run build
+        env:
+          NODE_ENV: production
+
+      - name: Verify build
         run: |
-          mkdir -p _deploy
-          shopt -s extglob nullglob
-          cp -r *.html *.ico *.json editor styles js apps packages _deploy/ 2>/dev/null || true
-          rm -rf _deploy/.git* _deploy/.github
+          echo "Build completed successfully"
+          ls -la dist/
+          echo "Total size:"
+          du -sh dist/
 
-      # PROD → корень gh-pages
       - name: Deploy PROD to gh-pages root
         if: github.ref_name == 'main'
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_branch: gh-pages
-          publish_dir: ./_deploy
+          publish_dir: ./dist
           destination_dir: .
           keep_files: false
           enable_jekyll: false
+          commit_message: 'Deploy PROD: ${{ github.event.head_commit.message }}'
 
-      # TEST → gh-pages/test
       - name: Deploy TEST to gh-pages/test
         if: github.ref_name == 'test'
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_branch: gh-pages
-          publish_dir: ./_deploy
+          publish_dir: ./dist
           destination_dir: test
           keep_files: true
           enable_jekyll: false
+          commit_message: 'Deploy TEST: ${{ github.event.head_commit.message }}'
+
+      - name: Deployment summary
+        run: |
+          echo "### ✅ Deployment successful!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ github.ref_name }}" == "main" ]; then
+            echo "**URL:** https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**URL:** https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/test/" >> $GITHUB_STEP_SUMMARY
+          fi

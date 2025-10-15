@@ -1,3 +1,24 @@
+import '../styles/index.css';
+import './vendor-js-yaml.min.js';
+import './core.js';
+import './managers.js';
+import './demo-data.js';
+import './features/state.js';
+import './features/utils.js';
+import './features/filters.js';
+import './features/cache.js';
+import './features/mappings.js';
+import './features/requests.js';
+import './features/scenarios.js';
+import './features/recording.js';
+import './features/management.js';
+import './features/request-api.js';
+import './features/near-misses.js';
+import './features/wiremock-extras.js';
+import './features/demo.js';
+import './features.js';
+import './editor.js';
+
 'use strict';
 
 console.log('✅ All required modules loaded successfully');

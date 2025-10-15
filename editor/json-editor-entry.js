@@ -1,0 +1,27 @@
+import '../styles/index.css';
+import './json-editor.css';
+import './performance-optimizations.js';
+import './monaco-template-library.js';
+import './monaco-enhanced.js';
+import '../js/vendor-js-yaml.min.js';
+import '../js/core.js';
+import '../js/managers.js';
+import '../js/demo-data.js';
+import '../js/features/state.js';
+import '../js/features/utils.js';
+import '../js/features/filters.js';
+import '../js/features/cache.js';
+import '../js/features/mappings.js';
+import '../js/features/requests.js';
+import '../js/features/scenarios.js';
+import '../js/features/recording.js';
+import '../js/features/management.js';
+import '../js/features/request-api.js';
+import '../js/features/near-misses.js';
+import '../js/features/wiremock-extras.js';
+import '../js/features/demo.js';
+import '../js/features.js';
+import '../js/editor.js';
+import '../js/main.js';
+
+console.debug('Editor entrypoint loaded');
