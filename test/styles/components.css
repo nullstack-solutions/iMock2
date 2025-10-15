@@ -559,6 +559,7 @@
 .request-card {
     padding: 2rem;
     border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    margin-bottom: 0; /* No spacing - cards stack naturally */
     position: relative;
     transition: background var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
     contain: layout style paint;
@@ -588,6 +589,8 @@
     background: var(--gradient-card-hover);
     box-shadow: 0 24px 45px rgba(2, 6, 23, 0.4), 0 0 0 1px rgba(59, 130, 246, 0.5), 0 0 0 6px rgba(59, 130, 246, 0.16);
     border-color: rgba(59, 130, 246, 0.38);
+    z-index: 20; /* Expanded cards above other cards */
+    position: relative; /* Enable z-index */
 }
 
 .mapping-header, .request-header,
@@ -801,9 +804,13 @@
 .mapping-preview {
     margin-top: var(--space-4);
     padding: var(--space-4);
-    background: rgba(255, 255, 255, 0.03);
+    background: rgba(22, 22, 22, 0.95); /* Changed from 0.03 to 0.95 - solid background */
     border-radius: var(--radius-xl);
     border: 1px solid rgba(255, 255, 255, 0.06);
+    max-height: 600px; /* Constrain height to prevent overflow */
+    overflow-y: auto; /* Allow scrolling within preview */
+    position: relative; /* Ensure proper stacking */
+    z-index: 10; /* Stay above other cards */
 }
 
 /* ===== PREVIEW SECTIONS ===== */
