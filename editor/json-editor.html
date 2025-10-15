@@ -620,11 +620,8 @@
                         console.log('🎯 [OPTIMISTIC] allMappings size:', window.allMappings.length);
                         return true;
                     } catch (e) {
-                        console.warn('🎯 [OPTIMISTIC] Local cache update failed, trying main function:', e);
-                        // Fallback to main function
-                        window.applyOptimisticMappingUpdate(mappingData);
-                        console.log('🎯 [OPTIMISTIC] Local update applied successfully');
-                        return true;
+                        console.warn('🎯 [OPTIMISTIC] Local cache update failed:', e);
+                        return false;
                     }
                 }
 
