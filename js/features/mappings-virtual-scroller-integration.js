@@ -27,11 +27,11 @@ function initMappingsVirtualScroller(mappings, container) {
     }
 
     // Check if we have enough items to benefit from virtualization
-    const USE_VIRTUAL_SCROLLING_THRESHOLD = 20;
+    // Use high threshold since dynamic card heights make virtual scrolling complex
+    const USE_VIRTUAL_SCROLLING_THRESHOLD = 500;
 
     if (mappings.length < USE_VIRTUAL_SCROLLING_THRESHOLD) {
-        // For small lists, use traditional rendering
-        console.log(`[VirtualScroller] Using traditional rendering for ${mappings.length} items`);
+        // For typical lists (< 500 items), use traditional rendering with CSS optimizations
         renderMappingsTraditional(mappings, container);
         return;
     }
