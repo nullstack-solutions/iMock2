@@ -69,6 +69,11 @@ class VirtualScroller {
         // Setup
         this._setupContainer();
         this._calculateVisibleCount();
+
+        // Initialize visible range
+        this.startIndex = 0;
+        this.endIndex = Math.min(this.visibleCount, this.items.length);
+
         this._attachEvents();
         this._render();
 
