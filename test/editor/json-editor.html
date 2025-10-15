@@ -4,14 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>WireMock JSON Studio</title>
-    <link rel="icon" type="image/x-icon" href="../assets/favicon-OaxD7THo.ico">
-  <script type="module" crossorigin src="../assets/vendor-BJVQQ_N7.js"></script>
-  <script type="module" crossorigin src="../assets/core-G2nrNz3_.js"></script>
-  <script type="module" crossorigin src="../assets/features-DUUcwBGj.js"></script>
-  <script type="module" crossorigin src="../assets/main-Cc4lsygh.js"></script>
-  <script type="module" crossorigin src="../assets/editor-5h-4A7cT.js"></script>
-  <link rel="stylesheet" crossorigin href="../assets/main-BrBIHPfp.css">
-  <link rel="stylesheet" crossorigin href="../assets/editor-B8jTcg1Q.css">
+    <link rel="icon" type="image/x-icon" href="../favicon.ico">
+    <link rel="stylesheet" href="../styles/animations.css">
+    <link rel="stylesheet" href="../styles/components.css">
+    <link rel="stylesheet" href="../styles/modals.css">
+    <link rel="stylesheet" href="../styles/main.css">
+    <link href="json-editor.css" rel="stylesheet">
 </head>
 <body data-theme="dark">
     <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" style="display: none;" aria-hidden="true">
@@ -382,7 +380,8 @@
         <div class="loading-spinner" role="status" aria-live="polite"></div>
     </div>
     
-    <!-- Performance Optimization scripts are bundled via Vite -->
+    <!-- Performance Optimization Scripts -->
+    <script src="performance-optimizations.js"></script>
     
     <!-- Monaco Editor Loader (must be loaded first) -->
     <script>
@@ -454,7 +453,30 @@
     
     <!-- WireMock URL initialization - moved to initializeFromURL -->
 
-    <!-- Application bundles loaded via Vite -->
+    <!-- WireMock Integration -->
+    <script src="../js/vendor-js-yaml.min.js"></script>
+    <script src="../js/core.js"></script>
+    <script src="../js/managers.js"></script>
+    <script src="../js/demo-data.js"></script>
+    <script src="../js/features/state.js"></script>
+    <script src="../js/features/utils.js"></script>
+    <script src="../js/features/filters.js"></script>
+    <script src="../js/features/cache.js"></script>
+    <script src="../js/features/mappings.js"></script>
+    <script src="../js/features/requests.js"></script>
+    <script src="../js/features/scenarios.js"></script>
+    <script src="../js/features/recording.js"></script>
+    <script src="../js/features/management.js"></script>
+    <script src="../js/features/request-api.js"></script>
+    <script src="../js/features/near-misses.js"></script>
+    <script src="../js/features/wiremock-extras.js"></script>
+    <script src="../js/features/demo.js"></script>
+    <script src="../js/features.js"></script>
+    <script src="../js/main.js"></script>
+
+    <!-- Monaco Enhanced (our main editor) -->
+    <script src="monaco-template-library.js"></script>
+    <script src="monaco-enhanced.js"></script>
 
     <script>
         const editorUrlParams = new URLSearchParams(window.location.search);

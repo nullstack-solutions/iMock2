@@ -520,7 +520,7 @@ window.renderScenarios = () => {
             ? rawScenarioKey.trim()
             : `scenario-${index}`;
         if (!Object.prototype.hasOwnProperty.call(scenarioExpansionState, scenarioKey)) {
-            scenarioExpansionState[scenarioKey] = false;
+            scenarioExpansionState[scenarioKey] = true;
         }
         const isExpanded = scenarioExpansionState[scenarioKey] !== false;
         const scenarioKeyAttr = escapeHtml(scenarioKey);
