@@ -446,7 +446,7 @@ const normalizeCustomHeaderValue = (rawValue) => {
     }
 
     let normalized = typeof rawValue === 'string' ? rawValue : String(rawValue);
-    normalized = stripWrappingQuotes(normalized.trim());
+    normalized = normalized.trim();
     normalized = normalized.replace(/^,+|,+$/g, '');
     return normalized.trim();
 };

@@ -90,12 +90,7 @@ function parseCustomHeadersInput(rawValue) {
 
         for (const originalLine of lines) {
             let line = originalLine.trim();
-            if (!line || line === '{' || line === '}') {
-                continue;
-            }
-
-            line = line.replace(/^[{,]+/, '').replace(/[},]+$/, '').trim();
-            if (!line) {
+            if (!line || /^[{\[]\s*(?:,)?$/.test(line) || /^[}\]]\s*(?:,)?$/.test(line)) {
                 continue;
             }
 
@@ -105,7 +100,8 @@ function parseCustomHeadersInput(rawValue) {
             }
 
             const rawKey = line.slice(0, separatorIndex);
-            const rawValue = line.slice(separatorIndex + 1);
+            let rawValue = line.slice(separatorIndex + 1);
+            rawValue = rawValue.replace(/,\s*$/, '');
             const key = normalizeName(rawKey);
             const value = normalizeValue(rawValue);
 
