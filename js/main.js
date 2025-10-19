@@ -56,35 +56,76 @@ function parseCustomHeadersInput(rawValue) {
         return { headers: {}, raw: '' };
     }
 
+    const ensureObject = typeof window.ensureCustomHeaderObject === 'function'
+        ? window.ensureCustomHeaderObject
+        : (value) => (value && typeof value === 'object' && !Array.isArray(value)) ? value : {};
+    const normalizeName = typeof window.normalizeCustomHeaderName === 'function'
+        ? window.normalizeCustomHeaderName
+        : (value) => (value || '').toString().trim();
+    const normalizeValue = typeof window.normalizeCustomHeaderValue === 'function'
+        ? window.normalizeCustomHeaderValue
+        : (value) => (value || '').toString().trim();
+    const validateName = typeof window.isValidCustomHeaderName === 'function'
+        ? window.isValidCustomHeaderName
+        : () => true;
+    const containsInvalidValueChars = typeof window.hasInvalidCustomHeaderValue === 'function'
+        ? window.hasInvalidCustomHeaderValue
+        : () => false;
+
     try {
         const parsed = JSON.parse(trimmed);
         if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
             throw new Error('Custom headers must be a JSON object.');
         }
-        return { headers: parsed, raw: trimmed };
+
+        const sanitized = ensureObject(parsed);
+        if (Object.keys(sanitized).length === 0 && Object.keys(parsed).length > 0) {
+            throw new Error('Custom headers must include at least one valid header name.');
+        }
+
+        return { headers: sanitized, raw: JSON.stringify(sanitized, null, 2) };
     } catch (jsonError) {
         const lines = trimmed.split(/\n+/);
         const headers = {};
-        let valid = true;
 
-        for (const line of lines) {
-            if (!line.trim()) continue;
+        for (const originalLine of lines) {
+            let line = originalLine.trim();
+            if (!line || line === '{' || line === '}') {
+                continue;
+            }
+
+            line = line.replace(/^[{,]+/, '').replace(/[},]+$/, '').trim();
+            if (!line) {
+                continue;
+            }
+
             const separatorIndex = line.indexOf(':');
             if (separatorIndex === -1) {
-                valid = false;
-                break;
+                throw new Error('Custom headers must be valid JSON or "Key: Value" pairs.');
             }
-            const key = line.slice(0, separatorIndex).trim();
-            const value = line.slice(separatorIndex + 1).trim();
+
+            const rawKey = line.slice(0, separatorIndex);
+            const rawValue = line.slice(separatorIndex + 1);
+            const key = normalizeName(rawKey);
+            const value = normalizeValue(rawValue);
+
             if (!key) {
-                valid = false;
-                break;
+                throw new Error('Custom headers must specify a header name before the colon.');
             }
+
+            if (!validateName(key)) {
+                throw new Error(`Invalid header name "${key}". Header names may only include letters, numbers, and the characters !#$%&'*+.^_\`|~-.`);
+            }
+
+            if (containsInvalidValueChars(value)) {
+                throw new Error(`Invalid value for header "${key}". Header values cannot contain control characters.`);
+            }
+
             headers[key] = value;
         }
 
-        if (valid && Object.keys(headers).length > 0) {
-            return { headers, raw: trimmed };
+        if (Object.keys(headers).length > 0) {
+            return { headers, raw: JSON.stringify(headers, null, 2) };
         }
 
         throw new Error('Custom headers must be valid JSON or "Key: Value" pairs.');

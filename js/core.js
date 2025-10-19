@@ -405,20 +405,93 @@ window.ENDPOINTS = {
     SHUTDOWN: '/shutdown'
 };
 
+const HTTP_HEADER_NAME_REGEX = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
+const HTTP_HEADER_CONTROL_CHAR_REGEX = /[\u0000-\u001F\u007F]/;
+
+const stripWrappingQuotes = (value) => {
+    if (typeof value !== 'string') {
+        return '';
+    }
+
+    let result = value.trim();
+
+    while (result.length >= 2) {
+        const firstChar = result[0];
+        const lastChar = result[result.length - 1];
+        if ((firstChar === lastChar) && (firstChar === '"' || firstChar === '\'' || firstChar === '`')) {
+            result = result.slice(1, -1).trim();
+            continue;
+        }
+        break;
+    }
+
+    return result;
+};
+
+const normalizeCustomHeaderName = (rawName) => {
+    if (rawName === undefined || rawName === null) {
+        return '';
+    }
+
+    let normalized = String(rawName);
+    normalized = stripWrappingQuotes(normalized);
+    normalized = normalized.replace(/^[{\[]+/, '').replace(/[}\]]+$/, '');
+    normalized = normalized.replace(/^,+|,+$/g, '');
+    return normalized.trim();
+};
+
+const normalizeCustomHeaderValue = (rawValue) => {
+    if (rawValue === undefined || rawValue === null) {
+        return '';
+    }
+
+    let normalized = typeof rawValue === 'string' ? rawValue : String(rawValue);
+    normalized = stripWrappingQuotes(normalized.trim());
+    normalized = normalized.replace(/^,+|,+$/g, '');
+    return normalized.trim();
+};
+
+const hasInvalidCustomHeaderValue = (value) => {
+    if (value === undefined || value === null) {
+        return false;
+    }
+
+    const valueToTest = typeof value === 'string' ? value : String(value);
+    return HTTP_HEADER_CONTROL_CHAR_REGEX.test(valueToTest);
+};
+
 const ensureCustomHeaderObject = (value) => {
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
         return {};
     }
 
     return Object.keys(value).reduce((acc, key) => {
-        const normalizedKey = String(key).trim();
+        const normalizedKey = normalizeCustomHeaderName(key);
         if (!normalizedKey) {
             return acc;
         }
-        acc[normalizedKey] = value[key];
+
+        if (!HTTP_HEADER_NAME_REGEX.test(normalizedKey)) {
+            console.warn(`Ignoring invalid custom header name: ${key}`);
+            return acc;
+        }
+
+        const normalizedValue = normalizeCustomHeaderValue(value[key]);
+        if (hasInvalidCustomHeaderValue(normalizedValue)) {
+            console.warn(`Ignoring custom header "${normalizedKey}" because the value contains invalid control characters.`);
+            return acc;
+        }
+
+        acc[normalizedKey] = normalizedValue;
         return acc;
     }, {});
 };
+
+window.normalizeCustomHeaderName = normalizeCustomHeaderName;
+window.normalizeCustomHeaderValue = normalizeCustomHeaderValue;
+window.isValidCustomHeaderName = (headerName) => HTTP_HEADER_NAME_REGEX.test(headerName);
+window.hasInvalidCustomHeaderValue = hasInvalidCustomHeaderValue;
+window.ensureCustomHeaderObject = ensureCustomHeaderObject;
 
 const migrateLegacySettings = (rawSettings) => {
     if (!rawSettings || typeof rawSettings !== 'object' || Array.isArray(rawSettings)) {
@@ -434,12 +507,23 @@ const migrateLegacySettings = (rawSettings) => {
             customHeaders.Authorization = authValue;
         }
         delete normalized.authHeader;
-        if (!normalized.customHeadersRaw || typeof normalized.customHeadersRaw !== 'string' || !normalized.customHeadersRaw.trim()) {
+    }
+
+    if (!normalized.customHeadersRaw || typeof normalized.customHeadersRaw !== 'string' || !normalized.customHeadersRaw.trim()) {
+        try {
+            normalized.customHeadersRaw = JSON.stringify(customHeaders, null, 2);
+        } catch (error) {
+            console.warn('Failed to serialize migrated custom headers:', error);
+            normalized.customHeadersRaw = '';
+        }
+    } else {
+        try {
+            JSON.parse(normalized.customHeadersRaw);
+        } catch (_) {
             try {
                 normalized.customHeadersRaw = JSON.stringify(customHeaders, null, 2);
             } catch (error) {
-                console.warn('Failed to serialize migrated custom headers:', error);
-                normalized.customHeadersRaw = '';
+                console.warn('Failed to normalize stored custom headers:', error);
             }
         }
     }
@@ -1076,6 +1160,14 @@ window.getUserFriendlyErrorMessage = (error, operation = 'operation') => {
 
     if (lowerMessage.includes('timeout')) {
         return `Request timed out${contextSuffix}. The server may be overloaded or unresponsive.`;
+    }
+
+    if (lowerMessage.includes('invalid name')) {
+        return `Custom headers contain an invalid header name${contextSuffix}. Remove any quotes, braces, or spaces from the header keys and try again.`;
+    }
+
+    if (lowerMessage.includes('invalid value')) {
+        return `Custom header values contain invalid characters${contextSuffix}. Remove newlines or control characters and try again.`;
     }
 
     if (status === 401 || lowerMessage.includes('http 401')) {
