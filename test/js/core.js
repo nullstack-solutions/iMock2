@@ -602,14 +602,37 @@ window.apiFetch = async (endpoint, options = {}) => {
         
         if (!response.ok) {
             const errorText = await response.text();
+            const rawErrorMessage = `HTTP ${response.status}: ${errorText || response.statusText}`;
+            const friendlyMessage = typeof window.getUserFriendlyErrorMessage === 'function'
+                ? window.getUserFriendlyErrorMessage({
+                    status: response.status,
+                    statusText: response.statusText,
+                    body: errorText,
+                    message: rawErrorMessage,
+                    method,
+                    url: fullUrl
+                }, `${method} ${endpoint}`)
+                : rawErrorMessage;
+
             console.error(`❌ WireMock API Error:`, {
                 method,
                 url: fullUrl,
                 status: response.status,
+                statusText: response.statusText,
                 error: errorText,
+                friendlyMessage,
                 timestamp: new Date().toISOString()
             });
-            throw new Error(`HTTP ${response.status}: ${errorText || response.statusText}`);
+
+            const errorToThrow = new Error(friendlyMessage);
+            errorToThrow.status = response.status;
+            errorToThrow.statusText = response.statusText;
+            errorToThrow.body = errorText;
+            errorToThrow.rawMessage = rawErrorMessage;
+            errorToThrow.url = fullUrl;
+            errorToThrow.method = method;
+
+            throw errorToThrow;
         }
         
         const contentType = response.headers.get('content-type');
@@ -646,17 +669,27 @@ window.apiFetch = async (endpoint, options = {}) => {
     } catch (error) {
         clearTimeout(timeoutId);
         
+        const friendlyMessage = (typeof window.getUserFriendlyErrorMessage === 'function')
+            ? window.getUserFriendlyErrorMessage(error, `${method} ${endpoint}`)
+            : error.message;
+
         // Log all errors for debugging
         console.error(`💥 WireMock API Exception:`, {
             method,
             url: fullUrl,
             error: error.message,
+            friendlyMessage,
             errorName: error.name,
             timestamp: new Date().toISOString()
         });
-        
+
         if (error.name === 'AbortError') {
             throw new Error(`Request timeout after ${currentTimeout}ms`);
+        }
+        if (friendlyMessage && friendlyMessage !== error.message) {
+            const wrappedError = new Error(friendlyMessage);
+            Object.assign(wrappedError, error);
+            throw wrappedError;
         }
         throw error;
     }
@@ -1014,46 +1047,86 @@ window.getElement = (id, invalidateCache = false) => {
 
 // --- ENHANCED ERROR MESSAGE UTILITY ---
 window.getUserFriendlyErrorMessage = (error, operation = 'operation') => {
-    const errorMessage = error.message || error.toString();
+    if (!error) {
+        return `Failed to ${operation}.`;
+    }
+
+    const rawMessage = typeof error === 'string' ? error : error?.message || error?.toString() || '';
+    const lowerMessage = rawMessage.toLowerCase();
+    const status = typeof error?.status === 'number'
+        ? error.status
+        : (() => {
+            const match = rawMessage.match(/http\s+(\d{3})/i);
+            return match ? parseInt(match[1], 10) : null;
+        })();
+    const statusText = typeof error?.statusText === 'string' && error.statusText.trim().length
+        ? error.statusText.trim()
+        : (() => {
+            const match = rawMessage.match(/http\s+\d{3}:?\s*([^\n]+)/i);
+            if (!match) return null;
+            const candidate = match[1].trim();
+            return candidate && !candidate.includes('<') ? candidate : null;
+        })();
+    const contextSuffix = operation ? ` while attempting to ${operation}` : '';
 
     // Network/connection errors
-    if (errorMessage.includes('Failed to fetch') || errorMessage.includes('NetworkError')) {
-        return `Connection failed. Please check if WireMock server is running and accessible.`;
+    if (lowerMessage.includes('failed to fetch') || lowerMessage.includes('networkerror')) {
+        return `Connection failed${contextSuffix}. Please check if the WireMock server is running and accessible.`;
     }
 
-    if (errorMessage.includes('timeout') || errorMessage.includes('Timeout')) {
-        return `Request timed out. The server may be overloaded or unresponsive.`;
+    if (lowerMessage.includes('timeout')) {
+        return `Request timed out${contextSuffix}. The server may be overloaded or unresponsive.`;
     }
 
-    // HTTP status errors
-    if (errorMessage.includes('HTTP 404')) {
-        return `Resource not found. The requested item may have been deleted.`;
+    if (status === 401 || lowerMessage.includes('http 401')) {
+        return `HTTP 401 Unauthorized – The WireMock server requires authentication${contextSuffix}. Add the appropriate Authorization header (Settings → Custom Headers) or verify your credentials.`;
     }
 
-    if (errorMessage.includes('HTTP 403')) {
-        return `Access denied. Please check your authentication settings.`;
+    if (status === 403 || lowerMessage.includes('http 403')) {
+        return `HTTP 403 Forbidden – Access is denied${contextSuffix}. Confirm that your credentials have permission to call this endpoint.`;
     }
 
-    if (errorMessage.includes('HTTP 500')) {
-        return `Server error. Please try again later or check server logs.`;
+    if (status === 404 || lowerMessage.includes('http 404')) {
+        return `HTTP 404 Not Found – The requested resource could not be located${contextSuffix}. It may have been removed or the URL is incorrect.`;
     }
 
-    if (errorMessage.includes('HTTP 400')) {
-        return `Invalid request. Please check your input data.`;
+    if (status === 400 || lowerMessage.includes('http 400')) {
+        return `HTTP 400 Bad Request – The WireMock server could not process the request${contextSuffix}. Please review your input data and try again.`;
+    }
+
+    if (status === 409 || lowerMessage.includes('http 409')) {
+        return `HTTP 409 Conflict – The server detected a conflicting state${contextSuffix}. Refresh the data and retry the operation.`;
+    }
+
+    if (status === 422 || lowerMessage.includes('http 422')) {
+        return `HTTP 422 Unprocessable Entity – The server could not validate the provided data${contextSuffix}. Check the payload for missing or invalid fields.`;
+    }
+
+    if (status === 429 || lowerMessage.includes('http 429')) {
+        return `HTTP 429 Too Many Requests – The server is rate limiting requests${contextSuffix}. Slow down or wait before trying again.`;
+    }
+
+    if (status && status >= 500) {
+        return `HTTP ${status} ${statusText || 'Server Error'} – The WireMock server encountered an error${contextSuffix}. Please try again later or inspect the server logs.`;
     }
 
     // JSON parsing errors
-    if (errorMessage.includes('JSON') || errorMessage.includes('Unexpected token')) {
-        return `Data parsing error. The server returned invalid data.`;
+    if (lowerMessage.includes('json') || lowerMessage.includes('unexpected token')) {
+        return `Data parsing error${contextSuffix}. The server returned invalid JSON.`;
     }
 
     // CORS errors
-    if (errorMessage.includes('CORS') || errorMessage.includes('Access-Control')) {
-        return `Cross-origin request blocked. Please check server CORS settings.`;
+    if (lowerMessage.includes('cors') || lowerMessage.includes('access-control')) {
+        return `Cross-origin request blocked${contextSuffix}. Update the server CORS settings to allow this origin.`;
+    }
+
+    if (status) {
+        const statusLabel = statusText ? `${status} ${statusText}` : status;
+        return `HTTP ${statusLabel} – ${rawMessage.replace(/<[^>]+>/g, '').trim() || 'Request failed.'}${contextSuffix ? contextSuffix + '.' : ''}`;
     }
 
     // Generic fallback with specific operation context
-    return `Failed to ${operation}: ${errorMessage}`;
+    return `Failed to ${operation}: ${rawMessage}`;
 };
 
 console.log('✅ Core.js loaded - Constants, API client, basic UI functions');
