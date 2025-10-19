@@ -72,60 +72,55 @@ function parseCustomHeadersInput(rawValue) {
         ? window.hasInvalidCustomHeaderValue
         : () => false;
 
+    let parsed;
     try {
-        const parsed = JSON.parse(trimmed);
-        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-            throw new Error('Custom headers must be a JSON object.');
-        }
-
-        const sanitized = ensureObject(parsed);
-        if (Object.keys(sanitized).length === 0 && Object.keys(parsed).length > 0) {
-            throw new Error('Custom headers must include at least one valid header name.');
-        }
-
-        return { headers: sanitized, raw: JSON.stringify(sanitized, null, 2) };
-    } catch (jsonError) {
-        const lines = trimmed.split(/\n+/);
-        const headers = {};
-
-        for (const originalLine of lines) {
-            let line = originalLine.trim();
-            if (!line || /^[{\[]\s*(?:,)?$/.test(line) || /^[}\]]\s*(?:,)?$/.test(line)) {
-                continue;
-            }
-
-            const separatorIndex = line.indexOf(':');
-            if (separatorIndex === -1) {
-                throw new Error('Custom headers must be valid JSON or "Key: Value" pairs.');
-            }
-
-            const rawKey = line.slice(0, separatorIndex);
-            let rawValue = line.slice(separatorIndex + 1);
-            rawValue = rawValue.replace(/,\s*$/, '');
-            const key = normalizeName(rawKey);
-            const value = normalizeValue(rawValue);
-
-            if (!key) {
-                throw new Error('Custom headers must specify a header name before the colon.');
-            }
-
-            if (!validateName(key)) {
-                throw new Error(`Invalid header name "${key}". Header names may only include letters, numbers, and the characters !#$%&'*+.^_\`|~-.`);
-            }
-
-            if (containsInvalidValueChars(value)) {
-                throw new Error(`Invalid value for header "${key}". Header values cannot contain control characters.`);
-            }
-
-            headers[key] = value;
-        }
-
-        if (Object.keys(headers).length > 0) {
-            return { headers, raw: JSON.stringify(headers, null, 2) };
-        }
-
-        throw new Error('Custom headers must be valid JSON or "Key: Value" pairs.');
+        parsed = JSON.parse(trimmed);
+    } catch (error) {
+        throw new Error('Custom headers must be provided as JSON, for example {"Authorization": "Bearer token"}.');
     }
+
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('Custom headers must be a JSON object with key/value pairs.');
+    }
+
+    const sanitized = ensureObject(parsed);
+    if (Object.keys(sanitized).length === 0 && Object.keys(parsed).length > 0) {
+        throw new Error('Custom headers must include at least one valid header name/value pair.');
+    }
+
+    const invalidEntry = Object.entries(parsed).find(([key, value]) => {
+        const normalizedKey = normalizeName(key);
+        if (!normalizedKey) {
+            return true;
+        }
+
+        if (!validateName(normalizedKey)) {
+            return true;
+        }
+
+        if (value !== null && typeof value === 'object') {
+            return true;
+        }
+
+        const normalizedValue = normalizeValue(value);
+        return containsInvalidValueChars(normalizedValue);
+    });
+
+    if (invalidEntry) {
+        const [key, value] = invalidEntry;
+        if (value !== null && typeof value === 'object') {
+            throw new Error(`Invalid value for header "${key}". Header values must be primitive JSON values (string, number, boolean, or null).`);
+        }
+
+        const normalizedKey = normalizeName(key) || key;
+        if (!normalizedKey || !validateName(normalizedKey)) {
+            throw new Error(`Invalid header name "${key}". Header names may only include letters, numbers, and the characters !#$%&'*+.^_\`|~-.`);
+        }
+
+        throw new Error(`Invalid header value for "${normalizedKey}". Values cannot contain control characters.`);
+    }
+
+    return { headers: sanitized, raw: JSON.stringify(sanitized, null, 2) };
 }
 
 function serializeCustomHeaders(settings) {
