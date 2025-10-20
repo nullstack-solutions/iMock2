@@ -898,13 +898,9 @@ const resolveModalElement = (modalId) => {
 };
 
 const resetMappingFormDefaults = () => {
-    const formElement = document.getElementById(SELECTORS.MODAL.FORM);
-    const idElement = document.getElementById(SELECTORS.MODAL.ID);
     const titleElement = document.getElementById(SELECTORS.MODAL.TITLE);
 
-    if (formElement) formElement.reset();
-    if (idElement) idElement.value = '';
-    if (titleElement) titleElement.textContent = 'Add New Mapping';
+    if (titleElement) titleElement.textContent = 'Create Mapping from Template';
 
     if (typeof window.resetMappingTemplateSection === 'function') {
         try {
