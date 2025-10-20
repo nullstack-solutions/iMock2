@@ -1644,12 +1644,48 @@
             // WireMock URL initialization - single entry point
             const urlParams = new URLSearchParams(window.location.search);
             const settingsParam = urlParams.get('settings');
-            const settings = settingsParam
-                ? JSON.parse(decodeURIComponent(settingsParam))
-                : JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
 
-            const host = settings.host || 'localhost';
-            const port = settings.port || '8080';
+            let paramSettings = {};
+            if (settingsParam) {
+                try {
+                    paramSettings = JSON.parse(decodeURIComponent(settingsParam));
+                } catch (error) {
+                    console.warn('⚠️ Failed to parse settings from URL parameter:', error);
+                    paramSettings = {};
+                }
+            }
+
+            let storedSettings = {};
+            if (typeof window.readWiremockSettings === 'function') {
+                storedSettings = window.readWiremockSettings();
+            } else {
+                try {
+                    storedSettings = JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
+                } catch (error) {
+                    console.warn('⚠️ Failed to parse stored settings from localStorage:', error);
+                    storedSettings = {};
+                }
+            }
+
+            const mergedSettings = {
+                ...(storedSettings && typeof storedSettings === 'object' ? storedSettings : {}),
+                ...(paramSettings && typeof paramSettings === 'object' ? paramSettings : {})
+            };
+
+            const normalizedSettings = (typeof window.normalizeWiremockSettings === 'function')
+                ? window.normalizeWiremockSettings(mergedSettings)
+                : mergedSettings;
+
+            if (typeof window.ensureCustomHeaderObject === 'function') {
+                window.customHeaders = window.ensureCustomHeaderObject(normalizedSettings.customHeaders || {});
+            } else if (normalizedSettings.customHeaders && typeof normalizedSettings.customHeaders === 'object' && !Array.isArray(normalizedSettings.customHeaders)) {
+                window.customHeaders = { ...normalizedSettings.customHeaders };
+            } else {
+                window.customHeaders = {};
+            }
+
+            const host = normalizedSettings.host || 'localhost';
+            const port = normalizedSettings.port || '8080';
 
             window.wiremockBaseUrl = window.normalizeWiremockBaseUrl
                 ? window.normalizeWiremockBaseUrl(host, port)
@@ -1660,7 +1696,12 @@
             const mappingId = urlParams.get('mappingId');
             const mode = urlParams.get('mode');
 
-            console.log('🚀 Parsed parameters:', { mappingId, mode, settings: settings ? 'present' : 'missing' });
+            console.log('🚀 Parsed parameters:', {
+                mappingId,
+                mode,
+                settingsSource: settingsParam ? 'url' : 'storage',
+                customHeaderCount: Object.keys(window.customHeaders || {}).length
+            });
 
             if (mappingId) {
                 console.log(`🔍 Loading mapping with ID: ${mappingId}`);
