@@ -196,8 +196,30 @@ window.connectToWireMock = async () => {
     const portInput = document.getElementById('wiremock-port') || document.getElementById(SELECTORS.CONNECTION.PORT);
 
     // Use saved settings or input values
-    const host = hostInput?.value.trim() || settings.wiremockHost || 'localhost';
-    const port = portInput?.value.trim() || settings.wiremockPort || '8080';
+    const trimOrEmpty = (value) => typeof value === 'string' ? value.trim() : '';
+
+    let host = trimOrEmpty(hostInput?.value) || trimOrEmpty(settings.host) || trimOrEmpty(settings.wiremockHost);
+    let port = trimOrEmpty(portInput?.value) || trimOrEmpty(settings.port) || trimOrEmpty(settings.wiremockPort);
+
+    if (!host && window.wiremockBaseUrl) {
+        try {
+            const parsed = new URL(window.wiremockBaseUrl);
+            host = `${parsed.protocol}//${parsed.hostname}`;
+            if (!port && parsed.port) {
+                port = parsed.port;
+            }
+        } catch (error) {
+            console.warn('Failed to derive host from existing wiremockBaseUrl:', window.wiremockBaseUrl, error);
+        }
+    }
+
+    if (!host) {
+        host = 'localhost';
+    }
+
+    if (!port) {
+        port = '';
+    }
     
     // DON'T save connection settings here - they should already be saved from Settings page
     // Only use these values for the current connection attempt
