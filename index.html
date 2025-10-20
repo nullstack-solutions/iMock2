@@ -98,6 +98,10 @@
             <path d="M11 13l8-8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
             <path d="M19 13v5a2 2 0 01-2 2H7a2 2 0 01-2-2V7a2 2 0 012-2h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
         </symbol>
+        <symbol id="icon-copy" viewBox="0 0 24 24">
+            <rect x="9" y="3" width="11" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <rect x="4" y="7" width="11" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/>
+        </symbol>
         <symbol id="icon-check-circle" viewBox="0 0 24 24">
             <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.5" fill="none"/>
             <path d="M9.5 12.5l2 2 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -809,6 +813,24 @@
                     <label class="form-label">Response Body</label>
                     <textarea class="form-textarea" id="response-body" rows="6" placeholder='{ "message": "Hello World" }'></textarea>
                 </div>
+
+                <div class="mapping-template-section" id="mapping-template-section">
+                    <div class="mapping-template-header">
+                        <h4 class="mapping-template-title">Start from template</h4>
+                        <p class="mapping-template-subtitle">Use curated JSON editor templates to bootstrap a new mapping instantly.</p>
+                    </div>
+                    <div class="mapping-template-controls">
+                        <label class="sr-only" for="mapping-template-select">Mapping template</label>
+                        <select class="form-select" id="mapping-template-select"></select>
+                        <button type="button" class="btn btn-secondary btn-sm" id="mapping-template-preview-btn">Preview JSON</button>
+                        <button type="button" class="btn btn-primary" id="mapping-template-create-btn">
+                            <span class="btn-label">Create &amp; edit</span>
+                        </button>
+                    </div>
+                    <div id="mapping-template-empty" class="mapping-template-empty hidden">Templates are unavailable. Open the JSON editor to manage template library items.</div>
+                    <div id="mapping-template-description" class="mapping-template-description" aria-live="polite"></div>
+                    <pre id="mapping-template-preview" class="mapping-template-preview hidden" aria-live="polite"></pre>
+                </div>
             </form>
         </div>
     </div>
@@ -1040,6 +1062,7 @@
 <script src="js/features/wiremock-extras.js"></script>
 <script src="js/features/demo.js"></script>
 <script src="js/features.js"></script>
+<script src="editor/monaco-template-library.js"></script>
 <script src="js/editor.js"></script>
 <script src="js/main.js"></script>
 
