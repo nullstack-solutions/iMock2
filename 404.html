@@ -748,7 +748,7 @@
 
     <!-- MODAL FOR ADDING/EDITING MAPPINGS -->
     <div id="add-mapping-modal" class="modal hidden">
-        <div class="modal-content">
+        <div class="modal-content modal-content--wide">
             <button class="modal-close" type="button" onclick="hideModal('add-mapping-modal')" aria-label="Close add mapping modal">
                 <svg class="icon icon-16" aria-hidden="true" focusable="false">
                     <use href="#icon-x-circle"></use>
@@ -757,67 +757,22 @@
             </button>
             <div class="modal-header">
                 <div class="modal-header-main">
-                    <h3 id="modal-title">Add New Mapping</h3>
-                </div>
-                <div class="modal-header-actions">
-                    <button type="button" class="btn btn-primary" onclick="saveMappingWrapper()">
-                        <span class="btn-label">Save Mapping</span>
-                    </button>
+                    <h3 id="modal-title">Create Mapping from Template</h3>
+                    <p class="modal-header-description">Select a template from the JSON editor library to create a new mapping.</p>
                 </div>
             </div>
-            <form id="mapping-form">
-                <input type="hidden" id="mapping-id">
-                
-                <div class="form-group">
-                    <label class="form-label">Mapping Name</label>
-                    <input type="text" class="form-input" id="mapping-name" placeholder="Enter mapping name">
-                </div>
-                
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label">Method</label>
-                        <select class="form-select" id="method">
-                            <option value="GET">GET</option>
-                            <option value="POST">POST</option>
-                            <option value="PUT">PUT</option>
-                            <option value="DELETE">DELETE</option>
-                            <option value="PATCH">PATCH</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">URL Pattern</label>
-                        <input type="text" class="form-input" id="url-pattern" placeholder="/api/users" required>
-                    </div>
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Response Status</label>
-                    <input type="number" class="form-input" id="response-status" value="200" min="100" max="599">
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Response Body</label>
-                    <textarea class="form-textarea" id="response-body" rows="6" placeholder='{ "message": "Hello World" }'></textarea>
-                </div>
-
-                <div class="mapping-template-section" id="mapping-template-section">
-                    <div class="mapping-template-header">
-                        <h4 class="mapping-template-title">Start from template</h4>
-                        <p class="mapping-template-subtitle">Use curated JSON editor templates to bootstrap a new mapping instantly.</p>
-                    </div>
-                    <div class="mapping-template-controls">
-                        <label class="sr-only" for="mapping-template-select">Mapping template</label>
-                        <select class="form-select" id="mapping-template-select"></select>
-                        <button type="button" class="btn btn-secondary btn-sm" id="mapping-template-preview-btn">Preview JSON</button>
-                        <button type="button" class="btn btn-primary" id="mapping-template-create-btn">
-                            <span class="btn-label">Create &amp; edit</span>
-                        </button>
-                    </div>
-                    <div id="mapping-template-empty" class="mapping-template-empty hidden">Templates are unavailable. Open the JSON editor to manage template library items.</div>
-                    <div id="mapping-template-description" class="mapping-template-description" aria-live="polite"></div>
-                    <pre id="mapping-template-preview" class="mapping-template-preview hidden" aria-live="polite"></pre>
-                </div>
-            </form>
+            <div class="modal-body template-library-body">
+                <section class="template-info">
+                    <p class="template-info__lead">Browse the same gallery available inside the JSON editor.</p>
+                    <ul>
+                        <li><strong>Preview</strong> to check the stub payload.</li>
+                        <li><strong>Copy JSON</strong> if you need the snippet elsewhere.</li>
+                        <li><strong>Create &amp; edit</strong> to save the mapping and continue editing.</li>
+                    </ul>
+                </section>
+                <div id="mapping-template-empty" class="mapping-template-empty hidden">Templates are unavailable. Open the JSON editor to manage template library items.</div>
+                <div class="template-grid" id="mapping-template-grid" role="list"></div>
+            </div>
         </div>
     </div>
 
