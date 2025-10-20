@@ -600,29 +600,49 @@
                 if (typeof window.applyOptimisticMappingUpdate === 'function') {
                     console.log('🎯 [OPTIMISTIC] Using local applyOptimisticMappingUpdate');
 
-                    // In editor context, we only update cache without rendering
                     try {
-                        if (!mappingData) return;
-                        const m = mappingData.mapping || mappingData;
-                        if (!m || !m.id) return;
-                        // MEMORY OPTIMIZATION: allMappings/originalMappings are getters, can't be assigned
-
-                        // drop service cache mapping if ever present
-                        if (typeof isImockCacheMapping === 'function' && isImockCacheMapping(m)) return; // never render the service mapping
-
-                        // MEMORY OPTIMIZATION: Update cacheManager.cache directly
-                        if (window.cacheManager && window.cacheManager.cache instanceof Map) {
-                            window.cacheManager.cache.set(m.id, m);
-                        }
-
-                        console.log('🎯 [OPTIMISTIC] Cache updated successfully in editor context');
-                        console.log('🎯 [OPTIMISTIC] Updated mapping:', m.name || m.id);
-                        console.log('🎯 [OPTIMISTIC] allMappings size:', window.allMappings.length);
+                        window.applyOptimisticMappingUpdate(mappingData);
                         return true;
-                    } catch (e) {
-                        console.warn('🎯 [OPTIMISTIC] Local cache update failed:', e);
-                        return false;
+                    } catch (invokeError) {
+                        console.warn('🎯 [OPTIMISTIC] Direct applyOptimisticMappingUpdate failed, falling back to lightweight cache update:', invokeError);
                     }
+                }
+
+                // Lightweight fallback to keep editor cache in sync when primary helper is unavailable
+                try {
+                    if (!mappingData) return false;
+                    const m = mappingData.mapping || mappingData;
+                    if (!m || !m.id) return false;
+                    // MEMORY OPTIMIZATION: allMappings/originalMappings are getters, can't be assigned
+
+                    // drop service cache mapping if ever present
+                    if (typeof isImockCacheMapping === 'function' && isImockCacheMapping(m)) return false; // never render the service mapping
+
+                    // MEMORY OPTIMIZATION: Update cacheManager.cache directly
+                    if (window.cacheManager && window.cacheManager.cache instanceof Map) {
+                        window.cacheManager.cache.set(m.id, m);
+                    }
+
+                    const allMappingsSize = (() => {
+                        try {
+                            if (Array.isArray(window.allMappings)) {
+                                return window.allMappings.length;
+                            }
+                            if (window.allMappings && typeof window.allMappings.length === 'number') {
+                                return window.allMappings.length;
+                            }
+                        } catch (sizeError) {
+                            console.warn('🎯 [OPTIMISTIC] Failed to read allMappings size:', sizeError);
+                        }
+                        return 'n/a';
+                    })();
+
+                    console.log('🎯 [OPTIMISTIC] Cache updated successfully in editor context');
+                    console.log('🎯 [OPTIMISTIC] Updated mapping:', m.name || m.id);
+                    console.log('🎯 [OPTIMISTIC] allMappings size:', allMappingsSize);
+                    return true;
+                } catch (e) {
+                    console.warn('🎯 [OPTIMISTIC] Lightweight cache update failed:', e);
                 }
 
                 // Fallback: try to update via postMessage to parent
@@ -1236,6 +1256,27 @@
             return mapping;
         }
 
+        function cloneMappingData(mapping) {
+            if (!mapping || typeof mapping !== 'object') {
+                return null;
+            }
+
+            try {
+                if (typeof structuredClone === 'function') {
+                    return structuredClone(mapping);
+                }
+            } catch (error) {
+                console.warn('cloneMappingData structuredClone failed, falling back to JSON copy:', error);
+            }
+
+            try {
+                return JSON.parse(JSON.stringify(mapping));
+            } catch (error) {
+                console.warn('cloneMappingData JSON copy failed:', error);
+                return null;
+            }
+        }
+
         function normalizeMappingIdentifiers(mapping) {
             if (!mapping || typeof mapping !== 'object') {
                 return;
@@ -1427,8 +1468,23 @@
 
             ensureMappingMetadata(mapping, { isCreate: true });
 
-            const result = await executeWireMockOperation(mapping, { mode: 'create' });
-            const rememberedId = resolveMappingIdentifier(result) || resolveMappingIdentifier(mapping);
+            const submissionMapping = cloneMappingData(mapping);
+            if (!submissionMapping) {
+                showNotification('Failed to prepare mapping payload for creation', 'error');
+                return;
+            }
+
+            if ('id' in submissionMapping) {
+                delete submissionMapping.id;
+            }
+            if ('uuid' in submissionMapping) {
+                delete submissionMapping.uuid;
+            }
+
+            const result = await executeWireMockOperation(submissionMapping, { mode: 'create' });
+            const rememberedId = resolveMappingIdentifier(result)
+                || resolveMappingIdentifier(submissionMapping)
+                || resolveMappingIdentifier(mapping);
             if (rememberedId) {
                 editorMappingContext.remember(rememberedId);
             }
