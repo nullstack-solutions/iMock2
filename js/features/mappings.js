@@ -856,6 +856,7 @@ window.renderMappingCard = function(mapping) {
     const actions = [
         { class: 'secondary', handler: 'editMapping', actionId: 'edit', title: 'Edit in Editor', icon: 'open-external' },
         { class: 'primary', handler: 'openEditModal', actionId: 'edit-modal', title: 'Edit', icon: 'pencil' },
+        { class: 'secondary', handler: 'duplicateMapping', actionId: 'duplicate', title: 'Duplicate mapping', icon: 'copy' },
         { class: 'danger', handler: 'deleteMapping', actionId: 'delete', title: 'Delete', icon: 'trash' }
     ];
     

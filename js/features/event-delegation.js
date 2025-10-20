@@ -104,6 +104,12 @@ function handleMappingAction(action, id) {
             }
             break;
 
+        case 'duplicate':
+            if (typeof window.duplicateMapping === 'function') {
+                window.duplicateMapping(id);
+            }
+            break;
+
         case 'view':
             if (typeof window.viewMappingDetails === 'function') {
                 window.viewMappingDetails(id);

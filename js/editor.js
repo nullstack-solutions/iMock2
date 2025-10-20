@@ -21,7 +21,8 @@ document.addEventListener('DOMContentLoaded', () => {
     setupMappingFormListeners();
     // Set up JSON editor mode handlers
     setupEditorModeHandlers();
-    
+    initializeMappingTemplateSection();
+
     // Ensure JSON editor is visible and form is hidden on load
     const formEditor = document.getElementById('form-editor-container');
     const jsonEditor = document.getElementById('json-editor-container');
@@ -75,6 +76,323 @@ function setupEditorModeHandlers() {
             updateDirtyIndicator();
         }
     });
+}
+
+const mappingTemplateCache = new Map();
+
+function initializeMappingTemplateSection() {
+    const section = document.getElementById('mapping-template-section');
+    if (!section) {
+        return;
+    }
+
+    const select = document.getElementById('mapping-template-select');
+    const previewButton = document.getElementById('mapping-template-preview-btn');
+    const createButton = document.getElementById('mapping-template-create-btn');
+    const descriptionElement = document.getElementById('mapping-template-description');
+    const emptyElement = document.getElementById('mapping-template-empty');
+    const previewElement = document.getElementById('mapping-template-preview');
+
+    if (select) {
+        select.addEventListener('change', () => {
+            hideMappingTemplatePreview(previewElement, previewButton);
+            updateMappingTemplateDescription(descriptionElement, select.value);
+        });
+    }
+
+    if (previewButton) {
+        previewButton.addEventListener('click', () => {
+            toggleMappingTemplatePreview(select?.value, previewElement, previewButton);
+        });
+    }
+
+    if (createButton) {
+        createButton.addEventListener('click', () => {
+            createMappingFromTemplateFromModal(select?.value, {
+                button: createButton,
+                previewElement,
+                previewButton
+            });
+        });
+    }
+
+    const refresh = () => populateMappingTemplateSelect({
+        select,
+        previewButton,
+        createButton,
+        descriptionElement,
+        emptyElement,
+        previewElement
+    });
+
+    const reset = () => {
+        if (select && select.options.length > 0) {
+            select.selectedIndex = 0;
+        }
+        updateMappingTemplateDescription(descriptionElement, select?.value);
+        hideMappingTemplatePreview(previewElement, previewButton);
+    };
+
+    refresh();
+    window.refreshMappingTemplateSection = refresh;
+    window.resetMappingTemplateSection = reset;
+}
+
+function getTemplateLibraryItems() {
+    if (window.MonacoTemplateLibrary && typeof window.MonacoTemplateLibrary.getAll === 'function') {
+        try {
+            return window.MonacoTemplateLibrary.getAll().filter((item) => item && item.id && item.content);
+        } catch (error) {
+            console.warn('Failed to read template library:', error);
+            return [];
+        }
+    }
+    return [];
+}
+
+function populateMappingTemplateSelect({ select, previewButton, createButton, descriptionElement, emptyElement, previewElement }) {
+    if (!select) {
+        return;
+    }
+
+    const templates = getTemplateLibraryItems();
+    mappingTemplateCache.clear();
+
+    templates.forEach((template) => {
+        mappingTemplateCache.set(template.id, template);
+    });
+
+    select.innerHTML = '';
+
+    if (!templates.length) {
+        select.disabled = true;
+        if (previewButton) {
+            previewButton.disabled = true;
+            resetPreviewButton(previewButton);
+        }
+        if (createButton) {
+            createButton.disabled = true;
+        }
+        if (emptyElement) {
+            emptyElement.classList.remove('hidden');
+        }
+        if (descriptionElement) {
+            descriptionElement.textContent = '';
+        }
+        hideMappingTemplatePreview(previewElement, previewButton);
+        return;
+    }
+
+    const fragment = document.createDocumentFragment();
+    templates.forEach((template) => {
+        const option = document.createElement('option');
+        option.value = template.id;
+        option.textContent = template.title || template.id;
+        fragment.appendChild(option);
+    });
+    select.appendChild(fragment);
+
+    select.disabled = false;
+    if (previewButton) {
+        previewButton.disabled = false;
+        resetPreviewButton(previewButton);
+    }
+    if (createButton) {
+        createButton.disabled = false;
+    }
+    if (emptyElement) {
+        emptyElement.classList.add('hidden');
+    }
+
+    if (!select.value && templates.length > 0) {
+        select.value = templates[0].id;
+    }
+
+    updateMappingTemplateDescription(descriptionElement, select.value);
+    hideMappingTemplatePreview(previewElement, previewButton);
+}
+
+function resetPreviewButton(previewButton) {
+    if (!previewButton) {
+        return;
+    }
+    previewButton.textContent = 'Preview JSON';
+    delete previewButton.dataset.previewVisible;
+}
+
+function updateMappingTemplateDescription(descriptionElement, templateId) {
+    if (!descriptionElement) {
+        return;
+    }
+
+    const template = templateId ? mappingTemplateCache.get(templateId) : null;
+    if (!template) {
+        descriptionElement.textContent = '';
+        return;
+    }
+
+    const parts = [];
+    if (template.description) {
+        parts.push(template.description);
+    }
+    if (template.highlight) {
+        parts.push(template.highlight);
+    }
+
+    descriptionElement.textContent = parts.join(' · ');
+}
+
+function hideMappingTemplatePreview(previewElement, previewButton) {
+    if (previewElement) {
+        previewElement.textContent = '';
+        previewElement.classList.add('hidden');
+    }
+    resetPreviewButton(previewButton);
+}
+
+function toggleMappingTemplatePreview(templateId, previewElement, previewButton) {
+    if (!previewElement || !previewButton) {
+        return;
+    }
+
+    if (previewButton.dataset.previewVisible === 'true') {
+        hideMappingTemplatePreview(previewElement, previewButton);
+        return;
+    }
+
+    if (!templateId) {
+        NotificationManager.error('Select a template to preview');
+        return;
+    }
+
+    const template = mappingTemplateCache.get(templateId);
+    if (!template) {
+        NotificationManager.error('Template not found');
+        return;
+    }
+
+    try {
+        previewElement.textContent = JSON.stringify(template.content, null, 2);
+    } catch (error) {
+        console.warn('Failed to render template preview:', error);
+        previewElement.textContent = 'Unable to render template preview.';
+    }
+
+    previewElement.classList.remove('hidden');
+    previewButton.textContent = 'Hide preview';
+    previewButton.dataset.previewVisible = 'true';
+}
+
+function prepareTemplatePayload(templateEntry) {
+    if (!templateEntry || typeof templateEntry !== 'object') {
+        throw new Error('Template entry is invalid');
+    }
+
+    const content = templateEntry.content;
+    if (!content || typeof content !== 'object') {
+        throw new Error('Template content is missing');
+    }
+
+    let payload;
+    if (typeof cloneMappingForCreation === 'function') {
+        payload = cloneMappingForCreation(content, { sourceTag: 'template-library' });
+    } else {
+        payload = typeof structuredClone === 'function'
+            ? structuredClone(content)
+            : JSON.parse(JSON.stringify(content));
+
+        delete payload.id;
+        delete payload.uuid;
+        delete payload.stubMappingId;
+        delete payload.stubId;
+        delete payload.mappingId;
+
+        if (!payload.metadata || typeof payload.metadata !== 'object') {
+            payload.metadata = {};
+        }
+
+        const nowIso = new Date().toISOString();
+        payload.metadata.created = nowIso;
+        payload.metadata.edited = nowIso;
+        payload.metadata.source = 'template-library';
+    }
+
+    if (!payload.name && templateEntry.title) {
+        payload.name = templateEntry.title;
+    }
+
+    return payload;
+}
+
+async function createMappingFromTemplateFromModal(templateId, { button, previewElement, previewButton } = {}) {
+    if (!templateId) {
+        NotificationManager.error('Select a template to continue');
+        return;
+    }
+
+    const template = mappingTemplateCache.get(templateId);
+    if (!template) {
+        NotificationManager.error('Template not found');
+        return;
+    }
+
+    let payload;
+    try {
+        payload = prepareTemplatePayload(template);
+    } catch (error) {
+        console.warn('Failed to prepare template payload:', error);
+        NotificationManager.error('Template content is invalid');
+        return;
+    }
+
+    setButtonLoadingState(button, true, 'Creating…');
+
+    try {
+        const response = await apiFetch('/mappings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        const createdMapping = response?.mapping || response;
+        NotificationManager.success('Mapping created from template!');
+
+        try {
+            if (createdMapping && createdMapping.id && typeof updateOptimisticCache === 'function') {
+                updateOptimisticCache(createdMapping, 'create', { queueMode: 'add' });
+            }
+        } catch (cacheError) {
+            console.warn('Failed to update optimistic cache after template creation:', cacheError);
+        }
+
+        hideModal('add-mapping-modal');
+        hideMappingTemplatePreview(previewElement, previewButton);
+
+        const hasActiveFilters = document.getElementById(SELECTORS.MAPPING_FILTERS.METHOD)?.value ||
+            document.getElementById(SELECTORS.MAPPING_FILTERS.URL)?.value ||
+            document.getElementById(SELECTORS.MAPPING_FILTERS.STATUS)?.value;
+        if (hasActiveFilters && window.FilterManager && typeof window.FilterManager.applyMappingFilters === 'function') {
+            window.FilterManager.applyMappingFilters();
+        }
+
+        if (createdMapping && createdMapping.id) {
+            const openInJson = confirm('Открыть новый маппинг в JSON редакторе? Нажмите Cancel, чтобы использовать встроенный редактор.');
+            if (openInJson) {
+                if (typeof window.editMapping === 'function') {
+                    window.editMapping(createdMapping.id);
+                } else {
+                    NotificationManager.info('JSON editor is not available in this view.');
+                }
+            } else if (typeof window.openEditModal === 'function') {
+                window.openEditModal(createdMapping.id);
+            }
+        }
+    } catch (error) {
+        console.error('Failed to create mapping from template:', error);
+        NotificationManager.error(`Failed to create mapping from template: ${error.message}`);
+    } finally {
+        setButtonLoadingState(button, false);
+    }
 }
 
 let jsonEditorResizeObserver = null;
