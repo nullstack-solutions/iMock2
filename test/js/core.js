@@ -905,6 +905,14 @@ const resetMappingFormDefaults = () => {
     if (formElement) formElement.reset();
     if (idElement) idElement.value = '';
     if (titleElement) titleElement.textContent = 'Add New Mapping';
+
+    if (typeof window.resetMappingTemplateSection === 'function') {
+        try {
+            window.resetMappingTemplateSection();
+        } catch (error) {
+            console.warn('Failed to reset mapping template section:', error);
+        }
+    }
 };
 
 window.showModal = (modalId) => {
@@ -924,6 +932,13 @@ window.showModal = (modalId) => {
 
 window.openAddMappingModal = () => {
     resetMappingFormDefaults();
+    if (typeof window.refreshMappingTemplateSection === 'function') {
+        try {
+            window.refreshMappingTemplateSection();
+        } catch (error) {
+            console.warn('Failed to refresh mapping template section:', error);
+        }
+    }
     window.showModal('add-mapping-modal');
 };
 
