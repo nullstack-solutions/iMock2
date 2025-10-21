@@ -71,14 +71,78 @@ window.cacheManager = {
         if (removedCount > 0) {
             console.log(`🧹 [CACHE] Cleaned ${removedCount} stale optimistic updates`);
 
-            const cacheEnabled = isCacheEnabled();
-            if (cacheEnabled) {
-                console.log('🧹 [CACHE] Cache mode enabled - forcing authoritative rebuild after cleanup');
-                scheduleCacheRebuild('stale-optimistic-cleanup', { force: true });
+            if (isCacheEnabled()) {
+                console.log('🧹 [CACHE] Cache mode enabled - scheduling cache mapping validation after cleanup');
+                scheduleCacheRebuild('stale-optimistic-cleanup');
             }
 
-            // Always rebuild the local cache to drop stale optimistic data
-            this.rebuildCache();
+            this.reconcileCacheAfterOptimisticCleanup();
+        }
+    },
+
+    reconcileCacheAfterOptimisticCleanup() {
+        try {
+            if (!(this.cache instanceof Map)) {
+                return;
+            }
+
+            const baseline = new Map();
+            if (typeof seedCacheFromGlobals === 'function') {
+                seedCacheFromGlobals(baseline);
+            }
+
+            for (const item of this.optimisticQueue) {
+                if (!item || !item.id) {
+                    continue;
+                }
+
+                const operation = typeof item.op === 'string' ? item.op.toLowerCase() : 'update';
+                if (operation === 'delete') {
+                    baseline.delete(item.id);
+                    continue;
+                }
+
+                let payload = null;
+                if (typeof cloneMappingForCache === 'function') {
+                    payload = cloneMappingForCache(item.payload);
+                }
+                if (!payload && item.payload && typeof item.payload === 'object') {
+                    payload = { ...item.payload };
+                }
+
+                if (!payload) {
+                    continue;
+                }
+
+                if (!payload.id) {
+                    payload.id = item.id;
+                }
+                if (!payload.uuid && item.payload && item.payload.uuid) {
+                    payload.uuid = item.payload.uuid;
+                }
+
+                if (baseline.has(item.id)) {
+                    if (typeof mergeMappingData === 'function') {
+                        baseline.set(item.id, mergeMappingData(baseline.get(item.id), payload));
+                    } else {
+                        baseline.set(item.id, { ...baseline.get(item.id), ...payload });
+                    }
+                } else {
+                    baseline.set(item.id, payload);
+                }
+            }
+
+            this.cache.clear();
+            for (const [id, mapping] of baseline.entries()) {
+                this.cache.set(id, mapping);
+            }
+
+            window.cacheLastUpdate = Date.now();
+            if (typeof refreshMappingsFromCache === 'function') {
+                refreshMappingsFromCache();
+            }
+        } catch (error) {
+            console.warn('🧹 [CACHE] Failed to reconcile cache after optimistic cleanup:', error);
         }
     },
 
