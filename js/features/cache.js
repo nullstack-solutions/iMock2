@@ -86,55 +86,13 @@ window.cacheManager = {
                 return;
             }
 
-            const baseline = new Map();
+            this.cache.clear();
             if (typeof seedCacheFromGlobals === 'function') {
-                seedCacheFromGlobals(baseline);
+                seedCacheFromGlobals(this.cache);
             }
 
             for (const item of this.optimisticQueue) {
-                if (!item || !item.id) {
-                    continue;
-                }
-
-                const operation = typeof item.op === 'string' ? item.op.toLowerCase() : 'update';
-                if (operation === 'delete') {
-                    baseline.delete(item.id);
-                    continue;
-                }
-
-                let payload = null;
-                if (typeof cloneMappingForCache === 'function') {
-                    payload = cloneMappingForCache(item.payload);
-                }
-                if (!payload && item.payload && typeof item.payload === 'object') {
-                    payload = { ...item.payload };
-                }
-
-                if (!payload) {
-                    continue;
-                }
-
-                if (!payload.id) {
-                    payload.id = item.id;
-                }
-                if (!payload.uuid && item.payload && item.payload.uuid) {
-                    payload.uuid = item.payload.uuid;
-                }
-
-                if (baseline.has(item.id)) {
-                    if (typeof mergeMappingData === 'function') {
-                        baseline.set(item.id, mergeMappingData(baseline.get(item.id), payload));
-                    } else {
-                        baseline.set(item.id, { ...baseline.get(item.id), ...payload });
-                    }
-                } else {
-                    baseline.set(item.id, payload);
-                }
-            }
-
-            this.cache.clear();
-            for (const [id, mapping] of baseline.entries()) {
-                this.cache.set(id, mapping);
+                applyOptimisticEntryToCache(this.cache, item);
             }
 
             window.cacheLastUpdate = Date.now();
@@ -518,7 +476,6 @@ function updateOptimisticCache(mapping, operation, options = {}) {
 
         if (normalizedOperation === 'delete') {
             removeMappingFromIndex(mappingId);
-            cache.delete(mappingId);
             if (window.pendingDeletedIds instanceof Set) {
                 window.pendingDeletedIds.add(mappingId);
             }
@@ -544,38 +501,65 @@ function updateOptimisticCache(mapping, operation, options = {}) {
                 window.cacheManager.removeOptimisticUpdate(mappingId);
             }
         } else {
-            const incoming = cloneMappingForCache(mapping);
-            if (!incoming) {
-                console.warn('updateOptimisticCache: unable to clone mapping for cache:', mappingId);
-                return;
-            }
-
-            if (!incoming.id && mappingId) {
-                incoming.id = mappingId;
-            }
-            if (!incoming.uuid && (mapping.uuid || mappingId)) {
-                incoming.uuid = mapping.uuid || mappingId;
-            }
-
             addMappingToIndex(mapping);
-
-            if (cache.has(mappingId)) {
-                const merged = mergeMappingData(cache.get(mappingId), incoming);
-                cache.set(mappingId, merged);
-            } else {
-                cache.set(mappingId, incoming);
-            }
 
             if (shouldConfirmQueue && typeof window.cacheManager.confirmOptimisticUpdate === 'function') {
                 window.cacheManager.confirmOptimisticUpdate(mappingId);
             }
         }
 
+        applyOptimisticEntryToCache(cache, { id: mappingId, op: normalizedOperation, payload: mapping });
+
         window.cacheLastUpdate = Date.now();
         refreshMappingsFromCache();
+
         enqueueCacheSync(mapping, normalizedOperation);
     } catch (error) {
         console.warn('updateOptimisticCache failed:', error);
+    }
+}
+
+function applyOptimisticEntryToCache(cache, entry) {
+    if (!(cache instanceof Map) || !entry || !entry.id) {
+        return;
+    }
+
+    const operation = typeof entry.op === 'string' ? entry.op.toLowerCase() : 'update';
+    if (operation === 'delete') {
+        cache.delete(entry.id);
+        return;
+    }
+
+    const source = entry.payload;
+    let payload = null;
+    if (typeof cloneMappingForCache === 'function') {
+        payload = cloneMappingForCache(source);
+    }
+    if (!payload && source && typeof source === 'object') {
+        payload = { ...source };
+    }
+
+    if (!payload) {
+        console.warn('applyOptimisticEntryToCache skipped - no payload for entry', entry.id);
+        return;
+    }
+
+    if (!payload.id) {
+        payload.id = entry.id;
+    }
+    if (!payload.uuid && source && source.uuid) {
+        payload.uuid = source.uuid;
+    }
+
+    if (cache.has(entry.id)) {
+        const existing = cache.get(entry.id);
+        if (typeof mergeMappingData === 'function') {
+            cache.set(entry.id, mergeMappingData(existing, payload));
+        } else {
+            cache.set(entry.id, { ...existing, ...payload });
+        }
+    } else {
+        cache.set(entry.id, payload);
     }
 }
 
