@@ -70,13 +70,14 @@ window.cacheManager = {
         const removedCount = initialLength - this.optimisticQueue.length;
         if (removedCount > 0) {
             console.log(`🧹 [CACHE] Cleaned ${removedCount} stale optimistic updates`);
-            // In cache-enabled mode, only rebuild when cache mapping is missing
-            if (isCacheEnabled()) {
-                console.log('🧹 [CACHE] Skipping automatic rebuild while cache mode is enabled');
-                scheduleCacheRebuild('stale-optimistic-cleanup');
-                return;
+
+            const cacheEnabled = isCacheEnabled();
+            if (cacheEnabled) {
+                console.log('🧹 [CACHE] Cache mode enabled - forcing authoritative rebuild after cleanup');
+                scheduleCacheRebuild('stale-optimistic-cleanup', { force: true });
             }
-            // Trigger a UI refresh if stale updates were removed
+
+            // Always rebuild the local cache to drop stale optimistic data
             this.rebuildCache();
         }
     },
@@ -516,21 +517,29 @@ function updateOptimisticCache(mapping, operation, options = {}) {
 
 // Simple debounce for cache rebuilds that leverages the existing refreshImockCache
 let _cacheRebuildTimer;
-function scheduleCacheRebuild(reason = 'unspecified') {
+function scheduleCacheRebuild(reason = 'unspecified', options = {}) {
   try {
     if (!isCacheEnabled()) {
       return;
     }
+
+    const normalizedOptions = (options && typeof options === 'object') ? options : {};
+    const { force = false } = normalizedOptions;
+
     const settings = (typeof window.readWiremockSettings === 'function') ? window.readWiremockSettings() : {};
     const delay = Number(settings.cacheRebuildDelay) || 1000;
     clearTimeout(_cacheRebuildTimer);
     _cacheRebuildTimer = setTimeout(async () => {
       try {
         console.log(`🧩 [CACHE] Scheduled cache validation triggered by: ${reason}`);
-        const existing = await fetchExistingCacheMapping();
-        if (existing && extractCacheJsonBody(existing)) {
-          console.log('🧩 [CACHE] Skipping scheduled rebuild - cache mapping already exists');
-          return;
+        if (!force) {
+          const existing = await fetchExistingCacheMapping();
+          if (existing && extractCacheJsonBody(existing)) {
+            console.log('🧩 [CACHE] Skipping scheduled rebuild - cache mapping already exists');
+            return;
+          }
+        } else {
+          console.log('🧩 [CACHE] Forced rebuild requested - bypassing cache mapping presence check');
         }
         if (typeof window.refreshImockCache === 'function') {
           await window.refreshImockCache();
