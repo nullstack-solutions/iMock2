@@ -454,7 +454,8 @@ window.duplicateMapping = async (identifier) => {
 
         try {
             if (createdMapping && createdMapping.id && typeof updateOptimisticCache === 'function') {
-                updateOptimisticCache(createdMapping, 'create', { queueMode: 'add' });
+                // The server has already confirmed the copy, so update the cache immediately
+                updateOptimisticCache(createdMapping, 'create');
             }
         } catch (cacheError) {
             console.warn('Failed to update optimistic cache after duplication:', cacheError);
