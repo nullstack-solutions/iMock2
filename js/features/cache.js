@@ -17,9 +17,6 @@ window.cacheManager = {
     cleanupInterval: null,
     syncInterval: null,
 
-    // Version counter for change tracking
-    version: 0,
-
     // Synchronization flag
     isSyncing: false,
 
@@ -73,6 +70,12 @@ window.cacheManager = {
         const removedCount = initialLength - this.optimisticQueue.length;
         if (removedCount > 0) {
             console.log(`🧹 [CACHE] Cleaned ${removedCount} stale optimistic updates`);
+            // In cache-enabled mode, only rebuild when cache mapping is missing
+            if (isCacheEnabled()) {
+                console.log('🧹 [CACHE] Skipping automatic rebuild while cache mode is enabled');
+                scheduleCacheRebuild('stale-optimistic-cleanup');
+                return;
+            }
             // Trigger a UI refresh if stale updates were removed
             this.rebuildCache();
         }
@@ -149,25 +152,18 @@ window.cacheManager = {
         }
 
         console.log(`🔄 [CACHE] Syncing ${this.optimisticQueue.length} optimistic updates`);
+
+        if (isCacheEnabled()) {
+            console.log('🔄 [CACHE] Cache mode enabled - ensuring cache mapping exists before rebuilding');
+            try {
+                await validateAndRefreshCache();
+            } catch (validationError) {
+                console.warn('🔄 [CACHE] Validation during sync failed:', validationError);
+            }
+            return;
+        }
+
         await this.rebuildCache();
-    },
-
-    // Retrieve a mapping from the cache
-    getMapping(id) {
-        return this.cache.get(id);
-    },
-
-    // Check if a mapping exists
-    hasMapping(id) {
-        return this.cache.has(id);
-    },
-
-    // Clear the entire cache
-    clear() {
-        this.cache.clear();
-        this.optimisticQueue.length = 0;
-        this.version = 0;
-        console.log('🧹 [CACHE] Cache cleared');
     }
 };
 
@@ -229,7 +225,6 @@ window.connectToWireMock = async () => {
     window.wiremockBaseUrl = window.normalizeWiremockBaseUrl(host, port);
     
     try {
-        let renderSource = 'unknown';
         // The first health check starts uptime tracking
         await checkHealthAndStartUptime();
         
@@ -512,9 +507,6 @@ function updateOptimisticCache(mapping, operation, options = {}) {
         }
 
         window.cacheLastUpdate = Date.now();
-        if (typeof window.cacheManager?.version === 'number') {
-            window.cacheManager.version += 1;
-        }
         refreshMappingsFromCache();
         enqueueCacheSync(mapping, normalizedOperation);
     } catch (error) {
@@ -524,7 +516,7 @@ function updateOptimisticCache(mapping, operation, options = {}) {
 
 // Simple debounce for cache rebuilds that leverages the existing refreshImockCache
 let _cacheRebuildTimer;
-function scheduleCacheRebuild() {
+function scheduleCacheRebuild(reason = 'unspecified') {
   try {
     if (!isCacheEnabled()) {
       return;
@@ -534,6 +526,7 @@ function scheduleCacheRebuild() {
     clearTimeout(_cacheRebuildTimer);
     _cacheRebuildTimer = setTimeout(async () => {
       try {
+        console.log(`🧩 [CACHE] Scheduled cache validation triggered by: ${reason}`);
         const existing = await fetchExistingCacheMapping();
         if (existing && extractCacheJsonBody(existing)) {
           console.log('🧩 [CACHE] Skipping scheduled rebuild - cache mapping already exists');
@@ -558,11 +551,10 @@ let optimisticDelayRetries = 0;
 // Cache validation timer (check every minute, validate every 5 minutes)
 window.cacheValidationInterval = window.LifecycleManager.setInterval(() => {
     const timeSinceLastUpdate = Date.now() - (window.cacheLastUpdate || 0);
-    const optimisticOps = window.cacheOptimisticOperations || 0;
 
-    // Validate if cache is older than 5 minutes OR has too many optimistic operations
-    if (timeSinceLastUpdate > 5 * 60 * 1000 || optimisticOps > 20) {
-        console.log('🧩 [CACHE] Validation triggered - time:', Math.round(timeSinceLastUpdate/1000), 's, ops:', optimisticOps);
+    // Validate if cache is older than 5 minutes
+    if (timeSinceLastUpdate > 5 * 60 * 1000) {
+        console.log('🧩 [CACHE] Validation triggered - time:', Math.round(timeSinceLastUpdate/1000), 's');
         validateAndRefreshCache();
     }
 }, 60 * 1000); // Check every minute
@@ -592,8 +584,7 @@ async function validateAndRefreshCache() {
         const payload = await regenerateImockCache(freshData);
         window.imockCacheSnapshot = payload;
 
-        // Reset optimistic counters
-        window.cacheOptimisticOperations = 0;
+        // Reset cache timestamp after rebuilding the mapping
         window.cacheLastUpdate = Date.now();
 
         console.log('🧩 [CACHE] Validation rebuilt cache because mapping was missing');
@@ -623,8 +614,6 @@ window.refreshImockCache = async () => {
     optimisticDelayRetries = 0;
     optimisticInProgress = true;
     try {
-        window.cacheRebuilding = true;
-        console.log('🔄 [CACHE] Set cache rebuilding flag');
 
         try {
             if (isCacheEnabled()) {
@@ -659,10 +648,7 @@ window.refreshImockCache = async () => {
     } catch (e) {
         console.warn('🔄 [CACHE] refreshImockCache failed:', e);
     } finally {
-        window.cacheRebuilding = false;
-        console.log('🔄 [CACHE] Cleared cache rebuilding flag');
         window.cacheLastUpdate = Date.now();
-        window.cacheOptimisticOperations = 0;
         optimisticInProgress = false;
         optimisticDelayRetries = 0;
         try {
