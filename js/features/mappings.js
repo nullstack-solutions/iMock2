@@ -777,8 +777,8 @@ window.applyOptimisticMappingUpdate = (mappingLike) => {
 
         rememberOptimisticShadowMapping(mapping, optimisticOperation);
 
-        // Update optimistic cache
-        updateOptimisticCache(mapping, optimisticOperation, { queueMode: 'add' });
+        // Update optimistic cache using the authoritative payload we just received
+        updateOptimisticCache(mapping, optimisticOperation);
 
         console.log('🎯 [OPTIMISTIC] Applied update for mapping:', mappingId);
 

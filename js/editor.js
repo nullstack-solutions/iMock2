@@ -544,7 +544,8 @@ async function createMappingFromTemplateFromModal(templateId, { button, previewE
 
         try {
             if (createdMapping && createdMapping.id && typeof updateOptimisticCache === 'function') {
-                updateOptimisticCache(createdMapping, 'create', { queueMode: 'add' });
+                // WireMock already accepted the template mapping, reflect it in the cache immediately
+                updateOptimisticCache(createdMapping, 'create');
             }
         } catch (cacheError) {
             console.warn('Failed to update optimistic cache after template creation:', cacheError);
