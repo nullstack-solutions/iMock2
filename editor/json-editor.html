@@ -618,9 +618,19 @@
                     // drop service cache mapping if ever present
                     if (typeof isImockCacheMapping === 'function' && isImockCacheMapping(m)) return false; // never render the service mapping
 
-                    // MEMORY OPTIMIZATION: Update cacheManager.cache directly
+                    // MEMORY OPTIMIZATION: Update cacheManager.cache directly via shared helper when available
                     if (window.cacheManager && window.cacheManager.cache instanceof Map) {
-                        window.cacheManager.cache.set(m.id, m);
+                        const cache = window.cacheManager.cache;
+                        const optimisticOp = cache.has(m.id) ? 'update' : 'create';
+                        if (typeof applyOptimisticEntryToCache === 'function') {
+                            applyOptimisticEntryToCache(cache, {
+                                id: m.id,
+                                op: optimisticOp,
+                                payload: m
+                            });
+                        } else {
+                            cache.set(m.id, m);
+                        }
                     }
 
                     const allMappingsSize = (() => {
