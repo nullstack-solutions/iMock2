@@ -33,6 +33,7 @@
     --surface-panel: #161616;
     --surface-elevated: #1d1d1d;
     --surface-card: #262626;
+    --preview-surface: rgba(22, 22, 22, 0.95);
     --bg-accent: rgba(59, 130, 246, 0.12);
     --bg-overlay: rgba(10, 10, 10, 0.85);
 
@@ -106,6 +107,7 @@
     --surface-panel: #ffffff;
     --surface-elevated: #f1f5f9;
     --surface-card: #ffffff;
+    --preview-surface: rgba(255, 255, 255, 0.96);
     --bg-accent: rgba(99, 102, 241, 0.12);
     --bg-overlay: rgba(148, 163, 184, 0.35);
 
