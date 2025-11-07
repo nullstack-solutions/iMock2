@@ -618,8 +618,24 @@ function setButtonLoadingState(button, isLoading, loadingLabel) {
 
 window.setMappingEditorBusyState = (isLoading, loadingLabel) => {
     const updateButton = document.getElementById('update-mapping-btn');
-    if (!updateButton) return;
-    setButtonLoadingState(updateButton, isLoading, loadingLabel);
+    if (updateButton) {
+        setButtonLoadingState(updateButton, isLoading, loadingLabel);
+    }
+
+    const modalElement = document.getElementById('edit-mapping-modal');
+    const modalContent = modalElement?.querySelector('.modal-content');
+
+    if (modalElement) {
+        modalElement.classList.toggle('is-loading', Boolean(isLoading));
+    }
+
+    if (modalContent) {
+        if (isLoading) {
+            modalContent.setAttribute('aria-busy', 'true');
+        } else {
+            modalContent.removeAttribute('aria-busy');
+        }
+    }
 };
 
 function initializeJsonEditorAutoResize() {

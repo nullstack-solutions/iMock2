@@ -45,6 +45,14 @@
     position: relative;
 }
 
+.modal-content--mapping-editor {
+    min-height: clamp(420px, 78vh, 900px);
+}
+
+.modal-content--mapping-editor > form {
+    min-height: 0;
+}
+
 .modal-content--wide {
     width: min(92vw, 760px);
     max-width: 760px;
@@ -195,6 +203,111 @@
     border-top: 1px solid rgba(255, 255, 255, 0.08);
     background: linear-gradient(135deg, rgba(26, 26, 26, 0.9), rgba(10, 10, 10, 0.8)), var(--surface-elevated);
     backdrop-filter: blur(12px);
+}
+
+#edit-mapping-modal #edit-mapping-form {
+    position: relative;
+    min-height: 0;
+}
+
+#edit-mapping-modal.is-loading #edit-mapping-form {
+    pointer-events: none;
+}
+
+#edit-mapping-modal.is-loading #edit-mapping-form > *:not(.modal-skeleton) {
+    opacity: 0.35;
+    filter: blur(1.5px);
+    transition: opacity var(--transition-medium), filter var(--transition-medium);
+}
+
+#edit-mapping-modal .modal-skeleton {
+    pointer-events: none;
+    position: absolute;
+    inset: 0;
+    padding: var(--space-6);
+    display: grid;
+    gap: var(--space-5);
+    background: linear-gradient(180deg, rgba(10, 13, 24, 0.85), rgba(12, 18, 34, 0.55));
+    backdrop-filter: blur(18px);
+    opacity: 0;
+    transition: opacity var(--transition-medium);
+    z-index: 1;
+}
+
+#edit-mapping-modal.is-loading .modal-skeleton {
+    opacity: 1;
+}
+
+#edit-mapping-modal .modal-skeleton__row {
+    display: flex;
+    gap: var(--space-4);
+    align-items: center;
+}
+
+#edit-mapping-modal .modal-skeleton__row--compact {
+    gap: var(--space-5);
+}
+
+#edit-mapping-modal .modal-skeleton__line,
+#edit-mapping-modal .modal-skeleton__chip {
+    display: block;
+    height: var(--space-5);
+    border-radius: var(--radius-lg);
+    background: linear-gradient(
+        110deg,
+        rgba(255, 255, 255, 0.18) 0%,
+        rgba(255, 255, 255, 0.04) 38%,
+        rgba(255, 255, 255, 0.18) 72%
+    );
+    background-size: 200% 100%;
+    animation: modalSkeletonShimmer 1.6s ease-in-out infinite;
+}
+
+#edit-mapping-modal .modal-skeleton__line {
+    width: 100%;
+}
+
+#edit-mapping-modal .modal-skeleton__line--title {
+    width: 60%;
+    height: calc(var(--space-6) + var(--space-2));
+}
+
+#edit-mapping-modal .modal-skeleton__line--tall {
+    height: 140px;
+    border-radius: var(--radius-xl);
+}
+
+#edit-mapping-modal .modal-skeleton__chip {
+    flex: 1;
+    height: calc(var(--space-5) + var(--space-1));
+}
+
+#edit-mapping-modal .modal-skeleton__chip--wide {
+    flex: 2;
+}
+
+#edit-mapping-modal .modal-skeleton__chip--compact {
+    height: var(--space-4);
+}
+
+@keyframes modalSkeletonShimmer {
+    0% {
+        background-position: 200% 0;
+    }
+    100% {
+        background-position: -200% 0;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #edit-mapping-modal.is-loading #edit-mapping-form > *:not(.modal-skeleton) {
+        filter: none;
+    }
+
+    #edit-mapping-modal .modal-skeleton__line,
+    #edit-mapping-modal .modal-skeleton__chip {
+        animation-duration: 0s;
+    }
 }
 
 /* ===== FORM SECTIONS IN MODALS ===== */
