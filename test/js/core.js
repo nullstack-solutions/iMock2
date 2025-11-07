@@ -917,8 +917,14 @@ window.showModal = (modalId) => {
         return;
     }
 
+    modal.classList.remove('is-loading');
+    const modalContent = modal.querySelector('.modal-content');
+    if (modalContent) {
+        modalContent.removeAttribute('aria-busy');
+    }
+
     modal.classList.remove('hidden');
-    modal.style.display = 'flex';
+    modal.setAttribute('aria-hidden', 'false');
 
     const firstInput = modal.querySelector('input, select, textarea');
     if (firstInput) {
@@ -945,7 +951,13 @@ window.hideModal = (modal) => {
     }
 
     modalElement.classList.add('hidden');
-    modalElement.style.display = 'none';
+    modalElement.setAttribute('aria-hidden', 'true');
+    modalElement.classList.remove('is-loading');
+
+    const modalContent = modalElement.querySelector('.modal-content');
+    if (modalContent) {
+        modalContent.removeAttribute('aria-busy');
+    }
 
     const form = modalElement.querySelector('form');
     if (form) {

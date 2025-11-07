@@ -791,8 +791,8 @@
     </div>
 
     <!-- MODAL FOR EDITING MAPPINGS -->
-    <div id="edit-mapping-modal" class="modal hidden">
-        <div class="modal-content">
+    <div id="edit-mapping-modal" class="modal hidden" aria-hidden="true">
+        <div class="modal-content modal-content--mapping-editor">
             <button class="modal-close" type="button" onclick="hideModal('edit-mapping-modal')" aria-label="Close edit mapping modal">
                 <svg class="icon icon-16" aria-hidden="true" focusable="false">
                     <use href="#icon-x-circle"></use>
@@ -890,6 +890,20 @@
                     <div class="form-group">
                         <label class="form-label">New Scenario State</label>
                         <input type="text" class="form-input" id="edit-new-scenario-state" placeholder="State after match">
+                    </div>
+                </div>
+
+                <div class="modal-skeleton" aria-hidden="true">
+                    <span class="modal-skeleton__line modal-skeleton__line--title"></span>
+                    <div class="modal-skeleton__row">
+                        <span class="modal-skeleton__chip modal-skeleton__chip--wide"></span>
+                        <span class="modal-skeleton__chip"></span>
+                    </div>
+                    <span class="modal-skeleton__line"></span>
+                    <span class="modal-skeleton__line modal-skeleton__line--tall"></span>
+                    <div class="modal-skeleton__row modal-skeleton__row--compact">
+                        <span class="modal-skeleton__chip modal-skeleton__chip--compact"></span>
+                        <span class="modal-skeleton__chip modal-skeleton__chip--compact"></span>
                     </div>
                 </div>
             </form>
