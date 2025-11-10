@@ -868,12 +868,10 @@ async function saveMapping() {
  * Update an existing mapping through the edit mapping form
  */
 window.updateMapping = async () => {
-    console.log('updateMapping called');
-
     try {
         window.setMappingEditorBusyState(true, 'Updating…');
 
-        // Save current state based on active mode FIRST
+        // Save current state based on active mode
         if (editorState.mode === EDITOR_MODES.JSON) {
             saveFromJSONMode();
         } else {
@@ -881,80 +879,50 @@ window.updateMapping = async () => {
         }
 
         const mappingData = editorState.currentMapping;
-        const id = mappingData?.id;
 
-        if (!id) {
+        if (!mappingData?.id) {
             NotificationManager.error('Mapping ID not found');
             return;
         }
 
-        console.log('Sending mapping update:', mappingData);
+        // Update metadata (simplified)
+        const nowIso = new Date().toISOString();
+        mappingData.metadata = {
+            ...mappingData.metadata,
+            created: mappingData.metadata?.created || nowIso,
+            edited: nowIso,
+            source: 'ui'
+        };
 
-        // Ensure metadata with timestamps and source AFTER getting final mappingData
-        (function(){
-            try {
-                const nowIso = new Date().toISOString();
-                if (typeof mappingData === 'object' && mappingData) {
-                    // Initialize metadata object if it doesn't exist
-                    if (!mappingData.metadata) {
-                        mappingData.metadata = {};
-                        console.log('📅 [METADATA] Initialized metadata object');
-                    }
-
-                    // Set created timestamp if not exists (first save)
-                    if (!mappingData.metadata.created) {
-                        mappingData.metadata.created = nowIso;
-                        console.log('📅 [METADATA] Set created timestamp (UI):', mappingData.metadata.created);
-                    }
-
-                    // Always update edited timestamp and source
-                    mappingData.metadata.edited = nowIso;
-                    mappingData.metadata.source = 'ui';
-
-                    console.log('📅 [METADATA] Updated edited timestamp (UI):', mappingData.metadata.edited);
-                    console.log('📅 [METADATA] Set source: ui');
-                }
-            } catch (e) {
-                console.warn('📅 [METADATA] Failed to update metadata:', e);
-            }
-        })();
-        const response = await apiFetch(`/mappings/${id}`, {
+        // Send update to server
+        const response = await apiFetch(`/mappings/${mappingData.id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(mappingData)
         });
 
-        // Use server response for optimistic updates - it contains the authoritative data
         const updatedMapping = response?.mapping || response;
-        console.log('Mapping updated successfully, using server response for optimistic updates:', updatedMapping);
 
         NotificationManager.success('Mapping updated!');
 
-        // Update cache and UI with server response
-        try {
-            if (updatedMapping) {
-                updateOptimisticCache(updatedMapping, 'update');
-            }
-        } catch (e) { console.warn('optimistic updates after edit failed:', e); }
+        // Update cache and UI
+        if (updatedMapping) {
+            updateOptimisticCache(updatedMapping, 'update');
+        }
 
         editorState.isDirty = false;
         updateDirtyIndicator();
 
-        console.log('Hiding modal...');
         hideModal('edit-mapping-modal');
 
-        // No more immediate cache rebuild - optimistic cache handles it
-        
-        // Reapply filters after updating mappings
+        // Reapply filters if active
         const hasActiveFilters = document.getElementById(SELECTORS.MAPPING_FILTERS.METHOD)?.value ||
                                document.getElementById(SELECTORS.MAPPING_FILTERS.URL)?.value ||
                                document.getElementById(SELECTORS.MAPPING_FILTERS.STATUS)?.value;
-        
+
         if (hasActiveFilters) {
             FilterManager.applyMappingFilters();
         }
-
-        console.log('updateMapping completed successfully');
 
     } catch (e) {
         console.error('Error in updateMapping:', e);
@@ -968,42 +936,26 @@ window.updateMapping = async () => {
  * Populate the edit mapping form with data from a mapping
  */
 window.populateEditMappingForm = (mapping) => {
-    console.log('🔵 [EDITOR DEBUG] populateEditMappingForm called');
-    console.log('🔵 [EDITOR DEBUG] Incoming mapping ID:', mapping?.id);
-    console.log('🔵 [EDITOR DEBUG] Incoming mapping name:', mapping?.name);
-    console.log('🔵 [EDITOR DEBUG] Current editor mode:', editorState.mode);
-    console.log('🔵 [EDITOR DEBUG] Previous currentMapping ID:', editorState.currentMapping?.id);
-    console.log('🔵 [EDITOR DEBUG] Full incoming mapping:', mapping);
-    
-    // Always reset state when opening a new mapping
+    // Reset state when opening a new mapping
     editorState.originalMapping = mapping;
     editorState.currentMapping = JSON.parse(JSON.stringify(mapping)); // Deep clone
     editorState.isDirty = false;
     updateDirtyIndicator();
-    
-    console.log('🔵 [EDITOR DEBUG] After state update - currentMapping ID:', editorState.currentMapping?.id);
-    
-    // Always populate form fields first (for consistency)
-    populateFormFields(mapping);
-    
-    // Then load data based on current mode
+
+    // Conditional population based on mode (optimization)
     if (editorState.mode === EDITOR_MODES.JSON) {
-        console.log('🔵 [EDITOR DEBUG] Loading JSON mode for mapping ID:', editorState.currentMapping?.id);
+        // JSON mode: only populate JSON editor
         loadJSONMode();
+    } else {
+        // Form mode: only populate form fields
+        populateFormFields(mapping);
     }
-    
-    console.log('🔵 [EDITOR DEBUG] populateEditMappingForm completed for mapping ID:', mapping?.id);
 };
 
 /**
  * Populate form fields with mapping data
  */
 function populateFormFields(mapping) {
-    console.log('🟣 [FORM DEBUG] populateFormFields called');
-    console.log('🟣 [FORM DEBUG] Mapping ID to populate:', mapping?.id);
-    console.log('🟣 [FORM DEBUG] Mapping name to populate:', mapping?.name);
-    
-    // Always populate form fields regardless of mode (needed for both modes)
     const idElement = document.getElementById('edit-mapping-id');
     const methodElement = document.getElementById('edit-method');
     const urlPatternElement = document.getElementById('edit-url-pattern');
@@ -1108,8 +1060,6 @@ function populateFormFields(mapping) {
  * Switch editor mode
  */
 function switchEditorMode() {
-    console.log('🟠 [MODE DEBUG] switchEditorMode forced to JSON');
-
     try {
         editorState.mode = EDITOR_MODES.JSON;
         loadJSONMode();
@@ -1139,32 +1089,14 @@ function updateEditorUI() {
 }
 
 function saveFromJSONMode() {
-    console.log('🟢 [SAVE DEBUG] saveFromJSONMode called');
-    
     const jsonEditor = document.getElementById('json-editor');
-    if (!jsonEditor) {
-        console.log('🔴 [SAVE DEBUG] JSON editor element not found!');
+    if (!jsonEditor || !jsonEditor.value.trim()) {
         return;
     }
-    
-    const jsonText = jsonEditor.value;
-    if (!jsonText.trim()) {
-        console.log('🟢 [SAVE DEBUG] JSON editor is empty, nothing to save');
-        return;
-    }
-    
-    console.log('🟢 [SAVE DEBUG] JSON text length:', jsonText.length);
-    console.log('🟢 [SAVE DEBUG] Previous currentMapping ID:', editorState.currentMapping?.id);
-    
+
     try {
-        const parsedMapping = JSON.parse(jsonText);
-        console.log('🟢 [SAVE DEBUG] Parsed mapping ID:', parsedMapping?.id);
-        console.log('🟢 [SAVE DEBUG] Parsed mapping name:', parsedMapping?.name);
-        
-        editorState.currentMapping = parsedMapping;
-        console.log('🟢 [SAVE DEBUG] Updated currentMapping ID:', editorState.currentMapping?.id);
+        editorState.currentMapping = JSON.parse(jsonEditor.value);
     } catch (error) {
-        console.log('🔴 [SAVE DEBUG] JSON parse error:', error.message);
         throw new Error('Invalid JSON: ' + error.message);
     }
 }
@@ -1181,27 +1113,13 @@ function saveFromFormMode() {
  * Load JSON mode
  */
 function loadJSONMode() {
-    console.log('🟡 [JSON DEBUG] loadJSONMode called');
-    console.log('🟡 [JSON DEBUG] currentMapping ID:', editorState.currentMapping?.id);
-    console.log('🟡 [JSON DEBUG] currentMapping name:', editorState.currentMapping?.name);
-    
     const jsonEditor = document.getElementById('json-editor');
-    if (!jsonEditor) {
-        console.log('🔴 [JSON DEBUG] JSON editor element not found!');
+    if (!jsonEditor || !editorState.currentMapping) {
         return;
     }
-    
-    if (!editorState.currentMapping) {
-        console.log('🔴 [JSON DEBUG] No currentMapping in editorState!');
-        return;
-    }
-    
-    const formattedJSON = JSON.stringify(editorState.currentMapping, null, 2);
-    jsonEditor.value = formattedJSON;
-    adjustJsonEditorHeight(true);
 
-    console.log('🟡 [JSON DEBUG] JSON editor populated with mapping ID:', editorState.currentMapping?.id);
-    console.log('🟡 [JSON DEBUG] JSON content length:', formattedJSON.length);
+    jsonEditor.value = JSON.stringify(editorState.currentMapping, null, 2);
+    adjustJsonEditorHeight(true);
 }
 
 /**
