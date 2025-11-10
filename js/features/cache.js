@@ -17,9 +17,6 @@ window.cacheManager = {
     cleanupInterval: null,
     syncInterval: null,
 
-    // Version counter for change tracking
-    version: 0,
-
     // Synchronization flag
     isSyncing: false,
 
@@ -73,8 +70,37 @@ window.cacheManager = {
         const removedCount = initialLength - this.optimisticQueue.length;
         if (removedCount > 0) {
             console.log(`🧹 [CACHE] Cleaned ${removedCount} stale optimistic updates`);
-            // Trigger a UI refresh if stale updates were removed
-            this.rebuildCache();
+
+            if (isCacheEnabled()) {
+                console.log('🧹 [CACHE] Cache mode enabled - scheduling cache mapping validation after cleanup');
+                scheduleCacheRebuild('stale-optimistic-cleanup');
+            }
+
+            this.reconcileCacheAfterOptimisticCleanup();
+        }
+    },
+
+    reconcileCacheAfterOptimisticCleanup() {
+        try {
+            if (!(this.cache instanceof Map)) {
+                return;
+            }
+
+            this.cache.clear();
+            if (typeof seedCacheFromGlobals === 'function') {
+                seedCacheFromGlobals(this.cache);
+            }
+
+            for (const item of this.optimisticQueue) {
+                applyOptimisticEntryToCache(this.cache, item);
+            }
+
+            window.cacheLastUpdate = Date.now();
+            if (typeof refreshMappingsFromCache === 'function') {
+                refreshMappingsFromCache();
+            }
+        } catch (error) {
+            console.warn('🧹 [CACHE] Failed to reconcile cache after optimistic cleanup:', error);
         }
     },
 
@@ -122,10 +148,9 @@ window.cacheManager = {
                 }
             }
 
-            // Update the global arrays
-            window.originalMappings = Array.from(this.cache.values());
+            // MEMORY OPTIMIZATION: No need to assign - getters pull from cache automatically
+            // window.allMappings and window.originalMappings are getters → Array.from(cache.values())
             refreshMappingTabSnapshot();
-            window.allMappings = window.originalMappings;
             rebuildMappingIndex(window.originalMappings);
 
             console.log(`✅ [CACHE] Rebuild complete: ${this.cache.size} mappings`);
@@ -150,25 +175,18 @@ window.cacheManager = {
         }
 
         console.log(`🔄 [CACHE] Syncing ${this.optimisticQueue.length} optimistic updates`);
+
+        if (isCacheEnabled()) {
+            console.log('🔄 [CACHE] Cache mode enabled - ensuring cache mapping exists before rebuilding');
+            try {
+                await validateAndRefreshCache();
+            } catch (validationError) {
+                console.warn('🔄 [CACHE] Validation during sync failed:', validationError);
+            }
+            return;
+        }
+
         await this.rebuildCache();
-    },
-
-    // Retrieve a mapping from the cache
-    getMapping(id) {
-        return this.cache.get(id);
-    },
-
-    // Check if a mapping exists
-    hasMapping(id) {
-        return this.cache.has(id);
-    },
-
-    // Clear the entire cache
-    clear() {
-        this.cache.clear();
-        this.optimisticQueue.length = 0;
-        this.version = 0;
-        console.log('🧹 [CACHE] Cache cleared');
     }
 };
 
@@ -191,37 +209,45 @@ function isCacheEnabled() {
 
 // Enhanced WireMock connection routine with accurate uptime handling
 window.connectToWireMock = async () => {
-    // Try main page elements first, then fallback to settings page elements
+    // Get host/port from settings or input fields
+    const settings = (typeof window.readWiremockSettings === 'function') ? window.readWiremockSettings() : {};
     const hostInput = document.getElementById('wiremock-host') || document.getElementById(SELECTORS.CONNECTION.HOST);
     const portInput = document.getElementById('wiremock-port') || document.getElementById(SELECTORS.CONNECTION.PORT);
-    
-    if (!hostInput || !portInput) {
-        console.error('Connection input elements not found');
-        NotificationManager.error('Error: connection fields not found');
-        return;
+
+    // Use saved settings or input values
+    const trimOrEmpty = (value) => typeof value === 'string' ? value.trim() : '';
+
+    let host = trimOrEmpty(hostInput?.value) || trimOrEmpty(settings.host) || trimOrEmpty(settings.wiremockHost);
+    let port = trimOrEmpty(portInput?.value) || trimOrEmpty(settings.port) || trimOrEmpty(settings.wiremockPort);
+
+    if (!host && window.wiremockBaseUrl) {
+        try {
+            const parsed = new URL(window.wiremockBaseUrl);
+            host = `${parsed.protocol}//${parsed.hostname}`;
+            if (!port && parsed.port) {
+                port = parsed.port;
+            }
+        } catch (error) {
+            console.warn('Failed to derive host from existing wiremockBaseUrl:', window.wiremockBaseUrl, error);
+        }
     }
-    
-    const host = hostInput.value.trim() || 'localhost';
-    const port = portInput.value.trim() || '8080';
+
+    if (!host) {
+        host = 'localhost';
+    }
+
+    if (!port) {
+        port = '';
+    }
     
     // DON'T save connection settings here - they should already be saved from Settings page
     // Only use these values for the current connection attempt
     console.log('🔗 Connecting with:', { host, port });
     
-    // Update the base URL (with proper scheme/port normalization)
-    if (typeof window.normalizeWiremockBaseUrl === 'function') {
-        window.wiremockBaseUrl = window.normalizeWiremockBaseUrl(host, port);
-    } else {
-        // Fall back to the previous behavior (in case script load order changes)
-        const hasScheme = /^(https?:)\/\//i.test(host);
-        const scheme = hasScheme ? host.split(':')[0] : 'http';
-        const cleanHost = hasScheme ? host.replace(/^(https?:)\/\//i, '') : host;
-        const finalPort = (port && String(port).trim()) || (scheme === 'https' ? '443' : '8080');
-        window.wiremockBaseUrl = `${scheme}://${cleanHost}:${finalPort}/__admin`;
-    }
+    // Normalize base URL (proper scheme/port normalization)
+    window.wiremockBaseUrl = window.normalizeWiremockBaseUrl(host, port);
     
     try {
-        let renderSource = 'unknown';
         // The first health check starts uptime tracking
         await checkHealthAndStartUptime();
         
@@ -291,22 +317,14 @@ window.checkHealthAndStartUptime = async () => {
         let responseTime = 0;
         let isHealthy = false;
 
-        // Try /health first (WireMock 3.x) then fall back to /mappings (compatible with 2.x)
-        try {
-            const response = await apiFetch(ENDPOINTS.HEALTH);
-            responseTime = Math.round(performance.now() - startTime);
-            isHealthy = typeof response === 'object' && (
-                (typeof response.status === 'string' && ['up','healthy','ok'].includes(response.status.toLowerCase())) ||
-                response.healthy === true
-            );
-            console.log('[HEALTH] initial check:', { rawStatus: response?.status, healthyFlag: response?.healthy, isHealthy });
-        } catch (primaryError) {
-            // Fallback: verify core API availability via /mappings
-            const fallback = await fetchMappingsFromServer();
-            responseTime = Math.round(performance.now() - startTime);
-            // Treat a JSON object response (WireMock default) as healthy
-            isHealthy = typeof fallback === 'object';
-        }
+        // Check /health endpoint (WireMock 3.x standard)
+        const response = await apiFetch(ENDPOINTS.HEALTH);
+        responseTime = Math.round(performance.now() - startTime);
+        isHealthy = typeof response === 'object' && (
+            (typeof response.status === 'string' && ['up','healthy','ok'].includes(response.status.toLowerCase())) ||
+            response.healthy === true
+        );
+        console.log('[HEALTH] initial check:', { rawStatus: response?.status, healthyFlag: response?.healthy, isHealthy });
 
         if (isHealthy) {
             // Start uptime only after a successful health check
@@ -353,20 +371,13 @@ window.startHealthMonitoring = () => {
             let responseTime = 0;
             let isHealthyNow = false;
 
-            try {
-                const healthResponse = await apiFetch(ENDPOINTS.HEALTH);
-                responseTime = Math.round(performance.now() - startTime);
-                isHealthyNow = typeof healthResponse === 'object' && (
-                    (typeof healthResponse.status === 'string' && ['up','healthy','ok'].includes(healthResponse.status.toLowerCase())) ||
-                    healthResponse.healthy === true
-                );
-                console.log('[HEALTH] periodic check:', { rawStatus: healthResponse?.status, healthyFlag: healthResponse?.healthy, isHealthyNow });
-            } catch (primaryError) {
-                // Fallback to /mappings
-                const fallback = await fetchMappingsFromServer();
-                responseTime = Math.round(performance.now() - startTime);
-                isHealthyNow = typeof fallback === 'object';
-            }
+            const healthResponse = await apiFetch(ENDPOINTS.HEALTH);
+            responseTime = Math.round(performance.now() - startTime);
+            isHealthyNow = typeof healthResponse === 'object' && (
+                (typeof healthResponse.status === 'string' && ['up','healthy','ok'].includes(healthResponse.status.toLowerCase())) ||
+                healthResponse.healthy === true
+            );
+            console.log('[HEALTH] periodic check:', { rawStatus: healthResponse?.status, healthyFlag: healthResponse?.healthy, isHealthyNow });
 
             const healthIndicator = document.getElementById(SELECTORS.HEALTH.INDICATOR);
             if (healthIndicator) {
@@ -400,12 +411,17 @@ window.startHealthMonitoring = () => {
 function refreshMappingsFromCache({ maintainFilters = true } = {}) {
     try {
 
-        // Use full cache snapshot logic for consistency
+        // MEMORY OPTIMIZATION: Update cacheManager.cache instead of getters
         const sanitized = buildCacheSnapshot();
 
-        window.originalMappings = sanitized;
+        // Populate cacheManager.cache (getters will reflect this automatically)
+        window.cacheManager.cache.clear();
+        sanitized.forEach(mapping => {
+            const id = mapping.id || mapping.uuid;
+            if (id) window.cacheManager.cache.set(id, mapping);
+        });
+
         refreshMappingTabSnapshot();
-        window.allMappings = sanitized;
         rebuildMappingIndex(window.originalMappings);
 
         const methodFilter = document.getElementById(SELECTORS.MAPPING_FILTERS.METHOD)?.value || '';
@@ -460,7 +476,6 @@ function updateOptimisticCache(mapping, operation, options = {}) {
 
         if (normalizedOperation === 'delete') {
             removeMappingFromIndex(mappingId);
-            cache.delete(mappingId);
             if (window.pendingDeletedIds instanceof Set) {
                 window.pendingDeletedIds.add(mappingId);
             }
@@ -486,60 +501,93 @@ function updateOptimisticCache(mapping, operation, options = {}) {
                 window.cacheManager.removeOptimisticUpdate(mappingId);
             }
         } else {
-            const incoming = cloneMappingForCache(mapping);
-            if (!incoming) {
-                console.warn('updateOptimisticCache: unable to clone mapping for cache:', mappingId);
-                return;
-            }
-
-            if (!incoming.id && mappingId) {
-                incoming.id = mappingId;
-            }
-            if (!incoming.uuid && (mapping.uuid || mappingId)) {
-                incoming.uuid = mapping.uuid || mappingId;
-            }
-
             addMappingToIndex(mapping);
-
-            if (cache.has(mappingId)) {
-                const merged = mergeMappingData(cache.get(mappingId), incoming);
-                cache.set(mappingId, merged);
-            } else {
-                cache.set(mappingId, incoming);
-            }
 
             if (shouldConfirmQueue && typeof window.cacheManager.confirmOptimisticUpdate === 'function') {
                 window.cacheManager.confirmOptimisticUpdate(mappingId);
             }
         }
 
+        applyOptimisticEntryToCache(cache, { id: mappingId, op: normalizedOperation, payload: mapping });
+
         window.cacheLastUpdate = Date.now();
-        if (typeof window.cacheManager?.version === 'number') {
-            window.cacheManager.version += 1;
-        }
         refreshMappingsFromCache();
+
         enqueueCacheSync(mapping, normalizedOperation);
     } catch (error) {
         console.warn('updateOptimisticCache failed:', error);
     }
 }
 
+function applyOptimisticEntryToCache(cache, entry) {
+    if (!(cache instanceof Map) || !entry || !entry.id) {
+        return;
+    }
+
+    const operation = typeof entry.op === 'string' ? entry.op.toLowerCase() : 'update';
+    if (operation === 'delete') {
+        cache.delete(entry.id);
+        return;
+    }
+
+    const source = entry.payload;
+    let payload = null;
+    if (typeof cloneMappingForCache === 'function') {
+        payload = cloneMappingForCache(source);
+    }
+    if (!payload && source && typeof source === 'object') {
+        payload = { ...source };
+    }
+
+    if (!payload) {
+        console.warn('applyOptimisticEntryToCache skipped - no payload for entry', entry.id);
+        return;
+    }
+
+    if (!payload.id) {
+        payload.id = entry.id;
+    }
+    if (!payload.uuid && source && source.uuid) {
+        payload.uuid = source.uuid;
+    }
+
+    if (cache.has(entry.id)) {
+        const existing = cache.get(entry.id);
+        if (typeof mergeMappingData === 'function') {
+            cache.set(entry.id, mergeMappingData(existing, payload));
+        } else {
+            cache.set(entry.id, { ...existing, ...payload });
+        }
+    } else {
+        cache.set(entry.id, payload);
+    }
+}
+
 // Simple debounce for cache rebuilds that leverages the existing refreshImockCache
 let _cacheRebuildTimer;
-function scheduleCacheRebuild() {
+function scheduleCacheRebuild(reason = 'unspecified', options = {}) {
   try {
     if (!isCacheEnabled()) {
       return;
     }
+
+    const normalizedOptions = (options && typeof options === 'object') ? options : {};
+    const { force = false } = normalizedOptions;
+
     const settings = (typeof window.readWiremockSettings === 'function') ? window.readWiremockSettings() : {};
     const delay = Number(settings.cacheRebuildDelay) || 1000;
     clearTimeout(_cacheRebuildTimer);
     _cacheRebuildTimer = setTimeout(async () => {
       try {
-        const existing = await fetchExistingCacheMapping();
-        if (existing && extractCacheJsonBody(existing)) {
-          console.log('🧩 [CACHE] Skipping scheduled rebuild - cache mapping already exists');
-          return;
+        console.log(`🧩 [CACHE] Scheduled cache validation triggered by: ${reason}`);
+        if (!force) {
+          const existing = await fetchExistingCacheMapping();
+          if (existing && extractCacheJsonBody(existing)) {
+            console.log('🧩 [CACHE] Skipping scheduled rebuild - cache mapping already exists');
+            return;
+          }
+        } else {
+          console.log('🧩 [CACHE] Forced rebuild requested - bypassing cache mapping presence check');
         }
         if (typeof window.refreshImockCache === 'function') {
           await window.refreshImockCache();
@@ -560,11 +608,10 @@ let optimisticDelayRetries = 0;
 // Cache validation timer (check every minute, validate every 5 minutes)
 window.cacheValidationInterval = window.LifecycleManager.setInterval(() => {
     const timeSinceLastUpdate = Date.now() - (window.cacheLastUpdate || 0);
-    const optimisticOps = window.cacheOptimisticOperations || 0;
 
-    // Validate if cache is older than 5 minutes OR has too many optimistic operations
-    if (timeSinceLastUpdate > 5 * 60 * 1000 || optimisticOps > 20) {
-        console.log('🧩 [CACHE] Validation triggered - time:', Math.round(timeSinceLastUpdate/1000), 's, ops:', optimisticOps);
+    // Validate if cache is older than 5 minutes
+    if (timeSinceLastUpdate > 5 * 60 * 1000) {
+        console.log('🧩 [CACHE] Validation triggered - time:', Math.round(timeSinceLastUpdate/1000), 's');
         validateAndRefreshCache();
     }
 }, 60 * 1000); // Check every minute
@@ -594,8 +641,7 @@ async function validateAndRefreshCache() {
         const payload = await regenerateImockCache(freshData);
         window.imockCacheSnapshot = payload;
 
-        // Reset optimistic counters
-        window.cacheOptimisticOperations = 0;
+        // Reset cache timestamp after rebuilding the mapping
         window.cacheLastUpdate = Date.now();
 
         console.log('🧩 [CACHE] Validation rebuilt cache because mapping was missing');
@@ -625,8 +671,6 @@ window.refreshImockCache = async () => {
     optimisticDelayRetries = 0;
     optimisticInProgress = true;
     try {
-        window.cacheRebuilding = true;
-        console.log('🔄 [CACHE] Set cache rebuilding flag');
 
         try {
             if (isCacheEnabled()) {
@@ -661,10 +705,7 @@ window.refreshImockCache = async () => {
     } catch (e) {
         console.warn('🔄 [CACHE] refreshImockCache failed:', e);
     } finally {
-        window.cacheRebuilding = false;
-        console.log('🔄 [CACHE] Cleared cache rebuilding flag');
         window.cacheLastUpdate = Date.now();
-        window.cacheOptimisticOperations = 0;
         optimisticInProgress = false;
         optimisticDelayRetries = 0;
         try {

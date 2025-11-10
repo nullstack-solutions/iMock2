@@ -1,5 +1,108 @@
 'use strict';
 
+const DUPLICATE_NAME_SUFFIX = ' (copy)';
+
+function normalizeMappingIdentifier(value) {
+    if (typeof value === 'string') {
+        return value.trim();
+    }
+    if (value === undefined || value === null) {
+        return '';
+    }
+    return String(value).trim();
+}
+
+function collectCandidateMappingIdentifiers(mapping) {
+    if (!mapping || typeof mapping !== 'object') {
+        return [];
+    }
+    return [
+        mapping.id,
+        mapping.uuid,
+        mapping.stubMappingId,
+        mapping.stubId,
+        mapping.mappingId,
+        mapping.metadata?.id
+    ].map(normalizeMappingIdentifier).filter(Boolean);
+}
+
+function findMappingInCache(identifier) {
+    const targetIdentifier = normalizeMappingIdentifier(identifier);
+    if (!targetIdentifier) {
+        return null;
+    }
+
+    if (window.mappingIndex instanceof Map) {
+        const direct = window.mappingIndex.get(targetIdentifier);
+        if (direct) {
+            return direct;
+        }
+    }
+
+    if (Array.isArray(window.allMappings)) {
+        return window.allMappings.find((candidate) => collectCandidateMappingIdentifiers(candidate).includes(targetIdentifier)) || null;
+    }
+
+    return null;
+}
+
+function cloneMappingForCreation(mapping, { sourceTag = 'ui' } = {}) {
+    if (!mapping || typeof mapping !== 'object') {
+        throw new Error('Cannot clone mapping: invalid source data');
+    }
+
+    let clone;
+    if (typeof structuredClone === 'function') {
+        clone = structuredClone(mapping);
+    } else {
+        clone = JSON.parse(JSON.stringify(mapping));
+    }
+
+    delete clone.id;
+    delete clone.uuid;
+    delete clone.stubMappingId;
+    delete clone.stubId;
+    delete clone.mappingId;
+
+    if (!clone.metadata || typeof clone.metadata !== 'object') {
+        clone.metadata = {};
+    }
+
+    delete clone.metadata.id;
+    delete clone.metadata.created;
+    delete clone.metadata.edited;
+
+    const nowIso = new Date().toISOString();
+    clone.metadata.created = nowIso;
+    clone.metadata.edited = nowIso;
+    clone.metadata.source = sourceTag;
+
+    return clone;
+}
+
+function ensureDuplicateName(clone, original) {
+    if (!clone) {
+        return;
+    }
+
+    const originalName = typeof clone.name === 'string' && clone.name.trim()
+        ? clone.name.trim()
+        : (typeof original?.name === 'string' && original.name.trim()
+            ? original.name.trim()
+            : (original?.request?.url || original?.request?.urlPath || original?.request?.urlPattern || 'New mapping'));
+
+    if (!originalName) {
+        clone.name = `Copy of mapping`;
+        return;
+    }
+
+    if (originalName.toLowerCase().includes('copy')) {
+        clone.name = originalName;
+    } else {
+        clone.name = `${originalName}${DUPLICATE_NAME_SUFFIX}`;
+    }
+}
+
 window.fetchAndRenderRequests = async (requestsToRender = null, options = {}) => {
     const container = document.getElementById(SELECTORS.LISTS.REQUESTS);
     const emptyState = document.getElementById(SELECTORS.EMPTY.REQUESTS);
@@ -68,11 +171,8 @@ window.fetchAndRenderRequests = async (requestsToRender = null, options = {}) =>
         // Invalidate cache before re-rendering to ensure fresh DOM references
         window.invalidateElementCache(SELECTORS.LISTS.REQUESTS);
 
-        renderList(container, window.allRequests, {
-            renderItem: renderRequestMarkup,
-            getKey: getRequestRenderKey,
-            getSignature: getRequestRenderSignature
-        });
+        // Use Virtual Scroller for performance with large lists
+        window.initRequestsVirtualScroller(window.allRequests, container);
         updateRequestsCounter();
         // Source indicator + log, mirroring mappings
         if (typeof updateRequestsSourceIndicator === 'function') updateRequestsSourceIndicator(reqSource);
@@ -298,6 +398,67 @@ window.openEditModal = async (identifier) => {
 
 // REMOVED: updateMapping function moved to editor.js
 
+window.duplicateMapping = async (identifier) => {
+    const mapping = findMappingInCache(identifier);
+    if (!mapping) {
+        NotificationManager.error('Mapping not found for duplication');
+        return;
+    }
+
+    let payload;
+    try {
+        payload = cloneMappingForCreation(mapping, { sourceTag: 'duplicate' });
+        ensureDuplicateName(payload, mapping);
+    } catch (error) {
+        console.warn('Failed to prepare mapping clone:', error);
+        NotificationManager.error('Unable to duplicate mapping: invalid source data');
+        return;
+    }
+
+    try {
+        const response = await apiFetch('/mappings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        const createdMapping = response?.mapping || response;
+        NotificationManager.success('Mapping duplicated!');
+
+        try {
+            if (createdMapping && createdMapping.id && typeof updateOptimisticCache === 'function') {
+                // The server has already confirmed the copy, so update the cache immediately
+                updateOptimisticCache(createdMapping, 'create');
+            }
+        } catch (cacheError) {
+            console.warn('Failed to update optimistic cache after duplication:', cacheError);
+        }
+
+        const hasActiveFilters = document.getElementById(SELECTORS.MAPPING_FILTERS.METHOD)?.value ||
+            document.getElementById(SELECTORS.MAPPING_FILTERS.URL)?.value ||
+            document.getElementById(SELECTORS.MAPPING_FILTERS.STATUS)?.value;
+        if (hasActiveFilters && window.FilterManager && typeof window.FilterManager.applyMappingFilters === 'function') {
+            window.FilterManager.applyMappingFilters();
+        }
+
+        if (createdMapping && createdMapping.id) {
+            const openInJson = confirm('Открыть дубликат в JSON редакторе? Нажмите Cancel, чтобы использовать встроенный редактор.');
+            if (openInJson) {
+                if (typeof window.editMapping === 'function') {
+                    window.editMapping(createdMapping.id);
+                } else {
+                    NotificationManager.info('JSON editor is not available in this view.');
+                }
+            } else if (typeof window.openEditModal === 'function') {
+                window.openEditModal(createdMapping.id);
+            }
+        }
+    } catch (error) {
+        console.error('Duplicate mapping failed:', error);
+        NotificationManager.error(`Failed to duplicate mapping: ${error.message}`);
+    }
+};
+
 window.deleteMapping = async (id) => {
     if (!confirm('Delete this mapping?')) return;
 
@@ -335,4 +496,3 @@ window.clearRequests = async () => {
         NotificationManager.error(`Clear failed: ${e.message}`);
     }
 };
-

@@ -98,6 +98,10 @@
             <path d="M11 13l8-8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
             <path d="M19 13v5a2 2 0 01-2 2H7a2 2 0 01-2-2V7a2 2 0 012-2h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
         </symbol>
+        <symbol id="icon-copy" viewBox="0 0 24 24">
+            <rect x="9" y="3" width="11" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <rect x="4" y="7" width="11" height="14" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/>
+        </symbol>
         <symbol id="icon-check-circle" viewBox="0 0 24 24">
             <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.5" fill="none"/>
             <path d="M9.5 12.5l2 2 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -758,7 +762,7 @@
 
     <!-- MODAL FOR ADDING/EDITING MAPPINGS -->
     <div id="add-mapping-modal" class="modal hidden">
-        <div class="modal-content">
+        <div class="modal-content modal-content--wide">
             <button class="modal-close" type="button" onclick="hideModal('add-mapping-modal')" aria-label="Close add mapping modal">
                 <svg class="icon icon-16" aria-hidden="true" focusable="false">
                     <use href="#icon-x-circle"></use>
@@ -767,55 +771,28 @@
             </button>
             <div class="modal-header">
                 <div class="modal-header-main">
-                    <h3 id="modal-title">Add New Mapping</h3>
-                </div>
-                <div class="modal-header-actions">
-                    <button type="button" class="btn btn-primary" onclick="saveMappingWrapper()">
-                        <span class="btn-label">Save Mapping</span>
-                    </button>
+                    <h3 id="modal-title">Create Mapping from Template</h3>
+                    <p class="modal-header-description">Pick a WireMock template from the JSON editor library. After creation you'll choose which editor to use.</p>
                 </div>
             </div>
-            <form id="mapping-form">
-                <input type="hidden" id="mapping-id">
-                
-                <div class="form-group">
-                    <label class="form-label">Mapping Name</label>
-                    <input type="text" class="form-input" id="mapping-name" placeholder="Enter mapping name">
-                </div>
-                
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label">Method</label>
-                        <select class="form-select" id="method">
-                            <option value="GET">GET</option>
-                            <option value="POST">POST</option>
-                            <option value="PUT">PUT</option>
-                            <option value="DELETE">DELETE</option>
-                            <option value="PATCH">PATCH</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">URL Pattern</label>
-                        <input type="text" class="form-input" id="url-pattern" placeholder="/api/users" required>
-                    </div>
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Response Status</label>
-                    <input type="number" class="form-input" id="response-status" value="200" min="100" max="599">
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Response Body</label>
-                    <textarea class="form-textarea" id="response-body" rows="6" placeholder='{ "message": "Hello World" }'></textarea>
-                </div>
-            </form>
+            <div class="modal-body template-library-body">
+                <section class="template-info">
+                    <p class="template-info__lead">These curated snippets mirror the JSON editor's template gallery.</p>
+                    <ul>
+                        <li><strong>Preview</strong> to inspect the JSON before creating a stub.</li>
+                        <li><strong>Copy JSON</strong> if you only need the payload.</li>
+                        <li><strong>Create &amp; edit</strong> to save the mapping and open it in your preferred editor.</li>
+                    </ul>
+                </section>
+                <div id="mapping-template-empty" class="mapping-template-empty hidden">Templates are unavailable. Open the JSON editor to manage template library items.</div>
+                <div class="template-grid" id="mapping-template-grid" role="list"></div>
+            </div>
         </div>
     </div>
 
     <!-- MODAL FOR EDITING MAPPINGS -->
-    <div id="edit-mapping-modal" class="modal hidden">
-        <div class="modal-content">
+    <div id="edit-mapping-modal" class="modal hidden" aria-hidden="true">
+        <div class="modal-content modal-content--mapping-editor">
             <button class="modal-close" type="button" onclick="hideModal('edit-mapping-modal')" aria-label="Close edit mapping modal">
                 <svg class="icon icon-16" aria-hidden="true" focusable="false">
                     <use href="#icon-x-circle"></use>
@@ -913,6 +890,20 @@
                     <div class="form-group">
                         <label class="form-label">New Scenario State</label>
                         <input type="text" class="form-input" id="edit-new-scenario-state" placeholder="State after match">
+                    </div>
+                </div>
+
+                <div class="modal-skeleton" aria-hidden="true">
+                    <span class="modal-skeleton__line modal-skeleton__line--title"></span>
+                    <div class="modal-skeleton__row">
+                        <span class="modal-skeleton__chip modal-skeleton__chip--wide"></span>
+                        <span class="modal-skeleton__chip"></span>
+                    </div>
+                    <span class="modal-skeleton__line"></span>
+                    <span class="modal-skeleton__line modal-skeleton__line--tall"></span>
+                    <div class="modal-skeleton__row modal-skeleton__row--compact">
+                        <span class="modal-skeleton__chip modal-skeleton__chip--compact"></span>
+                        <span class="modal-skeleton__chip modal-skeleton__chip--compact"></span>
                     </div>
                 </div>
             </form>
@@ -1026,6 +1017,10 @@
 <script src="js/features/utils.js"></script>
 <script src="js/features/filters.js"></script>
 <script src="js/features/cache.js"></script>
+<script src="js/features/event-delegation.js"></script>
+<script src="js/components/virtual-scroller.js"></script>
+<script src="js/features/mappings-virtual-scroller-integration.js"></script>
+<script src="js/features/requests-virtual-scroller-integration.js"></script>
 <script src="js/features/mappings.js"></script>
 <script src="js/features/requests.js"></script>
 <script src="js/features/scenarios.js"></script>
@@ -1036,6 +1031,7 @@
 <script src="js/features/wiremock-extras.js"></script>
 <script src="js/features/demo.js"></script>
 <script src="js/features.js"></script>
+<script src="editor/monaco-template-library.js"></script>
 <script src="js/editor.js"></script>
 <script src="js/main.js"></script>
 
