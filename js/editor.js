@@ -15,6 +15,26 @@ let editorState = {
     isDirty: false
 };
 
+// Performance monitoring utility
+function logPerformanceMetrics() {
+    const metrics = performance.getEntriesByType('measure');
+    if (metrics.length === 0) return;
+
+    console.group('📊 Editor Performance Metrics');
+    metrics.forEach(metric => {
+        const color = metric.duration > 100 ? '🔴' : metric.duration > 50 ? '🟡' : '🟢';
+        console.log(`${color} ${metric.name}: ${metric.duration.toFixed(2)}ms`);
+    });
+    console.groupEnd();
+
+    // Clear old metrics
+    performance.clearMeasures();
+    performance.clearMarks();
+}
+
+// Expose for debugging
+window.showEditorPerformance = logPerformanceMetrics;
+
 // Initialize editor functionality when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
     // Set up event listeners for both forms
@@ -936,20 +956,32 @@ window.updateMapping = async () => {
  * Populate the edit mapping form with data from a mapping
  */
 window.populateEditMappingForm = (mapping) => {
-    // Reset state when opening a new mapping
+    performance.mark('populate-start');
+
+    // Performance: Use structuredClone for faster deep cloning (2-3x faster than JSON parse/stringify)
+    performance.mark('clone-start');
     editorState.originalMapping = mapping;
-    editorState.currentMapping = JSON.parse(JSON.stringify(mapping)); // Deep clone
+    editorState.currentMapping = structuredClone(mapping);
+    performance.mark('clone-end');
+    performance.measure('Deep Clone', 'clone-start', 'clone-end');
+
     editorState.isDirty = false;
     updateDirtyIndicator();
 
     // Conditional population based on mode (optimization)
     if (editorState.mode === EDITOR_MODES.JSON) {
-        // JSON mode: only populate JSON editor
+        // JSON mode: only populate JSON editor (deferred for large content)
         loadJSONMode();
     } else {
         // Form mode: only populate form fields
         populateFormFields(mapping);
     }
+
+    performance.mark('populate-end');
+    performance.measure('Total Population', 'populate-start', 'populate-end');
+
+    // Auto-log performance metrics after loading
+    setTimeout(() => logPerformanceMetrics(), 100);
 };
 
 /**
@@ -1094,9 +1126,19 @@ function saveFromJSONMode() {
         return;
     }
 
+    performance.mark('parse-start');
     try {
         editorState.currentMapping = JSON.parse(jsonEditor.value);
+        performance.mark('parse-end');
+        performance.measure('JSON Parse', 'parse-start', 'parse-end');
+
+        // Log performance warning for large parses
+        const parseTime = performance.getEntriesByName('JSON Parse')[0]?.duration;
+        if (parseTime > 100) {
+            console.warn(`⚠️ JSON parse took ${parseTime.toFixed(0)}ms. Consider optimizing mapping size.`);
+        }
     } catch (error) {
+        performance.mark('parse-end');
         throw new Error('Invalid JSON: ' + error.message);
     }
 }
@@ -1110,7 +1152,7 @@ function saveFromFormMode() {
 }
 
 /**
- * Load JSON mode
+ * Load JSON mode with deferred rendering for large content
  */
 function loadJSONMode() {
     const jsonEditor = document.getElementById('json-editor');
@@ -1118,8 +1160,39 @@ function loadJSONMode() {
         return;
     }
 
-    jsonEditor.value = JSON.stringify(editorState.currentMapping, null, 2);
-    adjustJsonEditorHeight(true);
+    performance.mark('stringify-start');
+
+    // Estimate size before stringifying
+    const roughSize = JSON.stringify(editorState.currentMapping).length;
+    const isLarge = roughSize > 100000; // 100KB threshold
+
+    if (isLarge) {
+        // For large content: defer rendering to avoid UI freeze
+        jsonEditor.value = '// Loading large mapping...\n// Please wait...';
+        jsonEditor.disabled = true;
+
+        // Use setTimeout to break up the work and allow UI to update
+        setTimeout(() => {
+            const formatted = JSON.stringify(editorState.currentMapping, null, 2);
+            performance.mark('stringify-end');
+            performance.measure('JSON Stringify', 'stringify-start', 'stringify-end');
+
+            jsonEditor.value = formatted;
+            jsonEditor.disabled = false;
+            adjustJsonEditorHeight(true);
+
+            // Show warning for very large mappings
+            if (roughSize > 500000) { // 500KB
+                console.warn(`⚠️ Large mapping detected (${(roughSize / 1024).toFixed(0)}KB). Consider using external tools for editing.`);
+            }
+        }, 0);
+    } else {
+        // For normal content: render immediately
+        jsonEditor.value = JSON.stringify(editorState.currentMapping, null, 2);
+        performance.mark('stringify-end');
+        performance.measure('JSON Stringify', 'stringify-start', 'stringify-end');
+        adjustJsonEditorHeight(true);
+    }
 }
 
 /**
