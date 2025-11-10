@@ -244,106 +244,56 @@ window.openEditModal = async (identifier) => {
         return;
     }
 
-    const normalizeIdentifier = (value) => {
-        if (typeof value === 'string') return value.trim();
-        if (value === undefined || value === null) return '';
-        return String(value).trim();
-    };
+    // Find mapping by ID (simplified - use mapping.id only)
+    const mappingId = String(identifier || '').trim();
+    let mapping = window.mappingIndex?.get(mappingId);
 
-    const collectCandidateIdentifiers = (mapping) => {
-        if (!mapping || typeof mapping !== 'object') return [];
-        return [
-            mapping.id,
-            mapping.uuid,
-            mapping.stubMappingId,
-            mapping.stubId,
-            mapping.mappingId,
-            mapping.metadata?.id
-        ].map(normalizeIdentifier).filter(Boolean);
-    };
-
-    const targetIdentifier = normalizeIdentifier(identifier);
-
-    let mapping = null;
-    if (window.mappingIndex instanceof Map && targetIdentifier) {
-        mapping = window.mappingIndex.get(targetIdentifier) || null;
-    }
     if (!mapping) {
-        mapping = window.allMappings.find((candidate) => collectCandidateIdentifiers(candidate).includes(targetIdentifier));
+        mapping = window.allMappings.find(m => m.id === mappingId);
     }
+
     if (!mapping) {
-        console.warn('🔍 [OPEN MODAL DEBUG] Mapping not found by identifier lookup. Identifier:', identifier);
         NotificationManager.show('Mapping not found', NotificationManager.TYPES.ERROR);
         return;
     }
 
-    if (typeof UIComponents?.clearCardState === 'function') {
-        UIComponents.clearCardState('mapping', 'is-editing');
-    }
-    const highlightId = mapping?.id || targetIdentifier;
-    if (highlightId && typeof UIComponents?.setCardState === 'function') {
-        UIComponents.setCardState('mapping', highlightId, 'is-editing', true);
-    }
+    // Clear previous editing state and highlight current card
+    UIComponents?.clearCardState('mapping', 'is-editing');
+    UIComponents?.setCardState('mapping', mapping.id, 'is-editing', true);
 
-    // Show the modal first
-    if (typeof window.showModal === 'function') {
-        window.showModal('edit-mapping-modal');
-    } else {
-        console.warn('showModal function not found');
-        return;
-    }
-    
-    console.log('🔴 [OPEN MODAL DEBUG] openEditModal called for mapping identifier:', identifier);
-    console.log('🔴 [OPEN MODAL DEBUG] Found mapping (cached):', mapping);
-    
-    // Prefill the form with cached data to render the UI instantly
-    if (typeof window.populateEditMappingForm === 'function') {
-        window.populateEditMappingForm(mapping);
-    } else {
-        console.error('populateEditMappingForm function not found!');
-        return;
-    }
+    // Show modal with loader immediately
+    window.showModal('edit-mapping-modal');
+    window.setMappingEditorBusyState(true, 'Loading…');
 
-    // Then fetch the latest mapping version by UUID
+    // Update modal title
+    const modalTitleElement = document.getElementById(SELECTORS.MODAL.TITLE);
+    if (modalTitleElement) modalTitleElement.textContent = 'Edit Mapping';
+
+    // Fetch latest mapping from server (single load, no optimistic cache)
     try {
-        if (typeof window.setMappingEditorBusyState === 'function') {
-            window.setMappingEditorBusyState(true, 'Loading…');
-        }
+        const latest = await apiFetch(`/mappings/${encodeURIComponent(mapping.id)}`);
+        const latestMapping = latest?.mapping || latest;
 
-        const mappingIdForFetch = normalizeIdentifier(mapping.id) || normalizeIdentifier(mapping.uuid) || targetIdentifier;
-        const latest = await apiFetch(`/mappings/${encodeURIComponent(mappingIdForFetch)}`);
-        const latestMapping = latest?.mapping || latest; // support multiple response formats
-        if (latestMapping && latestMapping.id) {
-            console.log('🔵 [OPEN MODAL DEBUG] Loaded latest mapping from server:', latestMapping);
+        if (latestMapping?.id) {
+            // Populate form once with fresh data
             window.populateEditMappingForm(latestMapping);
-            // Update the reference in allMappings to keep lists and operations consistent
-            const idx = window.allMappings.findIndex((candidate) => candidate === mapping);
+
+            // Update cache
+            const idx = window.allMappings.findIndex(m => m.id === mapping.id);
             if (idx !== -1) {
                 window.allMappings[idx] = latestMapping;
                 addMappingToIndex(latestMapping);
-            } else {
-                const fallbackIdx = window.allMappings.findIndex((candidate) => collectCandidateIdentifiers(candidate).includes(targetIdentifier));
-                if (fallbackIdx !== -1) {
-                    window.allMappings[fallbackIdx] = latestMapping;
-                    addMappingToIndex(latestMapping);
-                }
             }
         } else {
-            console.warn('Latest mapping response has unexpected shape, keeping cached version.', latest);
+            throw new Error('Invalid mapping response');
         }
     } catch (e) {
-        console.warn('Failed to load latest mapping, using cached version.', e);
+        console.warn('Failed to load mapping from server, using cache:', e);
+        // Fallback to cached version if server fails
+        window.populateEditMappingForm(mapping);
     } finally {
-        if (typeof window.setMappingEditorBusyState === 'function') {
-            window.setMappingEditorBusyState(false);
-        }
+        window.setMappingEditorBusyState(false);
     }
-
-    // Update the modal title
-    const modalTitleElement = document.getElementById(SELECTORS.MODAL.TITLE);
-    if (modalTitleElement) modalTitleElement.textContent = 'Edit Mapping';
-    
-    console.log('🔴 [OPEN MODAL DEBUG] openEditModal completed for mapping identifier:', identifier);
 };
 
 // REMOVED: updateMapping function moved to editor.js
