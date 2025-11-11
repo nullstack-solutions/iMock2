@@ -143,7 +143,8 @@ function initializeJsonEditorAutoResize() {
         window.removeEventListener('resize', jsonEditorWindowResizeHandler);
     }
 
-    jsonEditorWindowResizeHandler = () => adjustJsonEditorHeight();
+    // Debounce resize handler to avoid excessive calls
+    jsonEditorWindowResizeHandler = window.debounce(() => adjustJsonEditorHeight(), 150);
     window.addEventListener('resize', jsonEditorWindowResizeHandler);
 
     adjustJsonEditorHeight(true);

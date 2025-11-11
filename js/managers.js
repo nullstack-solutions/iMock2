@@ -52,7 +52,22 @@ if (!window.NotificationManager) {
 
             if (!this._boundHandleKeydown) {
                 this._boundHandleKeydown = this.handleKeydown.bind(this);
-                document.addEventListener('keydown', this._boundHandleKeydown);
+                if (window.LifecycleManager) {
+                    window.LifecycleManager.addEventListener(document, 'keydown', this._boundHandleKeydown);
+                } else {
+                    document.addEventListener('keydown', this._boundHandleKeydown);
+                }
+            }
+        },
+
+        cleanup() {
+            if (this._boundHandleKeydown) {
+                if (window.LifecycleManager) {
+                    window.LifecycleManager.removeEventListener(document, 'keydown', this._boundHandleKeydown);
+                } else {
+                    document.removeEventListener('keydown', this._boundHandleKeydown);
+                }
+                this._boundHandleKeydown = null;
             }
         },
 

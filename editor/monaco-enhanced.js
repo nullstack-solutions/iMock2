@@ -4505,9 +4505,10 @@ class MonacoInitializer {
                 window.removeEventListener('resize', integration.resizeHandler);
             }
 
-            integration.resizeHandler = () => {
-                this.refreshFindWidgetLayout();
-            };
+            // Debounce resize handler to avoid excessive calls
+            integration.resizeHandler = window.debounce ?
+                window.debounce(() => this.refreshFindWidgetLayout(), 150) :
+                () => this.refreshFindWidgetLayout();
 
             window.addEventListener('resize', integration.resizeHandler, { passive: true });
         }

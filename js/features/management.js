@@ -31,22 +31,12 @@ window.applyQuickTimeFilter = () => {
     // Use the correct selectors for Request Log
     const dateFromInput = document.getElementById(SELECTORS.REQUEST_FILTERS.DATE_FROM);
     const dateToInput = document.getElementById(SELECTORS.REQUEST_FILTERS.DATE_TO);
-    
-    // Format dates for datetime-local input (YYYY-MM-DDTHH:MM)
-    const formatDateTime = (date) => {
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        const hours = String(date.getHours()).padStart(2, '0');
-        const minutes = String(date.getMinutes()).padStart(2, '0');
-        return `${year}-${month}-${day}T${hours}:${minutes}`;
-    };
 
     if (dateFromInput) {
-        dateFromInput.value = formatDateTime(yesterday);
+        dateFromInput.value = Utils.formatDateTime(yesterday);
     }
     if (dateToInput) {
-        dateToInput.value = formatDateTime(now);
+        dateToInput.value = Utils.formatDateTime(now);
     }
     
     // Apply filters
@@ -70,21 +60,24 @@ window.addEventListener('beforeunload', window.cleanupPendingDeletions);
 
 // --- PREVIEW ---
 
-window.togglePreview = (mappingId) => {
-    const preview = document.getElementById(`preview-${mappingId}`);
-    if (preview.style.display === 'none') {
-        preview.style.display = 'block';
+// Universal toggle function for preview elements
+window.toggleElementById = (elementId) => {
+    const element = document.getElementById(elementId);
+    if (!element) return;
+
+    if (element.style.display === 'none') {
+        element.style.display = 'block';
     } else {
-        preview.style.display = 'none';
+        element.style.display = 'none';
     }
 };
 
+// Backward compatibility wrappers
+window.togglePreview = (mappingId) => {
+    window.toggleElementById(`preview-${mappingId}`);
+};
+
 window.toggleRequestPreview = (requestId) => {
-    const preview = document.getElementById(`request-preview-${requestId}`);
-    if (preview.style.display === 'none') {
-        preview.style.display = 'block';
-    } else {
-        preview.style.display = 'none';
-    }
+    window.toggleElementById(`request-preview-${requestId}`);
 };
 

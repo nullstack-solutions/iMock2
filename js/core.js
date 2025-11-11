@@ -156,6 +156,7 @@ window.SELECTORS = {
 (function initialiseLifecycleManager() {
     const intervalIds = new Set();
     const rafIds = new Set();
+    const eventListeners = new Map(); // Map<target, Set<{type, handler, options}>>
 
     const manager = {
         setInterval(handler, delay) {
@@ -170,29 +171,58 @@ window.SELECTORS = {
             }
         },
         requestAnimationFrame(handler) {
-            if (typeof window.requestAnimationFrame !== 'function') {
-                handler();
-                return null;
-            }
             const id = window.requestAnimationFrame(handler);
             rafIds.add(id);
             return id;
         },
         cancelAnimationFrame(id) {
-            if (id !== undefined && id !== null && typeof window.cancelAnimationFrame === 'function') {
+            if (id !== undefined && id !== null) {
                 window.cancelAnimationFrame(id);
                 rafIds.delete(id);
+            }
+        },
+        addEventListener(target, type, handler, options) {
+            if (!target || !type || !handler) return;
+
+            target.addEventListener(type, handler, options);
+
+            if (!eventListeners.has(target)) {
+                eventListeners.set(target, new Set());
+            }
+            eventListeners.get(target).add({ type, handler, options });
+        },
+        removeEventListener(target, type, handler, options) {
+            if (!target || !type || !handler) return;
+
+            target.removeEventListener(type, handler, options);
+
+            const listeners = eventListeners.get(target);
+            if (listeners) {
+                // Find and remove matching listener
+                for (const listener of listeners) {
+                    if (listener.type === type && listener.handler === handler) {
+                        listeners.delete(listener);
+                        break;
+                    }
+                }
+                if (listeners.size === 0) {
+                    eventListeners.delete(target);
+                }
             }
         },
         clearAll() {
             intervalIds.forEach(identifier => window.clearInterval(identifier));
             intervalIds.clear();
-            rafIds.forEach(identifier => {
-                if (typeof window.cancelAnimationFrame === 'function') {
-                    window.cancelAnimationFrame(identifier);
-                }
-            });
+            rafIds.forEach(identifier => window.cancelAnimationFrame(identifier));
             rafIds.clear();
+
+            // Clean up all event listeners
+            eventListeners.forEach((listeners, target) => {
+                listeners.forEach(({ type, handler, options }) => {
+                    target.removeEventListener(type, handler, options);
+                });
+            });
+            eventListeners.clear();
         }
     };
 
@@ -756,27 +786,11 @@ const resolveModalElement = (modalId) => {
         return null;
     }
 
-    const candidates = modalId.endsWith('-modal')
-        ? [modalId, modalId.replace(/-modal$/, '')]
-        : [`${modalId}-modal`, modalId];
-
-    const [primaryId] = candidates;
-
-    for (let index = 0; index < candidates.length; index += 1) {
-        const candidateId = candidates[index];
-        if (!candidateId) continue;
-
-        const element = document.getElementById(candidateId);
-        if (element) {
-            if (index > 0) {
-                console.warn(`Modal element not found: ${primaryId}. Falling back to ${candidateId}`);
-            }
-            return element;
-        }
+    const element = document.getElementById(modalId);
+    if (!element) {
+        console.warn(`Modal element not found for id: ${modalId}`);
     }
-
-    console.warn(`Modal element not found for id: ${modalId}`);
-    return null;
+    return element;
 };
 
 const resetMappingFormDefaults = () => {
@@ -942,14 +956,14 @@ if (document.readyState === 'loading') {
 // --- MODAL EVENTS ---
 
 // Close modal when clicking outside
-document.addEventListener('click', (e) => {
+LifecycleManager.addEventListener(document, 'click', (e) => {
     if (e.target.classList.contains('modal')) {
         hideModal(e.target);
     }
 });
 
 // Close modal with Escape key
-document.addEventListener('keydown', (e) => {
+LifecycleManager.addEventListener(document, 'keydown', (e) => {
     if (e.key === 'Escape') {
         const visibleModal = document.querySelector('.modal:not(.hidden)');
         if (visibleModal) {
