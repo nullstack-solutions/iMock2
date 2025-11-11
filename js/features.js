@@ -322,9 +322,6 @@
             if (window.jsyaml?.dump) {
                 return window.jsyaml.dump(data, { noRefs: true });
             }
-            if (typeof convertJSONToYAML === 'function') {
-                return convertJSONToYAML(data);
-            }
             throw new Error('YAML serializer is not available.');
         }
 
