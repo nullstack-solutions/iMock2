@@ -25,12 +25,15 @@ if (!isOptimisticShadowMap(window.optimisticShadowMappings)) {
 }
 
 // Limits to prevent unbounded memory growth
+// MAX_PREVIEW_STATE_SIZE: Sufficient for typical usage - preserves recently expanded previews
 const MAX_PREVIEW_STATE_SIZE = 50;
+// MAX_TOAST_STATE_SIZE: Allows tracking notification history while limiting memory
 const MAX_TOAST_STATE_SIZE = 100;
+// MAX_OPTIMISTIC_MAPPINGS: Covers active editing sessions without excessive memory
 const MAX_OPTIMISTIC_MAPPINGS = 50;
 
 // Periodic cleanup for memory management
-if (!window.mappingMemoryCleanupInterval) {
+if (!window.mappingMemoryCleanupInterval && window.LifecycleManager) {
     window.mappingMemoryCleanupInterval = window.LifecycleManager.setInterval(() => {
         // Clean up preview state - keep only most recent items
         if (window.mappingPreviewState.size > MAX_PREVIEW_STATE_SIZE) {
@@ -40,24 +43,31 @@ if (!window.mappingMemoryCleanupInterval) {
             console.log('🧹 Cleaned mappingPreviewState, kept', toKeep.length, 'items');
         }
 
-        // Clean up toast state - remove entries older than 5 minutes
+        // Clean up toast state - remove expired entries and limit size (optimized single pass)
         if (window.mappingPreviewToastState.size > 0) {
             const now = Date.now();
             const TOAST_TTL = 5 * 60 * 1000; // 5 minutes
+
+            // Collect non-expired entries in single pass
+            const validEntries = [];
             for (const [id, timestamp] of window.mappingPreviewToastState.entries()) {
-                if (now - timestamp > TOAST_TTL) {
-                    window.mappingPreviewToastState.delete(id);
+                if (now - timestamp <= TOAST_TTL) {
+                    validEntries.push([id, timestamp]);
                 }
             }
-            if (window.mappingPreviewToastState.size > MAX_TOAST_STATE_SIZE) {
-                const entries = Array.from(window.mappingPreviewToastState.entries());
-                entries.sort((a, b) => b[1] - a[1]); // Sort by timestamp, newest first
-                window.mappingPreviewToastState.clear();
-                entries.slice(0, MAX_TOAST_STATE_SIZE).forEach(([id, ts]) => {
-                    window.mappingPreviewToastState.set(id, ts);
-                });
+
+            // If too many valid entries, keep only the most recent
+            if (validEntries.length > MAX_TOAST_STATE_SIZE) {
+                validEntries.sort((a, b) => b[1] - a[1]); // Sort by timestamp, newest first
+                validEntries.length = MAX_TOAST_STATE_SIZE;
                 console.log('🧹 Cleaned mappingPreviewToastState, kept', MAX_TOAST_STATE_SIZE, 'items');
             }
+
+            // Rebuild map with valid entries only
+            window.mappingPreviewToastState.clear();
+            validEntries.forEach(([id, ts]) => {
+                window.mappingPreviewToastState.set(id, ts);
+            });
         }
 
         // Clean up optimistic shadow mappings - keep only recent items

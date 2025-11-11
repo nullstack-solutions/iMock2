@@ -57,12 +57,14 @@ if (!window.NotificationManager) {
             }
 
             // Periodic cleanup of dedupeMap to prevent memory leaks
+            // This acts as a "safety net" in case individual cleanupTimers fail
+            // (e.g., due to browser throttling, errors, or page in background)
             if (!this._cleanupInterval && window.LifecycleManager) {
                 this._cleanupInterval = window.LifecycleManager.setInterval(() => {
                     const now = Date.now();
                     const maxSize = 100; // Prevent unbounded growth
 
-                    // Remove expired entries
+                    // Remove expired entries (backup for failed individual timers)
                     for (const [key, entry] of this.dedupeMap.entries()) {
                         if (now - entry.timestamp > this.dedupeWindowMs * 2) {
                             if (entry.cleanupTimer) {
