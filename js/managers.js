@@ -703,11 +703,28 @@ function executeRequestFilters() {
 
 // --- FILTER MANAGER ---
 // Centralized filter management
-function getMappingRenderKey(mapping) {
-    if (!mapping || typeof mapping !== 'object') {
+function getRenderKey(item, ...keys) {
+    if (!item || typeof item !== 'object') {
         return '';
     }
-    return String(mapping.id || mapping.uuid || mapping.stubId || '');
+    for (const key of keys) {
+        if (key.includes('.')) {
+            // Handle nested keys like 'request.id'
+            const value = key.split('.').reduce((obj, k) => obj?.[k], item);
+            if (value != null) {
+                return String(value);
+            }
+        } else {
+            if (item[key] != null) {
+                return String(item[key]);
+            }
+        }
+    }
+    return '';
+}
+
+function getMappingRenderKey(mapping) {
+    return getRenderKey(mapping, 'id', 'uuid', 'stubId');
 }
 
 function getMappingRenderSignature(mapping) {
@@ -752,10 +769,7 @@ function renderMappingMarkup(mapping) {
 }
 
 function getRequestRenderKey(request) {
-    if (!request || typeof request !== 'object') {
-        return '';
-    }
-    return String(request.id || request.requestId || request.mappingUuid || request.request?.id || request.request?.loggedDate || request.loggedDate || '');
+    return getRenderKey(request, 'id', 'requestId', 'mappingUuid', 'request.id', 'request.loggedDate', 'loggedDate');
 }
 
 function getRequestRenderSignature(request) {
