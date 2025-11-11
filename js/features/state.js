@@ -212,6 +212,8 @@
 
     window.FeaturesState = state;
 
+    console.log('✅ state.js loaded - State management functions registered');
+
     if (typeof window.dispatchEvent === 'function') {
         let readyEvent;
         if (typeof window.CustomEvent === 'function') {

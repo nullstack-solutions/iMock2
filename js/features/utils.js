@@ -74,20 +74,8 @@ const Utils = {
     }
 };
 
-// Backward compatibility for existing code
-const escapeHtml = Utils.escapeHtml;
-const formatJson = Utils.formatJson;
-const parseRequestTime = Utils.parseRequestTime;
-const getStatusClass = Utils.getStatusClass;
-
-// --- UNIVERSAL UI COMPONENTS (replace ~100 lines of duplication) ---
-
-// Compact request loader (temporary reuse until DataManager exists)
-// --- REMOVED: duplicated applyFilters (FilterManager covers it) ---
-
-
 window.Utils = Utils;
-window.escapeHtml = escapeHtml;
-window.formatJson = formatJson;
-window.parseRequestTime = parseRequestTime;
-window.getStatusClass = getStatusClass;
+window.escapeHtml = Utils.escapeHtml;
+window.formatJson = Utils.formatJson;
+window.parseRequestTime = Utils.parseRequestTime;
+window.getStatusClass = Utils.getStatusClass;

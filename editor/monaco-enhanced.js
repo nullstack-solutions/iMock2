@@ -1,21 +1,5 @@
 'use strict';
 
-function editorEscapeHtml(value) {
-    if (value == null) {
-        return '';
-    }
-    return String(value).replace(/[&<>"']/g, (char) => {
-        switch (char) {
-            case '&': return '&amp;';
-            case '<': return '&lt;';
-            case '>': return '&gt;';
-            case '"': return '&quot;';
-            case "'": return '&#39;';
-            default: return char;
-        }
-    });
-}
-
 // ---- Template library & history helpers ----
 
 const TEMPLATE_CATEGORY_LABELS = {
@@ -1709,10 +1693,10 @@ async function renderHistoryModal(options = {}) {
             ? `${formatRelativeTime(stats.latestTimestamp)} (${new Date(stats.latestTimestamp).toLocaleString()})`
             : '—';
         const latestLabel = stats.latestLabel || '—';
-        const safeApproxSize = editorEscapeHtml(approxSize);
-        const safeLastSaved = editorEscapeHtml(lastSaved);
-        const safeLatestLabel = editorEscapeHtml(latestLabel);
-        const safeCount = typeof stats.count === 'number' ? stats.count : editorEscapeHtml(String(stats.count || '—'));
+        const safeApproxSize = window.Utils.escapeHtml(approxSize);
+        const safeLastSaved = window.Utils.escapeHtml(lastSaved);
+        const safeLatestLabel = window.Utils.escapeHtml(latestLabel);
+        const safeCount = typeof stats.count === 'number' ? stats.count : window.Utils.escapeHtml(String(stats.count || '—'));
 
         statsContainer.innerHTML = `
             <div class="history-meta">

@@ -1,9 +1,8 @@
-# Deploy static content to GitHub Pages for production and test branches
 name: Deploy Pages (prod + test)
 
 on:
   push:
-    branches: [main, test]
+    branches: [main, test, clean]
 
 permissions:
   contents: write
@@ -21,7 +20,6 @@ jobs:
           cp -r *.html *.ico *.json editor styles js apps packages _deploy/ 2>/dev/null || true
           rm -rf _deploy/.git* _deploy/.github
 
-      # PROD → корень gh-pages
       - name: Deploy PROD to gh-pages root
         if: github.ref_name == 'main'
         uses: peaceiris/actions-gh-pages@v3
@@ -33,7 +31,6 @@ jobs:
           keep_files: false
           enable_jekyll: false
 
-      # TEST → gh-pages/test
       - name: Deploy TEST to gh-pages/test
         if: github.ref_name == 'test'
         uses: peaceiris/actions-gh-pages@v3
@@ -42,5 +39,16 @@ jobs:
           publish_branch: gh-pages
           publish_dir: ./_deploy
           destination_dir: test
+          keep_files: true
+          enable_jekyll: false
+
+      - name: Deploy Clean to gh-pages/clean
+        if: github.ref_name == 'clean'
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: ./_deploy
+          destination_dir: clean
           keep_files: true
           enable_jekyll: false
