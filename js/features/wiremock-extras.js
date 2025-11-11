@@ -2,38 +2,6 @@
 
 // --- NEW FUNCTIONS FOR WIREMOCK 3.13.x ---
 
-// Fetch unused mappings
-window.getUnmatchedMappings = async () => {
-    try {
-        const response = await apiFetch(ENDPOINTS.MAPPINGS_UNMATCHED);
-        return response.mappings || [];
-    } catch (error) {
-        console.error('Unmatched mappings error:', error);
-        return [];
-    }
-};
-
-// Remove unused mappings
-window.removeUnmatchedMappings = async () => {
-    try {
-        const response = await apiFetch(ENDPOINTS.MAPPINGS_UNMATCHED, {
-            method: 'DELETE'
-        });
-        
-        const count = response.mappings ? response.mappings.length : 0;
-        NotificationManager.success(`Removed ${count} unused mappings`);
-        
-        // Refresh the mappings list
-        await fetchAndRenderMappings();
-        
-        return response.mappings || [];
-    } catch (error) {
-        console.error('Remove unmatched mappings error:', error);
-        NotificationManager.error(`Failed to remove unused mappings: ${error.message}`);
-        return [];
-    }
-};
-
 // Search mappings by metadata
 window.findMappingsByMetadata = async (metadata) => {
     try {
