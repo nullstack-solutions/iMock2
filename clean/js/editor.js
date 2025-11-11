@@ -580,6 +580,10 @@ function saveFromFormMode() {
  * Load JSON mode
  */
 function loadJSONMode() {
+    console.log('🟡 [JSON DEBUG] loadJSONMode called');
+    console.log('🟡 [JSON DEBUG] currentMapping ID:', editorState.currentMapping?.id);
+    console.log('🟡 [JSON DEBUG] currentMapping name:', editorState.currentMapping?.name);
+
     const jsonEditor = document.getElementById('json-editor');
     if (!jsonEditor) {
         return;
@@ -589,11 +593,29 @@ function loadJSONMode() {
         return;
     }
 
+    // Defer JSON insertion to avoid blocking the UI thread
+    // This allows modal to render first, then populate content asynchronously
     const formattedJSON = JSON.stringify(editorState.currentMapping, null, 2);
-    jsonEditor.value = formattedJSON;
+
+    // For large JSON (>100KB), show placeholder and defer insertion
+    if (formattedJSON.length > 100000) {
+        jsonEditor.value = '// Loading large JSON...\n// Please wait...';
+        jsonEditor.disabled = true;
+
+        // Use setTimeout to yield to browser and let modal render
+        setTimeout(() => {
+            jsonEditor.value = formattedJSON;
+            jsonEditor.disabled = false;
+            console.log('🟡 [JSON DEBUG] Large JSON loaded asynchronously');
+            console.log('🟡 [JSON DEBUG] JSON content length:', formattedJSON.length);
+        }, 0);
+    } else {
+        // Small JSON can be inserted immediately
+        jsonEditor.value = formattedJSON;
+        console.log('🟡 [JSON DEBUG] JSON content length:', formattedJSON.length);
+    }
 
     console.log('🟡 [JSON DEBUG] JSON editor populated with mapping ID:', editorState.currentMapping?.id);
-    console.log('🟡 [JSON DEBUG] JSON content length:', formattedJSON.length);
 }
 
 /**
