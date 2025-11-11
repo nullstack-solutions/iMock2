@@ -260,16 +260,8 @@ window.editMapping = (mappingId) => {
     // Get current settings to pass to editor
     const currentSettings = getStoredSettings();
 
-    // Option 1: Pass ALL settings (current behavior)
+    // Pass ALL settings to editor
     const settingsParam = encodeURIComponent(JSON.stringify(currentSettings));
-
-    // Option 2: Pass only specific settings (uncomment to use)
-    // const editorSettings = {
-    //     host: currentSettings.host,
-    //     port: currentSettings.port,
-    //     theme: currentSettings.theme
-    // };
-    // const settingsParam = encodeURIComponent(JSON.stringify(editorSettings));
 
     const editorUrl = `editor/json-editor.html?mappingId=${mappingId}&mode=edit&settings=${settingsParam}`;
     const editorWindow = window.open(
