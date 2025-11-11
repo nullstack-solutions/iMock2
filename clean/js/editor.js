@@ -1,15 +1,8 @@
-// ===== EDITOR.JS - Mapping Editor Functionality =====
-// Centralized editor logic for both add and edit mapping workflows with JSON mode support
-
-// Editor modes
-const EDITOR_MODES = {
-    FORM: 'form',
-    JSON: 'json'
-};
+// ===== EDITOR.JS - JSON Editor for Mapping Editing =====
+// Simplified JSON-only editor for WireMock mappings
 
 // Current editor state
 let editorState = {
-    mode: EDITOR_MODES.JSON, // Default to JSON mode
     originalMapping: null,
     currentMapping: null,
     isDirty: false
@@ -17,36 +10,8 @@ let editorState = {
 
 // Initialize editor functionality when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-    // Set up event listeners for both forms
-    setupMappingFormListeners();
-    // Set up JSON editor mode handlers
     setupEditorModeHandlers();
-    
-    // Ensure JSON editor is visible and form is hidden on load
-    const formEditor = document.getElementById('form-editor-container');
-    const jsonEditor = document.getElementById('json-editor-container');
-    if (formEditor && jsonEditor) {
-        formEditor.style.display = 'none';
-        jsonEditor.style.display = 'block';
-    }
 });
-
-/**
- * Set up event listeners for both mapping forms
- */
-function setupMappingFormListeners() {
-    // Add mapping form (simpler form for creating new mappings)
-    const addMappingForm = document.getElementById('mapping-form');
-    if (addMappingForm) {
-        addMappingForm.addEventListener('submit', handleAddMappingSubmit);
-    }
-    
-    // Edit mapping form (more comprehensive form for editing existing mappings)
-    const editMappingForm = document.getElementById('edit-mapping-form');
-    if (editMappingForm) {
-        editMappingForm.addEventListener('submit', handleEditMappingSubmit);
-    }
-}
 
 /**
  * Set up editor mode handlers
@@ -69,7 +34,7 @@ function setupEditorModeHandlers() {
     // Auto-save on input changes with throttling for performance
     let dirtyIndicatorTimeout = null;
     document.addEventListener('input', (e) => {
-        if (e.target.matches('.editor-field') || e.target.id === 'json-editor') {
+        if (e.target.id === 'json-editor') {
             const wasClean = !editorState.isDirty;
             editorState.isDirty = true;
 
@@ -394,160 +359,26 @@ window.updateMapping = async () => {
 };
 
 /**
- * Populate the edit mapping form with data from a mapping
+ * Populate the JSON editor with mapping data
  */
 window.populateEditMappingForm = (mapping) => {
-    // Always reset state when opening a new mapping
+    console.log('🔵 [EDITOR DEBUG] populateEditMappingForm called');
+    console.log('🔵 [EDITOR DEBUG] Incoming mapping ID:', mapping?.id);
+    console.log('🔵 [EDITOR DEBUG] Incoming mapping name:', mapping?.name);
+
+    // Store direct reference - no deep clone needed!
     editorState.originalMapping = mapping;
-    editorState.currentMapping = JSON.parse(JSON.stringify(mapping)); // Deep clone
+    editorState.currentMapping = mapping;
     editorState.isDirty = false;
     updateDirtyIndicator();
 
-    // Always populate form fields first (for consistency)
-    populateFormFields(mapping);
+    // Load JSON editor
+    loadJSONMode();
 
-    // Then load data based on current mode
-    if (editorState.mode === EDITOR_MODES.JSON) {
-        loadJSONMode();
-    }
+    console.log('🔵 [EDITOR DEBUG] JSON editor populated for mapping ID:', mapping?.id);
 };
 
-/**
- * Populate form fields with mapping data
- */
-function populateFormFields(mapping) {
-    // Always populate form fields regardless of mode (needed for both modes)
-    const idElement = document.getElementById('edit-mapping-id');
-    const methodElement = document.getElementById('edit-method');
-    const urlPatternElement = document.getElementById('edit-url-pattern');
-    const responseStatusElement = document.getElementById('edit-response-status');
-    const responseDelayElement = document.getElementById('edit-response-delay');
-    const requestHeadersElement = document.getElementById('edit-request-headers');
-    const requestBodyElement = document.getElementById('edit-request-body');
-    const responseHeadersElement = document.getElementById('edit-response-headers');
-    const responseBodyElement = document.getElementById('edit-response-body');
-    const priorityElement = document.getElementById('edit-mapping-priority');
-    const scenarioElement = document.getElementById('edit-mapping-scenario');
-    const requiredScenarioStateElement = document.getElementById('edit-required-scenario-state');
-    const newScenarioStateElement = document.getElementById('edit-new-scenario-state');
-    const mappingNameElement = document.getElementById('edit-mapping-name');
-    
-    // Clear all fields first
-    if (idElement) idElement.value = '';
-    if (methodElement) methodElement.value = 'GET';
-    if (urlPatternElement) urlPatternElement.value = '';
-    if (responseStatusElement) responseStatusElement.value = '200';
-    if (responseDelayElement) responseDelayElement.value = '0';
-    if (requestHeadersElement) requestHeadersElement.value = '';
-    if (requestBodyElement) requestBodyElement.value = '';
-    if (responseHeadersElement) responseHeadersElement.value = '';
-    if (responseBodyElement) responseBodyElement.value = '';
-    if (priorityElement) priorityElement.value = '1';
-    if (scenarioElement) scenarioElement.value = '';
-    if (requiredScenarioStateElement) requiredScenarioStateElement.value = '';
-    if (newScenarioStateElement) newScenarioStateElement.value = '';
-    if (mappingNameElement) mappingNameElement.value = '';
-    
-    // Then populate with new mapping data
-    if (idElement) idElement.value = mapping.id || '';
-    if (methodElement) methodElement.value = mapping.request?.method || 'GET';
-    if (urlPatternElement) urlPatternElement.value = mapping.request?.urlPattern || mapping.request?.urlPath || '';
-    
-    // Populate request headers with optimizations
-    if (requestHeadersElement && mapping.request?.headers) {
-        const headersJson = JSON.stringify(mapping.request.headers, null, 2);
-        requestHeadersElement.value = headersJson.length > 5000 ? 
-            headersJson.substring(0, 5000) + '\n// ... (truncated for performance - switch to JSON mode for full view)' : 
-            headersJson;
-    }
-    
-    // Populate request body with optimizations
-    if (requestBodyElement && mapping.request?.bodyPatterns) {
-        const bodyJson = JSON.stringify(mapping.request.bodyPatterns, null, 2);
-        requestBodyElement.value = bodyJson.length > 5000 ? 
-            bodyJson.substring(0, 5000) + '\n// ... (truncated for performance - switch to JSON mode for full view)' : 
-            bodyJson;
-    } else if (requestBodyElement && mapping.request?.body) {
-        const body = mapping.request.body;
-        requestBodyElement.value = typeof body === 'string' && body.length > 5000 ? 
-            body.substring(0, 5000) + '\n// ... (truncated for performance - switch to JSON mode for full view)' : 
-            body;
-    }
-    
-    // Populate the response block
-    if (responseStatusElement) responseStatusElement.value = mapping.response?.status || 200;
-    if (responseDelayElement) responseDelayElement.value = mapping.response?.fixedDelayMilliseconds || 0;
-    
-    // Populate response headers with optimizations
-    if (responseHeadersElement && mapping.response?.headers) {
-        const headersJson = JSON.stringify(mapping.response.headers, null, 2);
-        responseHeadersElement.value = headersJson.length > 5000 ? 
-            headersJson.substring(0, 5000) + '\n// ... (truncated for performance - switch to JSON mode for full view)' : 
-            headersJson;
-    }
-    
-    // Populate response body with optimizations
-    if (responseBodyElement) {
-        if (mapping.response?.body) {
-            const body = mapping.response.body;
-            responseBodyElement.value = typeof body === 'string' && body.length > 5000 ? 
-                body.substring(0, 5000) + '\n// ... (truncated for performance - switch to JSON mode for full view)' : 
-                body;
-        } else if (mapping.response?.jsonBody) {
-            const bodyJson = JSON.stringify(mapping.response.jsonBody, null, 2);
-            responseBodyElement.value = bodyJson.length > 5000 ? 
-                bodyJson.substring(0, 5000) + '\n// ... (truncated for performance - switch to JSON mode for full view)' : 
-                bodyJson;
-        }
-    }
-    
-    // Populate advanced fields
-    if (priorityElement) priorityElement.value = mapping.priority || 1;
-    if (scenarioElement) scenarioElement.value = mapping.scenarioName || '';
-    if (requiredScenarioStateElement) {
-        const requiredState = mapping.requiredScenarioState || mapping.requiredState || '';
-        requiredScenarioStateElement.value = requiredState;
-    }
-    if (newScenarioStateElement) {
-        const newState = mapping.newScenarioState || mapping.newState || '';
-        newScenarioStateElement.value = newState;
-    }
-    if (mappingNameElement) mappingNameElement.value = mapping.name || mapping.metadata?.name || '';
-}
-
-// ===== JSON EDITOR MODE FUNCTIONS =====
-
-/**
- * Switch editor mode
- */
-function switchEditorMode() {
-    try {
-        editorState.mode = EDITOR_MODES.JSON;
-        loadJSONMode();
-        updateEditorUI();
-        updateModeIndicator(EDITOR_MODES.JSON);
-    } catch (error) {
-        console.error('Error in editor mode:', error);
-        showNotification(`Error: ${error.message}`, 'error');
-    }
-}
-
-/**
- * Update editor UI based on mode
- */
-function updateEditorUI() {
-    const formContainer = document.getElementById('form-editor-container');
-    const jsonContainer = document.getElementById('json-editor-container');
-
-    if (formContainer) formContainer.style.display = 'none';
-    if (jsonContainer) jsonContainer.style.display = 'block';
-
-    document.querySelectorAll('[data-editor-mode]').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.editorMode === EDITOR_MODES.JSON);
-        btn.disabled = btn.dataset.editorMode !== EDITOR_MODES.JSON;
-        btn.removeAttribute('title');
-    });
-}
+// ===== JSON EDITOR FUNCTIONS =====
 
 function saveFromJSONMode() {
     const jsonEditor = document.getElementById('json-editor');
@@ -566,14 +397,6 @@ function saveFromJSONMode() {
     } catch (error) {
         throw new Error('Invalid JSON: ' + error.message);
     }
-}
-
-/**
- * Save data from form mode
- */
-function saveFromFormMode() {
-    const mapping = collectFormData();
-    editorState.currentMapping = mapping;
 }
 
 /**
@@ -616,128 +439,6 @@ function loadJSONMode() {
     }
 
     console.log('🟡 [JSON DEBUG] JSON editor populated with mapping ID:', editorState.currentMapping?.id);
-}
-
-/**
- * Load form mode
- */
-function loadFormMode() {
-    if (!editorState.currentMapping) return;
-    populateEditMappingForm(editorState.currentMapping);
-}
-
-/**
- * Collect form data into mapping object
- */
-function collectFormData() {
-    const mapping = {
-        id: document.getElementById('edit-mapping-id')?.value || '',
-        name: document.getElementById('edit-mapping-name')?.value || '',
-        request: {
-            method: document.getElementById('edit-method')?.value || 'GET',
-            urlPattern: document.getElementById('edit-url-pattern')?.value || ''
-        },
-        response: {
-            status: parseInt(document.getElementById('edit-response-status')?.value) || 200
-        }
-    };
-
-    // Preserve existing metadata if present
-    if (editorState.currentMapping?.metadata) {
-        mapping.metadata = { ...editorState.currentMapping.metadata };
-        console.log('📅 [METADATA] Preserved existing metadata in collectFormData');
-    }
-    
-    // Add optional fields
-    const responseDelay = parseInt(document.getElementById('edit-response-delay')?.value) || 0;
-    if (responseDelay > 0) {
-        mapping.response.fixedDelayMilliseconds = responseDelay;
-    }
-    
-    const priority = parseInt(document.getElementById('edit-mapping-priority')?.value) || 1;
-    if (priority !== 1) {
-        mapping.priority = priority;
-    }
-    
-    const scenarioName = document.getElementById('edit-mapping-scenario')?.value?.trim();
-    if (scenarioName) {
-        mapping.scenarioName = scenarioName;
-    }
-
-    const requiredScenarioState = document.getElementById('edit-required-scenario-state')?.value?.trim();
-    if (requiredScenarioState) {
-        mapping.requiredScenarioState = requiredScenarioState;
-    }
-
-    const newScenarioState = document.getElementById('edit-new-scenario-state')?.value?.trim();
-    if (newScenarioState) {
-        mapping.newScenarioState = newScenarioState;
-    }
-    
-    // Parse headers and bodies
-    const requestHeaders = parseJSONField('edit-request-headers');
-    if (requestHeaders) {
-        mapping.request.headers = requestHeaders;
-    }
-    
-    const responseHeaders = parseJSONField('edit-response-headers');
-    if (responseHeaders) {
-        mapping.response.headers = responseHeaders;
-    }
-    
-    const requestBody = parseBodyField('edit-request-body');
-    if (requestBody.value) {
-        if (requestBody.isJSON) {
-            mapping.request.bodyPatterns = [{ equalToJson: JSON.stringify(requestBody.value) }];
-        } else {
-            mapping.request.body = requestBody.value;
-        }
-    }
-    
-    const responseBody = parseBodyField('edit-response-body');
-    if (responseBody.value) {
-        if (responseBody.isJSON) {
-            mapping.response.jsonBody = responseBody.value;
-        } else {
-            mapping.response.body = responseBody.value;
-        }
-    }
-    
-    return mapping;
-}
-
-/**
- * Parse JSON field with error handling
- */
-function parseJSONField(fieldId) {
-    const element = document.getElementById(fieldId);
-    if (!element || !element.value.trim()) return null;
-    
-    try {
-        return JSON.parse(element.value);
-    } catch (e) {
-        console.warn(`Failed to parse JSON in field ${fieldId}:`, e);
-        return null;
-    }
-}
-
-/**
- * Parse body field - detects if it's JSON or text
- */
-function parseBodyField(fieldId) {
-    const element = document.getElementById(fieldId);
-    if (!element || !element.value.trim()) {
-        return { value: null, isJSON: false };
-    }
-    
-    const value = element.value.trim();
-    
-    try {
-        const parsed = JSON.parse(value);
-        return { value: parsed, isJSON: true };
-    } catch (e) {
-        return { value: value, isJSON: false };
-    }
 }
 
 /**
@@ -793,16 +494,6 @@ function minifyCurrentJSON() {
         showNotification('JSON minified', 'success');
     } catch (error) {
         showNotification('Minification failed: ' + error.message, 'error');
-    }
-}
-
-/**
- * Update mode indicator
- */
-function updateModeIndicator(mode) {
-    const indicator = document.getElementById('editor-mode-indicator');
-    if (indicator) {
-        indicator.textContent = `Mode: ${mode === EDITOR_MODES.FORM ? 'Form' : 'JSON'}`;
     }
 }
 
