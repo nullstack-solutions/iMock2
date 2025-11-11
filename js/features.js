@@ -248,7 +248,7 @@
 
                 let normalizedHost = baseHost;
                 if (!/^https?:\/\//i.test(normalizedHost)) {
-                    normalizedHost = padHostWithProtocol(normalizedHost);
+                    normalizedHost = `http://${normalizedHost}`;
                 }
 
                 const url = new URL(normalizedHost);
@@ -264,13 +264,6 @@
                 console.warn('Failed to update recorder link:', error);
             }
         };
-
-        function padHostWithProtocol(value) {
-            const trimmed = value.trim();
-            if (!trimmed) return 'http://localhost';
-            if (/^https?:\/\//i.test(trimmed)) return trimmed;
-            return `http://${trimmed}`;
-        }
 
         function setStatusMessage(elementId, type, message) {
             const el = document.getElementById(elementId);
@@ -476,13 +469,7 @@
             }
         }
 
-        window.executeImportFromUi = async () => {
-            try {
-                await executeImport();
-            } catch (_) {
-                // error handling performed inside executeImport
-            }
-        };
+        window.executeImport = executeImport;
 
         window.exportMappings = async () => {
             const formatSelect = document.getElementById(SELECTORS.EXPORT.FORMAT);

@@ -298,7 +298,7 @@ window.debounce = function debounce(fn, wait = 150, options = {}) {
             const previousSignature = existing ? existing.dataset.renderSignature || null : null;
             if (existing && typeof onItemChanged === 'function' && previousSignature !== signature) {
                 try {
-                    onItemChanged(keyString, item, signature, previousSignature);
+                    onItemChanged(keyString, item, signature);
                 } catch (callbackError) {
                     console.warn('renderList onItemChanged failed:', callbackError);
                 }
