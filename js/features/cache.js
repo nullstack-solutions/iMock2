@@ -221,7 +221,6 @@ window.connectToWireMock = async () => {
     }
     
     try {
-        let renderSource = 'unknown';
         // The first health check starts uptime tracking
         await checkHealthAndStartUptime();
         
@@ -313,13 +312,8 @@ window.checkHealthAndStartUptime = async () => {
             window.startTime = Date.now();
             if (window.uptimeInterval) window.LifecycleManager.clearInterval(window.uptimeInterval);
             window.uptimeInterval = window.LifecycleManager.setInterval(updateUptime, 1000);
-            // Unified health UI update (fallback below keeps old DOM path)
-            if (typeof window.applyHealthUI === 'function') {
-                try { window.applyHealthUI(true, responseTime); } catch (e) { console.warn('applyHealthUI failed:', e); }
-            }
-            
+
             // Update the health indicator with the measured response time
-            // Unified health UI (fallback DOM update remains below)
             if (typeof window.applyHealthUI === 'function') {
                 try { window.applyHealthUI(isHealthy, isHealthy ? responseTime : null); } catch (e) { console.warn('applyHealthUI failed:', e); }
             }
