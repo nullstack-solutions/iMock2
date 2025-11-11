@@ -379,7 +379,6 @@ window.ENDPOINTS = {
 
     // Request endpoints
     REQUESTS: '/requests', // DELETE to clear request journal
-    REQUESTS_RESET: '/requests/reset', // Deprecated legacy endpoint
     REQUESTS_COUNT: '/requests/count', // Requires POST
     REQUESTS_REMOVE: '/requests/remove',
     REQUESTS_FIND: '/requests/find', // Requires POST
@@ -849,13 +848,6 @@ window.showTab = (tabName, button) => {
     button.classList.add('active');
 };
 
-// Legacy wrapper kept for compatibility
-window.showMessage = (text, type = 'info') => {
-    if (window.NotificationManager) {
-        NotificationManager.show(text, type);
-    }
-};
-
 // --- THEME FUNCTIONS ---
 const applyThemeToDom = (theme) => {
     const body = document.body;
@@ -899,7 +891,9 @@ window.toggleTheme = () => {
     applyThemeToDom(newTheme);
     persistThemePreference(newTheme);
 
-    showMessage(`Switched to ${newTheme} theme`, 'success');
+    if (window.NotificationManager) {
+        NotificationManager.show(`Switched to ${newTheme} theme`, 'success');
+    }
 };
 
 window.changeTheme = () => {
@@ -915,7 +909,9 @@ window.changeTheme = () => {
     applyThemeToDom(themeToApply);
     persistThemePreference(selectedTheme);
 
-    showMessage(`Theme changed to ${selectedTheme}`, 'success');
+    if (window.NotificationManager) {
+        NotificationManager.show(`Theme changed to ${selectedTheme}`, 'success');
+    }
 };
 
 // Initialize theme on load
