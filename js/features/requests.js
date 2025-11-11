@@ -361,39 +361,92 @@ window.openEditModal = async (identifier) => {
     UIComponents?.clearCardState('mapping', 'is-editing');
     UIComponents?.setCardState('mapping', mapping.id, 'is-editing', true);
 
-    // Show modal with loader immediately
-    window.showModal('edit-mapping-modal');
-    window.setMappingEditorBusyState(true, 'Loading…');
+    // Show the modal first
+    if (typeof window.showModal === 'function') {
+        window.showModal('edit-mapping-modal');
+    } else {
+        console.warn('showModal function not found');
+        return;
+    }
 
-    // Update modal title
-    const modalTitleElement = document.getElementById(SELECTORS.MODAL.TITLE);
-    if (modalTitleElement) modalTitleElement.textContent = 'Edit Mapping';
+    console.log('🔴 [OPEN MODAL DEBUG] openEditModal called for mapping identifier:', identifier);
+    console.log('🔴 [OPEN MODAL DEBUG] Found mapping (cached):', mapping);
 
-    // Fetch latest mapping from server (single load, no optimistic cache)
+    // Estimate mapping size to decide whether to show cached version first
+    const estimateSize = (obj) => {
+        try {
+            return JSON.stringify(obj).length;
+        } catch {
+            return 0;
+        }
+    };
+
+    const cachedSize = estimateSize(mapping);
+    const isLargeMapping = cachedSize > 500000; // 500KB threshold
+
+    // For small mappings, populate immediately with cached data
+    // For large mappings, skip the initial population to avoid double-processing
+    if (!isLargeMapping && typeof window.populateEditMappingForm === 'function') {
+        try {
+            await window.populateEditMappingForm(mapping);
+        } catch (e) {
+            console.error('populateEditMappingForm failed:', e);
+            NotificationManager.error('Failed to load mapping');
+            return;
+        }
+    }
+
+    // Then fetch the latest mapping version
     try {
-        const latest = await apiFetch(`/mappings/${encodeURIComponent(mapping.id)}`);
+        if (typeof window.setMappingEditorBusyState === 'function') {
+            window.setMappingEditorBusyState(true, 'Loading latest version…');
+        }
+
+        const mappingIdForFetch = normalizeIdentifier(mapping.id) || normalizeIdentifier(mapping.uuid) || targetIdentifier;
+        const latest = await apiFetch(`/mappings/${encodeURIComponent(mappingIdForFetch)}`);
         const latestMapping = latest?.mapping || latest;
 
-        if (latestMapping?.id) {
-            // Populate form once with fresh data
-            window.populateEditMappingForm(latestMapping);
+        if (latestMapping && latestMapping.id) {
+            console.log('🔵 [OPEN MODAL DEBUG] Loaded latest mapping from server');
 
-            // Update cache
-            const idx = window.allMappings.findIndex(m => m.id === mapping.id);
+            // Update the reference in allMappings
+            const idx = window.allMappings.findIndex((candidate) => candidate === mapping);
             if (idx !== -1) {
                 window.allMappings[idx] = latestMapping;
                 addMappingToIndex(latestMapping);
             }
+
+            // Populate form with latest data
+            if (typeof window.populateEditMappingForm === 'function') {
+                await window.populateEditMappingForm(latestMapping);
+            }
         } else {
-            throw new Error('Invalid mapping response');
+            console.warn('Latest mapping response has unexpected shape, keeping cached version.', latest);
+            // If we skipped initial population for large mapping, populate now
+            if (isLargeMapping && typeof window.populateEditMappingForm === 'function') {
+                await window.populateEditMappingForm(mapping);
+            }
         }
     } catch (e) {
-        console.warn('Failed to load mapping from server, using cache:', e);
-        // Fallback to cached version if server fails
-        window.populateEditMappingForm(mapping);
+        console.warn('Failed to load latest mapping, using cached version.', e);
+        // If we skipped initial population for large mapping, populate now
+        if (isLargeMapping && typeof window.populateEditMappingForm === 'function') {
+            try {
+                await window.populateEditMappingForm(mapping);
+            } catch (err) {
+                console.error('populateEditMappingForm failed:', err);
+                NotificationManager.error('Failed to load mapping');
+            }
+        }
     } finally {
         window.setMappingEditorBusyState(false);
     }
+
+    // Update the modal title
+    const modalTitleElement = document.getElementById(SELECTORS.MODAL.TITLE);
+    if (modalTitleElement) modalTitleElement.textContent = 'Edit Mapping';
+
+    console.log('🔴 [OPEN MODAL DEBUG] openEditModal completed for mapping identifier:', identifier);
 };
 
 // REMOVED: updateMapping function moved to editor.js
