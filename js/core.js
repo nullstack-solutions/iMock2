@@ -979,19 +979,26 @@ window.getElement = (id, invalidateCache = false) => {
         window.elementCache.delete(id);
     }
 
-    if (!window.elementCache.has(id)) {
-        const element = document.getElementById(id);
-        if (element) {
-            // If cache is full, remove oldest entry (first item in Map)
-            if (window.elementCache.size >= MAX_ELEMENT_CACHE_SIZE) {
-                const firstKey = window.elementCache.keys().next().value;
-                window.elementCache.delete(firstKey);
-            }
-            window.elementCache.set(id, element);
-        }
+    // Check if element is already cached
+    if (window.elementCache.has(id)) {
+        const element = window.elementCache.get(id);
+        // LRU: Move to end by deleting and re-inserting (updates access order)
+        window.elementCache.delete(id);
+        window.elementCache.set(id, element);
         return element;
     }
-    return window.elementCache.get(id);
+
+    // Not in cache, fetch from DOM
+    const element = document.getElementById(id);
+    if (element) {
+        // If cache is full, remove least recently used entry (first item in Map)
+        if (window.elementCache.size >= MAX_ELEMENT_CACHE_SIZE) {
+            const firstKey = window.elementCache.keys().next().value;
+            window.elementCache.delete(firstKey);
+        }
+        window.elementCache.set(id, element);
+    }
+    return element;
 };
 
 window.clearElementCache = () => {

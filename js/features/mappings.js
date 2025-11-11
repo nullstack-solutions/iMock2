@@ -65,8 +65,8 @@ if (!window.mappingMemoryCleanupInterval && window.LifecycleManager) {
 
             // Rebuild map with valid entries only
             window.mappingPreviewToastState.clear();
-            validEntries.forEach(([id, ts]) => {
-                window.mappingPreviewToastState.set(id, ts);
+            validEntries.forEach(([id, timestamp]) => {
+                window.mappingPreviewToastState.set(id, timestamp);
             });
         }
 
