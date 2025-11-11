@@ -52,8 +52,6 @@ function setupMappingFormListeners() {
  * Set up editor mode handlers
  */
 function setupEditorModeHandlers() {
-    initializeJsonEditorAutoResize();
-
     document.addEventListener('click', (e) => {
         if (e.target.matches('[data-action="validate-json"]')) {
             validateCurrentJSON();
@@ -76,10 +74,6 @@ function setupEditorModeHandlers() {
         }
     });
 }
-
-let jsonEditorResizeObserver = null;
-let jsonEditorResizeFrame = null;
-let jsonEditorWindowResizeHandler = null;
 
 function setButtonLoadingState(button, isLoading, loadingLabel) {
     if (!button) return;
@@ -117,72 +111,6 @@ window.setMappingEditorBusyState = (isLoading, loadingLabel) => {
     if (!updateButton) return;
     setButtonLoadingState(updateButton, isLoading, loadingLabel);
 };
-
-function initializeJsonEditorAutoResize() {
-    const jsonEditor = document.getElementById('json-editor');
-    const container = document.getElementById('json-editor-container');
-
-    if (!jsonEditor || !container) return;
-
-    // Skip auto-resize for modal windows - they use fixed viewport heights in CSS
-    const isInModal = container.closest('.modal');
-    if (isInModal) {
-        return;
-    }
-
-    const computedMinHeight = parseInt(window.getComputedStyle(jsonEditor).minHeight, 10);
-    if (!Number.isNaN(computedMinHeight)) {
-        jsonEditor.dataset.minHeight = computedMinHeight;
-    }
-
-    if (jsonEditorResizeObserver) {
-        jsonEditorResizeObserver.disconnect();
-        jsonEditorResizeObserver = null;
-    }
-
-    if (typeof ResizeObserver !== 'undefined') {
-        jsonEditorResizeObserver = new ResizeObserver(() => adjustJsonEditorHeight());
-        jsonEditorResizeObserver.observe(container);
-    }
-
-    if (jsonEditorWindowResizeHandler) {
-        window.removeEventListener('resize', jsonEditorWindowResizeHandler);
-    }
-
-    jsonEditorWindowResizeHandler = () => adjustJsonEditorHeight();
-    window.addEventListener('resize', jsonEditorWindowResizeHandler);
-
-    adjustJsonEditorHeight(true);
-}
-
-function adjustJsonEditorHeight(scrollToTop = false) {
-    const jsonEditor = document.getElementById('json-editor');
-    const container = document.getElementById('json-editor-container');
-
-    if (!jsonEditor || !container) return;
-
-    if (jsonEditorResizeFrame) {
-        cancelAnimationFrame(jsonEditorResizeFrame);
-    }
-
-    jsonEditorResizeFrame = requestAnimationFrame(() => {
-        jsonEditorResizeFrame = null;
-
-        const toolbar = container.querySelector('.json-editor-toolbar');
-        const toolbarHeight = toolbar ? toolbar.offsetHeight : 0;
-        const minHeight = parseInt(jsonEditor.dataset.minHeight || '0', 10) || 320;
-        const availableHeight = Math.max(container.clientHeight - toolbarHeight, minHeight);
-
-        jsonEditor.style.height = `${availableHeight}px`;
-        jsonEditor.style.overflowY = 'auto';
-        jsonEditor.style.overflowX = 'auto';
-
-        if (scrollToTop) {
-            jsonEditor.scrollTop = 0;
-            jsonEditor.scrollLeft = 0;
-        }
-    });
-}
 
 /**
  * Handle submission of the add mapping form
@@ -684,7 +612,6 @@ function loadJSONMode() {
     
     const formattedJSON = JSON.stringify(editorState.currentMapping, null, 2);
     jsonEditor.value = formattedJSON;
-    adjustJsonEditorHeight(true);
 
     console.log('🟡 [JSON DEBUG] JSON editor populated with mapping ID:', editorState.currentMapping?.id);
     console.log('🟡 [JSON DEBUG] JSON content length:', formattedJSON.length);
@@ -846,7 +773,6 @@ function formatCurrentJSON() {
     try {
         const parsed = JSON.parse(jsonEditor.value);
         jsonEditor.value = JSON.stringify(parsed, null, 2);
-        adjustJsonEditorHeight(true);
         showNotification('JSON formatted', 'success');
     } catch (error) {
         showNotification('Formatting failed: ' + error.message, 'error');
@@ -863,7 +789,6 @@ function minifyCurrentJSON() {
     try {
         const parsed = JSON.parse(jsonEditor.value);
         jsonEditor.value = JSON.stringify(parsed);
-        adjustJsonEditorHeight(true);
         showNotification('JSON minified', 'success');
     } catch (error) {
         showNotification('Minification failed: ' + error.message, 'error');
