@@ -49,6 +49,21 @@ function setupMappingFormListeners() {
 }
 
 /**
+ * Debounce helper function
+ */
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+/**
  * Set up editor mode handlers
  */
 function setupEditorModeHandlers() {
@@ -68,11 +83,16 @@ function setupEditorModeHandlers() {
         }
     });
 
-    // Auto-save on input changes
+    // Debounced dirty state update to reduce overhead for large documents
+    const debouncedDirtyUpdate = debounce(() => {
+        editorState.isDirty = true;
+        updateDirtyIndicator();
+    }, 300);
+
+    // Auto-save on input changes with debouncing
     document.addEventListener('input', (e) => {
         if (e.target.matches('.editor-field') || e.target.id === 'json-editor') {
-            editorState.isDirty = true;
-            updateDirtyIndicator();
+            debouncedDirtyUpdate();
         }
     });
 }
@@ -445,33 +465,144 @@ window.updateMapping = async () => {
 };
 
 /**
+ * Estimate the size of a mapping object in bytes
+ * Uses a cache to avoid repeated stringification
+ */
+const mappingSizeCache = new WeakMap();
+
+function estimateMappingSize(mapping) {
+    // Check cache first
+    if (mappingSizeCache.has(mapping)) {
+        return mappingSizeCache.get(mapping);
+    }
+
+    try {
+        const jsonStr = JSON.stringify(mapping);
+        const size = new Blob([jsonStr]).size;
+        mappingSizeCache.set(mapping, size);
+        return size;
+    } catch (e) {
+        // Fallback: rough estimate by counting properties
+        let estimate = 0;
+        try {
+            const queue = [mapping];
+            let count = 0;
+            const maxIterations = 10000; // Safety limit
+
+            while (queue.length > 0 && count < maxIterations) {
+                const obj = queue.shift();
+                count++;
+
+                if (obj && typeof obj === 'object') {
+                    for (const key in obj) {
+                        estimate += key.length + 10; // Key + overhead
+                        const value = obj[key];
+
+                        if (typeof value === 'string') {
+                            estimate += value.length * 2;
+                        } else if (typeof value === 'number') {
+                            estimate += 8;
+                        } else if (typeof value === 'boolean') {
+                            estimate += 4;
+                        } else if (value && typeof value === 'object') {
+                            queue.push(value);
+                        }
+                    }
+                }
+            }
+        } catch {}
+
+        return estimate || 1000000; // Default to 1MB if estimation fails
+    }
+}
+
+/**
+ * Optimized deep clone using structuredClone or fallback
+ */
+function optimizedClone(obj) {
+    if (typeof structuredClone === 'function') {
+        try {
+            return structuredClone(obj);
+        } catch (e) {
+            console.warn('structuredClone failed, falling back to JSON method:', e);
+        }
+    }
+    // Fallback to JSON method
+    return JSON.parse(JSON.stringify(obj));
+}
+
+/**
  * Populate the edit mapping form with data from a mapping
  */
-window.populateEditMappingForm = (mapping) => {
+window.populateEditMappingForm = async (mapping) => {
     console.log('🔵 [EDITOR DEBUG] populateEditMappingForm called');
     console.log('🔵 [EDITOR DEBUG] Incoming mapping ID:', mapping?.id);
     console.log('🔵 [EDITOR DEBUG] Incoming mapping name:', mapping?.name);
     console.log('🔵 [EDITOR DEBUG] Current editor mode:', editorState.mode);
     console.log('🔵 [EDITOR DEBUG] Previous currentMapping ID:', editorState.currentMapping?.id);
-    console.log('🔵 [EDITOR DEBUG] Full incoming mapping:', mapping);
-    
+
+    // Check mapping size
+    const sizeInBytes = estimateMappingSize(mapping);
+    const sizeInMB = sizeInBytes / (1024 * 1024);
+    console.log(`📊 [EDITOR DEBUG] Mapping size: ${sizeInMB.toFixed(2)} MB`);
+
+    // Warn for very large mappings
+    if (sizeInMB > 5) {
+        const proceed = confirm(
+            `⚠️ This mapping is very large (${sizeInMB.toFixed(2)} MB).\n\n` +
+            `Opening it may cause the browser to freeze.\n\n` +
+            `Consider:\n` +
+            `• Downloading the mapping instead\n` +
+            `• Editing it externally\n` +
+            `• Splitting it into smaller mappings\n\n` +
+            `Do you want to proceed anyway?`
+        );
+        if (!proceed) {
+            hideModal('edit-mapping-modal');
+            return;
+        }
+    }
+
+    // Show loading indicator for large mappings
+    const isLarge = sizeInMB > 0.5;
+    if (isLarge) {
+        const jsonEditor = document.getElementById('json-editor');
+        if (jsonEditor) {
+            jsonEditor.value = 'Loading large mapping, please wait...';
+        }
+    }
+
     // Always reset state when opening a new mapping
     editorState.originalMapping = mapping;
-    editorState.currentMapping = JSON.parse(JSON.stringify(mapping)); // Deep clone
+
+    // Use optimized cloning for better performance
+    if (isLarge) {
+        // For large mappings, defer cloning to avoid blocking UI
+        await new Promise(resolve => setTimeout(resolve, 0));
+        editorState.currentMapping = optimizedClone(mapping);
+    } else {
+        editorState.currentMapping = optimizedClone(mapping);
+    }
+
     editorState.isDirty = false;
     updateDirtyIndicator();
-    
+
     console.log('🔵 [EDITOR DEBUG] After state update - currentMapping ID:', editorState.currentMapping?.id);
-    
+
     // Always populate form fields first (for consistency)
     populateFormFields(mapping);
-    
+
     // Then load data based on current mode
     if (editorState.mode === EDITOR_MODES.JSON) {
         console.log('🔵 [EDITOR DEBUG] Loading JSON mode for mapping ID:', editorState.currentMapping?.id);
-        loadJSONMode();
+        if (isLarge) {
+            // Load large JSON asynchronously
+            await loadJSONModeAsync();
+        } else {
+            loadJSONMode();
+        }
     }
-    
+
     console.log('🔵 [EDITOR DEBUG] populateEditMappingForm completed for mapping ID:', mapping?.id);
 };
 
@@ -620,27 +751,32 @@ function updateEditorUI() {
 
 function saveFromJSONMode() {
     console.log('🟢 [SAVE DEBUG] saveFromJSONMode called');
-    
+
     const jsonEditor = document.getElementById('json-editor');
     if (!jsonEditor) {
         console.log('🔴 [SAVE DEBUG] JSON editor element not found!');
         return;
     }
-    
+
     const jsonText = jsonEditor.value;
     if (!jsonText.trim()) {
         console.log('🟢 [SAVE DEBUG] JSON editor is empty, nothing to save');
         return;
     }
-    
+
     console.log('🟢 [SAVE DEBUG] JSON text length:', jsonText.length);
     console.log('🟢 [SAVE DEBUG] Previous currentMapping ID:', editorState.currentMapping?.id);
-    
+
     try {
+        // For large JSON, show a brief message
+        if (jsonText.length > 1000000) {
+            console.log('🟢 [SAVE DEBUG] Large JSON detected, parsing...');
+        }
+
         const parsedMapping = JSON.parse(jsonText);
         console.log('🟢 [SAVE DEBUG] Parsed mapping ID:', parsedMapping?.id);
         console.log('🟢 [SAVE DEBUG] Parsed mapping name:', parsedMapping?.name);
-        
+
         editorState.currentMapping = parsedMapping;
         console.log('🟢 [SAVE DEBUG] Updated currentMapping ID:', editorState.currentMapping?.id);
     } catch (error) {
@@ -658,30 +794,90 @@ function saveFromFormMode() {
 }
 
 /**
- * Load JSON mode
+ * Load JSON mode (synchronous for small mappings)
  */
 function loadJSONMode() {
     console.log('🟡 [JSON DEBUG] loadJSONMode called');
     console.log('🟡 [JSON DEBUG] currentMapping ID:', editorState.currentMapping?.id);
     console.log('🟡 [JSON DEBUG] currentMapping name:', editorState.currentMapping?.name);
-    
+
     const jsonEditor = document.getElementById('json-editor');
     if (!jsonEditor) {
         console.log('🔴 [JSON DEBUG] JSON editor element not found!');
         return;
     }
-    
+
     if (!editorState.currentMapping) {
         console.log('🔴 [JSON DEBUG] No currentMapping in editorState!');
         return;
     }
-    
+
     const formattedJSON = JSON.stringify(editorState.currentMapping, null, 2);
     jsonEditor.value = formattedJSON;
     adjustJsonEditorHeight(true);
 
     console.log('🟡 [JSON DEBUG] JSON editor populated with mapping ID:', editorState.currentMapping?.id);
     console.log('🟡 [JSON DEBUG] JSON content length:', formattedJSON.length);
+}
+
+/**
+ * Load JSON mode asynchronously (for large mappings)
+ */
+async function loadJSONModeAsync() {
+    console.log('🟡 [JSON DEBUG] loadJSONModeAsync called (chunked loading)');
+    console.log('🟡 [JSON DEBUG] currentMapping ID:', editorState.currentMapping?.id);
+    console.log('🟡 [JSON DEBUG] currentMapping name:', editorState.currentMapping?.name);
+
+    const jsonEditor = document.getElementById('json-editor');
+    if (!jsonEditor) {
+        console.log('🔴 [JSON DEBUG] JSON editor element not found!');
+        return;
+    }
+
+    if (!editorState.currentMapping) {
+        console.log('🔴 [JSON DEBUG] No currentMapping in editorState!');
+        return;
+    }
+
+    // Show progress indicator
+    jsonEditor.value = 'Formatting JSON, please wait...';
+
+    // Yield to browser to update UI
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    try {
+        // Stringify in chunks to avoid blocking
+        const startTime = performance.now();
+        let formattedJSON;
+
+        // Use requestIdleCallback if available for better performance
+        if (typeof requestIdleCallback === 'function') {
+            formattedJSON = await new Promise((resolve) => {
+                requestIdleCallback(() => {
+                    resolve(JSON.stringify(editorState.currentMapping, null, 2));
+                }, { timeout: 2000 });
+            });
+        } else {
+            // Fallback: yield to event loop
+            await new Promise(resolve => setTimeout(resolve, 0));
+            formattedJSON = JSON.stringify(editorState.currentMapping, null, 2);
+        }
+
+        const endTime = performance.now();
+        console.log(`🟡 [JSON DEBUG] Formatting took ${(endTime - startTime).toFixed(2)}ms`);
+
+        // Update textarea in next frame
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        jsonEditor.value = formattedJSON;
+        adjustJsonEditorHeight(true);
+
+        console.log('🟡 [JSON DEBUG] JSON editor populated with mapping ID:', editorState.currentMapping?.id);
+        console.log('🟡 [JSON DEBUG] JSON content length:', formattedJSON.length);
+    } catch (error) {
+        console.error('🔴 [JSON DEBUG] Error formatting JSON:', error);
+        jsonEditor.value = '// Error formatting JSON. Mapping may be too large or contain circular references.';
+        NotificationManager.error('Failed to load mapping: ' + error.message);
+    }
 }
 
 /**
