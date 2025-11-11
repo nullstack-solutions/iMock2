@@ -318,13 +318,6 @@
             button.disabled = isLoading;
         }
 
-        function serializeMappingsToYaml(data) {
-            if (window.jsyaml?.dump) {
-                return window.jsyaml.dump(data, { noRefs: true });
-            }
-            throw new Error('YAML serializer is not available.');
-        }
-
         function resolveImportMode(overrideMode = null) {
             if (overrideMode) {
                 return overrideMode;
@@ -493,7 +486,10 @@
                 const baseName = `wiremock-mappings-${timestamp}`;
 
                 if (format === 'yaml') {
-                    const yamlContent = serializeMappingsToYaml({ mappings });
+                    if (!window.jsyaml?.dump) {
+                        throw new Error('YAML serializer is not available.');
+                    }
+                    const yamlContent = window.jsyaml.dump({ mappings }, { noRefs: true });
                     downloadFile(`${baseName}.yaml`, yamlContent.endsWith('\n') ? yamlContent : `${yamlContent}\n`, 'text/yaml');
                 } else {
                     const jsonContent = JSON.stringify({ mappings }, null, 2);
@@ -521,7 +517,10 @@
                 const baseName = `wiremock-requests-${timestamp}`;
 
                 if (format === 'yaml') {
-                    const yamlContent = serializeMappingsToYaml({ requests });
+                    if (!window.jsyaml?.dump) {
+                        throw new Error('YAML serializer is not available.');
+                    }
+                    const yamlContent = window.jsyaml.dump({ requests }, { noRefs: true });
                     downloadFile(`${baseName}.yaml`, yamlContent.endsWith('\n') ? yamlContent : `${yamlContent}\n`, 'text/yaml');
                 } else {
                     const jsonContent = JSON.stringify({ requests }, null, 2);

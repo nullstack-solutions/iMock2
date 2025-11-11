@@ -385,10 +385,6 @@ window.ENDPOINTS = {
     REQUESTS_UNMATCHED: '/requests/unmatched',
     REQUESTS_UNMATCHED_NEAR_MISSES: '/requests/unmatched/near-misses',
 
-    // Near misses endpoints (corrected)
-    NEAR_MISSES_REQUEST: '/near-misses/request', // Requires POST
-    NEAR_MISSES_PATTERN: '/near-misses/request-pattern', // Requires POST
-
     // Recording endpoints (corrected)
     RECORDINGS_START: '/recordings/start', // Requires POST
     RECORDINGS_STOP: '/recordings/stop', // Requires POST
@@ -397,11 +393,7 @@ window.ENDPOINTS = {
 
     // Scenario endpoints
     SCENARIOS: '/scenarios',
-    SCENARIOS_RESET: '/scenarios/reset',
-
-    // System endpoints
-    SETTINGS: '/settings',
-    SHUTDOWN: '/shutdown'
+    SCENARIOS_RESET: '/scenarios/reset'
 };
 
 const ensureCustomHeaderObject = (value) => {
