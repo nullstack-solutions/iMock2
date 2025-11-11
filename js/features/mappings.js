@@ -24,6 +24,55 @@ if (!isOptimisticShadowMap(window.optimisticShadowMappings)) {
     window.optimisticShadowMappings = new Map();
 }
 
+// Limits to prevent unbounded memory growth
+const MAX_PREVIEW_STATE_SIZE = 50;
+const MAX_TOAST_STATE_SIZE = 100;
+const MAX_OPTIMISTIC_MAPPINGS = 50;
+
+// Periodic cleanup for memory management
+if (!window.mappingMemoryCleanupInterval) {
+    window.mappingMemoryCleanupInterval = window.LifecycleManager.setInterval(() => {
+        // Clean up preview state - keep only most recent items
+        if (window.mappingPreviewState.size > MAX_PREVIEW_STATE_SIZE) {
+            const toKeep = Array.from(window.mappingPreviewState).slice(-MAX_PREVIEW_STATE_SIZE);
+            window.mappingPreviewState.clear();
+            toKeep.forEach(id => window.mappingPreviewState.add(id));
+            console.log('🧹 Cleaned mappingPreviewState, kept', toKeep.length, 'items');
+        }
+
+        // Clean up toast state - remove entries older than 5 minutes
+        if (window.mappingPreviewToastState.size > 0) {
+            const now = Date.now();
+            const TOAST_TTL = 5 * 60 * 1000; // 5 minutes
+            for (const [id, timestamp] of window.mappingPreviewToastState.entries()) {
+                if (now - timestamp > TOAST_TTL) {
+                    window.mappingPreviewToastState.delete(id);
+                }
+            }
+            if (window.mappingPreviewToastState.size > MAX_TOAST_STATE_SIZE) {
+                const entries = Array.from(window.mappingPreviewToastState.entries());
+                entries.sort((a, b) => b[1] - a[1]); // Sort by timestamp, newest first
+                window.mappingPreviewToastState.clear();
+                entries.slice(0, MAX_TOAST_STATE_SIZE).forEach(([id, ts]) => {
+                    window.mappingPreviewToastState.set(id, ts);
+                });
+                console.log('🧹 Cleaned mappingPreviewToastState, kept', MAX_TOAST_STATE_SIZE, 'items');
+            }
+        }
+
+        // Clean up optimistic shadow mappings - keep only recent items
+        if (window.optimisticShadowMappings.size > MAX_OPTIMISTIC_MAPPINGS) {
+            const entries = Array.from(window.optimisticShadowMappings.entries());
+            entries.sort((a, b) => (b[1]?.ts || 0) - (a[1]?.ts || 0));
+            window.optimisticShadowMappings.clear();
+            entries.slice(0, MAX_OPTIMISTIC_MAPPINGS).forEach(([id, entry]) => {
+                window.optimisticShadowMappings.set(id, entry);
+            });
+            console.log('🧹 Cleaned optimisticShadowMappings, kept', MAX_OPTIMISTIC_MAPPINGS, 'items');
+        }
+    }, 60000); // Run every minute
+}
+
 const UIComponents = {
     // Base card component replacing renderMappingCard and renderRequestCard
     createCard: (type, data, actions = []) => {

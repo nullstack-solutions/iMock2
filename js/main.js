@@ -286,9 +286,11 @@ window.editMapping = (mappingId) => {
     NotificationManager.info(`Editor opened for mapping ${mappingId}`);
         
     // Track window closure to refresh counters
+    let safetyTimeout = null;
     const checkClosed = window.LifecycleManager.setInterval(() => {
         if (editorWindow.closed) {
             window.LifecycleManager.clearInterval(checkClosed);
+            if (safetyTimeout) clearTimeout(safetyTimeout);
             console.log('🔄 Editor closed, updating counters only');
             // Only update counters, don't refresh data to preserve optimistic updates
             if (typeof window.updateMappingsCounter === 'function') {
@@ -301,9 +303,10 @@ window.editMapping = (mappingId) => {
     }, 1000);
 
     // Safety cleanup: clear interval after 5 minutes to prevent memory leaks
-    setTimeout(() => {
+    safetyTimeout = setTimeout(() => {
         if (!editorWindow.closed) {
             window.LifecycleManager.clearInterval(checkClosed);
+            safetyTimeout = null;
             console.log('🔄 Editor interval cleaned up after timeout');
         }
     }, 5 * 60 * 1000); // 5 minutes
@@ -738,9 +741,14 @@ window.addEventListener('storage', (e) => {
 });
 
 // Listen for BroadcastChannel cache refresh messages (modern browsers)
+// Store channels globally for cleanup
+window.broadcastChannels = window.broadcastChannels || [];
+
 if (typeof BroadcastChannel !== 'undefined') {
     try {
         const cacheRefreshChannel = new BroadcastChannel('imock-cache-refresh');
+        window.broadcastChannels.push(cacheRefreshChannel);
+
         cacheRefreshChannel.addEventListener('message', (event) => {
             if (event.data && event.data.type === 'cache-refresh') {
                 console.log('📡 [main.js] Received BroadcastChannel cache refresh from:', event.data.source);
@@ -754,6 +762,8 @@ if (typeof BroadcastChannel !== 'undefined') {
 
         // Listen for optimistic mapping updates via BroadcastChannel
         const optimisticUpdateChannel = new BroadcastChannel('imock-optimistic-updates');
+        window.broadcastChannels.push(optimisticUpdateChannel);
+
         optimisticUpdateChannel.addEventListener('message', (event) => {
             if (event.data && event.data.type === 'optimistic-mapping-update') {
                 console.log('🎯 [main.js] Received BroadcastChannel optimistic update from:', event.data.source, event.data.mapping.id);
@@ -771,6 +781,20 @@ if (typeof BroadcastChannel !== 'undefined') {
         console.warn('BroadcastChannel setup failed:', error);
     }
 }
+
+// Cleanup BroadcastChannels on page unload
+window.addEventListener('beforeunload', () => {
+    if (window.broadcastChannels) {
+        window.broadcastChannels.forEach(channel => {
+            try {
+                channel.close();
+            } catch (e) {
+                console.warn('Failed to close BroadcastChannel:', e);
+            }
+        });
+        window.broadcastChannels = [];
+    }
+});
 
 // Load connection settings into main connection form
 function loadConnectionSettings() {
