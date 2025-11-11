@@ -381,32 +381,20 @@ window.populateEditMappingForm = (mapping) => {
 // ===== JSON EDITOR FUNCTIONS =====
 
 function saveFromJSONMode() {
-    console.log('🟢 [SAVE DEBUG] saveFromJSONMode called');
-    
     const jsonEditor = document.getElementById('json-editor');
     if (!jsonEditor) {
-        console.log('🔴 [SAVE DEBUG] JSON editor element not found!');
         return;
     }
-    
+
     const jsonText = jsonEditor.value;
     if (!jsonText.trim()) {
-        console.log('🟢 [SAVE DEBUG] JSON editor is empty, nothing to save');
         return;
     }
-    
-    console.log('🟢 [SAVE DEBUG] JSON text length:', jsonText.length);
-    console.log('🟢 [SAVE DEBUG] Previous currentMapping ID:', editorState.currentMapping?.id);
-    
+
     try {
         const parsedMapping = JSON.parse(jsonText);
-        console.log('🟢 [SAVE DEBUG] Parsed mapping ID:', parsedMapping?.id);
-        console.log('🟢 [SAVE DEBUG] Parsed mapping name:', parsedMapping?.name);
-        
         editorState.currentMapping = parsedMapping;
-        console.log('🟢 [SAVE DEBUG] Updated currentMapping ID:', editorState.currentMapping?.id);
     } catch (error) {
-        console.log('🔴 [SAVE DEBUG] JSON parse error:', error.message);
         throw new Error('Invalid JSON: ' + error.message);
     }
 }
@@ -421,12 +409,10 @@ function loadJSONMode() {
 
     const jsonEditor = document.getElementById('json-editor');
     if (!jsonEditor) {
-        console.log('🔴 [JSON DEBUG] JSON editor element not found!');
         return;
     }
 
     if (!editorState.currentMapping) {
-        console.log('🔴 [JSON DEBUG] No currentMapping in editorState!');
         return;
     }
 

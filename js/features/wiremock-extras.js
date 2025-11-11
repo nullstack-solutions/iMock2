@@ -2,38 +2,6 @@
 
 // --- NEW FUNCTIONS FOR WIREMOCK 3.13.x ---
 
-// Fetch unused mappings
-window.getUnmatchedMappings = async () => {
-    try {
-        const response = await apiFetch(ENDPOINTS.MAPPINGS_UNMATCHED);
-        return response.mappings || [];
-    } catch (error) {
-        console.error('Unmatched mappings error:', error);
-        return [];
-    }
-};
-
-// Remove unused mappings
-window.removeUnmatchedMappings = async () => {
-    try {
-        const response = await apiFetch(ENDPOINTS.MAPPINGS_UNMATCHED, {
-            method: 'DELETE'
-        });
-        
-        const count = response.mappings ? response.mappings.length : 0;
-        NotificationManager.success(`Removed ${count} unused mappings`);
-        
-        // Refresh the mappings list
-        await fetchAndRenderMappings();
-        
-        return response.mappings || [];
-    } catch (error) {
-        console.error('Remove unmatched mappings error:', error);
-        NotificationManager.error(`Failed to remove unused mappings: ${error.message}`);
-        return [];
-    }
-};
-
 // Search mappings by metadata
 window.findMappingsByMetadata = async (metadata) => {
     try {
@@ -47,22 +15,6 @@ window.findMappingsByMetadata = async (metadata) => {
         console.error('Find mappings by metadata error:', error);
         return [];
     }
-};
-
-// Updated handler for edit results
-window.handleEditSuccess = async (mapping) => {
-    const id = mapping.id || mapping.uuid;
-
-    // Add optimistic update
-    window.cacheManager.addOptimisticUpdate(mapping, 'update');
-
-    // Refresh the UI immediately
-    window.applyOptimisticMappingUpdate(mapping);
-
-    // Confirm the update after a short delay
-    setTimeout(() => {
-        window.cacheManager.confirmOptimisticUpdate(id);
-    }, 1000);
 };
 
 console.log('✅ Features.js loaded - Business functions for mappings, requests, scenarios + WireMock 3.9.1+ API fixes');
@@ -150,10 +102,6 @@ function isImockCacheMapping(m) {
     } catch { return false; }
 }
 
-function pickUrl(req) {
-    return req?.urlPath || req?.urlPathPattern || req?.urlPattern || req?.url || 'N/A';
-}
-
 function slimMapping(m) {
     return {
         id: m.id || m.uuid,
@@ -165,7 +113,7 @@ function slimMapping(m) {
         newScenarioState: m.newScenarioState,
         request: {
             method: m.request?.method,
-            url: pickUrl(m.request),
+            url: m.request?.urlPath || m.request?.urlPathPattern || m.request?.urlPattern || m.request?.url || 'N/A',
             // No headers/query params in cache - only essential matching data
         },
         // No response data, minimal metadata - essential for UI display
@@ -181,12 +129,6 @@ function slimMapping(m) {
 function buildSlimList(arr) {
     const items = (arr || []).filter(x => !isImockCacheMapping(x)).map(slimMapping);
     return { mappings: items };
-}
-
-function simpleHash(str) {
-    let h = 0;
-    for (let i = 0; i < str.length; i++) { h = (h * 31 + str.charCodeAt(i)) | 0; }
-    return (h >>> 0).toString(16);
 }
 
 async function getCacheByFixedId() {
@@ -228,13 +170,19 @@ async function getCacheByMetadata() {
 
 async function upsertImockCacheMapping(slim) {
     console.log('🧩 [CACHE] Upsert cache mapping start');
+    // Simple hash for cache validation
+    const slimStr = JSON.stringify(slim || {});
+    let h = 0;
+    for (let i = 0; i < slimStr.length; i++) { h = (h * 31 + slimStr.charCodeAt(i)) | 0; }
+    const hash = (h >>> 0).toString(16);
+
     const meta = {
         imock: {
             type: 'cache',
             version: 1,
             timestamp: Date.now(),
             count: (slim?.mappings || []).length,
-            hash: simpleHash(JSON.stringify(slim || {})),
+            hash: hash,
         },
     };
     const stub = {

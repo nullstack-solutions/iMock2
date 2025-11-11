@@ -1,19 +1,6 @@
 'use strict';
 
 (function initDemoMode(global) {
-    function bindNotification(manager, fn, fallback) {
-        if (manager && typeof fn === 'function') {
-            return fn.bind(manager);
-        }
-        if (manager && typeof fallback === 'function') {
-            return fallback.bind(manager);
-        }
-        if (typeof fallback === 'function') {
-            return fallback;
-        }
-        return (message) => console.warn('[DEMO]', message);
-    }
-
     function createDemoLoader(dependencies = {}) {
         const {
             markDemoModeActive,
@@ -37,9 +24,15 @@
             throw new Error('Demo loader requires fetchAndRenderRequests function');
         }
 
-        const notifySuccess = bindNotification(notificationManager, notificationManager.success, notificationManager.info);
-        const notifyError = bindNotification(notificationManager, notificationManager.error, notificationManager.warning);
-        const notifyWarning = bindNotification(notificationManager, notificationManager.warning, notificationManager.info);
+        const notifySuccess = notificationManager?.success?.bind(notificationManager)
+            || notificationManager?.info?.bind(notificationManager)
+            || ((message) => console.warn('[DEMO]', message));
+        const notifyError = notificationManager?.error?.bind(notificationManager)
+            || notificationManager?.warning?.bind(notificationManager)
+            || ((message) => console.warn('[DEMO]', message));
+        const notifyWarning = notificationManager?.warning?.bind(notificationManager)
+            || notificationManager?.info?.bind(notificationManager)
+            || ((message) => console.warn('[DEMO]', message));
 
         return async function loadDemoData() {
             const available = typeof isDatasetAvailable === 'function'
