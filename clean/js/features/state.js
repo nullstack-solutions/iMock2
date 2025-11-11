@@ -200,7 +200,19 @@
     state.removeMappingFromIndex = removeMappingFromIndex;
     state.fetchMappingsFromServer = fetchMappingsFromServer;
 
+    window.markDemoModeActive = markDemoModeActive;
+    window.addMappingToIndex = addMappingToIndex;
+    window.rebuildMappingIndex = rebuildMappingIndex;
+    window.computeMappingTabTotals = computeMappingTabTotals;
+    window.refreshMappingTabSnapshot = refreshMappingTabSnapshot;
+    window.computeRequestTabTotals = computeRequestTabTotals;
+    window.refreshRequestTabSnapshot = refreshRequestTabSnapshot;
+    window.removeMappingFromIndex = removeMappingFromIndex;
+    window.fetchMappingsFromServer = fetchMappingsFromServer;
+
     window.FeaturesState = state;
+
+    console.log('✅ state.js loaded - State management functions registered');
 
     if (typeof window.dispatchEvent === 'function') {
         let readyEvent;
