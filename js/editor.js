@@ -282,73 +282,41 @@ window.updateMapping = async () => {
             return;
         }
 
-        console.log('Sending mapping update:', mappingData);
+        // Add metadata timestamps
+        if (typeof mappingData === 'object' && mappingData) {
+            const nowIso = new Date().toISOString();
+            if (!mappingData.metadata) mappingData.metadata = {};
+            if (!mappingData.metadata.created) mappingData.metadata.created = nowIso;
+            mappingData.metadata.edited = nowIso;
+            mappingData.metadata.source = 'ui';
+        }
 
-        // Ensure metadata with timestamps and source AFTER getting final mappingData
-        (function(){
-            try {
-                const nowIso = new Date().toISOString();
-                if (typeof mappingData === 'object' && mappingData) {
-                    // Initialize metadata object if it doesn't exist
-                    if (!mappingData.metadata) {
-                        mappingData.metadata = {};
-                        console.log('📅 [METADATA] Initialized metadata object');
-                    }
-
-                    // Set created timestamp if not exists (first save)
-                    if (!mappingData.metadata.created) {
-                        mappingData.metadata.created = nowIso;
-                        console.log('📅 [METADATA] Set created timestamp (UI):', mappingData.metadata.created);
-                    }
-
-                    // Always update edited timestamp and source
-                    mappingData.metadata.edited = nowIso;
-                    mappingData.metadata.source = 'ui';
-
-                    console.log('📅 [METADATA] Updated edited timestamp (UI):', mappingData.metadata.edited);
-                    console.log('📅 [METADATA] Set source: ui');
-                }
-            } catch (e) {
-                console.warn('📅 [METADATA] Failed to update metadata:', e);
-            }
-        })();
         const response = await apiFetch(`/mappings/${id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(mappingData)
         });
 
-        // Use server response for optimistic updates - it contains the authoritative data
         const updatedMapping = response?.mapping || response;
-        console.log('Mapping updated successfully, using server response for optimistic updates:', updatedMapping);
-
         NotificationManager.success('Mapping updated!');
 
         // Update cache and UI with server response
-        try {
-            if (updatedMapping) {
-                updateOptimisticCache(updatedMapping, 'update');
-            }
-        } catch (e) { console.warn('optimistic updates after edit failed:', e); }
+        if (updatedMapping) {
+            updateOptimisticCache(updatedMapping, 'update');
+        }
 
         editorState.isDirty = false;
         updateDirtyIndicator();
-
-        console.log('Hiding modal...');
         hideModal('edit-mapping-modal');
 
-        // No more immediate cache rebuild - optimistic cache handles it
-        
-        // Reapply filters after updating mappings
+        // Reapply filters if any are active
         const hasActiveFilters = document.getElementById(SELECTORS.MAPPING_FILTERS.METHOD)?.value ||
                                document.getElementById(SELECTORS.MAPPING_FILTERS.URL)?.value ||
                                document.getElementById(SELECTORS.MAPPING_FILTERS.STATUS)?.value;
-        
+
         if (hasActiveFilters) {
             FilterManager.applyMappingFilters();
         }
-
-        console.log('updateMapping completed successfully');
 
     } catch (e) {
         console.error('Error in updateMapping:', e);
@@ -362,10 +330,6 @@ window.updateMapping = async () => {
  * Populate the JSON editor with mapping data
  */
 window.populateEditMappingForm = (mapping) => {
-    console.log('🔵 [EDITOR DEBUG] populateEditMappingForm called');
-    console.log('🔵 [EDITOR DEBUG] Incoming mapping ID:', mapping?.id);
-    console.log('🔵 [EDITOR DEBUG] Incoming mapping name:', mapping?.name);
-
     // Store direct reference - no deep clone needed!
     editorState.originalMapping = mapping;
     editorState.currentMapping = mapping;
@@ -374,85 +338,48 @@ window.populateEditMappingForm = (mapping) => {
 
     // Load JSON editor
     loadJSONMode();
-
-    console.log('🔵 [EDITOR DEBUG] JSON editor populated for mapping ID:', mapping?.id);
 };
 
 // ===== JSON EDITOR FUNCTIONS =====
 
 function saveFromJSONMode() {
-    console.log('🟢 [SAVE DEBUG] saveFromJSONMode called');
-    
     const jsonEditor = document.getElementById('json-editor');
-    if (!jsonEditor) {
-        console.log('🔴 [SAVE DEBUG] JSON editor element not found!');
-        return;
-    }
-    
-    const jsonText = jsonEditor.value;
-    if (!jsonText.trim()) {
-        console.log('🟢 [SAVE DEBUG] JSON editor is empty, nothing to save');
-        return;
-    }
-    
-    console.log('🟢 [SAVE DEBUG] JSON text length:', jsonText.length);
-    console.log('🟢 [SAVE DEBUG] Previous currentMapping ID:', editorState.currentMapping?.id);
-    
+    if (!jsonEditor) return;
+
+    const jsonText = jsonEditor.value.trim();
+    if (!jsonText) return;
+
     try {
-        const parsedMapping = JSON.parse(jsonText);
-        console.log('🟢 [SAVE DEBUG] Parsed mapping ID:', parsedMapping?.id);
-        console.log('🟢 [SAVE DEBUG] Parsed mapping name:', parsedMapping?.name);
-        
-        editorState.currentMapping = parsedMapping;
-        console.log('🟢 [SAVE DEBUG] Updated currentMapping ID:', editorState.currentMapping?.id);
+        editorState.currentMapping = JSON.parse(jsonText);
     } catch (error) {
-        console.log('🔴 [SAVE DEBUG] JSON parse error:', error.message);
         throw new Error('Invalid JSON: ' + error.message);
     }
 }
 
 /**
- * Load JSON mode
+ * Load JSON mode - minimal processing for maximum speed
  */
 function loadJSONMode() {
-    console.log('🟡 [JSON DEBUG] loadJSONMode called');
-    console.log('🟡 [JSON DEBUG] currentMapping ID:', editorState.currentMapping?.id);
-    console.log('🟡 [JSON DEBUG] currentMapping name:', editorState.currentMapping?.name);
-
     const jsonEditor = document.getElementById('json-editor');
-    if (!jsonEditor) {
-        console.log('🔴 [JSON DEBUG] JSON editor element not found!');
-        return;
-    }
+    if (!jsonEditor || !editorState.currentMapping) return;
 
-    if (!editorState.currentMapping) {
-        console.log('🔴 [JSON DEBUG] No currentMapping in editorState!');
-        return;
-    }
+    // Stringify with NO formatting - fastest option
+    // User can click "Format" button if they want pretty JSON
+    const minifiedJSON = JSON.stringify(editorState.currentMapping);
 
-    // Defer JSON insertion to avoid blocking the UI thread
-    // This allows modal to render first, then populate content asynchronously
-    const formattedJSON = JSON.stringify(editorState.currentMapping, null, 2);
-
-    // For large JSON (>100KB), show placeholder and defer insertion
-    if (formattedJSON.length > 100000) {
-        jsonEditor.value = '// Loading large JSON...\n// Please wait...';
+    // For large JSON (>100KB), defer insertion to next tick
+    if (minifiedJSON.length > 100000) {
+        jsonEditor.value = '// Loading...';
         jsonEditor.disabled = true;
 
-        // Use setTimeout to yield to browser and let modal render
         setTimeout(() => {
-            jsonEditor.value = formattedJSON;
+            jsonEditor.value = minifiedJSON;
             jsonEditor.disabled = false;
-            console.log('🟡 [JSON DEBUG] Large JSON loaded asynchronously');
-            console.log('🟡 [JSON DEBUG] JSON content length:', formattedJSON.length);
         }, 0);
     } else {
-        // Small JSON can be inserted immediately
-        jsonEditor.value = formattedJSON;
-        console.log('🟡 [JSON DEBUG] JSON content length:', formattedJSON.length);
+        // Small JSON - insert immediately
+        jsonEditor.value = minifiedJSON;
     }
-
-    console.log('🟡 [JSON DEBUG] JSON editor populated with mapping ID:', editorState.currentMapping?.id);
 }
 
 /**
