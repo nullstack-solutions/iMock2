@@ -124,6 +124,12 @@ function initializeJsonEditorAutoResize() {
 
     if (!jsonEditor || !container) return;
 
+    // Skip auto-resize for modal windows - they use fixed viewport heights in CSS
+    const isInModal = container.closest('.modal');
+    if (isInModal) {
+        return;
+    }
+
     const computedMinHeight = parseInt(window.getComputedStyle(jsonEditor).minHeight, 10);
     if (!Number.isNaN(computedMinHeight)) {
         jsonEditor.dataset.minHeight = computedMinHeight;
