@@ -581,7 +581,7 @@ window.apiFetch = async (endpoint, options = {}) => {
     const controller = new AbortController();
 
     // Read timeout from settings, fallback to centralized default
-    const timeoutSettings = (typeof window.readWiremockSettings === 'function') ? window.readWiremockSettings() : {};
+    const timeoutSettings = Utils.safeCall(window.readWiremockSettings) || {};
     const defaultTimeout = window.DEFAULT_SETTINGS?.requestTimeout ? parseInt(window.DEFAULT_SETTINGS.requestTimeout) : 69000;
     const currentTimeout = timeoutSettings.requestTimeout ? parseInt(timeoutSettings.requestTimeout) : defaultTimeout;
     console.log(`⏱️ [API] Using request timeout: ${currentTimeout}ms (from settings: ${timeoutSettings.requestTimeout || `default ${defaultTimeout}`})`);
@@ -665,9 +665,7 @@ window.apiFetch = async (endpoint, options = {}) => {
         try {
             if (endpoint === (window.ENDPOINTS && window.ENDPOINTS.HEALTH) || endpoint === (window.ENDPOINTS && window.ENDPOINTS.MAPPINGS)) {
                 window.lastWiremockSuccess = Date.now();
-                if (typeof window.updateLastSuccessUI === 'function') {
-                    window.updateLastSuccessUI();
-                }
+                Utils.safeCall(window.updateLastSuccessUI);
             }
         } catch (_) {}
         
@@ -899,7 +897,7 @@ const applyThemeToDom = (theme) => {
 const persistThemePreference = (preference) => {
     localStorage.setItem('theme', preference);
     try {
-        const current = (typeof window.readWiremockSettings === 'function') ? window.readWiremockSettings() : {};
+        const current = Utils.safeCall(window.readWiremockSettings) || {};
         localStorage.setItem('wiremock-settings', JSON.stringify({ ...current, theme: preference }));
     } catch (_) {}
 };
@@ -977,7 +975,7 @@ LifecycleManager.addEventListener(document, 'keydown', (e) => {
 
 // Debug function to inspect custom headers
 window.debugCustomHeaders = () => {
-    const settings = (typeof window.readWiremockSettings === 'function') ? window.readWiremockSettings() : {};
+    const settings = Utils.safeCall(window.readWiremockSettings) || {};
     console.log('🔍 Custom Headers Debug:', {
         'window.customHeaders': window.customHeaders,
         'settings.customHeaders': settings.customHeaders,

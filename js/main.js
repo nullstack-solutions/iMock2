@@ -30,18 +30,23 @@ window.customHeaders = { ...(DEFAULT_SETTINGS.customHeaders || {}) };
 let autoConnectInitiated = false;
 
 function getStoredSettings() {
-    if (typeof window.readWiremockSettings === 'function') {
-        return window.readWiremockSettings();
+    // Try reading using the standard function first
+    const fromStandard = Utils.safeCall(window.readWiremockSettings);
+    if (fromStandard) {
+        return fromStandard;
     }
 
+    // Fallback to direct localStorage read
     try {
         const raw = localStorage.getItem('wiremock-settings');
         if (!raw) {
             return {};
         }
         const parsed = JSON.parse(raw);
-        if (typeof window.normalizeWiremockSettings === 'function') {
-            return window.normalizeWiremockSettings(parsed);
+        // Try normalizing if function exists
+        const normalized = Utils.safeCall(window.normalizeWiremockSettings, parsed);
+        if (normalized) {
+            return normalized;
         }
         return parsed && typeof parsed === 'object' ? parsed : {};
     } catch (error) {
@@ -291,12 +296,8 @@ window.editMapping = (mappingId) => {
             window.LifecycleManager.clearInterval(checkClosed);
             console.log('🔄 Editor closed, updating counters only');
             // Only update counters, don't refresh data to preserve optimistic updates
-            if (typeof window.updateMappingsCounter === 'function') {
-                window.updateMappingsCounter();
-            }
-            if (typeof window.updateRequestsCounter === 'function') {
-                window.updateRequestsCounter();
-            }
+            Utils.safeCall(window.updateMappingsCounter);
+            Utils.safeCall(window.updateRequestsCounter);
         }
     }, 1000);
 
