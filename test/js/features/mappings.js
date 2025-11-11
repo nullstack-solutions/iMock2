@@ -24,6 +24,65 @@ if (!isOptimisticShadowMap(window.optimisticShadowMappings)) {
     window.optimisticShadowMappings = new Map();
 }
 
+// Limits to prevent unbounded memory growth
+// MAX_PREVIEW_STATE_SIZE: Sufficient for typical usage - preserves recently expanded previews
+const MAX_PREVIEW_STATE_SIZE = 50;
+// MAX_TOAST_STATE_SIZE: Allows tracking notification history while limiting memory
+const MAX_TOAST_STATE_SIZE = 100;
+// MAX_OPTIMISTIC_MAPPINGS: Covers active editing sessions without excessive memory
+const MAX_OPTIMISTIC_MAPPINGS = 50;
+
+// Periodic cleanup for memory management
+if (!window.mappingMemoryCleanupInterval && window.LifecycleManager) {
+    window.mappingMemoryCleanupInterval = window.LifecycleManager.setInterval(() => {
+        // Clean up preview state - keep only most recent items
+        if (window.mappingPreviewState.size > MAX_PREVIEW_STATE_SIZE) {
+            const toKeep = Array.from(window.mappingPreviewState).slice(-MAX_PREVIEW_STATE_SIZE);
+            window.mappingPreviewState.clear();
+            toKeep.forEach(id => window.mappingPreviewState.add(id));
+            console.log('🧹 Cleaned mappingPreviewState, kept', toKeep.length, 'items');
+        }
+
+        // Clean up toast state - remove expired entries and limit size (optimized single pass)
+        if (window.mappingPreviewToastState.size > 0) {
+            const now = Date.now();
+            const TOAST_TTL = 5 * 60 * 1000; // 5 minutes
+
+            // Collect non-expired entries in single pass
+            const validEntries = [];
+            for (const [id, timestamp] of window.mappingPreviewToastState.entries()) {
+                if (now - timestamp <= TOAST_TTL) {
+                    validEntries.push([id, timestamp]);
+                }
+            }
+
+            // If too many valid entries, keep only the most recent
+            if (validEntries.length > MAX_TOAST_STATE_SIZE) {
+                validEntries.sort((a, b) => b[1] - a[1]); // Sort by timestamp, newest first
+                validEntries.length = MAX_TOAST_STATE_SIZE;
+                console.log('🧹 Cleaned mappingPreviewToastState, kept', MAX_TOAST_STATE_SIZE, 'items');
+            }
+
+            // Rebuild map with valid entries only
+            window.mappingPreviewToastState.clear();
+            validEntries.forEach(([id, timestamp]) => {
+                window.mappingPreviewToastState.set(id, timestamp);
+            });
+        }
+
+        // Clean up optimistic shadow mappings - keep only recent items
+        if (window.optimisticShadowMappings.size > MAX_OPTIMISTIC_MAPPINGS) {
+            const entries = Array.from(window.optimisticShadowMappings.entries());
+            entries.sort((a, b) => (b[1]?.ts || 0) - (a[1]?.ts || 0));
+            window.optimisticShadowMappings.clear();
+            entries.slice(0, MAX_OPTIMISTIC_MAPPINGS).forEach(([id, entry]) => {
+                window.optimisticShadowMappings.set(id, entry);
+            });
+            console.log('🧹 Cleaned optimisticShadowMappings, kept', MAX_OPTIMISTIC_MAPPINGS, 'items');
+        }
+    }, 60000); // Run every minute
+}
+
 const UIComponents = {
     // Base card component replacing renderMappingCard and renderRequestCard
     createCard: (type, data, actions = []) => {
