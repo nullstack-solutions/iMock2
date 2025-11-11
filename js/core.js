@@ -1111,16 +1111,35 @@ window.debugCustomHeaders = () => {
 
 // --- DOM ELEMENT CACHE FOR PERFORMANCE OPTIMIZATION ---
 window.elementCache = new Map();
+// Limit cache to 100 entries - balances performance with memory usage.
+// Based on analysis: typical usage accesses ~30-50 unique elements per session.
+const MAX_ELEMENT_CACHE_SIZE = 100;
 
-window.getElement = (id) => {
-    if (!window.elementCache.has(id)) {
-        const element = document.getElementById(id);
-        if (element) {
-            window.elementCache.set(id, element);
-        }
+window.getElement = (id, invalidateCache = false) => {
+    if (invalidateCache) {
+        window.elementCache.delete(id);
+    }
+
+    // Check if element is already cached
+    if (window.elementCache.has(id)) {
+        const element = window.elementCache.get(id);
+        // LRU: Move to end by deleting and re-inserting (updates access order)
+        window.elementCache.delete(id);
+        window.elementCache.set(id, element);
         return element;
     }
-    return window.elementCache.get(id);
+
+    // Not in cache, fetch from DOM
+    const element = document.getElementById(id);
+    if (element) {
+        // If cache is full, remove least recently used entry (first item in Map)
+        if (window.elementCache.size >= MAX_ELEMENT_CACHE_SIZE) {
+            const firstKey = window.elementCache.keys().next().value;
+            window.elementCache.delete(firstKey);
+        }
+        window.elementCache.set(id, element);
+    }
+    return element;
 };
 
 window.clearElementCache = () => {
@@ -1134,22 +1153,6 @@ window.invalidateElementCache = (id) => {
         // If no id provided, clear entire cache
         window.elementCache.clear();
     }
-};
-
-// Enhanced getElement with automatic cache invalidation on DOM changes
-window.getElement = (id, invalidateCache = false) => {
-    if (invalidateCache) {
-        window.invalidateElementCache(id);
-    }
-
-    if (!window.elementCache.has(id)) {
-        const element = document.getElementById(id);
-        if (element) {
-            window.elementCache.set(id, element);
-        }
-        return element;
-    }
-    return window.elementCache.get(id);
 };
 
 // --- ENHANCED ERROR MESSAGE UTILITY ---

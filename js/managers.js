@@ -33,6 +33,7 @@ if (!window.NotificationManager) {
         defaultDuration: 4000,
         motionQuery: null,
         _boundHandleKeydown: null,
+        _cleanupInterval: null,
 
         init() {
             if (!this.toastContainer) {
@@ -53,6 +54,40 @@ if (!window.NotificationManager) {
             if (!this._boundHandleKeydown) {
                 this._boundHandleKeydown = this.handleKeydown.bind(this);
                 document.addEventListener('keydown', this._boundHandleKeydown);
+            }
+
+            // Periodic cleanup of dedupeMap to prevent memory leaks
+            // This acts as a "safety net" in case individual cleanupTimers fail
+            // (e.g., due to browser throttling, errors, or page in background)
+            if (!this._cleanupInterval && window.LifecycleManager) {
+                this._cleanupInterval = window.LifecycleManager.setInterval(() => {
+                    const now = Date.now();
+                    const maxSize = 100; // Prevent unbounded growth
+
+                    // Remove expired entries (backup for failed individual timers)
+                    for (const [key, entry] of this.dedupeMap.entries()) {
+                        if (now - entry.timestamp > this.dedupeWindowMs * 2) {
+                            if (entry.cleanupTimer) {
+                                clearTimeout(entry.cleanupTimer);
+                            }
+                            this.dedupeMap.delete(key);
+                        }
+                    }
+
+                    // If still too large, remove oldest entries
+                    if (this.dedupeMap.size > maxSize) {
+                        const entries = Array.from(this.dedupeMap.entries());
+                        entries.sort((a, b) => a[1].timestamp - b[1].timestamp);
+                        const toRemove = entries.slice(0, this.dedupeMap.size - maxSize);
+                        toRemove.forEach(([key, entry]) => {
+                            if (entry.cleanupTimer) {
+                                clearTimeout(entry.cleanupTimer);
+                            }
+                            this.dedupeMap.delete(key);
+                        });
+                        console.log('🧹 NotificationManager cleaned', toRemove.length, 'old dedupe entries');
+                    }
+                }, 60000); // Run every minute
             }
         },
 
