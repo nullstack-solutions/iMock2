@@ -522,6 +522,12 @@ pre {
     outline-offset: -1px;
 }
 
+.json-editor:disabled {
+    opacity: 0.6;
+    cursor: wait;
+    color: var(--text-secondary);
+}
+
 .json-validation {
     padding: var(--space-2) var(--space-4);
     font-size: var(--font-size-xs);
