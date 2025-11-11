@@ -66,11 +66,26 @@ function setupEditorModeHandlers() {
         }
     });
 
-    // Auto-save on input changes
+    // Auto-save on input changes with throttling for performance
+    let dirtyIndicatorTimeout = null;
     document.addEventListener('input', (e) => {
         if (e.target.matches('.editor-field') || e.target.id === 'json-editor') {
+            const wasClean = !editorState.isDirty;
             editorState.isDirty = true;
-            updateDirtyIndicator();
+
+            // Only update indicator if state changed or after throttle delay
+            if (wasClean) {
+                updateDirtyIndicator();
+            } else {
+                // Throttle subsequent updates to avoid DOM thrashing
+                if (dirtyIndicatorTimeout) {
+                    clearTimeout(dirtyIndicatorTimeout);
+                }
+                dirtyIndicatorTimeout = setTimeout(() => {
+                    updateDirtyIndicator();
+                    dirtyIndicatorTimeout = null;
+                }, 300);
+            }
         }
     });
 }
