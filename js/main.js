@@ -56,39 +56,71 @@ function parseCustomHeadersInput(rawValue) {
         return { headers: {}, raw: '' };
     }
 
+    const ensureObject = typeof window.ensureCustomHeaderObject === 'function'
+        ? window.ensureCustomHeaderObject
+        : (value) => (value && typeof value === 'object' && !Array.isArray(value)) ? value : {};
+    const normalizeName = typeof window.normalizeCustomHeaderName === 'function'
+        ? window.normalizeCustomHeaderName
+        : (value) => (value || '').toString().trim();
+    const normalizeValue = typeof window.normalizeCustomHeaderValue === 'function'
+        ? window.normalizeCustomHeaderValue
+        : (value) => (value || '').toString().trim();
+    const validateName = typeof window.isValidCustomHeaderName === 'function'
+        ? window.isValidCustomHeaderName
+        : () => true;
+    const containsInvalidValueChars = typeof window.hasInvalidCustomHeaderValue === 'function'
+        ? window.hasInvalidCustomHeaderValue
+        : () => false;
+
+    let parsed;
     try {
-        const parsed = JSON.parse(trimmed);
-        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-            throw new Error('Custom headers must be a JSON object.');
-        }
-        return { headers: parsed, raw: trimmed };
-    } catch (jsonError) {
-        const lines = trimmed.split(/\n+/);
-        const headers = {};
-        let valid = true;
-
-        for (const line of lines) {
-            if (!line.trim()) continue;
-            const separatorIndex = line.indexOf(':');
-            if (separatorIndex === -1) {
-                valid = false;
-                break;
-            }
-            const key = line.slice(0, separatorIndex).trim();
-            const value = line.slice(separatorIndex + 1).trim();
-            if (!key) {
-                valid = false;
-                break;
-            }
-            headers[key] = value;
-        }
-
-        if (valid && Object.keys(headers).length > 0) {
-            return { headers, raw: trimmed };
-        }
-
-        throw new Error('Custom headers must be valid JSON or "Key: Value" pairs.');
+        parsed = JSON.parse(trimmed);
+    } catch (error) {
+        throw new Error('Custom headers must be provided as JSON, for example {"Authorization": "Bearer token"}.');
     }
+
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('Custom headers must be a JSON object with key/value pairs.');
+    }
+
+    const sanitized = ensureObject(parsed);
+    if (Object.keys(sanitized).length === 0 && Object.keys(parsed).length > 0) {
+        throw new Error('Custom headers must include at least one valid header name/value pair.');
+    }
+
+    const invalidEntry = Object.entries(parsed).find(([key, value]) => {
+        const normalizedKey = normalizeName(key);
+        if (!normalizedKey) {
+            return true;
+        }
+
+        if (!validateName(normalizedKey)) {
+            return true;
+        }
+
+        if (value !== null && typeof value === 'object') {
+            return true;
+        }
+
+        const normalizedValue = normalizeValue(value);
+        return containsInvalidValueChars(normalizedValue);
+    });
+
+    if (invalidEntry) {
+        const [key, value] = invalidEntry;
+        if (value !== null && typeof value === 'object') {
+            throw new Error(`Invalid value for header "${key}". Header values must be primitive JSON values (string, number, boolean, or null).`);
+        }
+
+        const normalizedKey = normalizeName(key) || key;
+        if (!normalizedKey || !validateName(normalizedKey)) {
+            throw new Error(`Invalid header name "${key}". Header names may only include letters, numbers, and the characters !#$%&'*+.^_\`|~-.`);
+        }
+
+        throw new Error(`Invalid header value for "${normalizedKey}". Values cannot contain control characters.`);
+    }
+
+    return { headers: sanitized, raw: JSON.stringify(sanitized, null, 2) };
 }
 
 function serializeCustomHeaders(settings) {
@@ -286,9 +318,11 @@ window.editMapping = (mappingId) => {
     NotificationManager.info(`Editor opened for mapping ${mappingId}`);
         
     // Track window closure to refresh counters
+    let safetyTimeout = null;
     const checkClosed = window.LifecycleManager.setInterval(() => {
         if (editorWindow.closed) {
             window.LifecycleManager.clearInterval(checkClosed);
+            if (safetyTimeout) clearTimeout(safetyTimeout);
             console.log('🔄 Editor closed, updating counters only');
             // Only update counters, don't refresh data to preserve optimistic updates
             if (typeof window.updateMappingsCounter === 'function') {
@@ -301,9 +335,10 @@ window.editMapping = (mappingId) => {
     }, 1000);
 
     // Safety cleanup: clear interval after 5 minutes to prevent memory leaks
-    setTimeout(() => {
+    safetyTimeout = setTimeout(() => {
         if (!editorWindow.closed) {
             window.LifecycleManager.clearInterval(checkClosed);
+            safetyTimeout = null;
             console.log('🔄 Editor interval cleaned up after timeout');
         }
     }, 5 * 60 * 1000); // 5 minutes
@@ -738,9 +773,14 @@ window.addEventListener('storage', (e) => {
 });
 
 // Listen for BroadcastChannel cache refresh messages (modern browsers)
+// Store channels globally for cleanup
+window.broadcastChannels = window.broadcastChannels || [];
+
 if (typeof BroadcastChannel !== 'undefined') {
     try {
         const cacheRefreshChannel = new BroadcastChannel('imock-cache-refresh');
+        window.broadcastChannels.push(cacheRefreshChannel);
+
         cacheRefreshChannel.addEventListener('message', (event) => {
             if (event.data && event.data.type === 'cache-refresh') {
                 console.log('📡 [main.js] Received BroadcastChannel cache refresh from:', event.data.source);
@@ -754,6 +794,8 @@ if (typeof BroadcastChannel !== 'undefined') {
 
         // Listen for optimistic mapping updates via BroadcastChannel
         const optimisticUpdateChannel = new BroadcastChannel('imock-optimistic-updates');
+        window.broadcastChannels.push(optimisticUpdateChannel);
+
         optimisticUpdateChannel.addEventListener('message', (event) => {
             if (event.data && event.data.type === 'optimistic-mapping-update') {
                 console.log('🎯 [main.js] Received BroadcastChannel optimistic update from:', event.data.source, event.data.mapping.id);
@@ -771,6 +813,20 @@ if (typeof BroadcastChannel !== 'undefined') {
         console.warn('BroadcastChannel setup failed:', error);
     }
 }
+
+// Cleanup BroadcastChannels on page unload
+window.addEventListener('beforeunload', () => {
+    if (window.broadcastChannels) {
+        window.broadcastChannels.forEach(channel => {
+            try {
+                channel.close();
+            } catch (e) {
+                console.warn('Failed to close BroadcastChannel:', e);
+            }
+        });
+        window.broadcastChannels = [];
+    }
+});
 
 // Load connection settings into main connection form
 function loadConnectionSettings() {

@@ -4,11 +4,23 @@
     const window = global;
     const state = window.FeaturesState || {};
 
-    if (!Array.isArray(window.originalMappings)) {
-        window.originalMappings = [];
+    // MEMORY OPTIMIZATION: Use getters instead of arrays to avoid data duplication
+    // Single source of truth: cacheManager.cache
+    if (!Object.getOwnPropertyDescriptor(window, 'originalMappings')) {
+        Object.defineProperty(window, 'originalMappings', {
+            get() {
+                return window.cacheManager?.cache ? Array.from(window.cacheManager.cache.values()) : [];
+            },
+            configurable: true
+        });
     }
-    if (!Array.isArray(window.allMappings)) {
-        window.allMappings = [];
+    if (!Object.getOwnPropertyDescriptor(window, 'allMappings')) {
+        Object.defineProperty(window, 'allMappings', {
+            get() {
+                return window.cacheManager?.cache ? Array.from(window.cacheManager.cache.values()) : [];
+            },
+            configurable: true
+        });
     }
     if (!Array.isArray(window.originalRequests)) {
         window.originalRequests = [];

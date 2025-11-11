@@ -21,7 +21,8 @@ document.addEventListener('DOMContentLoaded', () => {
     setupMappingFormListeners();
     // Set up JSON editor mode handlers
     setupEditorModeHandlers();
-    
+    initializeMappingTemplateSection();
+
     // Ensure JSON editor is visible and form is hidden on load
     const formEditor = document.getElementById('form-editor-container');
     const jsonEditor = document.getElementById('json-editor-container');
@@ -97,6 +98,509 @@ function setupEditorModeHandlers() {
     });
 }
 
+const mappingTemplateCache = new Map();
+const TEMPLATE_CATEGORY_LABELS = {
+    basic: 'Basic',
+    advanced: 'Advanced',
+    testing: 'Testing',
+    integration: 'Integration',
+    proxy: 'Proxy'
+};
+
+function initializeMappingTemplateSection() {
+    const grid = document.getElementById('mapping-template-grid');
+    if (!grid) {
+        return;
+    }
+
+    const emptyElement = document.getElementById('mapping-template-empty');
+
+    grid.addEventListener('click', (event) => {
+        const actionButton = event.target.closest('[data-template-action]');
+        if (!actionButton) {
+            return;
+        }
+
+        const card = actionButton.closest('[data-template-id]');
+        const templateId = card?.dataset.templateId;
+        if (!templateId) {
+            return;
+        }
+
+        event.preventDefault();
+
+        const previewElement = card.querySelector('[data-template-preview]');
+        const previewButton = card.querySelector('[data-template-action="preview"]');
+
+        switch (actionButton.dataset.templateAction) {
+            case 'preview':
+                toggleMappingTemplatePreview(templateId, previewElement, actionButton);
+                break;
+            case 'copy':
+                copyTemplateJson(templateId);
+                break;
+            case 'create':
+                createMappingFromTemplateFromModal(templateId, {
+                    button: actionButton,
+                    previewElement,
+                    previewButton
+                });
+                break;
+            default:
+                break;
+        }
+    });
+
+    const refresh = () => renderMappingTemplateGrid({ grid, emptyElement });
+    const reset = () => {
+        grid.querySelectorAll('[data-template-preview]').forEach((previewElement) => {
+            const parentCard = previewElement.closest('[data-template-id]');
+            const previewButton = parentCard?.querySelector('[data-template-action="preview"]');
+            hideMappingTemplatePreview(previewElement, previewButton);
+        });
+    };
+
+    refresh();
+    window.refreshMappingTemplateSection = refresh;
+    window.resetMappingTemplateSection = reset;
+}
+
+function getTemplateLibraryItems() {
+    if (window.MonacoTemplateLibrary && typeof window.MonacoTemplateLibrary.getAll === 'function') {
+        try {
+            return window.MonacoTemplateLibrary.getAll().filter((item) => item && item.id && item.content);
+        } catch (error) {
+            console.warn('Failed to read template library:', error);
+            return [];
+        }
+    }
+    return [];
+}
+
+function renderMappingTemplateGrid({ grid, emptyElement }) {
+    if (!grid) {
+        return;
+    }
+
+    const templates = getTemplateLibraryItems();
+    mappingTemplateCache.clear();
+
+    templates.forEach((template) => {
+        mappingTemplateCache.set(template.id, template);
+    });
+
+    grid.innerHTML = '';
+
+    if (!templates.length) {
+        emptyElement?.classList.remove('hidden');
+        return;
+    }
+
+    emptyElement?.classList.add('hidden');
+
+    const fragment = document.createDocumentFragment();
+    templates.forEach((template) => {
+        const card = createMappingTemplateCard(template);
+        fragment.appendChild(card);
+    });
+
+    grid.appendChild(fragment);
+}
+
+function createMappingTemplateCard(template) {
+    const card = document.createElement('article');
+    card.className = 'template-card';
+    card.dataset.templateId = template.id;
+
+    const header = document.createElement('div');
+    header.className = 'template-header';
+
+    const title = document.createElement('h3');
+    title.textContent = template.title || template.id;
+    header.appendChild(title);
+
+    const badgeCategory = template.category && TEMPLATE_CATEGORY_LABELS[template.category]
+        ? template.category
+        : 'basic';
+    const badge = document.createElement('span');
+    badge.className = `template-badge template-badge--${badgeCategory}`;
+    badge.textContent = TEMPLATE_CATEGORY_LABELS[badgeCategory] || 'Template';
+    header.appendChild(badge);
+
+    card.appendChild(header);
+
+    const description = document.createElement('p');
+    description.className = 'template-description';
+    description.textContent = template.description || 'Ready-to-use WireMock template.';
+    card.appendChild(description);
+
+    const headline = getTemplateHeadline(template);
+    if (headline) {
+        const highlight = document.createElement('span');
+        highlight.className = 'template-highlight';
+        highlight.textContent = headline;
+        card.appendChild(highlight);
+    }
+
+    const featureData = getTemplateFeature(template);
+    if (featureData) {
+        const feature = document.createElement('div');
+        feature.className = 'template-feature';
+
+        const key = document.createElement('span');
+        key.className = 'template-feature__key';
+        key.textContent = featureData.label;
+
+        const value = document.createElement('span');
+        value.className = 'template-feature__value';
+        value.textContent = featureData.value;
+
+        feature.append(key, value);
+        card.appendChild(feature);
+    }
+
+    const actions = document.createElement('div');
+    actions.className = 'template-actions';
+
+    const previewButton = document.createElement('button');
+    previewButton.type = 'button';
+    previewButton.className = 'btn btn-secondary btn-sm';
+    previewButton.dataset.templateAction = 'preview';
+    previewButton.textContent = 'Preview JSON';
+    actions.appendChild(previewButton);
+
+    const copyButton = document.createElement('button');
+    copyButton.type = 'button';
+    copyButton.className = 'btn btn-secondary btn-sm';
+    copyButton.dataset.templateAction = 'copy';
+    copyButton.textContent = 'Copy JSON';
+    actions.appendChild(copyButton);
+
+    const createButton = document.createElement('button');
+    createButton.type = 'button';
+    createButton.className = 'btn btn-primary btn-sm';
+    createButton.dataset.templateAction = 'create';
+    const label = document.createElement('span');
+    label.className = 'btn-label';
+    label.textContent = 'Create & edit';
+    createButton.appendChild(label);
+    actions.appendChild(createButton);
+
+    card.appendChild(actions);
+
+    const previewElement = document.createElement('pre');
+    previewElement.className = 'template-preview hidden';
+    previewElement.setAttribute('data-template-preview', 'true');
+    card.appendChild(previewElement);
+
+    return card;
+}
+
+function resetPreviewButton(previewButton) {
+    if (!previewButton) {
+        return;
+    }
+    previewButton.textContent = 'Preview JSON';
+    delete previewButton.dataset.previewVisible;
+}
+
+function hideMappingTemplatePreview(previewElement, previewButton) {
+    if (previewElement) {
+        previewElement.textContent = '';
+        previewElement.classList.add('hidden');
+    }
+    resetPreviewButton(previewButton);
+}
+
+function toggleMappingTemplatePreview(templateId, previewElement, previewButton) {
+    if (!previewElement || !previewButton) {
+        return;
+    }
+
+    if (previewButton.dataset.previewVisible === 'true') {
+        hideMappingTemplatePreview(previewElement, previewButton);
+        return;
+    }
+
+    if (!templateId) {
+        NotificationManager.error('Select a template to preview');
+        return;
+    }
+
+    const template = mappingTemplateCache.get(templateId);
+    if (!template) {
+        NotificationManager.error('Template not found');
+        return;
+    }
+
+    try {
+        previewElement.textContent = JSON.stringify(template.content, null, 2);
+    } catch (error) {
+        console.warn('Failed to render template preview:', error);
+        previewElement.textContent = 'Unable to render template preview.';
+    }
+
+    previewElement.classList.remove('hidden');
+    previewButton.textContent = 'Hide preview';
+    previewButton.dataset.previewVisible = 'true';
+}
+
+async function copyTemplateJson(templateId) {
+    const template = mappingTemplateCache.get(templateId);
+    if (!template) {
+        NotificationManager.error('Template not found');
+        return;
+    }
+
+    let payload;
+    try {
+        payload = typeof template.content === 'string'
+            ? template.content
+            : JSON.stringify(template.content, null, 2);
+    } catch (error) {
+        console.warn('Failed to serialise template for copy:', error);
+        NotificationManager.error('Template content is invalid');
+        return;
+    }
+
+    const copied = await copyTextToClipboard(payload);
+    if (copied) {
+        NotificationManager.success('Template JSON copied to clipboard');
+    } else {
+        NotificationManager.error('Unable to copy template JSON');
+    }
+}
+
+async function copyTextToClipboard(text) {
+    if (navigator?.clipboard?.writeText) {
+        try {
+            await navigator.clipboard.writeText(text);
+            return true;
+        } catch (error) {
+            console.warn('Clipboard API copy failed:', error);
+        }
+    }
+
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'absolute';
+    textarea.style.left = '-9999px';
+    document.body.appendChild(textarea);
+    textarea.select();
+
+    let success = false;
+    try {
+        success = document.execCommand('copy');
+    } catch (error) {
+        console.warn('document.execCommand copy failed:', error);
+        success = false;
+    }
+
+    document.body.removeChild(textarea);
+    return success;
+}
+
+function resolveTemplatePath(source, path) {
+    if (!source || !path) {
+        return undefined;
+    }
+
+    const segments = Array.isArray(path)
+        ? path
+        : String(path)
+            .replace(/\[(\d+)\]/g, '.$1')
+            .split('.');
+
+    return segments.reduce((acc, segment) => {
+        if (acc == null) {
+            return undefined;
+        }
+
+        if (Array.isArray(acc)) {
+            const index = Number(segment);
+            return Number.isInteger(index) ? acc[index] : undefined;
+        }
+
+        return acc[segment];
+    }, source);
+}
+
+function formatFeatureValue(value) {
+    if (value == null) {
+        return '';
+    }
+
+    if (typeof value === 'string') {
+        return value.length > 80 ? `${value.slice(0, 77)}…` : value;
+    }
+
+    if (typeof value === 'number' || typeof value === 'boolean') {
+        return String(value);
+    }
+
+    try {
+        const serialized = JSON.stringify(value);
+        return serialized.length > 80 ? `${serialized.slice(0, 77)}…` : serialized;
+    } catch (error) {
+        console.warn('Failed to serialise feature value', error);
+        return '';
+    }
+}
+
+function getTemplateFeature(template) {
+    if (!template || !template.feature) {
+        return null;
+    }
+
+    const featurePath = template.feature.path || template.feature;
+    const label = template.feature.label
+        || (Array.isArray(featurePath) ? featurePath.join('.') : String(featurePath));
+    const rawValue = resolveTemplatePath(template.content, featurePath);
+
+    if (typeof rawValue === 'undefined') {
+        return null;
+    }
+
+    return {
+        label,
+        value: formatFeatureValue(rawValue)
+    };
+}
+
+function getTemplateHeadline(template) {
+    if (!template) {
+        return '';
+    }
+
+    if (template.highlight) {
+        return template.highlight;
+    }
+
+    const info = [];
+    if (template.content?.request?.method) {
+        info.push(template.content.request.method);
+    }
+    if (template.content?.request?.url || template.content?.request?.urlPath) {
+        info.push(template.content.request.url || template.content.request.urlPath);
+    }
+
+    return info.join(' · ');
+}
+
+function prepareTemplatePayload(templateEntry) {
+    if (!templateEntry || typeof templateEntry !== 'object') {
+        throw new Error('Template entry is invalid');
+    }
+
+    const content = templateEntry.content;
+    if (!content || typeof content !== 'object') {
+        throw new Error('Template content is missing');
+    }
+
+    let payload;
+    if (typeof cloneMappingForCreation === 'function') {
+        payload = cloneMappingForCreation(content, { sourceTag: 'template-library' });
+    } else {
+        payload = typeof structuredClone === 'function'
+            ? structuredClone(content)
+            : JSON.parse(JSON.stringify(content));
+
+        delete payload.id;
+        delete payload.uuid;
+        delete payload.stubMappingId;
+        delete payload.stubId;
+        delete payload.mappingId;
+
+        if (!payload.metadata || typeof payload.metadata !== 'object') {
+            payload.metadata = {};
+        }
+
+        const nowIso = new Date().toISOString();
+        payload.metadata.created = nowIso;
+        payload.metadata.edited = nowIso;
+        payload.metadata.source = 'template-library';
+    }
+
+    if (!payload.name && templateEntry.title) {
+        payload.name = templateEntry.title;
+    }
+
+    return payload;
+}
+
+async function createMappingFromTemplateFromModal(templateId, { button, previewElement, previewButton } = {}) {
+    if (!templateId) {
+        NotificationManager.error('Select a template to continue');
+        return;
+    }
+
+    const template = mappingTemplateCache.get(templateId);
+    if (!template) {
+        NotificationManager.error('Template not found');
+        return;
+    }
+
+    let payload;
+    try {
+        payload = prepareTemplatePayload(template);
+    } catch (error) {
+        console.warn('Failed to prepare template payload:', error);
+        NotificationManager.error('Template content is invalid');
+        return;
+    }
+
+    setButtonLoadingState(button, true, 'Creating…');
+
+    try {
+        const response = await apiFetch('/mappings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        const createdMapping = response?.mapping || response;
+        NotificationManager.success('Mapping created from template!');
+
+        try {
+            if (createdMapping && createdMapping.id && typeof updateOptimisticCache === 'function') {
+                // WireMock already accepted the template mapping, reflect it in the cache immediately
+                updateOptimisticCache(createdMapping, 'create');
+            }
+        } catch (cacheError) {
+            console.warn('Failed to update optimistic cache after template creation:', cacheError);
+        }
+
+        hideModal('add-mapping-modal');
+        hideMappingTemplatePreview(previewElement, previewButton);
+
+        const hasActiveFilters = document.getElementById(SELECTORS.MAPPING_FILTERS.METHOD)?.value ||
+            document.getElementById(SELECTORS.MAPPING_FILTERS.URL)?.value ||
+            document.getElementById(SELECTORS.MAPPING_FILTERS.STATUS)?.value;
+        if (hasActiveFilters && window.FilterManager && typeof window.FilterManager.applyMappingFilters === 'function') {
+            window.FilterManager.applyMappingFilters();
+        }
+
+        if (createdMapping && createdMapping.id) {
+            const openInJson = confirm('Открыть новый маппинг в JSON редакторе? Нажмите Cancel, чтобы использовать встроенный редактор.');
+            if (openInJson) {
+                if (typeof window.editMapping === 'function') {
+                    window.editMapping(createdMapping.id);
+                } else {
+                    NotificationManager.info('JSON editor is not available in this view.');
+                }
+            } else if (typeof window.openEditModal === 'function') {
+                window.openEditModal(createdMapping.id);
+            }
+        }
+    } catch (error) {
+        console.error('Failed to create mapping from template:', error);
+        NotificationManager.error(`Failed to create mapping from template: ${error.message}`);
+    } finally {
+        setButtonLoadingState(button, false);
+    }
+}
+
 let jsonEditorResizeObserver = null;
 let jsonEditorResizeFrame = null;
 let jsonEditorWindowResizeHandler = null;
@@ -134,8 +638,24 @@ function setButtonLoadingState(button, isLoading, loadingLabel) {
 
 window.setMappingEditorBusyState = (isLoading, loadingLabel) => {
     const updateButton = document.getElementById('update-mapping-btn');
-    if (!updateButton) return;
-    setButtonLoadingState(updateButton, isLoading, loadingLabel);
+    if (updateButton) {
+        setButtonLoadingState(updateButton, isLoading, loadingLabel);
+    }
+
+    const modalElement = document.getElementById('edit-mapping-modal');
+    const modalContent = modalElement?.querySelector('.modal-content');
+
+    if (modalElement) {
+        modalElement.classList.toggle('is-loading', Boolean(isLoading));
+    }
+
+    if (modalContent) {
+        if (isLoading) {
+            modalContent.setAttribute('aria-busy', 'true');
+        } else {
+            modalContent.removeAttribute('aria-busy');
+        }
+    }
 };
 
 function initializeJsonEditorAutoResize() {
@@ -368,12 +888,10 @@ async function saveMapping() {
  * Update an existing mapping through the edit mapping form
  */
 window.updateMapping = async () => {
-    console.log('updateMapping called');
-
     try {
         window.setMappingEditorBusyState(true, 'Updating…');
 
-        // Save current state based on active mode FIRST
+        // Save current state based on active mode
         if (editorState.mode === EDITOR_MODES.JSON) {
             saveFromJSONMode();
         } else {
@@ -381,80 +899,50 @@ window.updateMapping = async () => {
         }
 
         const mappingData = editorState.currentMapping;
-        const id = mappingData?.id;
 
-        if (!id) {
+        if (!mappingData?.id) {
             NotificationManager.error('Mapping ID not found');
             return;
         }
 
-        console.log('Sending mapping update:', mappingData);
+        // Update metadata (simplified)
+        const nowIso = new Date().toISOString();
+        mappingData.metadata = {
+            ...mappingData.metadata,
+            created: mappingData.metadata?.created || nowIso,
+            edited: nowIso,
+            source: 'ui'
+        };
 
-        // Ensure metadata with timestamps and source AFTER getting final mappingData
-        (function(){
-            try {
-                const nowIso = new Date().toISOString();
-                if (typeof mappingData === 'object' && mappingData) {
-                    // Initialize metadata object if it doesn't exist
-                    if (!mappingData.metadata) {
-                        mappingData.metadata = {};
-                        console.log('📅 [METADATA] Initialized metadata object');
-                    }
-
-                    // Set created timestamp if not exists (first save)
-                    if (!mappingData.metadata.created) {
-                        mappingData.metadata.created = nowIso;
-                        console.log('📅 [METADATA] Set created timestamp (UI):', mappingData.metadata.created);
-                    }
-
-                    // Always update edited timestamp and source
-                    mappingData.metadata.edited = nowIso;
-                    mappingData.metadata.source = 'ui';
-
-                    console.log('📅 [METADATA] Updated edited timestamp (UI):', mappingData.metadata.edited);
-                    console.log('📅 [METADATA] Set source: ui');
-                }
-            } catch (e) {
-                console.warn('📅 [METADATA] Failed to update metadata:', e);
-            }
-        })();
-        const response = await apiFetch(`/mappings/${id}`, {
+        // Send update to server
+        const response = await apiFetch(`/mappings/${mappingData.id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(mappingData)
         });
 
-        // Use server response for optimistic updates - it contains the authoritative data
         const updatedMapping = response?.mapping || response;
-        console.log('Mapping updated successfully, using server response for optimistic updates:', updatedMapping);
 
         NotificationManager.success('Mapping updated!');
 
-        // Update cache and UI with server response
-        try {
-            if (updatedMapping) {
-                updateOptimisticCache(updatedMapping, 'update');
-            }
-        } catch (e) { console.warn('optimistic updates after edit failed:', e); }
+        // Update cache and UI
+        if (updatedMapping) {
+            updateOptimisticCache(updatedMapping, 'update');
+        }
 
         editorState.isDirty = false;
         updateDirtyIndicator();
 
-        console.log('Hiding modal...');
         hideModal('edit-mapping-modal');
 
-        // No more immediate cache rebuild - optimistic cache handles it
-        
-        // Reapply filters after updating mappings
+        // Reapply filters if active
         const hasActiveFilters = document.getElementById(SELECTORS.MAPPING_FILTERS.METHOD)?.value ||
                                document.getElementById(SELECTORS.MAPPING_FILTERS.URL)?.value ||
                                document.getElementById(SELECTORS.MAPPING_FILTERS.STATUS)?.value;
-        
+
         if (hasActiveFilters) {
             FilterManager.applyMappingFilters();
         }
-
-        console.log('updateMapping completed successfully');
 
     } catch (e) {
         console.error('Error in updateMapping:', e);
@@ -610,11 +1098,6 @@ window.populateEditMappingForm = async (mapping) => {
  * Populate form fields with mapping data
  */
 function populateFormFields(mapping) {
-    console.log('🟣 [FORM DEBUG] populateFormFields called');
-    console.log('🟣 [FORM DEBUG] Mapping ID to populate:', mapping?.id);
-    console.log('🟣 [FORM DEBUG] Mapping name to populate:', mapping?.name);
-    
-    // Always populate form fields regardless of mode (needed for both modes)
     const idElement = document.getElementById('edit-mapping-id');
     const methodElement = document.getElementById('edit-method');
     const urlPatternElement = document.getElementById('edit-url-pattern');
@@ -719,8 +1202,6 @@ function populateFormFields(mapping) {
  * Switch editor mode
  */
 function switchEditorMode() {
-    console.log('🟠 [MODE DEBUG] switchEditorMode forced to JSON');
-
     try {
         editorState.mode = EDITOR_MODES.JSON;
         loadJSONMode();
@@ -753,8 +1234,7 @@ function saveFromJSONMode() {
     console.log('🟢 [SAVE DEBUG] saveFromJSONMode called');
 
     const jsonEditor = document.getElementById('json-editor');
-    if (!jsonEditor) {
-        console.log('🔴 [SAVE DEBUG] JSON editor element not found!');
+    if (!jsonEditor || !jsonEditor.value.trim()) {
         return;
     }
 
@@ -780,7 +1260,6 @@ function saveFromJSONMode() {
         editorState.currentMapping = parsedMapping;
         console.log('🟢 [SAVE DEBUG] Updated currentMapping ID:', editorState.currentMapping?.id);
     } catch (error) {
-        console.log('🔴 [SAVE DEBUG] JSON parse error:', error.message);
         throw new Error('Invalid JSON: ' + error.message);
     }
 }
@@ -816,8 +1295,8 @@ function loadJSONMode() {
     jsonEditor.value = formattedJSON;
     adjustJsonEditorHeight(true);
 
-    console.log('🟡 [JSON DEBUG] JSON editor populated with mapping ID:', editorState.currentMapping?.id);
-    console.log('🟡 [JSON DEBUG] JSON content length:', formattedJSON.length);
+    jsonEditor.value = JSON.stringify(editorState.currentMapping, null, 2);
+    adjustJsonEditorHeight(true);
 }
 
 /**

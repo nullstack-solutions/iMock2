@@ -74,6 +74,9 @@ _Last updated: 2025-10-12_
 - Grow the JSON editor template catalog and expose quick actions for pinning favourite snippets.【F:editor/monaco-template-library.js†L1-L214】【F:editor/monaco-enhanced.js†L1059-L1160】
 - Consider exposing cache state (current source, optimistic queue depth) directly in the dashboard for easier monitoring while the cache pipeline evolves.【F:js/features.js†L2480-L2662】
 
+## Troubleshooting
+- **HTTP 401 during health check** – The dashboard forwards whatever you enter in **Settings → Custom Headers** directly to the WireMock API client without rewriting values, so the Authorization header must already include the correct scheme (e.g. `Basic <base64>`). A raw value like `RoyaltyPlant:ZarplataV4Raza` will be sent verbatim and rejected by servers expecting Basic auth, resulting in repeated `/__admin/health` failures.【F:js/core.js†L485-L533】【F:js/core.js†L622-L690】【F:docs/README.md†L80-L89】
+
 ## Testing & manual verification
 ### Automated
 - `node tests/cache-workflow.spec.js` – covers optimistic cache create/update/delete flows and ensures the rendered mapping list reflects the cache contents after each operation.【F:tests/cache-workflow.spec.js†L1-L138】
