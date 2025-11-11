@@ -39,7 +39,7 @@ window.addEventListener('beforeunload', window.cleanupPendingDeletions);
 
 window.toggleElementById = (elementId) => {
     const el = document.getElementById(elementId);
-    if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+    if (el) el.classList.toggle('hidden');
 };
 
 window.togglePreview = (mappingId) => window.toggleElementById(`preview-${mappingId}`);
