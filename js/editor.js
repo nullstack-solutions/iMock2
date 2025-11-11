@@ -382,41 +382,25 @@ window.updateMapping = async () => {
  * Populate the edit mapping form with data from a mapping
  */
 window.populateEditMappingForm = (mapping) => {
-    console.log('🔵 [EDITOR DEBUG] populateEditMappingForm called');
-    console.log('🔵 [EDITOR DEBUG] Incoming mapping ID:', mapping?.id);
-    console.log('🔵 [EDITOR DEBUG] Incoming mapping name:', mapping?.name);
-    console.log('🔵 [EDITOR DEBUG] Current editor mode:', editorState.mode);
-    console.log('🔵 [EDITOR DEBUG] Previous currentMapping ID:', editorState.currentMapping?.id);
-    console.log('🔵 [EDITOR DEBUG] Full incoming mapping:', mapping);
-    
     // Always reset state when opening a new mapping
     editorState.originalMapping = mapping;
     editorState.currentMapping = JSON.parse(JSON.stringify(mapping)); // Deep clone
     editorState.isDirty = false;
     updateDirtyIndicator();
-    
-    console.log('🔵 [EDITOR DEBUG] After state update - currentMapping ID:', editorState.currentMapping?.id);
-    
+
     // Always populate form fields first (for consistency)
     populateFormFields(mapping);
-    
+
     // Then load data based on current mode
     if (editorState.mode === EDITOR_MODES.JSON) {
-        console.log('🔵 [EDITOR DEBUG] Loading JSON mode for mapping ID:', editorState.currentMapping?.id);
         loadJSONMode();
     }
-    
-    console.log('🔵 [EDITOR DEBUG] populateEditMappingForm completed for mapping ID:', mapping?.id);
 };
 
 /**
  * Populate form fields with mapping data
  */
 function populateFormFields(mapping) {
-    console.log('🟣 [FORM DEBUG] populateFormFields called');
-    console.log('🟣 [FORM DEBUG] Mapping ID to populate:', mapping?.id);
-    console.log('🟣 [FORM DEBUG] Mapping name to populate:', mapping?.name);
-    
     // Always populate form fields regardless of mode (needed for both modes)
     const idElement = document.getElementById('edit-mapping-id');
     const methodElement = document.getElementById('edit-method');
@@ -522,8 +506,6 @@ function populateFormFields(mapping) {
  * Switch editor mode
  */
 function switchEditorMode() {
-    console.log('🟠 [MODE DEBUG] switchEditorMode forced to JSON');
-
     try {
         editorState.mode = EDITOR_MODES.JSON;
         loadJSONMode();
@@ -553,32 +535,20 @@ function updateEditorUI() {
 }
 
 function saveFromJSONMode() {
-    console.log('🟢 [SAVE DEBUG] saveFromJSONMode called');
-    
     const jsonEditor = document.getElementById('json-editor');
     if (!jsonEditor) {
-        console.log('🔴 [SAVE DEBUG] JSON editor element not found!');
         return;
     }
-    
+
     const jsonText = jsonEditor.value;
     if (!jsonText.trim()) {
-        console.log('🟢 [SAVE DEBUG] JSON editor is empty, nothing to save');
         return;
     }
-    
-    console.log('🟢 [SAVE DEBUG] JSON text length:', jsonText.length);
-    console.log('🟢 [SAVE DEBUG] Previous currentMapping ID:', editorState.currentMapping?.id);
-    
+
     try {
         const parsedMapping = JSON.parse(jsonText);
-        console.log('🟢 [SAVE DEBUG] Parsed mapping ID:', parsedMapping?.id);
-        console.log('🟢 [SAVE DEBUG] Parsed mapping name:', parsedMapping?.name);
-        
         editorState.currentMapping = parsedMapping;
-        console.log('🟢 [SAVE DEBUG] Updated currentMapping ID:', editorState.currentMapping?.id);
     } catch (error) {
-        console.log('🔴 [SAVE DEBUG] JSON parse error:', error.message);
         throw new Error('Invalid JSON: ' + error.message);
     }
 }
@@ -595,21 +565,15 @@ function saveFromFormMode() {
  * Load JSON mode
  */
 function loadJSONMode() {
-    console.log('🟡 [JSON DEBUG] loadJSONMode called');
-    console.log('🟡 [JSON DEBUG] currentMapping ID:', editorState.currentMapping?.id);
-    console.log('🟡 [JSON DEBUG] currentMapping name:', editorState.currentMapping?.name);
-    
     const jsonEditor = document.getElementById('json-editor');
     if (!jsonEditor) {
-        console.log('🔴 [JSON DEBUG] JSON editor element not found!');
         return;
     }
-    
+
     if (!editorState.currentMapping) {
-        console.log('🔴 [JSON DEBUG] No currentMapping in editorState!');
         return;
     }
-    
+
     const formattedJSON = JSON.stringify(editorState.currentMapping, null, 2);
     jsonEditor.value = formattedJSON;
 
