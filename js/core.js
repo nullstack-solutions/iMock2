@@ -379,16 +379,11 @@ window.ENDPOINTS = {
 
     // Request endpoints
     REQUESTS: '/requests', // DELETE to clear request journal
-    REQUESTS_RESET: '/requests/reset', // Deprecated legacy endpoint
     REQUESTS_COUNT: '/requests/count', // Requires POST
     REQUESTS_REMOVE: '/requests/remove',
     REQUESTS_FIND: '/requests/find', // Requires POST
     REQUESTS_UNMATCHED: '/requests/unmatched',
     REQUESTS_UNMATCHED_NEAR_MISSES: '/requests/unmatched/near-misses',
-
-    // Near misses endpoints (corrected)
-    NEAR_MISSES_REQUEST: '/near-misses/request', // Requires POST
-    NEAR_MISSES_PATTERN: '/near-misses/request-pattern', // Requires POST
 
     // Recording endpoints (corrected)
     RECORDINGS_START: '/recordings/start', // Requires POST
@@ -398,11 +393,7 @@ window.ENDPOINTS = {
 
     // Scenario endpoints
     SCENARIOS: '/scenarios',
-    SCENARIOS_RESET: '/scenarios/reset',
-
-    // System endpoints
-    SETTINGS: '/settings',
-    SHUTDOWN: '/shutdown'
+    SCENARIOS_RESET: '/scenarios/reset'
 };
 
 const ensureCustomHeaderObject = (value) => {
@@ -849,13 +840,6 @@ window.showTab = (tabName, button) => {
     button.classList.add('active');
 };
 
-// Legacy wrapper kept for compatibility
-window.showMessage = (text, type = 'info') => {
-    if (window.NotificationManager) {
-        NotificationManager.show(text, type);
-    }
-};
-
 // --- THEME FUNCTIONS ---
 const applyThemeToDom = (theme) => {
     const body = document.body;
@@ -899,7 +883,9 @@ window.toggleTheme = () => {
     applyThemeToDom(newTheme);
     persistThemePreference(newTheme);
 
-    showMessage(`Switched to ${newTheme} theme`, 'success');
+    if (window.NotificationManager) {
+        NotificationManager.show(`Switched to ${newTheme} theme`, 'success');
+    }
 };
 
 window.changeTheme = () => {
@@ -915,7 +901,9 @@ window.changeTheme = () => {
     applyThemeToDom(themeToApply);
     persistThemePreference(selectedTheme);
 
-    showMessage(`Theme changed to ${selectedTheme}`, 'success');
+    if (window.NotificationManager) {
+        NotificationManager.show(`Theme changed to ${selectedTheme}`, 'success');
+    }
 };
 
 // Initialize theme on load
