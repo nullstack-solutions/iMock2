@@ -47,7 +47,7 @@
     function markDemoModeActive(reason = 'automatic') {
         window.isDemoMode = true;
         window.demoModeReason = reason;
-        if (!window.demoModeAnnounced && typeof window.NotificationManager !== 'undefined' && window.NotificationManager?.info) {
+        if (!window.demoModeAnnounced && window.NotificationManager?.info) {
             window.NotificationManager.info('WireMock API unreachable. Showing demo data so the interface stays interactive.');
             window.demoModeAnnounced = true;
         }
