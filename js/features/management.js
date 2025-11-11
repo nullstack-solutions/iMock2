@@ -2,11 +2,6 @@
 
 // --- ADDITIONAL MANAGEMENT HELPERS ---
 
-// Legacy wrappers kept for HTML compatibility
-window.clearFilters = () => {
-    window.clearMappingFilters();
-};
-
 window.refreshRequests = async () => {
     await fetchAndRenderRequests();
     // Apply filters automatically after an update

@@ -40,6 +40,37 @@ const Utils = {
         const hours = String(date.getHours()).padStart(2, '0');
         const minutes = String(date.getMinutes()).padStart(2, '0');
         return `${year}-${month}-${day}T${hours}:${minutes}`;
+    },
+
+    // Check if value is a function
+    isFunction: (fn) => typeof fn === 'function',
+
+    // Safely call function if it exists
+    safeCall: (fn, ...args) => {
+        if (typeof fn === 'function') {
+            return fn(...args);
+        }
+        return undefined;
+    },
+
+    // Universal show/hide element helper
+    toggleElement: (element, show) => {
+        if (!element) return;
+        if (show) {
+            element.classList.remove('hidden');
+        } else {
+            element.classList.add('hidden');
+        }
+    },
+
+    // Show element
+    showElement: (element) => {
+        if (element) element.classList.remove('hidden');
+    },
+
+    // Hide element
+    hideElement: (element) => {
+        if (element) element.classList.add('hidden');
     }
 };
 

@@ -814,7 +814,10 @@ window.showModal = (modalId) => {
 
     const firstInput = modal.querySelector('input, select, textarea');
     if (firstInput) {
-        setTimeout(() => firstInput.focus(), 100);
+        // Use RAF for better timing than setTimeout
+        LifecycleManager.requestAnimationFrame(() => {
+            firstInput.focus();
+        });
     }
 };
 
@@ -985,17 +988,6 @@ window.debugCustomHeaders = () => {
 // --- DOM ELEMENT CACHE FOR PERFORMANCE OPTIMIZATION ---
 window.elementCache = new Map();
 
-window.getElement = (id) => {
-    if (!window.elementCache.has(id)) {
-        const element = document.getElementById(id);
-        if (element) {
-            window.elementCache.set(id, element);
-        }
-        return element;
-    }
-    return window.elementCache.get(id);
-};
-
 window.clearElementCache = () => {
     window.elementCache.clear();
 };
@@ -1022,7 +1014,15 @@ window.getElement = (id, invalidateCache = false) => {
         }
         return element;
     }
-    return window.elementCache.get(id);
+
+    // Verify element is still in DOM (prevents stale references)
+    const cachedElement = window.elementCache.get(id);
+    if (cachedElement && !document.contains(cachedElement)) {
+        window.elementCache.delete(id);
+        return document.getElementById(id);
+    }
+
+    return cachedElement;
 };
 
 // --- ENHANCED ERROR MESSAGE UTILITY ---
