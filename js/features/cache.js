@@ -194,20 +194,20 @@ window.connectToWireMock = async () => {
     // Try main page elements first, then fallback to settings page elements
     const hostInput = document.getElementById('wiremock-host') || document.getElementById(SELECTORS.CONNECTION.HOST);
     const portInput = document.getElementById('wiremock-port') || document.getElementById(SELECTORS.CONNECTION.PORT);
-    
+
     if (!hostInput || !portInput) {
         console.error('Connection input elements not found');
         NotificationManager.error('Error: connection fields not found');
         return;
     }
-    
+
     const host = hostInput.value.trim() || 'localhost';
     const port = portInput.value.trim() || '8080';
-    
+
     // DON'T save connection settings here - they should already be saved from Settings page
     // Only use these values for the current connection attempt
     console.log('🔗 Connecting with:', { host, port });
-    
+
     // Update the base URL (with proper scheme/port normalization)
     if (typeof window.normalizeWiremockBaseUrl === 'function') {
         window.wiremockBaseUrl = window.normalizeWiremockBaseUrl(host, port);
@@ -219,23 +219,25 @@ window.connectToWireMock = async () => {
         const finalPort = (port && String(port).trim()) || (scheme === 'https' ? '443' : '8080');
         window.wiremockBaseUrl = `${scheme}://${cleanHost}:${finalPort}/__admin`;
     }
-    
+
     try {
-        let renderSource = 'unknown';
-        // The first health check starts uptime tracking
+        // The first health check starts uptime tracking and determines online/offline mode
         await checkHealthAndStartUptime();
-        
+
+        // If we got here, we are online - proceed with full connection
+        console.log('✅ Online mode - proceeding with data loading');
+
         // Update the UI after a successful connection
         const statusDot = document.getElementById(SELECTORS.CONNECTION.STATUS_DOT);
         const statusText = document.getElementById(SELECTORS.CONNECTION.STATUS_TEXT);
         const setupDiv = document.getElementById(SELECTORS.CONNECTION.SETUP);
         const addButton = document.getElementById(SELECTORS.BUTTONS.ADD_MAPPING);
-        
+
         if (statusDot) statusDot.className = 'status-dot connected';
         if (statusText) { if (!window.lastWiremockSuccess) { window.lastWiremockSuccess = Date.now(); } if (typeof window.updateLastSuccessUI === 'function') { window.updateLastSuccessUI(); } }
         if (setupDiv) setupDiv.style.display = 'none';
         if (addButton) addButton.disabled = false;
-        
+
         // Reveal statistics and filters
         const statsElement = document.getElementById(SELECTORS.UI.STATS);
         const statsSpacer = document.getElementById('stats-spacer');
@@ -243,10 +245,10 @@ window.connectToWireMock = async () => {
         if (statsElement) statsElement.style.display = 'flex';
         if (statsSpacer) statsSpacer.style.display = 'none';
         if (filtersElement) filtersElement.style.display = 'block';
-        
-        // Start periodic health checks
-        startHealthMonitoring();
-        
+
+        // Start unified background health check
+        startHealthCheck();
+
         // Load data in parallel while leveraging the Cache Service
         const useCache = isCacheEnabled();
         const [mappingsLoaded, requestsLoaded] = await Promise.all([
@@ -264,24 +266,168 @@ window.connectToWireMock = async () => {
                 requestsLoaded
             });
         }
-        
+
     } catch (error) {
-        console.error('Connection error:', error);
-        NotificationManager.error(`Connection error: ${error.message}`);
-        
+        console.error('Connection error - entering offline mode:', error);
+
+        // We are offline - don't make any more requests to server
+        console.log('⚠️ Offline mode - skipping data requests, loading demo data');
+
         // Stop uptime tracking on failure
         stopUptime();
-        
+
         // Reset connection state
         const statusDot = document.getElementById(SELECTORS.CONNECTION.STATUS_DOT);
         const statusText = document.getElementById(SELECTORS.CONNECTION.STATUS_TEXT);
         if (statusDot) statusDot.className = 'status-dot disconnected';
-        if (statusText) statusText.textContent = 'Disconnected';
+        if (statusText) statusText.textContent = 'Offline';
+
+        // Load demo data for offline mode
+        if (typeof fetchMappingsFromServer === 'function') {
+            try {
+                await fetchAndRenderMappings(null, { force: true });
+                console.log('✅ Demo data loaded for offline mode');
+            } catch (demoError) {
+                console.error('Failed to load demo data:', demoError);
+            }
+        }
+
+        // Notify user about offline mode
+        NotificationManager.info('WireMock server is offline. Showing demo data. Retrying connection in background...');
+
+        // Start unified background health check (it will handle exponential backoff automatically)
+        startHealthCheck();
     }
 };
 
-// Health monitoring and uptime system
-let healthCheckInterval = null;
+// Unified health monitoring system (always runs in background)
+let healthCheckTimeout = null;
+let healthCheckFailureCount = 0;
+
+// Unified background health check with adaptive timing
+window.startHealthCheck = () => {
+    // Clear any existing check
+    if (healthCheckTimeout) {
+        clearTimeout(healthCheckTimeout);
+        healthCheckTimeout = null;
+    }
+
+    // Calculate delay based on online/offline state
+    let delay;
+    if (window.isOnline) {
+        // Online: check every 30 seconds
+        delay = 30000;
+    } else {
+        // Offline: exponential backoff (2s, 4s, 8s, 16s, 32s, max 60s)
+        const baseDelay = 2000;
+        const maxDelay = 60000;
+        delay = Math.min(baseDelay * Math.pow(2, healthCheckFailureCount), maxDelay);
+    }
+
+    console.log(`🔄 [HEALTH] Scheduling next check in ${delay}ms (${window.isOnline ? 'online' : `offline, attempt ${healthCheckFailureCount + 1}`})`);
+
+    healthCheckTimeout = setTimeout(async () => {
+        try {
+            const startTime = performance.now();
+            let isHealthy = false;
+            let responseTime = 0;
+
+            // Try /health endpoint
+            try {
+                const response = await apiFetch(ENDPOINTS.HEALTH);
+                responseTime = Math.round(performance.now() - startTime);
+                isHealthy = typeof response === 'object' && (
+                    (typeof response.status === 'string' && ['up','healthy','ok'].includes(response.status.toLowerCase())) ||
+                    response.healthy === true
+                );
+            } catch (primaryError) {
+                // Try /mappings as fallback for older WireMock versions
+                try {
+                    const fallbackResponse = await window.apiFetch(window.ENDPOINTS.MAPPINGS);
+                    responseTime = Math.round(performance.now() - startTime);
+                    // Only consider healthy if we got a REAL response (not demo data)
+                    isHealthy = typeof fallbackResponse === 'object' && fallbackResponse !== null && !fallbackResponse.__isDemo;
+                } catch (fallbackError) {
+                    isHealthy = false;
+                }
+            }
+
+            // Update state based on health check result
+            const wasOnline = window.isOnline;
+            window.isOnline = isHealthy;
+
+            if (isHealthy) {
+                // Server is healthy
+                healthCheckFailureCount = 0;
+
+                // Update UI
+                const healthIndicator = document.getElementById(SELECTORS.HEALTH.INDICATOR);
+                if (healthIndicator) {
+                    healthIndicator.innerHTML = `<span>Response Time: </span><span class="healthy">${responseTime}ms</span>`;
+                }
+
+                // If we just came back online, reconnect
+                if (!wasOnline) {
+                    console.log(`✅ [HEALTH] Server is back online (${responseTime}ms)`);
+                    NotificationManager.success('WireMock server is back online! Reconnecting...');
+
+                    // Reconnect fully (this will load data, start uptime, etc.)
+                    await window.connectToWireMock();
+                } else {
+                    console.log(`✅ [HEALTH] Server is healthy (${responseTime}ms)`);
+                }
+            } else {
+                // Server is offline
+                healthCheckFailureCount++;
+
+                // Update UI
+                const healthIndicator = document.getElementById(SELECTORS.HEALTH.INDICATOR);
+                if (healthIndicator) {
+                    healthIndicator.innerHTML = `<span>Response Time: </span><span class="unhealthy">Offline</span>`;
+                }
+
+                // If we just went offline, update connection state
+                if (wasOnline) {
+                    console.log(`⚠️ [HEALTH] Server went offline`);
+
+                    // Stop uptime
+                    stopUptime();
+
+                    // Update connection status
+                    const statusDot = document.getElementById(SELECTORS.CONNECTION.STATUS_DOT);
+                    const statusText = document.getElementById(SELECTORS.CONNECTION.STATUS_TEXT);
+                    if (statusDot) statusDot.className = 'status-dot disconnected';
+                    if (statusText) statusText.textContent = 'Offline';
+
+                    NotificationManager.warning('WireMock server went offline. Retrying in background...');
+                } else {
+                    console.log(`⚠️ [HEALTH] Server still offline (attempt ${healthCheckFailureCount})`);
+                }
+            }
+
+            // Schedule next check
+            startHealthCheck();
+
+        } catch (error) {
+            console.error('[HEALTH] Check error:', error);
+            window.isOnline = false;
+            healthCheckFailureCount++;
+
+            // Schedule next check
+            startHealthCheck();
+        }
+    }, delay);
+};
+
+// Stop health check
+window.stopHealthCheck = () => {
+    if (healthCheckTimeout) {
+        clearTimeout(healthCheckTimeout);
+        healthCheckTimeout = null;
+        healthCheckFailureCount = 0;
+        console.log('🛑 [HEALTH] Health check stopped');
+    }
+};
 
 // Perform the first health check and start uptime tracking
 window.checkHealthAndStartUptime = async () => {
@@ -291,7 +437,7 @@ window.checkHealthAndStartUptime = async () => {
         let responseTime = 0;
         let isHealthy = false;
 
-        // Try /health first (WireMock 3.x) then fall back to /mappings (compatible with 2.x)
+        // Try /health endpoint - this is the source of truth for online/offline mode
         try {
             const response = await apiFetch(ENDPOINTS.HEALTH);
             responseTime = Math.round(performance.now() - startTime);
@@ -301,101 +447,52 @@ window.checkHealthAndStartUptime = async () => {
             );
             console.log('[HEALTH] initial check:', { rawStatus: response?.status, healthyFlag: response?.healthy, isHealthy });
         } catch (primaryError) {
-            // Fallback: verify core API availability via /mappings
-            const fallback = await fetchMappingsFromServer();
-            responseTime = Math.round(performance.now() - startTime);
-            // Treat a JSON object response (WireMock default) as healthy
-            isHealthy = typeof fallback === 'object';
+            // Try /mappings as fallback for older WireMock versions (2.x)
+            try {
+                const fallbackResponse = await window.apiFetch(window.ENDPOINTS.MAPPINGS);
+                responseTime = Math.round(performance.now() - startTime);
+                // Only consider healthy if we got a REAL response (not demo data)
+                isHealthy = typeof fallbackResponse === 'object' && fallbackResponse !== null && !fallbackResponse.__isDemo;
+                console.log('[HEALTH] fallback check (mappings):', { isHealthy, responseTime });
+            } catch (fallbackError) {
+                // Both /health and /mappings failed - we are definitely offline
+                console.log('[HEALTH] both endpoints failed - offline mode');
+                isHealthy = false;
+            }
         }
 
         if (isHealthy) {
+            // Mark as online
+            window.isOnline = true;
+
             // Start uptime only after a successful health check
             window.startTime = Date.now();
             if (window.uptimeInterval) window.LifecycleManager.clearInterval(window.uptimeInterval);
             window.uptimeInterval = window.LifecycleManager.setInterval(updateUptime, 1000);
-            // Unified health UI update (fallback below keeps old DOM path)
+
+            // Update health UI
             if (typeof window.applyHealthUI === 'function') {
                 try { window.applyHealthUI(true, responseTime); } catch (e) { console.warn('applyHealthUI failed:', e); }
             }
-            
-            // Update the health indicator with the measured response time
-            // Unified health UI (fallback DOM update remains below)
-            if (typeof window.applyHealthUI === 'function') {
-                try { window.applyHealthUI(isHealthy, isHealthy ? responseTime : null); } catch (e) { console.warn('applyHealthUI failed:', e); }
-            }
+
             const healthIndicator = document.getElementById(SELECTORS.HEALTH.INDICATOR);
             if (healthIndicator) {
                 healthIndicator.style.display = 'inline';
                 healthIndicator.innerHTML = `<span>Response Time: </span><span class="healthy">${responseTime}ms</span>`;
             }
-            
-            console.log(`✅ WireMock health check passed (${responseTime}ms), uptime started`);
+
+            console.log(`✅ WireMock health check passed (${responseTime}ms), uptime started, online mode`);
         } else {
-            throw new Error('WireMock is not healthy');
+            // Mark as offline
+            window.isOnline = false;
+            throw new Error('WireMock is not reachable - offline mode');
         }
     } catch (error) {
-        console.error('Health check failed:', error);
+        window.isOnline = false;
+        console.error('Health check failed - entering offline mode:', error);
         throw error;
     }
 };
-
-// Periodic health monitoring function
-window.startHealthMonitoring = () => {
-    // Clear any previous interval
-    if (healthCheckInterval) {
-        window.LifecycleManager.clearInterval(healthCheckInterval);
-    }
-
-    // Check health every 30 seconds
-    healthCheckInterval = window.LifecycleManager.setInterval(async () => {
-        try {
-            const startTime = performance.now();
-            let responseTime = 0;
-            let isHealthyNow = false;
-
-            try {
-                const healthResponse = await apiFetch(ENDPOINTS.HEALTH);
-                responseTime = Math.round(performance.now() - startTime);
-                isHealthyNow = typeof healthResponse === 'object' && (
-                    (typeof healthResponse.status === 'string' && ['up','healthy','ok'].includes(healthResponse.status.toLowerCase())) ||
-                    healthResponse.healthy === true
-                );
-                console.log('[HEALTH] periodic check:', { rawStatus: healthResponse?.status, healthyFlag: healthResponse?.healthy, isHealthyNow });
-            } catch (primaryError) {
-                // Fallback to /mappings
-                const fallback = await fetchMappingsFromServer();
-                responseTime = Math.round(performance.now() - startTime);
-                isHealthyNow = typeof fallback === 'object';
-            }
-
-            const healthIndicator = document.getElementById(SELECTORS.HEALTH.INDICATOR);
-            if (healthIndicator) {
-                if (isHealthyNow) {
-                    healthIndicator.innerHTML = `<span>Response Time: </span><span class="healthy">${responseTime}ms</span>`;
-                } else {
-                    healthIndicator.innerHTML = `<span>Response Time: </span><span class="unhealthy">Unhealthy</span>`;
-                    // Stop uptime on the first failed health check
-                    stopUptime();
-                    window.LifecycleManager.clearInterval(healthCheckInterval);
-                    NotificationManager.warning('WireMock health check failed, uptime stopped');
-                }
-            }
-        } catch (error) {
-            console.error('Health monitoring failed:', error);
-            // Stop uptime when health monitoring throws
-            const healthIndicator = document.getElementById(SELECTORS.HEALTH.INDICATOR);
-            if (typeof window.applyHealthUI === 'function') {
-                try { window.applyHealthUI(null, null); } catch {}
-            } else if (healthIndicator) {
-                healthIndicator.innerHTML = `<span>Response Time: </span><span class="error">Error</span>`;
-            }
-            stopUptime();
-            window.LifecycleManager.clearInterval(healthCheckInterval);
-            NotificationManager.error('Health monitoring failed, uptime stopped');
-        }
-    }, 30000); // 30 seconds
-};
-
 
 function refreshMappingsFromCache({ maintainFilters = true } = {}) {
     try {
