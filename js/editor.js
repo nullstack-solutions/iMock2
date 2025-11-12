@@ -357,28 +357,27 @@ function saveFromJSONMode() {
 }
 
 /**
- * Load JSON mode - minimal processing for maximum speed
+ * Load JSON mode - auto-format for better readability
  */
 function loadJSONMode() {
     const jsonEditor = document.getElementById('json-editor');
     if (!jsonEditor || !editorState.currentMapping) return;
 
-    // Stringify with NO formatting - fastest option
-    // User can click "Format" button if they want pretty JSON
-    const minifiedJSON = JSON.stringify(editorState.currentMapping);
+    // Stringify with formatting (2-space indent)
+    const formattedJSON = JSON.stringify(editorState.currentMapping, null, 2);
 
     // For large JSON (>100KB), defer insertion to next tick
-    if (minifiedJSON.length > 100000) {
+    if (formattedJSON.length > 100000) {
         jsonEditor.value = '// Loading...';
         jsonEditor.disabled = true;
 
         setTimeout(() => {
-            jsonEditor.value = minifiedJSON;
+            jsonEditor.value = formattedJSON;
             jsonEditor.disabled = false;
         }, 0);
     } else {
         // Small JSON - insert immediately
-        jsonEditor.value = minifiedJSON;
+        jsonEditor.value = formattedJSON;
     }
 }
 
