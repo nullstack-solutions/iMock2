@@ -220,7 +220,7 @@ function cloneMappingForOptimisticShadow(mapping) {
         return null;
     }
     try {
-        return structuredClone ? structuredClone(mapping) : JSON.parse(JSON.stringify(mapping));
+        return typeof structuredClone === 'function' ? structuredClone(mapping) : JSON.parse(JSON.stringify(mapping));
     } catch {
         return { ...mapping };
     }

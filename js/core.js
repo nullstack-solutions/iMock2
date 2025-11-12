@@ -197,9 +197,9 @@ window.SELECTORS = {
 
             const listeners = eventListeners.get(target);
             if (listeners) {
-                // Find and remove matching listener
                 for (const listener of listeners) {
-                    if (listener.type === type && listener.handler === handler) {
+                    if (listener.type === type && listener.handler === handler &&
+                        JSON.stringify(listener.options) === JSON.stringify(options)) {
                         listeners.delete(listener);
                         break;
                     }
