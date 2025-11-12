@@ -335,8 +335,6 @@ window.openEditModal = async (identifier) => {
     }
 };
 
-// REMOVED: updateMapping function moved to editor.js
-
 window.deleteMapping = async (id) => {
     if (!confirm('Delete this mapping?')) return;
 
