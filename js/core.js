@@ -707,31 +707,23 @@ window.showPage = (pageId, element) => {
 const SIDEBAR_COLLAPSED_CLASS = 'sidebar-collapsed';
 const SIDEBAR_STATE_STORAGE_KEY = 'imock-sidebar-state';
 
-const updateSidebarToggleButton = (isCollapsed) => {
-    const toggleButton = document.querySelector('.sidebar-toggle');
-    if (!toggleButton) {
-        return;
-    }
-
-    const label = isCollapsed ? 'Expand sidebar' : 'Collapse sidebar';
-    toggleButton.setAttribute('aria-expanded', String(!isCollapsed));
-    toggleButton.setAttribute('aria-label', label);
-    toggleButton.setAttribute('title', label);
-
-    const iconUse = toggleButton.querySelector('use');
-    if (iconUse) {
-        iconUse.setAttribute('href', isCollapsed ? '#icon-sidebar-expand' : '#icon-sidebar-collapse');
-    }
-};
-
 const applySidebarState = (shouldCollapse, { persist = true } = {}) => {
     const bodyElement = document.body;
-    if (!bodyElement) {
-        return;
-    }
+    if (!bodyElement) return;
 
     bodyElement.classList.toggle(SIDEBAR_COLLAPSED_CLASS, shouldCollapse);
-    updateSidebarToggleButton(shouldCollapse);
+
+    const toggleButton = document.querySelector('.sidebar-toggle');
+    if (toggleButton) {
+        const label = shouldCollapse ? 'Expand sidebar' : 'Collapse sidebar';
+        toggleButton.setAttribute('aria-expanded', String(!shouldCollapse));
+        toggleButton.setAttribute('aria-label', label);
+        toggleButton.setAttribute('title', label);
+        const iconUse = toggleButton.querySelector('use');
+        if (iconUse) {
+            iconUse.setAttribute('href', shouldCollapse ? '#icon-sidebar-expand' : '#icon-sidebar-collapse');
+        }
+    }
 
     if (!persist) {
         return;
