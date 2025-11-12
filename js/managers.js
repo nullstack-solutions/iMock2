@@ -52,7 +52,22 @@ if (!window.NotificationManager) {
 
             if (!this._boundHandleKeydown) {
                 this._boundHandleKeydown = this.handleKeydown.bind(this);
-                document.addEventListener('keydown', this._boundHandleKeydown);
+                if (window.LifecycleManager) {
+                    window.LifecycleManager.addEventListener(document, 'keydown', this._boundHandleKeydown);
+                } else {
+                    document.addEventListener('keydown', this._boundHandleKeydown);
+                }
+            }
+        },
+
+        cleanup() {
+            if (this._boundHandleKeydown) {
+                if (window.LifecycleManager) {
+                    window.LifecycleManager.removeEventListener(document, 'keydown', this._boundHandleKeydown);
+                } else {
+                    document.removeEventListener('keydown', this._boundHandleKeydown);
+                }
+                this._boundHandleKeydown = null;
             }
         },
 
@@ -465,11 +480,7 @@ window.TabManager = {
 
     async refresh(tabName) {
         const config = this.configs[tabName];
-        if (!config) {
-            console.warn(`Tab config not found: ${tabName}`);
-            return;
-        }
-        
+        if (!config) { console.warn(`Tab config not found: ${tabName}`); return; }
         try {
             const loadFn = window[config.loadFunction];
             if (typeof loadFn === 'function') {
@@ -736,30 +747,30 @@ function executeRequestFilters() {
 
 // --- FILTER MANAGER ---
 // Centralized filter management
-function getMappingRenderKey(mapping) {
-    if (!mapping || typeof mapping !== 'object') {
-        return '';
+function getRenderKey(item, ...keys) {
+    if (!item || typeof item !== 'object') return '';
+    for (const key of keys) {
+        const value = key.includes('.') ? key.split('.').reduce((obj, k) => obj?.[k], item) : item[key];
+        if (value != null) return String(value);
     }
-    return String(mapping.id || mapping.uuid || mapping.stubId || '');
+    return '';
+}
+
+function getMappingRenderKey(mapping) {
+    return getRenderKey(mapping, 'id', 'uuid', 'stubId');
 }
 
 function getMappingRenderSignature(mapping) {
-    if (!mapping || typeof mapping !== 'object') {
-        return '';
-    }
+    if (!mapping || typeof mapping !== 'object') return '';
     const request = mapping.request || {};
     const response = mapping.response || {};
     const metadata = mapping.metadata || {};
     const stringifyForSignature = (value) => {
-        if (value === undefined || value === null) {
-            return '';
-        }
+        if (value == null) return '';
         try {
             const str = typeof value === 'string' ? value : JSON.stringify(value);
             return str.length > 300 ? `${str.slice(0, 300)}…` : str;
-        } catch {
-            return '';
-        }
+        } catch { return ''; }
     };
     return [
         request.method || '',
@@ -785,27 +796,15 @@ function renderMappingMarkup(mapping) {
 }
 
 function getRequestRenderKey(request) {
-    if (!request || typeof request !== 'object') {
-        return '';
-    }
-    return String(request.id || request.requestId || request.mappingUuid || request.request?.id || request.request?.loggedDate || request.loggedDate || '');
+    return getRenderKey(request, 'id', 'requestId', 'mappingUuid', 'request.id', 'request.loggedDate', 'loggedDate');
 }
 
 function getRequestRenderSignature(request) {
-    if (!request || typeof request !== 'object') {
-        return '';
-    }
-    const req = request.request || {};
-    const res = request.responseDefinition || {};
-    return [
-        req.method || '',
-        req.url || req.urlPath || '',
-        req.loggedDate || request.loggedDate || '',
-        request.wasMatched === false ? 'unmatched' : 'matched',
-        res.status ?? '',
-        (res.body || res.jsonBody || '').length,
-        (req.body || '').length
-    ].join('|');
+    if (!request || typeof request !== 'object') return '';
+    const req = request.request || {}, res = request.responseDefinition || {};
+    return [req.method || '', req.url || req.urlPath || '', req.loggedDate || request.loggedDate || '',
+            request.wasMatched === false ? 'unmatched' : 'matched', res.status ?? '',
+            (res.body || res.jsonBody || '').length, (req.body || '').length].join('|');
 }
 
 function renderRequestMarkup(request) {
@@ -863,10 +862,9 @@ window.FilterManager = {
         }
     },
     
-    // Restore filter state on page load
     restoreFilters(tabName) {
         const filters = this.loadFilterState(tabName);
-        
+        const setVal = (id, val) => { const el = document.getElementById(id); if (el && val) el.value = val; };
         if (tabName === 'mappings') {
             if (filters.method) {
                 const elem = document.getElementById('filter-method');
@@ -882,26 +880,11 @@ window.FilterManager = {
                 if (elem) elem.value = filters.status;
             }
         } else if (tabName === 'requests') {
-            if (filters.method) {
-                const elem = document.getElementById('req-filter-method');
-                if (elem) elem.value = filters.method;
-            }
-            if (filters.status) {
-                const elem = document.getElementById('req-filter-status');
-                if (elem) elem.value = filters.status;
-            }
-            if (filters.url) {
-                const elem = document.getElementById('req-filter-url');
-                if (elem) elem.value = filters.url;
-            }
-            if (filters.from) {
-                const elem = document.getElementById('req-filter-from');
-                if (elem) elem.value = filters.from;
-            }
-            if (filters.to) {
-                const elem = document.getElementById('req-filter-to');
-                if (elem) elem.value = filters.to;
-            }
+            setVal('req-filter-method', filters.method);
+            setVal('req-filter-status', filters.status);
+            setVal('req-filter-url', filters.url);
+            setVal('req-filter-from', filters.from);
+            setVal('req-filter-to', filters.to);
         }
     }
 };

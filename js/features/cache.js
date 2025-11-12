@@ -186,7 +186,6 @@ function isCacheEnabled() {
     }
 }
 
-
 // --- CORE APPLICATION FUNCTIONS ---
 
 // Enhanced WireMock connection routine with accurate uptime handling
@@ -221,7 +220,6 @@ window.connectToWireMock = async () => {
     }
     
     try {
-        let renderSource = 'unknown';
         // The first health check starts uptime tracking
         await checkHealthAndStartUptime();
         
@@ -247,22 +245,16 @@ window.connectToWireMock = async () => {
         // Start periodic health checks
         startHealthMonitoring();
         
-        // Load data in parallel while leveraging the Cache Service
+        // Load only mappings on connect (requests load on demand via refresh button)
         const useCache = isCacheEnabled();
-        const [mappingsLoaded, requestsLoaded] = await Promise.all([
-            fetchAndRenderMappings(null, { useCache }),
-            fetchAndRenderRequests()
-        ]);
+        const mappingsLoaded = await fetchAndRenderMappings(null, { useCache });
 
         await loadScenarios();
 
-        if (mappingsLoaded && requestsLoaded) {
+        if (mappingsLoaded) {
             NotificationManager.success('Connected to WireMock successfully!');
         } else {
-            console.warn('Connected to WireMock, but some resources failed to load', {
-                mappingsLoaded,
-                requestsLoaded
-            });
+            console.warn('Connected to WireMock, but mappings failed to load');
         }
         
     } catch (error) {
@@ -313,13 +305,8 @@ window.checkHealthAndStartUptime = async () => {
             window.startTime = Date.now();
             if (window.uptimeInterval) window.LifecycleManager.clearInterval(window.uptimeInterval);
             window.uptimeInterval = window.LifecycleManager.setInterval(updateUptime, 1000);
-            // Unified health UI update (fallback below keeps old DOM path)
-            if (typeof window.applyHealthUI === 'function') {
-                try { window.applyHealthUI(true, responseTime); } catch (e) { console.warn('applyHealthUI failed:', e); }
-            }
-            
+
             // Update the health indicator with the measured response time
-            // Unified health UI (fallback DOM update remains below)
             if (typeof window.applyHealthUI === 'function') {
                 try { window.applyHealthUI(isHealthy, isHealthy ? responseTime : null); } catch (e) { console.warn('applyHealthUI failed:', e); }
             }
@@ -395,7 +382,6 @@ window.startHealthMonitoring = () => {
         }
     }, 30000); // 30 seconds
 };
-
 
 function refreshMappingsFromCache({ maintainFilters = true } = {}) {
     try {
@@ -677,7 +663,6 @@ window.refreshImockCache = async () => {
         }
     }
 };
-
 
 window.refreshMappingsFromCache = refreshMappingsFromCache;
 window.updateOptimisticCache = updateOptimisticCache;
