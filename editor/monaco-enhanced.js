@@ -3045,18 +3045,6 @@ class MonacoInitializer {
             const formatted = JSON.stringify(mappingData, null, 2);
             editor.setValue(formatted);
 
-            // Auto-format the document after loading
-            setTimeout(() => {
-                try {
-                    const formatAction = editor.getAction('editor.action.formatDocument');
-                    if (formatAction) {
-                        formatAction.run();
-                    }
-                } catch (e) {
-                    console.warn('Auto-format failed:', e);
-                }
-            }, 100);
-
             this.finalizeEditorMappingLoad();
 
             const resolved = mappingData && (mappingData.mapping || mappingData);
