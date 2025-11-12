@@ -470,12 +470,7 @@ const migrateLegacySettings = (rawSettings) => {
         normalized.customHeadersRaw = '';
     }
 
-    if (normalized.autoConnect === undefined) {
-        normalized.autoConnect = true;
-    } else {
-        normalized.autoConnect = normalized.autoConnect !== false;
-    }
-
+    normalized.autoConnect = normalized.autoConnect !== false;
     return normalized;
 };
 
@@ -521,158 +516,50 @@ window.allScenarios = [];
 window.isRecording = false;
 window.recordedCount = 0;
 
-// Normalize the WireMock base URL (respect the scheme and port provided by the user)
-// Example inputs and outputs:
-//  - host: "mock.example.com", port: "8080" => "http://mock.example.com:8080/__admin"
-//  - host: "https://mock.example.com", port: "" => "https://mock.example.com:443/__admin"
-//  - host: "https://mock.example.com:8443", port: "" => "https://mock.example.com:8443/__admin"
-//  - host: "http://mock.example.com", port: "8000" => "http://mock.example.com:8000/__admin"
 window.normalizeWiremockBaseUrl = (hostInput, portInput) => {
-    let rawHost = (hostInput || '').trim();
+    let rawHost = (hostInput || '').trim() || 'localhost';
     let port = (portInput || '').trim();
-    let scheme = 'http';
-    let hostname = '';
-
-    if (!rawHost) rawHost = 'localhost';
-
+    let scheme = 'http', hostname = '';
     try {
-        // If the protocol is missing, temporarily prepend http for proper parsing
         const url = new URL(rawHost.includes('://') ? rawHost : `http://${rawHost}`);
         scheme = url.protocol.replace(':', '') || 'http';
         hostname = url.hostname;
-        // If a port is not provided separately, attempt to reuse the port from the URL
-        if (!port && url.port) {
-            port = url.port;
-        }
+        port ||= url.port;
     } catch (e) {
-        // Fallback to parsing host:port directly
         const m = rawHost.match(/^([^:/]+)(?::(\d+))?$/);
-        if (m) {
-            hostname = m[1];
-            if (!port && m[2]) port = m[2];
-        } else {
-            hostname = rawHost; // use as-is
-        }
+        hostname = m ? m[1] : rawHost;
+        port ||= m?.[2];
     }
-
-    if (!hostname) hostname = 'localhost';
-    if (!port) {
-        // Default to 443 for HTTPS and 8080 otherwise (to preserve existing UI behavior)
-        port = scheme === 'https' ? '443' : '8080';
-    }
-
-    return `${scheme}://${hostname}:${port}/__admin`;
+    return `${scheme}://${hostname || 'localhost'}:${port || (scheme === 'https' ? '443' : '8080')}/__admin`;
 };
 
 // --- API CLIENT WITH TIMEOUT SUPPORT ---
 window.apiFetch = async (endpoint, options = {}) => {
     const controller = new AbortController();
-
-    // Read timeout from settings, fallback to centralized default
     const timeoutSettings = Utils.safeCall(window.readWiremockSettings) || {};
-    const defaultTimeout = window.DEFAULT_SETTINGS?.requestTimeout ? parseInt(window.DEFAULT_SETTINGS.requestTimeout) : 69000;
-    const currentTimeout = timeoutSettings.requestTimeout ? parseInt(timeoutSettings.requestTimeout) : defaultTimeout;
-    console.log(`⏱️ [API] Using request timeout: ${currentTimeout}ms (from settings: ${timeoutSettings.requestTimeout || `default ${defaultTimeout}`})`);
+    const currentTimeout = timeoutSettings.requestTimeout ? parseInt(timeoutSettings.requestTimeout) : (window.DEFAULT_SETTINGS?.requestTimeout ? parseInt(window.DEFAULT_SETTINGS.requestTimeout) : 69000);
     const timeoutId = setTimeout(() => controller.abort(), currentTimeout);
-
-    // Always use the latest wiremockBaseUrl from window object
     const fullUrl = `${window.wiremockBaseUrl}${endpoint}`;
-    const method = options.method || 'GET';
+    const headers = { 'Content-Type': 'application/json', ...ensureCustomHeaderObject(timeoutSettings.customHeaders || window.customHeaders), ...options.headers };
 
-    const customHeaderSettings = ensureCustomHeaderObject(timeoutSettings.customHeaders || window.customHeaders);
-
-    const headers = {
-        'Content-Type': 'application/json',
-        ...customHeaderSettings,
-        ...options.headers
-    };
-    
-    // Log every API request for debugging
-    console.log(`🔗 WireMock API Request:`, {
-        method,
-        url: fullUrl,
-        baseUrl: window.wiremockBaseUrl,
-        endpoint,
-        headers: headers,
-        options: options.body ? { ...options, body: JSON.parse(options.body || '{}') } : options,
-        timestamp: new Date().toISOString()
-    });
-    
     try {
-        const response = await fetch(fullUrl, {
-            ...options,
-            signal: controller.signal,
-            headers: headers
-        });
-        
+        const response = await fetch(fullUrl, { ...options, signal: controller.signal, headers });
         clearTimeout(timeoutId);
-        
-        // Log response for debugging
-        console.log(`📥 WireMock API Response:`, {
-            method,
-            url: fullUrl,
-            status: response.status,
-            statusText: response.statusText,
-            ok: response.ok,
-            timestamp: new Date().toISOString()
-        });
-        
         if (!response.ok) {
             const errorText = await response.text();
-            console.error(`❌ WireMock API Error:`, {
-                method,
-                url: fullUrl,
-                status: response.status,
-                error: errorText,
-                timestamp: new Date().toISOString()
-            });
             throw new Error(`HTTP ${response.status}: ${errorText || response.statusText}`);
         }
-        
-        const contentType = response.headers.get('content-type');
-        let responseData;
-        if (contentType && contentType.includes('application/json')) {
-            responseData = await response.json();
-        } else {
-            responseData = await response.text();
-        }
-        
-        // Log successful response data (truncated for large responses)
-        const dataPreview = typeof responseData === 'object' ? 
-            JSON.stringify(responseData).substring(0, 500) + (JSON.stringify(responseData).length > 500 ? '...' : '') :
-            responseData.toString().substring(0, 500) + (responseData.toString().length > 500 ? '...' : '');
-        
-        console.log(`✅ WireMock API Success:`, {
-            method,
-            url: fullUrl,
-            dataPreview,
-            timestamp: new Date().toISOString()
-        });
-        
-        // Track last OK time only for health-related endpoints
+        const responseData = response.headers.get('content-type')?.includes('application/json') ? await response.json() : await response.text();
         try {
-            if (endpoint === (window.ENDPOINTS && window.ENDPOINTS.HEALTH) || endpoint === (window.ENDPOINTS && window.ENDPOINTS.MAPPINGS)) {
+            if (endpoint === window.ENDPOINTS?.HEALTH || endpoint === window.ENDPOINTS?.MAPPINGS) {
                 window.lastWiremockSuccess = Date.now();
                 Utils.safeCall(window.updateLastSuccessUI);
             }
         } catch (_) {}
-        
         return responseData;
     } catch (error) {
         clearTimeout(timeoutId);
-        
-        // Log all errors for debugging
-        console.error(`💥 WireMock API Exception:`, {
-            method,
-            url: fullUrl,
-            error: error.message,
-            errorName: error.name,
-            timestamp: new Date().toISOString()
-        });
-        
-        if (error.name === 'AbortError') {
-            throw new Error(`Request timeout after ${currentTimeout}ms`);
-        }
+        if (error.name === 'AbortError') throw new Error(`Request timeout after ${currentTimeout}ms`);
         throw error;
     }
 };
@@ -681,25 +568,11 @@ window.apiFetch = async (endpoint, options = {}) => {
 
 window.showPage = (pageId, element) => {
     document.querySelectorAll('.main-content > div[id$="-page"]').forEach(p => p.classList.add('hidden'));
-
     const targetPage = document.getElementById(SELECTORS.PAGES[pageId.toUpperCase()]);
-    if (targetPage) {
-        targetPage.classList.remove('hidden');
-    } else {
-        console.warn(`Page not found: ${pageId}`);
-        return;
-    }
-
+    if (!targetPage) { console.warn(`Page not found: ${pageId}`); return; }
+    targetPage.classList.remove('hidden');
     document.querySelectorAll('.sidebar .nav-item').forEach(i => i.classList.remove('active'));
-    if (element) {
-        element.classList.add('active');
-    }
-
-    // Removed forced refresh on tab switch - data will only refresh:
-    // 1. On initial connection (connectToWireMock)
-    // 2. By manual refresh buttons
-    // 3. Via auto-refresh interval (if enabled)
-    // This prevents unnecessary API calls when switching tabs
+    if (element) element.classList.add('active');
 };
 
 // Sidebar collapse helpers
@@ -707,32 +580,17 @@ const SIDEBAR_COLLAPSED_CLASS = 'sidebar-collapsed';
 const SIDEBAR_STATE_STORAGE_KEY = 'imock-sidebar-state';
 
 const applySidebarState = (shouldCollapse, { persist = true } = {}) => {
-    const bodyElement = document.body;
-    if (!bodyElement) return;
-
-    bodyElement.classList.toggle(SIDEBAR_COLLAPSED_CLASS, shouldCollapse);
-
+    if (!document.body) return;
+    document.body.classList.toggle(SIDEBAR_COLLAPSED_CLASS, shouldCollapse);
     const toggleButton = document.querySelector('.sidebar-toggle');
     if (toggleButton) {
         const label = shouldCollapse ? 'Expand sidebar' : 'Collapse sidebar';
         toggleButton.setAttribute('aria-expanded', String(!shouldCollapse));
         toggleButton.setAttribute('aria-label', label);
         toggleButton.setAttribute('title', label);
-        const iconUse = toggleButton.querySelector('use');
-        if (iconUse) {
-            iconUse.setAttribute('href', shouldCollapse ? '#icon-sidebar-expand' : '#icon-sidebar-collapse');
-        }
+        toggleButton.querySelector('use')?.setAttribute('href', shouldCollapse ? '#icon-sidebar-expand' : '#icon-sidebar-collapse');
     }
-
-    if (!persist) {
-        return;
-    }
-
-    try {
-        localStorage.setItem(SIDEBAR_STATE_STORAGE_KEY, shouldCollapse ? 'collapsed' : 'expanded');
-    } catch (error) {
-        console.warn('Unable to persist sidebar state:', error);
-    }
+    if (persist) try { localStorage.setItem(SIDEBAR_STATE_STORAGE_KEY, shouldCollapse ? 'collapsed' : 'expanded'); } catch (e) { console.warn('Unable to persist sidebar state:', e); }
 };
 
 window.toggleSidebar = () => {
@@ -742,47 +600,24 @@ window.toggleSidebar = () => {
 
 window.initializeSidebarPreference = () => {
     let storedState = null;
-
-    try {
-        storedState = localStorage.getItem(SIDEBAR_STATE_STORAGE_KEY);
-    } catch (error) {
-        console.warn('Unable to read sidebar state from storage:', error);
-    }
-
-    const shouldCollapse = storedState === 'collapsed';
-    applySidebarState(shouldCollapse, { persist: false });
+    try { storedState = localStorage.getItem(SIDEBAR_STATE_STORAGE_KEY); } catch (e) { console.warn('Unable to read sidebar state from storage:', e); }
+    applySidebarState(storedState === 'collapsed', { persist: false });
 };
 
-// Modal helpers
 const resolveModalElement = (modalId) => {
-    if (!modalId) {
-        console.warn('Modal ID is required to resolve modal element');
-        return null;
-    }
-
+    if (!modalId) { console.warn('Modal ID is required to resolve modal element'); return null; }
     const element = document.getElementById(modalId);
-    if (!element) {
-        console.warn(`Modal element not found for id: ${modalId}`);
-    }
+    if (!element) console.warn(`Modal element not found for id: ${modalId}`);
     return element;
 };
 
 window.showModal = (modalId) => {
     const modal = resolveModalElement(modalId);
-    if (!modal) {
-        return;
-    }
-
+    if (!modal) return;
     modal.classList.remove('hidden');
     modal.style.display = 'flex';
-
     const firstInput = modal.querySelector('input, select, textarea');
-    if (firstInput) {
-        // Use RAF for better timing than setTimeout
-        LifecycleManager.requestAnimationFrame(() => {
-            firstInput.focus();
-        });
-    }
+    if (firstInput) LifecycleManager.requestAnimationFrame(() => firstInput.focus());
 };
 
 window.openAddMappingModal = () => {
@@ -797,122 +632,61 @@ window.openAddMappingModal = () => {
 
 window.hideModal = (modal) => {
     const modalElement = typeof modal === 'string' ? resolveModalElement(modal) : modal;
-    if (!modalElement) {
-        return;
-    }
-
+    if (!modalElement) return;
     modalElement.classList.add('hidden');
     modalElement.style.display = 'none';
-
-    const form = modalElement.querySelector('form');
-    if (form) {
-        form.reset();
-    }
-
-    if (
-        modalElement.id === 'edit-mapping-modal' &&
-        typeof UIComponents !== 'undefined' &&
-        typeof UIComponents.clearCardState === 'function'
-    ) {
+    modalElement.querySelector('form')?.reset();
+    if (modalElement.id === 'edit-mapping-modal' && typeof UIComponents?.clearCardState === 'function') {
         UIComponents.clearCardState('mapping', 'is-editing');
     }
 };
 
-// Tab management
 window.showTab = (tabName, button) => {
-    // Hide every tab
-    document.querySelectorAll('.tab-content').forEach(tab => {
-        tab.classList.add('hidden');
-    });
-    
-    // Remove the active state from all buttons
-    document.querySelectorAll('.tab-button').forEach(btn => {
-        btn.classList.remove('active');
-    });
-    
-    // Show the requested tab and activate its button
+    document.querySelectorAll('.tab-content').forEach(tab => tab.classList.add('hidden'));
+    document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
     document.getElementById(`${tabName}-tab`).classList.remove('hidden');
     button.classList.add('active');
 };
 
-// --- THEME FUNCTIONS ---
 const applyThemeToDom = (theme) => {
-    const body = document.body;
-    if (!body) {
-        return;
-    }
-
-    body.setAttribute('data-theme', theme);
-
-    const iconTargets = [
-        document.getElementById('theme-icon'),
-        document.getElementById('editor-theme-icon')
-    ].filter(Boolean);
-
+    if (!document.body) return;
+    document.body.setAttribute('data-theme', theme);
+    const iconTargets = [document.getElementById('theme-icon'), document.getElementById('editor-theme-icon')].filter(Boolean);
     if (iconTargets.length) {
         const target = theme === 'dark' ? '#icon-sun' : '#icon-moon';
-        iconTargets.forEach((icon) => {
-            icon.setAttribute('href', target);
-            icon.setAttribute('xlink:href', target);
-        });
+        iconTargets.forEach(icon => { icon.setAttribute('href', target); icon.setAttribute('xlink:href', target); });
     }
 };
 
 const persistThemePreference = (preference) => {
     localStorage.setItem('theme', preference);
-    try {
-        const current = Utils.safeCall(window.readWiremockSettings) || {};
-        localStorage.setItem('wiremock-settings', JSON.stringify({ ...current, theme: preference }));
-    } catch (_) {}
+    try { localStorage.setItem('wiremock-settings', JSON.stringify({ ...Utils.safeCall(window.readWiremockSettings) || {}, theme: preference })); } catch (_) {}
 };
 
 window.toggleTheme = () => {
-    const body = document.body;
-    if (!body) {
-        return;
-    }
-
-    const currentTheme = body.getAttribute('data-theme') || 'dark';
-    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-
+    if (!document.body) return;
+    const newTheme = (document.body.getAttribute('data-theme') || 'dark') === 'dark' ? 'light' : 'dark';
     applyThemeToDom(newTheme);
     persistThemePreference(newTheme);
-
-    if (window.NotificationManager) {
-        NotificationManager.show(`Switched to ${newTheme} theme`, 'success');
-    }
+    if (window.NotificationManager) NotificationManager.show(`Switched to ${newTheme} theme`, 'success');
 };
 
 window.changeTheme = () => {
     const themeSelect = document.getElementById('theme-select');
-    if (!themeSelect) {
-        return;
-    }
-
+    if (!themeSelect) return;
     const selectedTheme = themeSelect.value;
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const themeToApply = selectedTheme === 'auto' ? (prefersDark ? 'dark' : 'light') : selectedTheme;
-
+    const themeToApply = selectedTheme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : selectedTheme;
     applyThemeToDom(themeToApply);
     persistThemePreference(selectedTheme);
-
-    if (window.NotificationManager) {
-        NotificationManager.show(`Theme changed to ${selectedTheme}`, 'success');
-    }
+    if (window.NotificationManager) NotificationManager.show(`Theme changed to ${selectedTheme}`, 'success');
 };
 
-// Initialize theme on load
 window.initializeTheme = () => {
     const savedTheme = localStorage.getItem('theme') || 'dark';
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const themeToApply = savedTheme === 'auto' ? (prefersDark ? 'dark' : 'light') : savedTheme;
-
+    const themeToApply = savedTheme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : savedTheme;
     applyThemeToDom(themeToApply);
-
     const themeSelect = document.getElementById('theme-select');
-    if (themeSelect) {
-        themeSelect.value = savedTheme;
-    }
+    if (themeSelect) themeSelect.value = savedTheme;
 };
 
 // Initialize theme only after DOMContentLoaded
