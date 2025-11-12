@@ -2,7 +2,6 @@
 
 // --- UNIVERSAL FILTER MANAGER (eliminate ~90 lines of duplication) ---
 
-
 // Compact filtering helpers via FilterManager
 window.applyFilters = () => FilterManager.applyMappingFilters();
 window.clearMappingFilters = () => {

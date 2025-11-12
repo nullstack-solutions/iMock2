@@ -149,7 +149,6 @@ window.SELECTORS = {
         INDICATOR: 'health-indicator'
     },
 
-
 };
 
 // --- SCHEDULING & RENDER HELPERS ---

@@ -256,7 +256,6 @@ function initializeOnboardingFlow() {
 window.initializeOnboardingFlow = initializeOnboardingFlow;
 window.attemptAutoConnect = attemptAutoConnect;
 
-
 // === FUNCTIONS FOR EDITOR INTEGRATION ===
     
 window.editMapping = (mappingId) => {

@@ -186,7 +186,6 @@ function isCacheEnabled() {
     }
 }
 
-
 // --- CORE APPLICATION FUNCTIONS ---
 
 // Enhanced WireMock connection routine with accurate uptime handling
@@ -389,7 +388,6 @@ window.startHealthMonitoring = () => {
         }
     }, 30000); // 30 seconds
 };
-
 
 function refreshMappingsFromCache({ maintainFilters = true } = {}) {
     try {
@@ -671,7 +669,6 @@ window.refreshImockCache = async () => {
         }
     }
 };
-
 
 window.refreshMappingsFromCache = refreshMappingsFromCache;
 window.updateOptimisticCache = updateOptimisticCache;

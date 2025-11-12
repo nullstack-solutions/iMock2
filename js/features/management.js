@@ -1,7 +1,5 @@
 'use strict';
 
-// --- ADDITIONAL MANAGEMENT HELPERS ---
-
 window.refreshRequests = async () => {
     await fetchAndRenderRequests();
     const hasActiveFilters = document.getElementById(SELECTORS.REQUEST_FILTERS.METHOD)?.value ||
@@ -22,10 +20,6 @@ window.applyQuickTimeFilter = () => {
     FilterManager.applyRequestFilters();
 };
 
-
-// --- RESOURCE CLEANUP ---
-
-// Clear dangling timeouts on navigation
 window.cleanupPendingDeletions = () => {
     for (const [id, timeout] of window.deletionTimeouts) {
         clearTimeout(timeout);
@@ -34,7 +28,6 @@ window.cleanupPendingDeletions = () => {
     window.pendingDeletedIds.clear();
 };
 
-// Invoke when the page is closed
 window.addEventListener('beforeunload', window.cleanupPendingDeletions);
 
 window.toggleElementById = (elementId) => {
@@ -44,4 +37,3 @@ window.toggleElementById = (elementId) => {
 
 window.togglePreview = (mappingId) => window.toggleElementById(`preview-${mappingId}`);
 window.toggleRequestPreview = (requestId) => window.toggleElementById(`request-preview-${requestId}`);
-

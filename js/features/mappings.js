@@ -1056,7 +1056,6 @@ function handleMappingItemRemoved(id) {
 window.toggleMappingDetails = (mappingId) => UIComponents.toggleDetails(mappingId, 'mapping');
 window.toggleRequestDetails = (requestId) => UIComponents.toggleDetails(requestId, 'request');
 
-
 window.UIComponents = UIComponents;
 window.updateMappingTabCounts = updateMappingTabCounts;
 window.updateDataSourceIndicator = updateDataSourceIndicator;
