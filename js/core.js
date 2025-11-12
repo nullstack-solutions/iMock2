@@ -768,16 +768,6 @@ const resolveModalElement = (modalId) => {
     return element;
 };
 
-const resetMappingFormDefaults = () => {
-    const formElement = document.getElementById(SELECTORS.MODAL.FORM);
-    const idElement = document.getElementById(SELECTORS.MODAL.ID);
-    const titleElement = document.getElementById(SELECTORS.MODAL.TITLE);
-
-    if (formElement) formElement.reset();
-    if (idElement) idElement.value = '';
-    if (titleElement) titleElement.textContent = 'Add New Mapping';
-};
-
 window.showModal = (modalId) => {
     const modal = resolveModalElement(modalId);
     if (!modal) {
@@ -797,7 +787,12 @@ window.showModal = (modalId) => {
 };
 
 window.openAddMappingModal = () => {
-    resetMappingFormDefaults();
+    const formElement = document.getElementById(SELECTORS.MODAL.FORM);
+    const idElement = document.getElementById(SELECTORS.MODAL.ID);
+    const titleElement = document.getElementById(SELECTORS.MODAL.TITLE);
+    if (formElement) formElement.reset();
+    if (idElement) idElement.value = '';
+    if (titleElement) titleElement.textContent = 'Add New Mapping';
     window.showModal('add-mapping-modal');
 };
 
