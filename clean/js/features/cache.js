@@ -245,22 +245,16 @@ window.connectToWireMock = async () => {
         // Start periodic health checks
         startHealthMonitoring();
         
-        // Load data in parallel while leveraging the Cache Service
+        // Load only mappings on connect (requests load on demand via refresh button)
         const useCache = isCacheEnabled();
-        const [mappingsLoaded, requestsLoaded] = await Promise.all([
-            fetchAndRenderMappings(null, { useCache }),
-            fetchAndRenderRequests()
-        ]);
+        const mappingsLoaded = await fetchAndRenderMappings(null, { useCache });
 
         await loadScenarios();
 
-        if (mappingsLoaded && requestsLoaded) {
+        if (mappingsLoaded) {
             NotificationManager.success('Connected to WireMock successfully!');
         } else {
-            console.warn('Connected to WireMock, but some resources failed to load', {
-                mappingsLoaded,
-                requestsLoaded
-            });
+            console.warn('Connected to WireMock, but mappings failed to load');
         }
         
     } catch (error) {

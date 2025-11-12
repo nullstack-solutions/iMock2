@@ -636,8 +636,18 @@ window.hideModal = (modal) => {
     modalElement.classList.add('hidden');
     modalElement.style.display = 'none';
     modalElement.querySelector('form')?.reset();
-    if (modalElement.id === 'edit-mapping-modal' && typeof UIComponents?.clearCardState === 'function') {
-        UIComponents.clearCardState('mapping', 'is-editing');
+    if (modalElement.id === 'edit-mapping-modal') {
+        if (typeof UIComponents?.clearCardState === 'function') {
+            UIComponents.clearCardState('mapping', 'is-editing');
+        }
+        // Clear Monaco Editor content to prevent showing previous mapping
+        if (window.editor && typeof window.editor.setValue === 'function') {
+            try {
+                window.editor.setValue('');
+            } catch (e) {
+                console.warn('Failed to clear editor:', e);
+            }
+        }
     }
 };
 
