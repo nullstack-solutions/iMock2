@@ -168,7 +168,10 @@ function slimMapping(m) {
             url: pickUrl(m.request),
             // No headers/query params in cache - only essential matching data
         },
-        // No response data, minimal metadata - essential for UI display
+        response: {
+            status: m.response?.status,
+            // Only essential response data for filtering
+        },
         metadata: {
             created: m.metadata?.created,
             edited: m.metadata?.edited,
