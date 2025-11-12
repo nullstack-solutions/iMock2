@@ -29,65 +29,31 @@
     }
 
     function addMappingToIndex(mapping) {
-        if (!mapping || typeof mapping !== 'object') {
-            return;
-        }
-        if (!(window.mappingIndex instanceof Map)) {
-            window.mappingIndex = new Map();
-        }
-
+        if (!mapping || typeof mapping !== 'object') return;
+        if (!(window.mappingIndex instanceof Map)) window.mappingIndex = new Map();
         const identifiers = new Set();
-        const fields = ['id', 'uuid', 'stubMappingId', 'stubId', 'mappingId'];
-        fields.forEach(field => {
-            const value = mapping[field];
-            if (value) {
-                identifiers.add(String(value).trim());
-            }
-        });
-        if (mapping.metadata?.id) {
-            identifiers.add(String(mapping.metadata.id).trim());
-        }
-
-        identifiers.forEach(id => {
-            if (id) {
-                window.mappingIndex.set(id, mapping);
-            }
-        });
+        ['id', 'uuid', 'stubMappingId', 'stubId', 'mappingId'].forEach(field => { if (mapping[field]) identifiers.add(String(mapping[field]).trim()); });
+        if (mapping.metadata?.id) identifiers.add(String(mapping.metadata.id).trim());
+        identifiers.forEach(id => { if (id) window.mappingIndex.set(id, mapping); });
     }
 
     function rebuildMappingIndex(mappings) {
-        if (!(window.mappingIndex instanceof Map)) {
-            window.mappingIndex = new Map();
-        } else {
-            window.mappingIndex.clear();
-        }
-        if (!Array.isArray(mappings)) {
-            return;
-        }
-        mappings.forEach(addMappingToIndex);
+        if (!(window.mappingIndex instanceof Map)) window.mappingIndex = new Map();
+        else window.mappingIndex.clear();
+        if (Array.isArray(mappings)) mappings.forEach(addMappingToIndex);
     }
 
     function computeMappingTabTotals(source = []) {
         const totals = { all: 0, get: 0, post: 0, put: 0, patch: 0, delete: 0 };
-        if (!Array.isArray(source) || source.length === 0) {
-            return totals;
-        }
-
+        if (!Array.isArray(source) || source.length === 0) return totals;
         totals.all = source.length;
-        source.forEach(mapping => {
-            const method = (mapping?.request?.method || '').toLowerCase();
-            if (Object.prototype.hasOwnProperty.call(totals, method)) {
-                totals[method] += 1;
-            }
-        });
+        source.forEach(mapping => { const method = (mapping?.request?.method || '').toLowerCase(); if (Object.prototype.hasOwnProperty.call(totals, method)) totals[method] += 1; });
         return totals;
     }
 
     function refreshMappingTabSnapshot() {
         window.mappingTabTotals = computeMappingTabTotals(window.originalMappings);
-        if (typeof window.updateMappingTabCounts === 'function') {
-            window.updateMappingTabCounts();
-        }
+        if (typeof window.updateMappingTabCounts === 'function') window.updateMappingTabCounts();
     }
 
     function computeRequestTabTotals(source = []) {

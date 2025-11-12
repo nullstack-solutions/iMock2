@@ -2,11 +2,7 @@
 
 window.refreshRequests = async () => {
     await fetchAndRenderRequests();
-    const hasActiveFilters = document.getElementById(SELECTORS.REQUEST_FILTERS.METHOD)?.value ||
-                          document.getElementById(SELECTORS.REQUEST_FILTERS.URL)?.value ||
-                          document.getElementById(SELECTORS.REQUEST_FILTERS.STATUS)?.value ||
-                          document.getElementById(SELECTORS.REQUEST_FILTERS.DATE_FROM)?.value ||
-                          document.getElementById(SELECTORS.REQUEST_FILTERS.DATE_TO)?.value;
+    const hasActiveFilters = document.getElementById(SELECTORS.REQUEST_FILTERS.METHOD)?.value || document.getElementById(SELECTORS.REQUEST_FILTERS.URL)?.value || document.getElementById(SELECTORS.REQUEST_FILTERS.STATUS)?.value || document.getElementById(SELECTORS.REQUEST_FILTERS.DATE_FROM)?.value || document.getElementById(SELECTORS.REQUEST_FILTERS.DATE_TO)?.value;
     if (hasActiveFilters) FilterManager.applyRequestFilters();
 };
 
@@ -30,10 +26,7 @@ window.cleanupPendingDeletions = () => {
 
 window.addEventListener('beforeunload', window.cleanupPendingDeletions);
 
-window.toggleElementById = (elementId) => {
-    const el = document.getElementById(elementId);
-    if (el) el.classList.toggle('hidden');
-};
+window.toggleElementById = (elementId) => document.getElementById(elementId)?.classList.toggle('hidden');
 
 window.togglePreview = (mappingId) => window.toggleElementById(`preview-${mappingId}`);
 window.toggleRequestPreview = (requestId) => window.toggleElementById(`request-preview-${requestId}`);
