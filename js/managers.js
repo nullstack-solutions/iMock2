@@ -1042,4 +1042,188 @@ window.URLStateManager = {
     }
 };
 
-console.log('✅ Managers.js loaded - NotificationManager, TabManager, FilterManager, URLStateManager');
+// ==========================================
+// Filter Presets Manager
+// ==========================================
+window.FilterPresetsManager = {
+    /**
+     * Default presets for mapping filters
+     */
+    defaultPresets: {
+        'all-errors': {
+            name: 'All Errors',
+            icon: '⚠️',
+            filters: { method: '', query: '', status: '4' }
+        },
+        'server-errors': {
+            name: 'Server Errors (5xx)',
+            icon: '🔥',
+            filters: { method: '', query: '', status: '5' }
+        },
+        'client-errors': {
+            name: 'Client Errors (4xx)',
+            icon: '❌',
+            filters: { method: '', query: '', status: '4' }
+        },
+        'get-requests': {
+            name: 'GET Requests',
+            icon: '📥',
+            filters: { method: 'GET', query: '', status: '' }
+        },
+        'post-requests': {
+            name: 'POST Requests',
+            icon: '📤',
+            filters: { method: 'POST', query: '', status: '' }
+        },
+        'api-endpoints': {
+            name: 'API Endpoints',
+            icon: '🔌',
+            filters: { method: '', query: '/api/', status: '' }
+        },
+        'success-only': {
+            name: 'Success (2xx)',
+            icon: '✅',
+            filters: { method: '', query: '', status: '2' }
+        }
+    },
+
+    /**
+     * Get all presets (default + custom)
+     * @returns {Object} All presets
+     */
+    getAllPresets() {
+        try {
+            const customPresets = localStorage.getItem('imock-filter-presets-custom');
+            const custom = customPresets ? JSON.parse(customPresets) : {};
+            return { ...this.defaultPresets, ...custom };
+        } catch (error) {
+            console.warn('Failed to load custom presets:', error);
+            return { ...this.defaultPresets };
+        }
+    },
+
+    /**
+     * Apply a preset by ID
+     * @param {string} presetId - Preset identifier
+     * @param {string} tabName - 'mappings' or 'requests'
+     */
+    applyPreset(presetId, tabName = 'mappings') {
+        const presets = this.getAllPresets();
+        const preset = presets[presetId];
+
+        if (!preset) {
+            console.warn(`Preset not found: ${presetId}`);
+            return;
+        }
+
+        if (tabName === 'mappings') {
+            const methodElem = document.getElementById('filter-method');
+            const queryElem = document.getElementById('filter-url');
+            const statusElem = document.getElementById('filter-status');
+
+            if (methodElem) methodElem.value = preset.filters.method || '';
+            if (queryElem) queryElem.value = preset.filters.query || '';
+            if (statusElem) statusElem.value = preset.filters.status || '';
+
+            // Apply filters
+            if (typeof window.applyFilters === 'function') {
+                window.applyFilters();
+            }
+
+            // Sync tabs
+            if (preset.filters.method && typeof window.syncFilterTabsFromSelect === 'function') {
+                window.syncFilterTabsFromSelect('mapping', preset.filters.method);
+            }
+
+            // Show notification
+            if (typeof NotificationManager !== 'undefined') {
+                NotificationManager.info(`Applied preset: ${preset.name}`);
+            }
+        }
+    },
+
+    /**
+     * Save a custom preset
+     * @param {string} presetId - Unique preset ID
+     * @param {Object} presetData - Preset data { name, icon, filters }
+     */
+    saveCustomPreset(presetId, presetData) {
+        try {
+            const customPresets = this.getCustomPresets();
+            customPresets[presetId] = presetData;
+            localStorage.setItem('imock-filter-presets-custom', JSON.stringify(customPresets));
+
+            if (typeof NotificationManager !== 'undefined') {
+                NotificationManager.success(`Preset "${presetData.name}" saved`);
+            }
+
+            // Refresh preset UI if available
+            if (typeof window.renderFilterPresets === 'function') {
+                window.renderFilterPresets();
+            }
+        } catch (error) {
+            console.error('Failed to save preset:', error);
+            if (typeof NotificationManager !== 'undefined') {
+                NotificationManager.error('Failed to save preset');
+            }
+        }
+    },
+
+    /**
+     * Get custom presets only
+     * @returns {Object} Custom presets
+     */
+    getCustomPresets() {
+        try {
+            const customPresets = localStorage.getItem('imock-filter-presets-custom');
+            return customPresets ? JSON.parse(customPresets) : {};
+        } catch (error) {
+            console.warn('Failed to load custom presets:', error);
+            return {};
+        }
+    },
+
+    /**
+     * Delete a custom preset
+     * @param {string} presetId - Preset ID to delete
+     */
+    deleteCustomPreset(presetId) {
+        try {
+            const customPresets = this.getCustomPresets();
+            delete customPresets[presetId];
+            localStorage.setItem('imock-filter-presets-custom', JSON.stringify(customPresets));
+
+            if (typeof NotificationManager !== 'undefined') {
+                NotificationManager.success('Preset deleted');
+            }
+
+            // Refresh preset UI
+            if (typeof window.renderFilterPresets === 'function') {
+                window.renderFilterPresets();
+            }
+        } catch (error) {
+            console.error('Failed to delete preset:', error);
+            if (typeof NotificationManager !== 'undefined') {
+                NotificationManager.error('Failed to delete preset');
+            }
+        }
+    },
+
+    /**
+     * Get current filters as preset data
+     * @param {string} tabName - 'mappings' or 'requests'
+     * @returns {Object} Current filters
+     */
+    getCurrentFiltersAsPreset(tabName = 'mappings') {
+        if (tabName === 'mappings') {
+            return {
+                method: document.getElementById('filter-method')?.value || '',
+                query: document.getElementById('filter-url')?.value || '',
+                status: document.getElementById('filter-status')?.value || ''
+            };
+        }
+        return {};
+    }
+};
+
+console.log('✅ Managers.js loaded - NotificationManager, TabManager, FilterManager, URLStateManager, FilterPresetsManager');

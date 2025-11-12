@@ -321,6 +321,29 @@
                             <span class="filter-tab-count" id="mapping-tab-delete">0</span>
                         </button>
                     </div>
+
+                    <!-- Filter Presets -->
+                    <div class="filter-presets" id="filter-presets">
+                        <div class="filter-presets-header">
+                            <span class="filter-presets-label">Quick Filters:</span>
+                            <button type="button" class="btn-preset-save" onclick="showSavePresetDialog()" title="Save current filters as preset">
+                                <span>💾</span>
+                                <span class="sr-only">Save Preset</span>
+                            </button>
+                        </div>
+                        <div class="filter-presets-list" id="filter-presets-list">
+                            <!-- Presets will be rendered here dynamically -->
+                        </div>
+                    </div>
+
+                    <!-- Active Filter Pills -->
+                    <div class="filter-pills" id="filter-pills" style="display: none;">
+                        <span class="filter-pills-label">Active filters:</span>
+                        <div class="filter-pills-container" id="filter-pills-container">
+                            <!-- Pills will be rendered here dynamically -->
+                        </div>
+                    </div>
+
                     <div class="filter-grid">
                         <div class="form-group">
                             <label class="form-label">Method</label>
@@ -1025,6 +1048,7 @@
 <script src="js/features/state.js"></script>
 <script src="js/features/utils.js"></script>
 <script src="js/features/filters.js"></script>
+<script src="js/features/filter-presets.js"></script>
 <script src="js/features/cache.js"></script>
 <script src="js/features/mappings.js"></script>
 <script src="js/features/requests.js"></script>
