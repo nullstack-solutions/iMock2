@@ -7,15 +7,25 @@ window.cacheManager = {
     // Primary data cache
     cache: new Map(),
 
+    // Phase 2 Optimization: Cache metadata for time-based GC
+    // Follows React Query pattern (time-based, not LRU)
+    cacheMetadata: new Map(), // Stores { createdAt, lastAccessed } for each entry
+
     // Optimistic update queue with TTL (array to allow coalescing)
     optimisticQueue: [],
 
     // TTL configuration for optimistic updates (30 seconds by default)
     optimisticTTL: 30000,
 
+    // Phase 2: Cache limits configuration
+    maxCacheAge: 5 * 60 * 1000,  // 5 minutes (matches React Query default gcTime)
+    maxCacheSize: 100,             // Max 100 entries in cache
+    maxOptimisticQueueSize: 50,    // Max 50 pending optimistic updates
+
     // Interval handles for lifecycle management
     cleanupInterval: null,
     syncInterval: null,
+    gcInterval: null,  // Phase 2: Garbage collection interval
 
     // Version counter for change tracking
     version: 0,
@@ -31,18 +41,102 @@ window.cacheManager = {
         if (this.syncInterval) {
             window.LifecycleManager.clearInterval(this.syncInterval);
         }
+        if (this.gcInterval) {
+            window.LifecycleManager.clearInterval(this.gcInterval);
+        }
 
+        // Phase 1 Optimization: Increased intervals (5s→15s for cleanup, sync→120s)
         // Periodically remove stale optimistic updates
-        this.cleanupInterval = window.LifecycleManager.setInterval(() => this.cleanupStaleOptimisticUpdates(), 5000);
+        this.cleanupInterval = window.LifecycleManager.setInterval(() => this.cleanupStaleOptimisticUpdates(), 15000);
 
         // Periodically synchronize with the server
-        this.syncInterval = window.LifecycleManager.setInterval(() => this.syncWithServer(), 60000);
+        this.syncInterval = window.LifecycleManager.setInterval(() => this.syncWithServer(), 120000);
+
+        // Phase 2: Garbage collection for old cache entries
+        // Runs every 60 seconds, removes entries older than maxCacheAge
+        this.gcInterval = window.LifecycleManager.setInterval(() => this.garbageCollect(), 60000);
+    },
+
+    // Phase 2: Garbage collection - removes old and excess cache entries
+    garbageCollect() {
+        const now = Date.now();
+        let removedCount = 0;
+
+        // 1. Remove entries older than maxCacheAge (time-based GC, like React Query)
+        for (const [key, metadata] of this.cacheMetadata.entries()) {
+            const age = now - metadata.lastAccessed;
+            if (age > this.maxCacheAge) {
+                this.cache.delete(key);
+                this.cacheMetadata.delete(key);
+                removedCount++;
+                console.log(`🗑️ [GC] Removed expired cache entry: ${key} (age: ${Math.round(age / 1000)}s)`);
+            }
+        }
+
+        // 2. If cache still too large, remove oldest entries (size-based limit)
+        if (this.cache.size > this.maxCacheSize) {
+            // Sort by lastAccessed (oldest first)
+            const entries = Array.from(this.cacheMetadata.entries())
+                .sort((a, b) => a[1].lastAccessed - b[1].lastAccessed);
+
+            const toRemove = this.cache.size - this.maxCacheSize;
+            for (let i = 0; i < toRemove && i < entries.length; i++) {
+                const [key] = entries[i];
+                this.cache.delete(key);
+                this.cacheMetadata.delete(key);
+                removedCount++;
+                console.log(`🗑️ [GC] Removed excess cache entry: ${key} (cache too large)`);
+            }
+        }
+
+        if (removedCount > 0) {
+            console.log(`✅ [GC] Garbage collection completed, removed ${removedCount} entries`);
+            console.log(`📊 [GC] Cache stats: ${this.cache.size}/${this.maxCacheSize} entries`);
+            this.rebuildCache();
+        }
+    },
+
+    // Phase 2: Setter with metadata tracking
+    set(key, value) {
+        const now = Date.now();
+        this.cache.set(key, value);
+        this.cacheMetadata.set(key, {
+            createdAt: this.cacheMetadata.has(key) ? this.cacheMetadata.get(key).createdAt : now,
+            lastAccessed: now
+        });
+    },
+
+    // Phase 2: Getter with metadata tracking (updates lastAccessed)
+    get(key) {
+        const value = this.cache.get(key);
+        if (value !== undefined && this.cacheMetadata.has(key)) {
+            const metadata = this.cacheMetadata.get(key);
+            metadata.lastAccessed = Date.now();
+        }
+        return value;
+    },
+
+    // Phase 2: Check if key exists
+    has(key) {
+        return this.cache.has(key);
+    },
+
+    // Phase 2: Delete with metadata cleanup
+    delete(key) {
+        this.cacheMetadata.delete(key);
+        return this.cache.delete(key);
     },
 
     // Add an optimistic update (simplified flow)
     addOptimisticUpdate(m, op) {
         const id = m?.id || m?.uuid;
         if (!id) return;
+
+        // Phase 2: Check queue size limit
+        if (this.optimisticQueue.length >= this.maxOptimisticQueueSize) {
+            console.warn(`⚠️ [CACHE] Optimistic queue full (${this.maxOptimisticQueueSize}), removing oldest`);
+            this.optimisticQueue.shift(); // Remove oldest
+        }
 
         // Lightweight logic - the server remains the source of truth
         this.optimisticQueue.push({ id, op, payload: m, ts: Date.now() });
@@ -109,16 +203,16 @@ window.cacheManager = {
             serverMappings.forEach(mapping => {
                 const id = mapping.id || mapping.uuid;
                 if (id && !isImockCacheMapping(mapping)) {
-                    this.cache.set(id, mapping);
+                    this.set(id, mapping); // Phase 2: Use wrapper with metadata
                 }
             });
 
             // Layer optimistic updates on top of the server payload
             for (const item of this.optimisticQueue) {
                 if (item.op === 'delete') {
-                    this.cache.delete(item.id);
+                    this.delete(item.id); // Phase 2: Use wrapper with metadata cleanup
                 } else {
-                    this.cache.set(item.id, item.payload);
+                    this.set(item.id, item.payload); // Phase 2: Use wrapper with metadata
                 }
             }
 
@@ -155,17 +249,18 @@ window.cacheManager = {
 
     // Retrieve a mapping from the cache
     getMapping(id) {
-        return this.cache.get(id);
+        return this.get(id); // Phase 2: Use wrapper with metadata tracking
     },
 
     // Check if a mapping exists
     hasMapping(id) {
-        return this.cache.has(id);
+        return this.has(id); // Phase 2: Use wrapper
     },
 
     // Clear the entire cache
     clear() {
         this.cache.clear();
+        this.cacheMetadata.clear(); // Phase 2: Clear metadata too
         this.optimisticQueue.length = 0;
         this.version = 0;
         console.log('🧹 [CACHE] Cache cleared');
@@ -185,7 +280,6 @@ function isCacheEnabled() {
         return false;
     }
 }
-
 
 // --- CORE APPLICATION FUNCTIONS ---
 
@@ -221,7 +315,6 @@ window.connectToWireMock = async () => {
     }
 
     try {
-        // The first health check starts uptime tracking and determines online/offline mode
         await checkHealthAndStartUptime();
 
         // If we got here, we are online - proceed with full connection
@@ -251,20 +344,14 @@ window.connectToWireMock = async () => {
 
         // Load data in parallel while leveraging the Cache Service
         const useCache = isCacheEnabled();
-        const [mappingsLoaded, requestsLoaded] = await Promise.all([
-            fetchAndRenderMappings(null, { useCache }),
-            fetchAndRenderRequests()
-        ]);
+        const mappingsLoaded = await fetchAndRenderMappings(null, { useCache });
 
         await loadScenarios();
 
-        if (mappingsLoaded && requestsLoaded) {
+        if (mappingsLoaded) {
             NotificationManager.success('Connected to WireMock successfully!');
         } else {
-            console.warn('Connected to WireMock, but some resources failed to load', {
-                mappingsLoaded,
-                requestsLoaded
-            });
+            console.warn('Connected to WireMock, but mappings failed to load');
         }
 
     } catch (error) {
@@ -774,7 +861,6 @@ window.refreshImockCache = async () => {
         }
     }
 };
-
 
 window.refreshMappingsFromCache = refreshMappingsFromCache;
 window.updateOptimisticCache = updateOptimisticCache;
