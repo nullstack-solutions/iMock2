@@ -11,7 +11,7 @@ window.clearMappingFilters = () => {
 
     // Clear URL parameters when clearing filters
     if (typeof window.URLStateManager !== 'undefined') {
-        window.URLStateManager.updateURL('mappings', { method: '', url: '', status: '' }, true);
+        window.URLStateManager.updateURL('mappings', { method: '', query: '', status: '' }, true);
     }
 
     FilterManager.applyMappingFilters();
