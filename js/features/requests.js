@@ -171,7 +171,8 @@ function setActiveFilterTab(button) {
     });
 }
 
-function syncFilterTabsFromSelect(group, value) {
+// Make this function globally accessible for URLStateManager
+window.syncFilterTabsFromSelect = function syncFilterTabsFromSelect(group, value) {
     const normalizedValue = (value || '').toString().toLowerCase();
     const tabs = document.querySelectorAll(`.filter-tab[data-filter-group="${group}"]`);
     let activated = false;
@@ -190,7 +191,7 @@ function syncFilterTabsFromSelect(group, value) {
     if (!activated && tabs.length > 0) {
         tabs[0].classList.add('active');
     }
-}
+};
 
 window.handleMappingTabClick = (button, method) => {
     setActiveFilterTab(button);
