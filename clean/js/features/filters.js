@@ -8,6 +8,12 @@ window.clearMappingFilters = () => {
     document.getElementById(SELECTORS.MAPPING_FILTERS.METHOD).value = '';
     document.getElementById(SELECTORS.MAPPING_FILTERS.URL).value = '';
     document.getElementById(SELECTORS.MAPPING_FILTERS.STATUS).value = '';
+
+    // Clear URL parameters when clearing filters
+    if (typeof window.URLStateManager !== 'undefined') {
+        window.URLStateManager.updateURL('mappings', { method: '', url: '', status: '' }, true);
+    }
+
     FilterManager.applyMappingFilters();
     if (typeof FilterManager.flushMappingFilters === 'function') {
         FilterManager.flushMappingFilters();
@@ -86,13 +92,18 @@ window.clearRequestFilters = () => {
     const dateFromEl = document.getElementById(SELECTORS.REQUEST_FILTERS.DATE_FROM);
     const dateToEl = document.getElementById(SELECTORS.REQUEST_FILTERS.DATE_TO);
     const quickEl = document.getElementById(SELECTORS.REQUEST_FILTERS.QUICK);
-    
+
     if (methodEl) methodEl.value = '';
     if (urlEl) urlEl.value = '';
     if (statusEl) statusEl.value = '';
     if (dateFromEl) dateFromEl.value = '';
     if (dateToEl) dateToEl.value = '';
     if (quickEl) quickEl.value = ''; // Reset quick filter selection
+
+    // Clear URL parameters when clearing filters
+    if (typeof window.URLStateManager !== 'undefined') {
+        window.URLStateManager.updateURL('requests', { method: '', status: '', url: '', from: '', to: '' }, true);
+    }
 
     FilterManager.applyRequestFilters();
     if (typeof FilterManager.flushRequestFilters === 'function') {
