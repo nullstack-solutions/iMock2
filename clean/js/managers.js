@@ -1030,58 +1030,16 @@ window.URLStateManager = {
 // ==========================================
 window.FilterPresetsManager = {
     /**
-     * Default presets for mapping filters
-     */
-    defaultPresets: {
-        'all-errors': {
-            name: 'All Errors',
-            icon: '⚠️',
-            filters: { method: '', query: '', status: '4' }
-        },
-        'server-errors': {
-            name: 'Server Errors (5xx)',
-            icon: '🔥',
-            filters: { method: '', query: '', status: '5' }
-        },
-        'client-errors': {
-            name: 'Client Errors (4xx)',
-            icon: '❌',
-            filters: { method: '', query: '', status: '4' }
-        },
-        'get-requests': {
-            name: 'GET Requests',
-            icon: '📥',
-            filters: { method: 'GET', query: '', status: '' }
-        },
-        'post-requests': {
-            name: 'POST Requests',
-            icon: '📤',
-            filters: { method: 'POST', query: '', status: '' }
-        },
-        'api-endpoints': {
-            name: 'API Endpoints',
-            icon: '🔌',
-            filters: { method: '', query: '/api/', status: '' }
-        },
-        'success-only': {
-            name: 'Success (2xx)',
-            icon: '✅',
-            filters: { method: '', query: '', status: '2' }
-        }
-    },
-
-    /**
-     * Get all presets (default + custom)
-     * @returns {Object} All presets
+     * Get all custom presets
+     * @returns {Object} Custom presets
      */
     getAllPresets() {
         try {
             const customPresets = localStorage.getItem('imock-filter-presets-custom');
-            const custom = customPresets ? JSON.parse(customPresets) : {};
-            return { ...this.defaultPresets, ...custom };
+            return customPresets ? JSON.parse(customPresets) : {};
         } catch (error) {
             console.warn('Failed to load custom presets:', error);
-            return { ...this.defaultPresets };
+            return {};
         }
     },
 

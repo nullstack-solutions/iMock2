@@ -12,26 +12,28 @@ window.renderFilterPresets = () => {
     if (!container) return;
 
     const presets = window.FilterPresetsManager.getAllPresets();
-    const customPresets = window.FilterPresetsManager.getCustomPresets();
-
     container.innerHTML = '';
 
-    Object.entries(presets).forEach(([presetId, preset]) => {
-        const isCustom = customPresets.hasOwnProperty(presetId);
+    const presetEntries = Object.entries(presets);
+
+    // Show hint if no presets
+    if (presetEntries.length === 0) {
+        container.innerHTML = '<span class="filter-presets-hint">No saved presets. Set filters and click 💾 to save.</span>';
+        return;
+    }
+
+    // Render all saved presets
+    presetEntries.forEach(([presetId, preset]) => {
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'filter-preset-btn';
         button.onclick = () => window.FilterPresetsManager.applyPreset(presetId, 'mappings');
         button.title = `Apply ${preset.name}`;
 
-        const deleteBtn = isCustom
-            ? `<span class="preset-delete" onclick="event.stopPropagation(); deletePreset('${presetId}');" title="Delete preset">×</span>`
-            : '';
-
         button.innerHTML = `
-            <span class="preset-icon">${preset.icon || '📌'}</span>
+            <span class="preset-icon">${preset.icon || '⭐'}</span>
             <span class="preset-name">${preset.name}</span>
-            ${deleteBtn}
+            <span class="preset-delete" onclick="event.stopPropagation(); deletePreset('${presetId}');" title="Delete preset">×</span>
         `;
 
         container.appendChild(button);
