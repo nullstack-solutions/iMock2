@@ -220,14 +220,10 @@ function cloneMappingForOptimisticShadow(mapping) {
         return null;
     }
     try {
-        if (typeof structuredClone === 'function') {
-            return structuredClone(mapping);
-        }
-    } catch {}
-    try {
-        return JSON.parse(JSON.stringify(mapping));
-    } catch {}
-    return { ...mapping };
+        return typeof structuredClone === 'function' ? structuredClone(mapping) : JSON.parse(JSON.stringify(mapping));
+    } catch {
+        return { ...mapping };
+    }
 }
 
 function rememberOptimisticShadowMapping(mapping, operation) {
@@ -1059,7 +1055,6 @@ function handleMappingItemRemoved(id) {
 // Compact detail toggles via UIComponents
 window.toggleMappingDetails = (mappingId) => UIComponents.toggleDetails(mappingId, 'mapping');
 window.toggleRequestDetails = (requestId) => UIComponents.toggleDetails(requestId, 'request');
-
 
 window.UIComponents = UIComponents;
 window.updateMappingTabCounts = updateMappingTabCounts;

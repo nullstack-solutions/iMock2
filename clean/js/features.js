@@ -62,7 +62,6 @@
             }
         };
 
-
         // --- COMPACT UTILITIES (trimmed from ~80 to 20 lines) ---
 
         // === MISSING FUNCTIONS FOR HTML COMPATIBILITY ===
