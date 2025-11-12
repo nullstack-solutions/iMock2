@@ -502,10 +502,10 @@ window.TabManager = {
 
 function executeMappingFilters() {
     const method = document.getElementById('filter-method')?.value?.trim() || '';
-    const url = document.getElementById('filter-url')?.value?.trim() || '';
+    const query = document.getElementById('filter-url')?.value?.trim() || '';
     const status = document.getElementById('filter-status')?.value?.trim() || '';
 
-    const filters = { method, url, status };
+    const filters = { method, query, status };
 
     // Update URL with current filters (primary state storage)
     if (typeof window.URLStateManager !== 'undefined') {
@@ -528,8 +528,8 @@ function executeMappingFilters() {
     }
 
     const loweredMethod = method.toLowerCase();
-    const loweredUrl = url.toLowerCase();
-    const hasFilters = Boolean(method || url || status);
+    const loweredQuery = query.toLowerCase();
+    const hasFilters = Boolean(method || query || status);
 
     const filteredMappings = hasFilters
         ? window.originalMappings.filter(mapping => {
@@ -544,10 +544,10 @@ function executeMappingFilters() {
                 }
             }
 
-            if (url) {
+            if (query) {
                 const mappingUrl = (mapping.request?.url || mapping.request?.urlPattern || mapping.request?.urlPath || '').toLowerCase();
                 const mappingName = (mapping.name || '').toLowerCase();
-                if (!mappingUrl.includes(loweredUrl) && !mappingName.includes(loweredUrl)) {
+                if (!mappingUrl.includes(loweredQuery) && !mappingName.includes(loweredQuery)) {
                     return false;
                 }
             }
@@ -872,9 +872,10 @@ window.FilterManager = {
                 const elem = document.getElementById('filter-method');
                 if (elem) elem.value = filters.method;
             }
-            if (filters.url) {
+            // Support both 'query' (new) and 'url' (legacy) for backward compatibility
+            if (filters.query || filters.url) {
                 const elem = document.getElementById('filter-url');
-                if (elem) elem.value = filters.url;
+                if (elem) elem.value = filters.query || filters.url;
             }
             if (filters.status) {
                 const elem = document.getElementById('filter-status');
@@ -923,7 +924,7 @@ window.URLStateManager = {
         if (tabName === 'mappings') {
             return {
                 method: params.get('method') || '',
-                url: params.get('url') || '',
+                query: params.get('query') || '',
                 status: params.get('status') || ''
             };
         } else if (tabName === 'requests') {
@@ -951,12 +952,12 @@ window.URLStateManager = {
         // Remove old parameters for this tab
         if (tabName === 'mappings') {
             params.delete('method');
-            params.delete('url');
+            params.delete('query');
             params.delete('status');
 
             // Add new parameters (only non-empty values)
             if (filters.method) params.set('method', filters.method);
-            if (filters.url) params.set('url', filters.url);
+            if (filters.query) params.set('query', filters.query);
             if (filters.status) params.set('status', filters.status);
         } else if (tabName === 'requests') {
             params.delete('req_method');
@@ -1001,7 +1002,7 @@ window.URLStateManager = {
             const statusElem = document.getElementById('filter-status');
 
             if (methodElem) methodElem.value = filters.method || '';
-            if (urlElem) urlElem.value = filters.url || '';
+            if (urlElem) urlElem.value = filters.query || '';
             if (statusElem) statusElem.value = filters.status || '';
 
             // Sync filter tabs
