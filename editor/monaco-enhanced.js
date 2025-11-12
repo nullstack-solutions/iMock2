@@ -2030,6 +2030,16 @@ class MonacoInitializer {
     }
 
     async loadMonaco() {
+        // Phase 1 Optimization: Use lazy loader
+        if (typeof MonacoLoader !== 'undefined' && MonacoLoader.load) {
+            console.log('🚀 [Lazy Loading] Loading Monaco via MonacoLoader...');
+            await MonacoLoader.load();
+            console.log('✅ [Lazy Loading] Monaco loaded successfully');
+            return;
+        }
+
+        // Fallback to original loading method
+        console.warn('⚠️ [Lazy Loading] MonacoLoader not available, using fallback');
         await this.waitForMonacoLoader();
 
         const attempts = [];
@@ -5642,14 +5652,18 @@ function bootstrapMonacoInitializer() {
     return monacoInitializationPromise;
 }
 
-// Auto-initialize when DOM is ready
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-        bootstrapMonacoInitializer();
-    });
-} else {
+// Phase 1 Optimization: Lazy initialization
+// Monaco is initialized only when actually needed (when editor is opened)
+// This saves 3-5 MB if editor is not used
+
+// Initialize Monaco when monaco:loaded event is dispatched
+window.addEventListener('monaco:loaded', () => {
+    console.log('🚀 [Lazy Init] monaco:loaded event received, initializing editor...');
     bootstrapMonacoInitializer();
-}
+});
+
+// Expose bootstrap function for manual initialization
+window.bootstrapMonacoInitializer = bootstrapMonacoInitializer;
 
 // Export for use in other modules
 if (typeof window !== 'undefined') {
