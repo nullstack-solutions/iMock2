@@ -267,6 +267,15 @@ window.openEditModal = async (identifier) => {
         return;
     }
 
+    // Clear Monaco Editor immediately to prevent showing previous mapping
+    if (window.editor && typeof window.editor.setValue === 'function') {
+        try {
+            window.editor.setValue('');
+        } catch (e) {
+            console.warn('Failed to clear editor on open:', e);
+        }
+    }
+
     if (typeof window.setMappingEditorBusyState === 'function') {
         window.setMappingEditorBusyState(true, 'Loading…');
     }
