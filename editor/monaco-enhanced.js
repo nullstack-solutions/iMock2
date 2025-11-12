@@ -393,6 +393,9 @@ class EditorHistory {
                 latestTimestamp,
                 latestLabel
             };
+
+            // Phase 2: Schedule automatic cleanup
+            this.scheduleCleanup();
         } catch (error) {
             console.warn('[HISTORY] Failed to initialise history', error);
         }
@@ -905,6 +908,119 @@ class EditorHistory {
             const db = await this.dbPromise;
             await run(db);
         });
+    }
+
+    // Phase 2 Optimization: Cleanup old history entries
+    // Follows Dexie.js and React Query TTL patterns
+    async cleanup(options = {}) {
+        const maxAgeMs = options.maxAgeMs || 30 * 24 * 60 * 60 * 1000; // 30 days default
+        const maxEntries = options.maxEntries || 50; // Max 50 entries default
+
+        await this.ready;
+
+        await this.withLock(async () => {
+            const db = await this.dbPromise;
+            const tx = db.transaction(HISTORY_FRAMES_STORE, 'readwrite');
+            const store = tx.objectStore(HISTORY_FRAMES_STORE);
+            const tsIndex = store.index('ts');
+
+            // 1. Delete entries older than maxAgeMs (time-based cleanup)
+            const cutoffTime = Date.now() - maxAgeMs;
+            const oldRange = IDBKeyRange.upperBound(cutoffTime);
+            let deletedByAge = 0;
+
+            const oldCursor = tsIndex.openCursor(oldRange);
+            await new Promise((resolve, reject) => {
+                oldCursor.onsuccess = (event) => {
+                    const cursor = event.target.result;
+                    if (cursor) {
+                        cursor.delete();
+                        deletedByAge++;
+                        cursor.continue();
+                    } else {
+                        resolve();
+                    }
+                };
+                oldCursor.onerror = () => reject(oldCursor.error);
+            });
+
+            await waitForTransaction(tx);
+
+            // 2. Limit total entries (size-based cleanup)
+            const tx2 = db.transaction(HISTORY_FRAMES_STORE, 'readwrite');
+            const store2 = tx2.objectStore(HISTORY_FRAMES_STORE);
+            const countRequest = store2.count();
+            const count = await promisifyRequest(countRequest);
+
+            let deletedBySize = 0;
+            if (count > maxEntries) {
+                const toDelete = count - maxEntries;
+                const cursor = store2.openCursor();
+
+                await new Promise((resolve, reject) => {
+                    let deleted = 0;
+                    cursor.onsuccess = (event) => {
+                        const cur = event.target.result;
+                        if (cur && deleted < toDelete) {
+                            cur.delete();
+                            deleted++;
+                            deletedBySize++;
+                            cur.continue();
+                        } else {
+                            resolve();
+                        }
+                    };
+                    cursor.onerror = () => reject(cursor.error);
+                });
+            }
+
+            await waitForTransaction(tx2);
+
+            const totalDeleted = deletedByAge + deletedBySize;
+            if (totalDeleted > 0) {
+                console.log(`✅ [HISTORY] Cleanup completed: deleted ${deletedByAge} old entries (>${Math.round(maxAgeMs / 86400000)}d) + ${deletedBySize} excess entries`);
+
+                // Update stats
+                const remaining = await this.readAllFrames(db);
+                this.stats.count = remaining.length;
+                this.stats.byteSize = remaining.reduce((acc, entry) => acc + (entry.byteSize || 0), 0);
+
+                if (remaining.length > 0) {
+                    const latest = remaining[remaining.length - 1];
+                    this.stats.latestTimestamp = latest.ts;
+                    this.stats.latestLabel = latest.label;
+                } else {
+                    this.stats.latestTimestamp = null;
+                    this.stats.latestLabel = null;
+                    this.currentId = null;
+                    this.lastEntry = null;
+                }
+
+                console.log(`📊 [HISTORY] Stats after cleanup: ${this.stats.count} entries, ${(this.stats.byteSize / 1024 / 1024).toFixed(2)} MB`);
+            }
+        });
+    }
+
+    // Phase 2: Schedule periodic cleanup
+    scheduleCleanup(intervalMs = 24 * 60 * 60 * 1000, options = {}) {
+        // Run cleanup once per day by default
+        const cleanup = async () => {
+            try {
+                await this.cleanup(options);
+            } catch (error) {
+                console.error('[HISTORY] Cleanup failed:', error);
+            }
+        };
+
+        // Run initial cleanup after 10 seconds
+        setTimeout(cleanup, 10000);
+
+        // Schedule periodic cleanup
+        const interval = setInterval(cleanup, intervalMs);
+
+        console.log(`✅ [HISTORY] Cleanup scheduled: every ${Math.round(intervalMs / 3600000)}h, max age ${Math.round((options.maxAgeMs || 30 * 24 * 60 * 60 * 1000) / 86400000)}d, max ${options.maxEntries || 50} entries`);
+
+        return interval;
     }
 }
 
@@ -2014,6 +2130,16 @@ class MonacoInitializer {
     }
 
     async loadMonaco() {
+        // Phase 1 Optimization: Use lazy loader
+        if (typeof MonacoLoader !== 'undefined' && MonacoLoader.load) {
+            console.log('🚀 [Lazy Loading] Loading Monaco via MonacoLoader...');
+            await MonacoLoader.load();
+            console.log('✅ [Lazy Loading] Monaco loaded successfully');
+            return;
+        }
+
+        // Fallback to original loading method
+        console.warn('⚠️ [Lazy Loading] MonacoLoader not available, using fallback');
         await this.waitForMonacoLoader();
 
         const attempts = [];
@@ -5627,14 +5753,18 @@ function bootstrapMonacoInitializer() {
     return monacoInitializationPromise;
 }
 
-// Auto-initialize when DOM is ready
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-        bootstrapMonacoInitializer();
-    });
-} else {
+// Phase 1 Optimization: Lazy initialization
+// Monaco is initialized only when actually needed (when editor is opened)
+// This saves 3-5 MB if editor is not used
+
+// Initialize Monaco when monaco:loaded event is dispatched
+window.addEventListener('monaco:loaded', () => {
+    console.log('🚀 [Lazy Init] monaco:loaded event received, initializing editor...');
     bootstrapMonacoInitializer();
-}
+});
+
+// Expose bootstrap function for manual initialization
+window.bootstrapMonacoInitializer = bootstrapMonacoInitializer;
 
 // Export for use in other modules
 if (typeof window !== 'undefined') {
