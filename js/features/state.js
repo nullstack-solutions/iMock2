@@ -4,43 +4,18 @@
     const window = global;
     const state = window.FeaturesState || {};
 
-    if (!Array.isArray(window.originalMappings)) {
-        window.originalMappings = [];
-    }
-    if (!Array.isArray(window.allMappings)) {
-        window.allMappings = [];
-    }
-    if (!Array.isArray(window.originalRequests)) {
-        window.originalRequests = [];
-    }
-    if (!Array.isArray(window.allRequests)) {
-        window.allRequests = [];
-    }
-    if (!(window.mappingIndex instanceof Map)) {
-        window.mappingIndex = new Map();
-    }
-    if (typeof window.mappingTabTotals !== 'object' || window.mappingTabTotals === null) {
-        window.mappingTabTotals = { all: 0, get: 0, post: 0, put: 0, patch: 0, delete: 0 };
-    }
-    if (typeof window.requestTabTotals !== 'object' || window.requestTabTotals === null) {
-        window.requestTabTotals = { all: 0, matched: 0, unmatched: 0 };
-    }
-    if (!(window.pendingDeletedIds instanceof Set)) {
-        window.pendingDeletedIds = new Set();
-    }
-    if (!(window.deletionTimeouts instanceof Map)) {
-        window.deletionTimeouts = new Map();
-    }
-
-    if (typeof window.isDemoMode === 'undefined') {
-        window.isDemoMode = false;
-    }
-    if (typeof window.demoModeAnnounced === 'undefined') {
-        window.demoModeAnnounced = false;
-    }
-    if (typeof window.demoModeLastError === 'undefined') {
-        window.demoModeLastError = null;
-    }
+    if (!Array.isArray(window.originalMappings)) window.originalMappings = [];
+    if (!Array.isArray(window.allMappings)) window.allMappings = [];
+    if (!Array.isArray(window.originalRequests)) window.originalRequests = [];
+    if (!Array.isArray(window.allRequests)) window.allRequests = [];
+    if (!(window.mappingIndex instanceof Map)) window.mappingIndex = new Map();
+    window.mappingTabTotals ??= { all: 0, get: 0, post: 0, put: 0, patch: 0, delete: 0 };
+    window.requestTabTotals ??= { all: 0, matched: 0, unmatched: 0 };
+    if (!(window.pendingDeletedIds instanceof Set)) window.pendingDeletedIds = new Set();
+    if (!(window.deletionTimeouts instanceof Map)) window.deletionTimeouts = new Map();
+    window.isDemoMode ??= false;
+    window.demoModeAnnounced ??= false;
+    window.demoModeLastError ??= null;
 
     let mappingsFetchPromise = null;
 
