@@ -265,7 +265,6 @@ window.editMapping = (mappingId) => {
     // Get current settings to pass to editor
     const currentSettings = getStoredSettings();
     const settingsParam = encodeURIComponent(JSON.stringify(currentSettings));
-
     const editorUrl = `editor/json-editor.html?mappingId=${mappingId}&mode=edit&settings=${settingsParam}`;
     const editorWindow = window.open(
         editorUrl,

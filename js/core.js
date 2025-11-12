@@ -496,8 +496,6 @@ window.readWiremockSettings = () => {
     }
 };
 
-window.getWiremockSettings = window.readWiremockSettings;
-
 // Helper to build the documented scenario state endpoint
 window.buildScenarioStateEndpoint = (scenarioName) => {
     const rawName = typeof scenarioName === 'string' ? scenarioName : '';
@@ -682,10 +680,6 @@ window.apiFetch = async (endpoint, options = {}) => {
 
 // --- CORE UI HELPERS ---
 
-// NOTE: Uptime functions (updateUptime, stopUptime) have been moved to features.js
-// to provide a single source of truth for uptime logic and avoid conflicts.
-
-// Page navigation helpers
 window.showPage = (pageId, element) => {
     document.querySelectorAll('.main-content > div[id$="-page"]').forEach(p => p.classList.add('hidden'));
 

@@ -74,8 +74,8 @@ const Utils = {
     }
 };
 
+// Backward compatibility: escapeHtml is used directly in scenarios.js
+const escapeHtml = Utils.escapeHtml;
+
 window.Utils = Utils;
-window.escapeHtml = Utils.escapeHtml;
-window.formatJson = Utils.formatJson;
-window.parseRequestTime = Utils.parseRequestTime;
-window.getStatusClass = Utils.getStatusClass;
+window.escapeHtml = escapeHtml;
