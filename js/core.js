@@ -540,16 +540,35 @@ window.apiFetch = async (endpoint, options = {}) => {
     const currentTimeout = timeoutSettings.requestTimeout ? parseInt(timeoutSettings.requestTimeout) : (window.DEFAULT_SETTINGS?.requestTimeout ? parseInt(window.DEFAULT_SETTINGS.requestTimeout) : 69000);
     const timeoutId = setTimeout(() => controller.abort(), currentTimeout);
     const fullUrl = `${window.wiremockBaseUrl}${endpoint}`;
+    const method = options.method || 'GET';
     const headers = { 'Content-Type': 'application/json', ...ensureCustomHeaderObject(timeoutSettings.customHeaders || window.customHeaders), ...options.headers };
+
+    // Reduce logging verbosity for periodic endpoints to prevent memory leaks
+    const isPeriodicEndpoint = endpoint === window.ENDPOINTS?.HEALTH || endpoint === window.ENDPOINTS?.MAPPINGS;
+    const verboseLogging = !isPeriodicEndpoint;
+
+    // Minimal logging for periodic health checks to reduce memory usage
+    if (verboseLogging) {
+        console.log(`🔗 [API] ${method} ${endpoint}`);
+    }
 
     try {
         const response = await fetch(fullUrl, { ...options, signal: controller.signal, headers });
         clearTimeout(timeoutId);
         if (!response.ok) {
             const errorText = await response.text();
+            if (verboseLogging) {
+                console.error(`❌ [API] ${method} ${endpoint} - HTTP ${response.status}: ${errorText || response.statusText}`);
+            }
             throw new Error(`HTTP ${response.status}: ${errorText || response.statusText}`);
         }
         const responseData = response.headers.get('content-type')?.includes('application/json') ? await response.json() : await response.text();
+
+        // Only log success for non-periodic endpoints
+        if (verboseLogging) {
+            console.log(`✅ [API] ${method} ${endpoint} - OK`);
+        }
+
         try {
             if (endpoint === window.ENDPOINTS?.HEALTH || endpoint === window.ENDPOINTS?.MAPPINGS) {
                 window.lastWiremockSuccess = Date.now();
@@ -559,6 +578,10 @@ window.apiFetch = async (endpoint, options = {}) => {
         return responseData;
     } catch (error) {
         clearTimeout(timeoutId);
+        // Minimal error logging to reduce memory usage
+        if (verboseLogging) {
+            console.error(`💥 [API] ${method} ${endpoint} - ${error.name}: ${error.message}`);
+        }
         if (error.name === 'AbortError') throw new Error(`Request timeout after ${currentTimeout}ms`);
         throw error;
     }

@@ -216,7 +216,15 @@ window.cacheManager = {
                 }
             }
 
-            // Update the global arrays
+            // Explicitly clear old arrays to help garbage collection
+            if (window.originalMappings && window.originalMappings.length > 0) {
+                window.originalMappings.length = 0;
+            }
+            if (window.allMappings && window.allMappings.length > 0 && window.allMappings !== window.originalMappings) {
+                window.allMappings.length = 0;
+            }
+
+            // Update the global arrays with fresh data
             window.originalMappings = Array.from(this.cache.values());
             refreshMappingTabSnapshot();
             window.allMappings = window.originalMappings;
@@ -785,6 +793,12 @@ async function validateAndRefreshCache() {
         }
 
         const payload = await regenerateImockCache(freshData);
+
+        // Clear old snapshot to help garbage collection
+        if (window.imockCacheSnapshot) {
+            window.imockCacheSnapshot = null;
+        }
+
         window.imockCacheSnapshot = payload;
 
         // Reset optimistic counters
@@ -832,6 +846,12 @@ window.refreshImockCache = async () => {
 
         console.log('🔄 [CACHE] Starting regeneration...');
         const payload = await regenerateImockCache();
+
+        // Clear old snapshot to help garbage collection
+        if (window.imockCacheSnapshot) {
+            window.imockCacheSnapshot = null;
+        }
+
         window.imockCacheSnapshot = payload;
         console.log('🔄 [CACHE] Regeneration completed');
 
