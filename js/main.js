@@ -622,6 +622,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         window.initializeFilterTabs();
     }
 
+    // Initialize pagination for mappings list
+    if (typeof window.initMappingPagination === 'function') {
+        window.initMappingPagination();
+    }
+
     initializeOnboardingFlow();
 });
 

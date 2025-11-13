@@ -653,13 +653,40 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
         });
         const logSource = renderSource || 'previous';
         console.log(`📦 Mappings render from: ${logSource} — ${sortedMappings.length} items`);
-        renderList(container, sortedMappings, {
-            renderItem: renderMappingMarkup,
-            getKey: getMappingRenderKey,
-            getSignature: getMappingRenderSignature,
-            onItemChanged: handleMappingItemChanged,
-            onItemRemoved: handleMappingItemRemoved
-        });
+
+        // Update pagination state
+        if (window.PaginationManager) {
+            window.PaginationManager.updateState(sortedMappings.length);
+
+            // Get items for current page
+            const pageItems = window.PaginationManager.getCurrentPageItems(sortedMappings);
+            console.log(`📄 Rendering page ${window.PaginationManager.currentPage}/${window.PaginationManager.totalPages} (${pageItems.length} items)`);
+
+            // Render only current page items
+            renderList(container, pageItems, {
+                renderItem: renderMappingMarkup,
+                getKey: getMappingRenderKey,
+                getSignature: getMappingRenderSignature,
+                onItemChanged: handleMappingItemChanged,
+                onItemRemoved: handleMappingItemRemoved
+            });
+
+            // Render pagination controls
+            const paginationContainer = document.getElementById('mappings-pagination');
+            if (paginationContainer) {
+                paginationContainer.innerHTML = window.PaginationManager.renderControls();
+            }
+        } else {
+            // Fallback: render all items if pagination not available
+            renderList(container, sortedMappings, {
+                renderItem: renderMappingMarkup,
+                getKey: getMappingRenderKey,
+                getSignature: getMappingRenderSignature,
+                onItemChanged: handleMappingItemChanged,
+                onItemRemoved: handleMappingItemRemoved
+            });
+        }
+
         updateMappingsCounter();
         if (renderSource) {
             updateDataSourceIndicator(renderSource);
@@ -687,6 +714,74 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
         container.style.display = 'none';
         return false;
     }
+};
+
+// Initialize pagination
+window.initMappingPagination = function() {
+    if (!window.PaginationManager) {
+        console.warn('PaginationManager not available');
+        return;
+    }
+
+    // Initialize pagination with container selector
+    window.PaginationManager.init('#mappings-pagination', 20);
+
+    // Attach event listeners for page changes
+    window.PaginationManager.attachListeners((newPage) => {
+        console.log(`📄 Page changed to: ${newPage}`);
+
+        // Re-render mappings with new page
+        const container = document.getElementById(SELECTORS.LISTS.MAPPINGS);
+        if (!container || !Array.isArray(window.allMappings)) {
+            console.warn('Cannot render page: container or data not available');
+            return;
+        }
+
+        // Sort mappings (same logic as fetchAndRenderMappings)
+        const sortedMappings = [...window.allMappings].sort((a, b) => {
+            const priorityA = a.priority || 1;
+            const priorityB = b.priority || 1;
+            if (priorityA !== priorityB) return priorityA - priorityB;
+
+            const methodOrder = { 'GET': 1, 'POST': 2, 'PUT': 3, 'PATCH': 4, 'DELETE': 5 };
+            const methodA = methodOrder[a.request?.method] || 999;
+            const methodB = methodOrder[b.request?.method] || 999;
+            if (methodA !== methodB) return methodA - methodB;
+
+            const urlA = a.request?.url || a.request?.urlPattern || a.request?.urlPath || '';
+            const urlB = b.request?.url || b.request?.urlPattern || b.request?.urlPath || '';
+            return urlA.localeCompare(urlB);
+        });
+
+        // Get items for new page
+        const pageItems = window.PaginationManager.getCurrentPageItems(sortedMappings);
+
+        // Invalidate cache before re-rendering
+        window.invalidateElementCache(SELECTORS.LISTS.MAPPINGS);
+
+        // Render page items
+        renderList(container, pageItems, {
+            renderItem: renderMappingMarkup,
+            getKey: getMappingRenderKey,
+            getSignature: getMappingRenderSignature,
+            onItemChanged: handleMappingItemChanged,
+            onItemRemoved: handleMappingItemRemoved
+        });
+
+        // Update pagination controls
+        const paginationContainer = document.getElementById('mappings-pagination');
+        if (paginationContainer) {
+            paginationContainer.innerHTML = window.PaginationManager.renderControls();
+        }
+
+        // Scroll to top of mappings list
+        const mappingsPage = document.getElementById('mappings-page');
+        if (mappingsPage) {
+            mappingsPage.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    });
+
+    console.log('✅ Mapping pagination initialized');
 };
 
 // Function to get a specific mapping by ID
