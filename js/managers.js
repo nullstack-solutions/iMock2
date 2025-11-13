@@ -875,4 +875,137 @@ window.FilterManager = {
 window.FilterManager._applyMappingFilters = window.debounce(executeMappingFilters, 180);
 window.FilterManager._applyRequestFilters = window.debounce(executeRequestFilters, 180);
 
-console.log('✅ Managers.js loaded - NotificationManager, TabManager, FilterManager');
+// === URL STATE MANAGER ===
+// Synchronizes filter state with URL query parameters for shareable links
+window.URLStateManager = {
+    /**
+     * Get current filters from URL query parameters
+     * @param {string} tabName - 'mappings' or 'requests'
+     * @returns {Object} Filter object
+     */
+    getFiltersFromURL(tabName) {
+        const params = new URLSearchParams(window.location.search);
+
+        if (tabName === 'mappings') {
+            return {
+                method: params.get('method') || '',
+                query: params.get('query') || '', // Renamed from 'url' to 'query'
+                status: params.get('status') || ''
+            };
+        } else if (tabName === 'requests') {
+            return {
+                method: params.get('req_method') || '',
+                status: params.get('req_status') || '',
+                url: params.get('req_url') || '',
+                from: params.get('req_from') || '',
+                to: params.get('req_to') || ''
+            };
+        }
+
+        return {};
+    },
+
+    /**
+     * Update URL with current filters
+     * @param {string} tabName - 'mappings' or 'requests'
+     * @param {Object} filters - Filter values
+     * @param {boolean} replace - Use replaceState (true) or pushState (false)
+     */
+    updateURL(tabName, filters, replace = true) {
+        const params = new URLSearchParams(window.location.search);
+
+        // Remove old parameters for this tab
+        if (tabName === 'mappings') {
+            params.delete('method');
+            params.delete('query');
+            params.delete('url'); // Legacy parameter name
+            params.delete('status');
+
+            // Add new parameters (only non-empty values)
+            if (filters.method) params.set('method', filters.method);
+            if (filters.url || filters.query) params.set('query', filters.url || filters.query); // Support both names internally
+            if (filters.status) params.set('status', filters.status);
+        } else if (tabName === 'requests') {
+            params.delete('req_method');
+            params.delete('req_status');
+            params.delete('req_url');
+            params.delete('req_from');
+            params.delete('req_to');
+
+            // Add new parameters (only non-empty values)
+            if (filters.method) params.set('req_method', filters.method);
+            if (filters.status) params.set('req_status', filters.status);
+            if (filters.url) params.set('req_url', filters.url);
+            if (filters.from) params.set('req_from', filters.from);
+            if (filters.to) params.set('req_to', filters.to);
+        }
+
+        // Build new URL
+        const queryString = params.toString();
+        const newURL = queryString
+            ? `${window.location.pathname}?${queryString}`
+            : window.location.pathname;
+
+        // Update browser history
+        if (replace) {
+            window.history.replaceState({}, '', newURL);
+        } else {
+            window.history.pushState({}, '', newURL);
+        }
+    },
+
+    /**
+     * Sync UI elements with URL parameters
+     * @param {string} tabName - 'mappings' or 'requests'
+     * @returns {Object} Filters loaded from URL
+     */
+    syncUIFromURL(tabName) {
+        const filters = this.getFiltersFromURL(tabName);
+
+        if (tabName === 'mappings') {
+            const methodElem = document.getElementById('filter-method');
+            const urlElem = document.getElementById('filter-url');
+            const statusElem = document.getElementById('filter-status');
+
+            if (methodElem) methodElem.value = filters.method || '';
+            if (urlElem) urlElem.value = filters.query || ''; // Map 'query' param to 'url' input
+            if (statusElem) statusElem.value = filters.status || '';
+
+            // Sync filter tabs if method is set
+            if (filters.method && typeof window.syncFilterTabsFromSelect === 'function') {
+                window.syncFilterTabsFromSelect('mapping', filters.method);
+            }
+        } else if (tabName === 'requests') {
+            const methodElem = document.getElementById('req-filter-method');
+            const statusElem = document.getElementById('req-filter-status');
+            const urlElem = document.getElementById('req-filter-url');
+            const fromElem = document.getElementById('req-filter-from');
+            const toElem = document.getElementById('req-filter-to');
+
+            if (methodElem) methodElem.value = filters.method || '';
+            if (statusElem) statusElem.value = filters.status || '';
+            if (urlElem) urlElem.value = filters.url || '';
+            if (fromElem) fromElem.value = filters.from || '';
+            if (toElem) toElem.value = filters.to || '';
+
+            // Sync filter tabs if method is set
+            if (filters.method && typeof window.syncFilterTabsFromSelect === 'function') {
+                window.syncFilterTabsFromSelect('request', filters.method);
+            }
+        }
+
+        return filters;
+    },
+
+    /**
+     * Check if URL has any filter parameters
+     * @param {string} tabName - 'mappings' or 'requests'
+     * @returns {boolean}
+     */
+    hasURLFilters(tabName) {
+        const filters = this.getFiltersFromURL(tabName);
+        return Object.values(filters).some(value => value !== '');
+    }
+};
+
+console.log('✅ Managers.js loaded - NotificationManager, TabManager, FilterManager, URLStateManager');
