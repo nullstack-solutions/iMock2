@@ -28,9 +28,18 @@ const UIComponents = {
     // Base card component replacing renderMappingCard and renderRequestCard
     createCard: (type, data, actions = []) => {
         const { id, method, url, status, name, time, extras = {}, expanded = false } = data;
+
+        // Map handler names to data-action attributes
+        const handlerToAction = {
+            'editMapping': 'edit-external',
+            'openEditModal': 'edit-mapping',
+            'deleteMapping': 'delete-mapping',
+            'viewRequestDetails': 'view-request'
+        };
+
         return `
             <div class="${type}-card${expanded ? ' is-expanded' : ''}" data-id="${Utils.escapeHtml(id)}">
-                <div class="${type}-header" onclick="window.toggleDetails('${Utils.escapeHtml(id)}', '${type}')">
+                <div class="${type}-header" data-action="toggle-details">
                     <div class="${type}-info">
                         <div class="${type}-top-line">
                             <span class="method-badge ${method.toLowerCase()}">
@@ -45,15 +54,18 @@ const UIComponents = {
                             ${extras.badges || ''}
                         </div>
                     </div>
-                    <div class="${type}-actions" onclick="event.stopPropagation()">
-                        ${actions.map(action => `
+                    <div class="${type}-actions" data-stop-propagation>
+                        ${actions.map(action => {
+                            const dataAction = handlerToAction[action.handler] || action.handler;
+                            return `
                             <button class="btn btn-sm btn-${action.class}"
-                                    onclick="${action.handler}('${Utils.escapeHtml(id)}')"
+                                    data-action="${dataAction}"
+                                    data-${type}-id="${Utils.escapeHtml(id)}"
                                     title="${Utils.escapeHtml(action.title)}">
                                 ${action.icon ? Icons.render(action.icon, { className: 'action-icon' }) : ''}
                                 <span class="sr-only">${Utils.escapeHtml(action.title)}</span>
                             </button>
-                        `).join('')}
+                        `}).join('')}
                     </div>
                 </div>
                 <div class="${type}-preview" id="preview-${Utils.escapeHtml(id)}" style="display: ${expanded ? 'block' : 'none'};">
@@ -101,7 +113,7 @@ const UIComponents = {
                         return `<div class="preview-value">
                             <strong>${key}:</strong>
                             <pre>${preview}</pre>
-                            <button class="btn btn-secondary btn-small" onclick="toggleFullContent('${fullId}')" data-json="${Utils.escapeHtml(JSON.stringify(value))}" style="margin-top: 0.5rem; font-size: 0.8rem;">
+                            <button class="btn btn-secondary btn-small" data-action="show-full-content" data-target-id="${fullId}" data-json="${Utils.escapeHtml(JSON.stringify(value))}" style="margin-top: 0.5rem; font-size: 0.8rem;">
                                 Show Full Content
                             </button>
                             <div id="${fullId}" style="display: none;"></div>
@@ -121,7 +133,7 @@ const UIComponents = {
                                 return `<div class="preview-value">
                                     <strong>${key}:</strong>
                                     <pre>${preview}</pre>
-                                    <button class="btn btn-secondary btn-small" onclick="toggleFullContent('${fullId}')" data-json="${Utils.escapeHtml(JSON.stringify(parsedJson))}" style="margin-top: 0.5rem; font-size: 0.8rem;">
+                                    <button class="btn btn-secondary btn-small" data-action="show-full-content" data-target-id="${fullId}" data-json="${Utils.escapeHtml(JSON.stringify(parsedJson))}" style="margin-top: 0.5rem; font-size: 0.8rem;">
                                         Show Full Content
                                     </button>
                                     <div id="${fullId}" style="display: none;"></div>
@@ -862,19 +874,19 @@ window.backgroundRefreshMappings = async (useCache = false) => {
     }
 };
 
-// Compact mapping renderer through UIComponents (shortened from ~67 to 15 lines)
+// Compact mapping renderer through UIComponents with lazy preview loading
 window.renderMappingCard = function(mapping) {
     if (!mapping || !mapping.id) {
         console.warn('Invalid mapping data:', mapping);
         return '';
     }
-    
+
     const actions = [
         { class: 'secondary', handler: 'editMapping', title: 'Edit in Editor', icon: 'open-external' },
         { class: 'primary', handler: 'openEditModal', title: 'Edit', icon: 'pencil' },
         { class: 'danger', handler: 'deleteMapping', title: 'Delete', icon: 'trash' }
     ];
-    
+
     const normalizedId = String(mapping.id || mapping.uuid || '');
     const isExpanded = window.mappingPreviewState instanceof Set && window.mappingPreviewState.has(normalizedId);
 
@@ -886,30 +898,33 @@ window.renderMappingCard = function(mapping) {
         name: mapping.name || mapping.metadata?.name || `Mapping ${mapping.id.substring(0, 8)}`,
         expanded: isExpanded,
         extras: {
-            preview: UIComponents.createPreviewSection(`${Icons.render('request-in', { className: 'icon-inline' })} Request`, {
-                'Method': mapping.request?.method || 'GET',
-                'URL': mapping.request?.url || mapping.request?.urlPattern || mapping.request?.urlPath || mapping.request?.urlPathPattern,
-                'Headers': mapping.request?.headers,
-                'Body': mapping.request?.bodyPatterns || mapping.request?.body,
-                'Query Parameters': mapping.request?.queryParameters
-            }) + UIComponents.createPreviewSection(`${Icons.render('response-out', { className: 'icon-inline' })} Response`, {
-                'Status': mapping.response?.status,
-                'Headers': mapping.response?.headers,
-                'Body': mapping.response?.jsonBody || mapping.response?.body,
-                'Delay': mapping.response?.fixedDelayMilliseconds ? `${mapping.response.fixedDelayMilliseconds}ms` : null
-            }) + UIComponents.createPreviewSection(`${Icons.render('info', { className: 'icon-inline' })} Overview`, {
-                'ID': mapping.id || mapping.uuid,
-                'Name': mapping.name || mapping.metadata?.name,
-                'Priority': mapping.priority,
-                'Persistent': mapping.persistent,
-                'Scenario': mapping.scenarioName,
-                'Required State': mapping.requiredScenarioState,
-                'New State': mapping.newScenarioState,
-            'Created': (window.showMetaTimestamps !== false && mapping.metadata?.created) ? new Date(mapping.metadata.created).toLocaleString() : null,
-            'Edited': (window.showMetaTimestamps !== false && mapping.metadata?.edited) ? new Date(mapping.metadata.edited).toLocaleString() : null,
-            'Source': mapping.metadata?.source ? `Edited from ${mapping.metadata.source}` : null,
-            })
-            ,
+            // Lazy loading: Only generate preview HTML if card is already expanded (from state restoration)
+            // Otherwise, event delegation will load it on first expand
+            preview: isExpanded ? (
+                UIComponents.createPreviewSection(`${Icons.render('request-in', { className: 'icon-inline' })} Request`, {
+                    'Method': mapping.request?.method || 'GET',
+                    'URL': mapping.request?.url || mapping.request?.urlPattern || mapping.request?.urlPath || mapping.request?.urlPathPattern,
+                    'Headers': mapping.request?.headers,
+                    'Body': mapping.request?.bodyPatterns || mapping.request?.body,
+                    'Query Parameters': mapping.request?.queryParameters
+                }) + UIComponents.createPreviewSection(`${Icons.render('response-out', { className: 'icon-inline' })} Response`, {
+                    'Status': mapping.response?.status,
+                    'Headers': mapping.response?.headers,
+                    'Body': mapping.response?.jsonBody || mapping.response?.body,
+                    'Delay': mapping.response?.fixedDelayMilliseconds ? `${mapping.response.fixedDelayMilliseconds}ms` : null
+                }) + UIComponents.createPreviewSection(`${Icons.render('info', { className: 'icon-inline' })} Overview`, {
+                    'ID': mapping.id || mapping.uuid,
+                    'Name': mapping.name || mapping.metadata?.name,
+                    'Priority': mapping.priority,
+                    'Persistent': mapping.persistent,
+                    'Scenario': mapping.scenarioName,
+                    'Required State': mapping.requiredScenarioState,
+                    'New State': mapping.newScenarioState,
+                    'Created': (window.showMetaTimestamps !== false && mapping.metadata?.created) ? new Date(mapping.metadata.created).toLocaleString() : null,
+                    'Edited': (window.showMetaTimestamps !== false && mapping.metadata?.edited) ? new Date(mapping.metadata.edited).toLocaleString() : null,
+                    'Source': mapping.metadata?.source ? `Edited from ${mapping.metadata.source}` : null,
+                })
+            ) : '', // Empty preview for collapsed cards - will be lazy loaded
             badges: [
                 (mapping.id || mapping.uuid) ? `<span class="badge badge-secondary" title="Mapping ID">${Utils.escapeHtml(((mapping.id || mapping.uuid).length > 12 ? (mapping.id || mapping.uuid).slice(0,8) + '…' + (mapping.id || mapping.uuid).slice(-4) : (mapping.id || mapping.uuid)))}</span>` : '',
                 (typeof mapping.priority === 'number') ? `<span class="badge badge-secondary" title="Priority">P${mapping.priority}</span>` : '',
@@ -920,7 +935,7 @@ window.renderMappingCard = function(mapping) {
             ].filter(Boolean).join(' ')
         }
     };
-    
+
     return UIComponents.createCard('mapping', data, actions);
 }
 
