@@ -358,7 +358,7 @@ window.connectToWireMock = async () => {
         console.error('Connection error - entering offline mode:', error);
 
         // We are offline - don't make any more requests to server
-        console.log('⚠️ Offline mode - skipping data requests, loading demo data');
+        console.log('⚠️ Offline mode - no server requests will be made');
 
         // Stop uptime tracking on failure
         stopUptime();
@@ -369,18 +369,8 @@ window.connectToWireMock = async () => {
         if (statusDot) statusDot.className = 'status-dot disconnected';
         if (statusText) statusText.textContent = 'Offline';
 
-        // Load demo data for offline mode
-        if (typeof fetchMappingsFromServer === 'function') {
-            try {
-                await fetchAndRenderMappings(null, { force: true });
-                console.log('✅ Demo data loaded for offline mode');
-            } catch (demoError) {
-                console.error('Failed to load demo data:', demoError);
-            }
-        }
-
-        // Notify user about offline mode
-        NotificationManager.info('WireMock server is offline. Showing demo data. Retrying connection in background...');
+        // Notify user about offline mode - demo data can be loaded manually if needed
+        NotificationManager.warning('WireMock server is offline. Retrying connection in background...');
 
         // Start unified background health check (it will handle exponential backoff automatically)
         startHealthCheck();
@@ -428,13 +418,23 @@ window.startHealthCheck = () => {
                     response.healthy === true
                 );
             } catch (primaryError) {
-                // Try /mappings as fallback for older WireMock versions
-                try {
-                    const fallbackResponse = await window.apiFetch(window.ENDPOINTS.MAPPINGS);
-                    responseTime = Math.round(performance.now() - startTime);
-                    // Only consider healthy if we got a REAL response (not demo data)
-                    isHealthy = typeof fallbackResponse === 'object' && fallbackResponse !== null && !fallbackResponse.__isDemo;
-                } catch (fallbackError) {
+                // Only try fallback if /health endpoint doesn't exist (404), not for connection errors
+                // Connection errors (ERR_CONNECTION_REFUSED, network errors) mean server is offline - no point trying /mappings
+                const is404 = primaryError?.message?.includes('404') || primaryError?.status === 404;
+
+                if (is404) {
+                    // /health endpoint doesn't exist - try /mappings as fallback for older WireMock versions
+                    console.log('[HEALTH] /health not found (404), trying /mappings fallback for older WireMock');
+                    try {
+                        const fallbackResponse = await window.apiFetch(window.ENDPOINTS.MAPPINGS);
+                        responseTime = Math.round(performance.now() - startTime);
+                        // Only consider healthy if we got a REAL response (not demo data)
+                        isHealthy = typeof fallbackResponse === 'object' && fallbackResponse !== null && !fallbackResponse.__isDemo;
+                    } catch (fallbackError) {
+                        isHealthy = false;
+                    }
+                } else {
+                    // Connection error or other error - server is offline, don't try fallback
                     isHealthy = false;
                 }
             }
@@ -534,16 +534,25 @@ window.checkHealthAndStartUptime = async () => {
             );
             console.log('[HEALTH] initial check:', { rawStatus: response?.status, healthyFlag: response?.healthy, isHealthy });
         } catch (primaryError) {
-            // Try /mappings as fallback for older WireMock versions (2.x)
-            try {
-                const fallbackResponse = await window.apiFetch(window.ENDPOINTS.MAPPINGS);
-                responseTime = Math.round(performance.now() - startTime);
-                // Only consider healthy if we got a REAL response (not demo data)
-                isHealthy = typeof fallbackResponse === 'object' && fallbackResponse !== null && !fallbackResponse.__isDemo;
-                console.log('[HEALTH] fallback check (mappings):', { isHealthy, responseTime });
-            } catch (fallbackError) {
-                // Both /health and /mappings failed - we are definitely offline
-                console.log('[HEALTH] both endpoints failed - offline mode');
+            // Only try fallback if /health endpoint doesn't exist (404), not for connection errors
+            const is404 = primaryError?.message?.includes('404') || primaryError?.status === 404;
+
+            if (is404) {
+                // /health endpoint doesn't exist - try /mappings as fallback for older WireMock versions (2.x)
+                console.log('[HEALTH] /health not found (404), trying /mappings fallback for older WireMock');
+                try {
+                    const fallbackResponse = await window.apiFetch(window.ENDPOINTS.MAPPINGS);
+                    responseTime = Math.round(performance.now() - startTime);
+                    // Only consider healthy if we got a REAL response (not demo data)
+                    isHealthy = typeof fallbackResponse === 'object' && fallbackResponse !== null && !fallbackResponse.__isDemo;
+                    console.log('[HEALTH] fallback check (mappings):', { isHealthy, responseTime });
+                } catch (fallbackError) {
+                    console.log('[HEALTH] fallback failed - offline mode');
+                    isHealthy = false;
+                }
+            } else {
+                // Connection error or other error - server is offline
+                console.log('[HEALTH] connection failed - offline mode');
                 isHealthy = false;
             }
         }
