@@ -852,6 +852,12 @@
                     <span id="editor-dirty-indicator" class="dirty-indicator" style="display: none;">● Unsaved changes</span>
                 </div>
                 <div class="modal-header-actions">
+                    <button type="button" class="btn btn-secondary" id="open-json-studio-btn" title="Open in advanced JSON Studio editor">
+                        <svg class="icon icon-16" aria-hidden="true" focusable="false">
+                            <use href="#icon-open-external"></use>
+                        </svg>
+                        <span class="btn-label">JSON Studio</span>
+                    </button>
                     <button type="button" class="btn btn-secondary btn-sm" data-action="format-json">Format</button>
                     <button type="button" class="btn btn-secondary btn-sm" data-action="minify-json">Minify</button>
                     <button type="button" class="btn btn-primary" id="update-mapping-btn" onclick="updateMapping()">
@@ -860,6 +866,7 @@
                     </button>
                 </div>
             </div>
+
             <!-- JSON Editor Container -->
             <div id="json-editor-container" class="json-editor-wrapper">
                 <textarea id="json-editor" class="json-editor" rows="1" placeholder="{

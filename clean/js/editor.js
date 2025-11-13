@@ -1,7 +1,7 @@
-// ===== EDITOR.JS - JSON Editor for Mapping Editing =====
-// Simplified JSON-only editor for WireMock mappings
+// ===== EDITOR.JS - Mapping Editor Functionality =====
+// Centralized editor logic for both add and edit mapping workflows with JSON mode support
 
-// Current editor state
+// Current editor state (JSON mode only - form editor removed as dead code)
 let editorState = {
     originalMapping: null,
     currentMapping: null,
@@ -10,6 +10,9 @@ let editorState = {
 
 // Initialize editor functionality when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
+    // Set up event listeners for mapping forms
+    setupMappingFormListeners();
+    // Set up JSON editor mode handlers (keyboard shortcuts, JSON Studio button)
     setupEditorModeHandlers();
 });
 
@@ -17,6 +20,57 @@ document.addEventListener('DOMContentLoaded', () => {
  * Set up editor mode handlers
  */
 function setupEditorModeHandlers() {
+    initializeJsonEditorAutoResize();
+
+    // JSON Studio button handler
+    const jsonStudioBtn = document.getElementById('open-json-studio-btn');
+    if (jsonStudioBtn) {
+        jsonStudioBtn.addEventListener('click', () => {
+            const id = editorState.currentMapping?.id;
+            if (id && typeof window.editMapping === 'function') {
+                hideModal('edit-mapping-modal');
+                window.editMapping(id); // Opens JSON Studio in new tab
+            } else {
+                NotificationManager.warning('No mapping loaded');
+            }
+        });
+    }
+
+    // Keyboard shortcuts for edit modal
+    document.addEventListener('keydown', (e) => {
+        // Check if modal is open
+        const modal = document.getElementById('edit-mapping-modal');
+        if (!modal || modal.classList.contains('hidden')) return;
+
+        // Ctrl/Cmd + S = Save
+        if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+            e.preventDefault();
+            updateMapping();
+            return;
+        }
+
+        // Ctrl/Cmd + Enter = Save and close
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+            e.preventDefault();
+            updateMapping().then(() => {
+                hideModal('edit-mapping-modal');
+            });
+            return;
+        }
+
+        // Esc = Close (with dirty check)
+        if (e.key === 'Escape') {
+            if (editorState.isDirty) {
+                if (confirm('You have unsaved changes. Close anyway?')) {
+                    hideModal('edit-mapping-modal');
+                }
+            } else {
+                hideModal('edit-mapping-modal');
+            }
+            return;
+        }
+    });
+
     document.addEventListener('click', (e) => {
         if (e.target.matches('[data-action="validate-json"]')) {
             validateCurrentJSON();
@@ -267,12 +321,8 @@ window.updateMapping = async () => {
     try {
         window.setMappingEditorBusyState(true, 'Updating…');
 
-        // Save current state based on active mode FIRST
-        if (editorState.mode === EDITOR_MODES.JSON) {
-            saveFromJSONMode();
-        } else {
-            saveFromFormMode();
-        }
+        // Save current JSON state FIRST
+        saveFromJSONMode();
 
         const mappingData = editorState.currentMapping;
         const id = mappingData?.id;
@@ -330,17 +380,26 @@ window.updateMapping = async () => {
  * Populate the JSON editor with mapping data
  */
 window.populateEditMappingForm = (mapping) => {
-    // Store direct reference - no deep clone needed!
+    console.log('🔵 [EDITOR DEBUG] populateEditMappingForm called');
+    console.log('🔵 [EDITOR DEBUG] Incoming mapping ID:', mapping?.id);
+    console.log('🔵 [EDITOR DEBUG] Incoming mapping name:', mapping?.name);
+
+    // Always reset state when opening a new mapping
     editorState.originalMapping = mapping;
     editorState.currentMapping = mapping;
     editorState.isDirty = false;
     updateDirtyIndicator();
 
-    // Load JSON editor
+    console.log('🔵 [EDITOR DEBUG] After state update - currentMapping ID:', editorState.currentMapping?.id);
+
+    // Load JSON mode (form editor removed as dead code)
+    console.log('🔵 [EDITOR DEBUG] Loading JSON mode for mapping ID:', editorState.currentMapping?.id);
     loadJSONMode();
+
+    console.log('🔵 [EDITOR DEBUG] populateEditMappingForm completed for mapping ID:', mapping?.id);
 };
 
-// ===== JSON EDITOR FUNCTIONS =====
+// ===== JSON EDITOR MODE FUNCTIONS =====
 
 function saveFromJSONMode() {
     const jsonEditor = document.getElementById('json-editor');
@@ -357,28 +416,26 @@ function saveFromJSONMode() {
 }
 
 /**
- * Load JSON mode - auto-format for better readability
+ * Load JSON mode
  */
 function loadJSONMode() {
     const jsonEditor = document.getElementById('json-editor');
-    if (!jsonEditor || !editorState.currentMapping) return;
-
-    // Stringify with formatting (2-space indent)
-    const formattedJSON = JSON.stringify(editorState.currentMapping, null, 2);
-
-    // For large JSON (>100KB), defer insertion to next tick
-    if (formattedJSON.length > 100000) {
-        jsonEditor.value = '// Loading...';
-        jsonEditor.disabled = true;
-
-        setTimeout(() => {
-            jsonEditor.value = formattedJSON;
-            jsonEditor.disabled = false;
-        }, 0);
-    } else {
-        // Small JSON - insert immediately
-        jsonEditor.value = formattedJSON;
+    if (!jsonEditor) {
+        console.log('🔴 [JSON DEBUG] JSON editor element not found!');
+        return;
     }
+    
+    if (!editorState.currentMapping) {
+        console.log('🔴 [JSON DEBUG] No currentMapping in editorState!');
+        return;
+    }
+    
+    const formattedJSON = JSON.stringify(editorState.currentMapping, null, 2);
+    jsonEditor.value = formattedJSON;
+    adjustJsonEditorHeight(true);
+
+    console.log('🟡 [JSON DEBUG] JSON editor populated with mapping ID:', editorState.currentMapping?.id);
+    console.log('🟡 [JSON DEBUG] JSON content length:', formattedJSON.length);
 }
 
 /**
