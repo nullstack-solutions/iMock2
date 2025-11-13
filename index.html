@@ -321,6 +321,29 @@
                             <span class="filter-tab-count" id="mapping-tab-delete">0</span>
                         </button>
                     </div>
+
+                    <!-- Filter Presets -->
+                    <div class="filter-presets" id="filter-presets">
+                        <div class="filter-presets-header">
+                            <span class="filter-presets-label">Quick Filters:</span>
+                            <button type="button" class="btn-preset-save" onclick="showSavePresetDialog()" title="Save current filters as preset">
+                                <span>💾</span>
+                                <span class="sr-only">Save Preset</span>
+                            </button>
+                        </div>
+                        <div class="filter-presets-list" id="filter-presets-list">
+                            <!-- Presets will be rendered here dynamically -->
+                        </div>
+                    </div>
+
+                    <!-- Active Filter Pills -->
+                    <div class="filter-pills" id="filter-pills" style="display: none;">
+                        <span class="filter-pills-label">Active filters:</span>
+                        <div class="filter-pills-container" id="filter-pills-container">
+                            <!-- Pills will be rendered here dynamically -->
+                        </div>
+                    </div>
+
                     <div class="filter-grid">
                         <div class="form-group">
                             <label class="form-label">Method</label>
@@ -600,7 +623,7 @@
                             <p class="form-help">Select how WireMock should handle existing mappings during import.</p>
                         </div>
                         <div class="form-group" id="import-actions" style="display: none;">
-                            <button class="btn btn-primary" id="import-submit-btn" onclick="executeImportFromUi()">
+                            <button class="btn btn-primary" id="import-submit-btn" onclick="executeImport()">
                                 <span class="btn-spinner loading-spinner" aria-hidden="true"></span>
                                 <span class="btn-label">
                                     <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-request-in"></use></svg>
@@ -951,6 +974,7 @@
 <script src="js/features/state.js"></script>
 <script src="js/features/utils.js"></script>
 <script src="js/features/filters.js"></script>
+<script src="js/features/filter-presets.js"></script>
 <script src="js/features/cache.js"></script>
 <script src="js/features/mappings.js"></script>
 <script src="js/features/pagination.js"></script>
@@ -960,7 +984,6 @@
 <script src="js/features/recording.js"></script>
 <script src="js/features/management.js"></script>
 <script src="js/features/request-api.js"></script>
-<script src="js/features/near-misses.js"></script>
 <script src="js/features/wiremock-extras.js"></script>
 <script src="js/features/demo.js"></script>
 <script src="js/features.js"></script>

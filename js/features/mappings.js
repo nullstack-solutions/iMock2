@@ -232,14 +232,10 @@ function cloneMappingForOptimisticShadow(mapping) {
         return null;
     }
     try {
-        if (typeof structuredClone === 'function') {
-            return structuredClone(mapping);
-        }
-    } catch {}
-    try {
-        return JSON.parse(JSON.stringify(mapping));
-    } catch {}
-    return { ...mapping };
+        return typeof structuredClone === 'function' ? structuredClone(mapping) : JSON.parse(JSON.stringify(mapping));
+    } catch {
+        return { ...mapping };
+    }
 }
 
 function rememberOptimisticShadowMapping(mapping, operation) {
@@ -479,7 +475,7 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                     console.log('🧩 [CACHE] Cache hit - using cached data for quick start, fetching fresh data');
                     dataSource = 'cache';
 
-                    // Start async fresh fetch for complete data (only if no optimistic updates in progress)
+                    // Start async fresh fetch for silent validation (no UI re-render)
                     (async () => {
                         try {
                             // Wait a bit for any optimistic updates to complete
@@ -488,17 +484,19 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                             const freshData = await fetchMappingsFromServer({ force: true });
                             if (freshData && freshData.mappings) {
                                 const serverMappings = freshData.mappings.filter(x => !isImockCacheMapping(x));
+                                const cachedMappings = cached.data.mappings || [];
 
-                                // Create a map of current optimistic mappings for preservation
-                                const currentIds = new Set(window.allMappings.map(m => m.id || m.uuid));
+                                // Silent comparison: detect discrepancies between cache and server
+                                const cachedIds = new Set(cachedMappings.map(m => m.id || m.uuid));
                                 const serverIds = new Set(serverMappings.map(m => m.id || m.uuid));
 
-                                // Merge strategy: combine server data with optimistic state
-                                // 1. Start with all server mappings (authoritative source)
-                                // 2. Update existing ones with full server data
-                                // 3. Keep optimistic creations that aren't on server yet
-                                // 4. Remove optimistic deletions
+                                // Check for mismatches
+                                const hasCountMismatch = cachedMappings.length !== serverMappings.length;
+                                const missingInCache = [...serverIds].filter(id => !cachedIds.has(id));
+                                const extraInCache = [...cachedIds].filter(id => !serverIds.has(id));
+                                const hasMismatch = hasCountMismatch || missingInCache.length > 0 || extraInCache.length > 0;
 
+                                // Update cache manager with fresh data (silent background sync)
                                 const mergedMappings = [];
 
                                 // Add all server mappings first (they have full data)
@@ -525,22 +523,45 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                                     }
                                 });
 
-                                // Update with merged data
+                                // Update data stores silently (no UI re-render)
                                 window.allMappings = mergedMappings;
                                 window.originalMappings = mergedMappings;
                                 refreshMappingTabSnapshot();
                                 syncCacheWithMappings(window.originalMappings);
                                 rebuildMappingIndex(window.originalMappings);
 
-                                // Re-render UI with merged complete data
-                                fetchAndRenderMappings(window.allMappings, { source: 'direct' });
+                                // Show toast notification based on comparison
+                                if (typeof NotificationManager !== 'undefined') {
+                                    if (hasMismatch) {
+                                        const details = [];
+                                        if (missingInCache.length > 0) details.push(`${missingInCache.length} new on server`);
+                                        if (extraInCache.length > 0) details.push(`${extraInCache.length} missing on server`);
+
+                                        NotificationManager.warning(
+                                            `Cache discrepancies detected (${details.join(', ')}). Manual cache rebuild recommended.`,
+                                            5000
+                                        );
+                                        console.warn('🧩 [CACHE] Discrepancies detected:', {
+                                            missingInCache,
+                                            extraInCache,
+                                            cachedCount: cachedMappings.length,
+                                            serverCount: serverMappings.length
+                                        });
+                                    } else {
+                                        NotificationManager.success('Data synchronized with server', 3000);
+                                        console.log('🧩 [CACHE] Data synchronized successfully');
+                                    }
+                                }
                             }
                         } catch (e) {
-                            console.warn('🧩 [CACHE] Failed to load fresh data:', e);
+                            console.warn('🧩 [CACHE] Failed to validate cache:', e);
+                            if (typeof NotificationManager !== 'undefined') {
+                                NotificationManager.error('Cache validation failed');
+                            }
                         }
                     })();
 
-                    // Use cached slim data for immediate UI (will be replaced by fresh data)
+                    // Use cached slim data for immediate UI (fresh data synced in background silently)
                     data = cached.data;
                 } else {
                     data = await fetchMappingsFromServer({ force: true });
@@ -1169,7 +1190,6 @@ function handleMappingItemRemoved(id) {
 // Compact detail toggles via UIComponents
 window.toggleMappingDetails = (mappingId) => UIComponents.toggleDetails(mappingId, 'mapping');
 window.toggleRequestDetails = (requestId) => UIComponents.toggleDetails(requestId, 'request');
-
 
 window.UIComponents = UIComponents;
 window.updateMappingTabCounts = updateMappingTabCounts;

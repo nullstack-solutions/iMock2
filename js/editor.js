@@ -17,23 +17,6 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 /**
- * Set up event listeners for both mapping forms
- */
-function setupMappingFormListeners() {
-    // Add mapping form (simpler form for creating new mappings)
-    const addMappingForm = document.getElementById('mapping-form');
-    if (addMappingForm) {
-        addMappingForm.addEventListener('submit', handleAddMappingSubmit);
-    }
-    
-    // Edit mapping form (more comprehensive form for editing existing mappings)
-    const editMappingForm = document.getElementById('edit-mapping-form');
-    if (editMappingForm) {
-        editMappingForm.addEventListener('submit', handleEditMappingSubmit);
-    }
-}
-
-/**
  * Set up editor mode handlers
  */
 function setupEditorModeHandlers() {
@@ -102,18 +85,29 @@ function setupEditorModeHandlers() {
         }
     });
 
-    // Auto-save on input changes
+    // Auto-save on input changes with throttling for performance
+    let dirtyIndicatorTimeout = null;
     document.addEventListener('input', (e) => {
-        if (e.target.matches('.editor-field') || e.target.id === 'json-editor') {
+        if (e.target.id === 'json-editor') {
+            const wasClean = !editorState.isDirty;
             editorState.isDirty = true;
-            updateDirtyIndicator();
+
+            // Only update indicator if state changed or after throttle delay
+            if (wasClean) {
+                updateDirtyIndicator();
+            } else {
+                // Throttle subsequent updates to avoid DOM thrashing
+                if (dirtyIndicatorTimeout) {
+                    clearTimeout(dirtyIndicatorTimeout);
+                }
+                dirtyIndicatorTimeout = setTimeout(() => {
+                    updateDirtyIndicator();
+                    dirtyIndicatorTimeout = null;
+                }, 300);
+            }
         }
     });
 }
-
-let jsonEditorResizeObserver = null;
-let jsonEditorResizeFrame = null;
-let jsonEditorWindowResizeHandler = null;
 
 function setButtonLoadingState(button, isLoading, loadingLabel) {
     if (!button) return;
@@ -151,66 +145,6 @@ window.setMappingEditorBusyState = (isLoading, loadingLabel) => {
     if (!updateButton) return;
     setButtonLoadingState(updateButton, isLoading, loadingLabel);
 };
-
-function initializeJsonEditorAutoResize() {
-    const jsonEditor = document.getElementById('json-editor');
-    const container = document.getElementById('json-editor-container');
-
-    if (!jsonEditor || !container) return;
-
-    const computedMinHeight = parseInt(window.getComputedStyle(jsonEditor).minHeight, 10);
-    if (!Number.isNaN(computedMinHeight)) {
-        jsonEditor.dataset.minHeight = computedMinHeight;
-    }
-
-    if (jsonEditorResizeObserver) {
-        jsonEditorResizeObserver.disconnect();
-        jsonEditorResizeObserver = null;
-    }
-
-    if (typeof ResizeObserver !== 'undefined') {
-        jsonEditorResizeObserver = new ResizeObserver(() => adjustJsonEditorHeight());
-        jsonEditorResizeObserver.observe(container);
-    }
-
-    if (jsonEditorWindowResizeHandler) {
-        window.removeEventListener('resize', jsonEditorWindowResizeHandler);
-    }
-
-    jsonEditorWindowResizeHandler = () => adjustJsonEditorHeight();
-    window.addEventListener('resize', jsonEditorWindowResizeHandler);
-
-    adjustJsonEditorHeight(true);
-}
-
-function adjustJsonEditorHeight(scrollToTop = false) {
-    const jsonEditor = document.getElementById('json-editor');
-    const container = document.getElementById('json-editor-container');
-
-    if (!jsonEditor || !container) return;
-
-    if (jsonEditorResizeFrame) {
-        cancelAnimationFrame(jsonEditorResizeFrame);
-    }
-
-    jsonEditorResizeFrame = requestAnimationFrame(() => {
-        jsonEditorResizeFrame = null;
-
-        const toolbar = container.querySelector('.json-editor-toolbar');
-        const toolbarHeight = toolbar ? toolbar.offsetHeight : 0;
-        const minHeight = parseInt(jsonEditor.dataset.minHeight || '0', 10) || 320;
-        const availableHeight = Math.max(container.clientHeight - toolbarHeight, minHeight);
-
-        jsonEditor.style.height = `${availableHeight}px`;
-        jsonEditor.style.overflowY = 'auto';
-        jsonEditor.style.overflowX = 'auto';
-
-        if (scrollToTop) {
-            jsonEditor.scrollTop = 0;
-            jsonEditor.scrollLeft = 0;
-        }
-    });
-}
 
 /**
  * Handle submission of the add mapping form
@@ -398,73 +332,41 @@ window.updateMapping = async () => {
             return;
         }
 
-        console.log('Sending mapping update:', mappingData);
+        // Add metadata timestamps
+        if (typeof mappingData === 'object' && mappingData) {
+            const nowIso = new Date().toISOString();
+            if (!mappingData.metadata) mappingData.metadata = {};
+            if (!mappingData.metadata.created) mappingData.metadata.created = nowIso;
+            mappingData.metadata.edited = nowIso;
+            mappingData.metadata.source = 'ui';
+        }
 
-        // Ensure metadata with timestamps and source AFTER getting final mappingData
-        (function(){
-            try {
-                const nowIso = new Date().toISOString();
-                if (typeof mappingData === 'object' && mappingData) {
-                    // Initialize metadata object if it doesn't exist
-                    if (!mappingData.metadata) {
-                        mappingData.metadata = {};
-                        console.log('📅 [METADATA] Initialized metadata object');
-                    }
-
-                    // Set created timestamp if not exists (first save)
-                    if (!mappingData.metadata.created) {
-                        mappingData.metadata.created = nowIso;
-                        console.log('📅 [METADATA] Set created timestamp (UI):', mappingData.metadata.created);
-                    }
-
-                    // Always update edited timestamp and source
-                    mappingData.metadata.edited = nowIso;
-                    mappingData.metadata.source = 'ui';
-
-                    console.log('📅 [METADATA] Updated edited timestamp (UI):', mappingData.metadata.edited);
-                    console.log('📅 [METADATA] Set source: ui');
-                }
-            } catch (e) {
-                console.warn('📅 [METADATA] Failed to update metadata:', e);
-            }
-        })();
         const response = await apiFetch(`/mappings/${id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(mappingData)
         });
 
-        // Use server response for optimistic updates - it contains the authoritative data
         const updatedMapping = response?.mapping || response;
-        console.log('Mapping updated successfully, using server response for optimistic updates:', updatedMapping);
-
         NotificationManager.success('Mapping updated!');
 
         // Update cache and UI with server response
-        try {
-            if (updatedMapping) {
-                updateOptimisticCache(updatedMapping, 'update');
-            }
-        } catch (e) { console.warn('optimistic updates after edit failed:', e); }
+        if (updatedMapping) {
+            updateOptimisticCache(updatedMapping, 'update');
+        }
 
         editorState.isDirty = false;
         updateDirtyIndicator();
-
-        console.log('Hiding modal...');
         hideModal('edit-mapping-modal');
 
-        // No more immediate cache rebuild - optimistic cache handles it
-        
-        // Reapply filters after updating mappings
+        // Reapply filters if any are active
         const hasActiveFilters = document.getElementById(SELECTORS.MAPPING_FILTERS.METHOD)?.value ||
                                document.getElementById(SELECTORS.MAPPING_FILTERS.URL)?.value ||
                                document.getElementById(SELECTORS.MAPPING_FILTERS.STATUS)?.value;
-        
+
         if (hasActiveFilters) {
             FilterManager.applyMappingFilters();
         }
-
-        console.log('updateMapping completed successfully');
 
     } catch (e) {
         console.error('Error in updateMapping:', e);
@@ -475,7 +377,7 @@ window.updateMapping = async () => {
 };
 
 /**
- * Populate the edit mapping form with data from a mapping
+ * Populate the JSON editor with mapping data
  */
 window.populateEditMappingForm = (mapping) => {
     console.log('🔵 [EDITOR DEBUG] populateEditMappingForm called');
@@ -484,7 +386,7 @@ window.populateEditMappingForm = (mapping) => {
 
     // Always reset state when opening a new mapping
     editorState.originalMapping = mapping;
-    editorState.currentMapping = JSON.parse(JSON.stringify(mapping)); // Deep clone
+    editorState.currentMapping = mapping;
     editorState.isDirty = false;
     updateDirtyIndicator();
 
@@ -500,32 +402,15 @@ window.populateEditMappingForm = (mapping) => {
 // ===== JSON EDITOR MODE FUNCTIONS =====
 
 function saveFromJSONMode() {
-    console.log('🟢 [SAVE DEBUG] saveFromJSONMode called');
-    
     const jsonEditor = document.getElementById('json-editor');
-    if (!jsonEditor) {
-        console.log('🔴 [SAVE DEBUG] JSON editor element not found!');
-        return;
-    }
-    
-    const jsonText = jsonEditor.value;
-    if (!jsonText.trim()) {
-        console.log('🟢 [SAVE DEBUG] JSON editor is empty, nothing to save');
-        return;
-    }
-    
-    console.log('🟢 [SAVE DEBUG] JSON text length:', jsonText.length);
-    console.log('🟢 [SAVE DEBUG] Previous currentMapping ID:', editorState.currentMapping?.id);
-    
+    if (!jsonEditor) return;
+
+    const jsonText = jsonEditor.value.trim();
+    if (!jsonText) return;
+
     try {
-        const parsedMapping = JSON.parse(jsonText);
-        console.log('🟢 [SAVE DEBUG] Parsed mapping ID:', parsedMapping?.id);
-        console.log('🟢 [SAVE DEBUG] Parsed mapping name:', parsedMapping?.name);
-        
-        editorState.currentMapping = parsedMapping;
-        console.log('🟢 [SAVE DEBUG] Updated currentMapping ID:', editorState.currentMapping?.id);
+        editorState.currentMapping = JSON.parse(jsonText);
     } catch (error) {
-        console.log('🔴 [SAVE DEBUG] JSON parse error:', error.message);
         throw new Error('Invalid JSON: ' + error.message);
     }
 }
@@ -534,10 +419,6 @@ function saveFromJSONMode() {
  * Load JSON mode
  */
 function loadJSONMode() {
-    console.log('🟡 [JSON DEBUG] loadJSONMode called');
-    console.log('🟡 [JSON DEBUG] currentMapping ID:', editorState.currentMapping?.id);
-    console.log('🟡 [JSON DEBUG] currentMapping name:', editorState.currentMapping?.name);
-    
     const jsonEditor = document.getElementById('json-editor');
     if (!jsonEditor) {
         console.log('🔴 [JSON DEBUG] JSON editor element not found!');
@@ -591,7 +472,6 @@ function formatCurrentJSON() {
     try {
         const parsed = JSON.parse(jsonEditor.value);
         jsonEditor.value = JSON.stringify(parsed, null, 2);
-        adjustJsonEditorHeight(true);
         showNotification('JSON formatted', 'success');
     } catch (error) {
         showNotification('Formatting failed: ' + error.message, 'error');
@@ -608,20 +488,9 @@ function minifyCurrentJSON() {
     try {
         const parsed = JSON.parse(jsonEditor.value);
         jsonEditor.value = JSON.stringify(parsed);
-        adjustJsonEditorHeight(true);
         showNotification('JSON minified', 'success');
     } catch (error) {
         showNotification('Minification failed: ' + error.message, 'error');
-    }
-}
-
-/**
- * Update mode indicator
- */
-function updateModeIndicator(mode) {
-    const indicator = document.getElementById('editor-mode-indicator');
-    if (indicator) {
-        indicator.textContent = `Mode: ${mode === EDITOR_MODES.FORM ? 'Form' : 'JSON'}`;
     }
 }
 
