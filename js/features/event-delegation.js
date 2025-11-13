@@ -45,28 +45,10 @@ class EventDelegationManager {
      * @param {MouseEvent} e - Click event
      */
     handleMappingClick(e) {
-        // Stop propagation for nested clickable elements
-        const stopPropagation = e.target.closest('[data-stop-propagation]');
-        if (stopPropagation) {
-            e.stopPropagation();
-        }
-
-        // Toggle mapping details (expand/collapse)
-        const toggleTarget = e.target.closest('[data-action="toggle-details"]');
-        if (toggleTarget) {
-            const card = e.target.closest('.mapping-card');
-            if (!card) return;
-
-            const mappingId = card.dataset.id;
-            if (!mappingId) return;
-
-            this.handleToggleDetails(mappingId, 'mapping', card);
-            return;
-        }
-
-        // Edit mapping button
+        // Edit mapping button (modal)
         const editBtn = e.target.closest('[data-action="edit-mapping"]');
         if (editBtn) {
+            e.stopPropagation();
             const mappingId = editBtn.dataset.mappingId;
             if (mappingId && typeof window.openEditModal === 'function') {
                 window.openEditModal(mappingId);
@@ -77,6 +59,7 @@ class EventDelegationManager {
         // Edit in external editor button
         const editExternalBtn = e.target.closest('[data-action="edit-external"]');
         if (editExternalBtn) {
+            e.stopPropagation();
             const mappingId = editExternalBtn.dataset.mappingId;
             if (mappingId && typeof window.editMapping === 'function') {
                 window.editMapping(mappingId);
@@ -87,6 +70,7 @@ class EventDelegationManager {
         // Delete mapping button
         const deleteBtn = e.target.closest('[data-action="delete-mapping"]');
         if (deleteBtn) {
+            e.stopPropagation();
             const mappingId = deleteBtn.dataset.mappingId;
             if (mappingId && typeof window.deleteMapping === 'function') {
                 window.deleteMapping(mappingId);
@@ -97,10 +81,30 @@ class EventDelegationManager {
         // Show full content button (for large JSON previews)
         const showFullBtn = e.target.closest('[data-action="show-full-content"]');
         if (showFullBtn) {
+            e.stopPropagation();
             const targetId = showFullBtn.dataset.targetId;
             if (targetId && typeof window.toggleFullContent === 'function') {
                 window.toggleFullContent(targetId);
             }
+            return;
+        }
+
+        // Stop propagation for action buttons container (to prevent toggle when clicking buttons)
+        if (e.target.closest('.mapping-actions, .request-actions')) {
+            e.stopPropagation();
+            return;
+        }
+
+        // Toggle mapping details (expand/collapse) - only if not clicking on actions
+        const toggleTarget = e.target.closest('[data-action="toggle-details"]');
+        if (toggleTarget) {
+            const card = e.target.closest('.mapping-card');
+            if (!card) return;
+
+            const mappingId = card.dataset.id;
+            if (!mappingId) return;
+
+            this.handleToggleDetails(mappingId, 'mapping', card);
             return;
         }
     }
