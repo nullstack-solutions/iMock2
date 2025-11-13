@@ -487,6 +487,13 @@ function executeMappingFilters() {
     const status = document.getElementById('filter-status')?.value?.trim() || '';
 
     const filters = { method, url, status };
+
+    // Update URL with current filters (primary state storage)
+    if (typeof window.URLStateManager !== 'undefined') {
+        window.URLStateManager.updateURL('mappings', filters, true);
+    }
+
+    // Save to localStorage as backup
     window.FilterManager.saveFilterState('mappings', filters);
 
     if (!Array.isArray(window.originalMappings) || window.originalMappings.length === 0) {
@@ -562,11 +569,32 @@ function executeMappingFilters() {
         return urlA.localeCompare(urlB);
     });
 
-    renderList(container, sortedMappings, {
-        renderItem: renderMappingMarkup,
-        getKey: getMappingRenderKey,
-        getSignature: getMappingRenderSignature
-    });
+    // Update pagination state and render only current page
+    if (window.PaginationManager) {
+        window.PaginationManager.updateState(sortedMappings.length);
+
+        // Get items for current page
+        const pageItems = window.PaginationManager.getCurrentPageItems(sortedMappings);
+
+        renderList(container, pageItems, {
+            renderItem: renderMappingMarkup,
+            getKey: getMappingRenderKey,
+            getSignature: getMappingRenderSignature
+        });
+
+        // Render pagination controls
+        const paginationContainer = document.getElementById('mappings-pagination');
+        if (paginationContainer) {
+            paginationContainer.innerHTML = window.PaginationManager.renderControls();
+        }
+    } else {
+        // Fallback: render all items if pagination not available
+        renderList(container, sortedMappings, {
+            renderItem: renderMappingMarkup,
+            getKey: getMappingRenderKey,
+            getSignature: getMappingRenderSignature
+        });
+    }
 
     if (loadingState) {
         loadingState.classList.add('hidden');
@@ -593,6 +621,13 @@ function executeRequestFilters() {
     const to = document.getElementById('req-filter-to')?.value || '';
 
     const filters = { method, status, url, from, to };
+
+    // Update URL with current filters (primary state storage)
+    if (typeof window.URLStateManager !== 'undefined') {
+        window.URLStateManager.updateURL('requests', filters, true);
+    }
+
+    // Save to localStorage as backup
     window.FilterManager.saveFilterState('requests', filters);
 
     if (!Array.isArray(window.originalRequests) || window.originalRequests.length === 0) {
