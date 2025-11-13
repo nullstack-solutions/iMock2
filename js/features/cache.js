@@ -7,15 +7,25 @@ window.cacheManager = {
     // Primary data cache
     cache: new Map(),
 
+    // Phase 2 Optimization: Cache metadata for time-based GC
+    // Follows React Query pattern (time-based, not LRU)
+    cacheMetadata: new Map(), // Stores { createdAt, lastAccessed } for each entry
+
     // Optimistic update queue with TTL (array to allow coalescing)
     optimisticQueue: [],
 
     // TTL configuration for optimistic updates (30 seconds by default)
     optimisticTTL: 30000,
 
+    // Phase 2: Cache limits configuration
+    maxCacheAge: 5 * 60 * 1000,  // 5 minutes (matches React Query default gcTime)
+    maxCacheSize: 100,             // Max 100 entries in cache
+    maxOptimisticQueueSize: 50,    // Max 50 pending optimistic updates
+
     // Interval handles for lifecycle management
     cleanupInterval: null,
     syncInterval: null,
+    gcInterval: null,  // Phase 2: Garbage collection interval
 
     // Version counter for change tracking
     version: 0,
@@ -31,18 +41,102 @@ window.cacheManager = {
         if (this.syncInterval) {
             window.LifecycleManager.clearInterval(this.syncInterval);
         }
+        if (this.gcInterval) {
+            window.LifecycleManager.clearInterval(this.gcInterval);
+        }
 
+        // Phase 1 Optimization: Increased intervals (5s→15s for cleanup, sync→120s)
         // Periodically remove stale optimistic updates
-        this.cleanupInterval = window.LifecycleManager.setInterval(() => this.cleanupStaleOptimisticUpdates(), 5000);
+        this.cleanupInterval = window.LifecycleManager.setInterval(() => this.cleanupStaleOptimisticUpdates(), 15000);
 
         // Periodically synchronize with the server
-        this.syncInterval = window.LifecycleManager.setInterval(() => this.syncWithServer(), 60000);
+        this.syncInterval = window.LifecycleManager.setInterval(() => this.syncWithServer(), 120000);
+
+        // Phase 2: Garbage collection for old cache entries
+        // Runs every 60 seconds, removes entries older than maxCacheAge
+        this.gcInterval = window.LifecycleManager.setInterval(() => this.garbageCollect(), 60000);
+    },
+
+    // Phase 2: Garbage collection - removes old and excess cache entries
+    garbageCollect() {
+        const now = Date.now();
+        let removedCount = 0;
+
+        // 1. Remove entries older than maxCacheAge (time-based GC, like React Query)
+        for (const [key, metadata] of this.cacheMetadata.entries()) {
+            const age = now - metadata.lastAccessed;
+            if (age > this.maxCacheAge) {
+                this.cache.delete(key);
+                this.cacheMetadata.delete(key);
+                removedCount++;
+                console.log(`🗑️ [GC] Removed expired cache entry: ${key} (age: ${Math.round(age / 1000)}s)`);
+            }
+        }
+
+        // 2. If cache still too large, remove oldest entries (size-based limit)
+        if (this.cache.size > this.maxCacheSize) {
+            // Sort by lastAccessed (oldest first)
+            const entries = Array.from(this.cacheMetadata.entries())
+                .sort((a, b) => a[1].lastAccessed - b[1].lastAccessed);
+
+            const toRemove = this.cache.size - this.maxCacheSize;
+            for (let i = 0; i < toRemove && i < entries.length; i++) {
+                const [key] = entries[i];
+                this.cache.delete(key);
+                this.cacheMetadata.delete(key);
+                removedCount++;
+                console.log(`🗑️ [GC] Removed excess cache entry: ${key} (cache too large)`);
+            }
+        }
+
+        if (removedCount > 0) {
+            console.log(`✅ [GC] Garbage collection completed, removed ${removedCount} entries`);
+            console.log(`📊 [GC] Cache stats: ${this.cache.size}/${this.maxCacheSize} entries`);
+            this.rebuildCache();
+        }
+    },
+
+    // Phase 2: Setter with metadata tracking
+    set(key, value) {
+        const now = Date.now();
+        this.cache.set(key, value);
+        this.cacheMetadata.set(key, {
+            createdAt: this.cacheMetadata.has(key) ? this.cacheMetadata.get(key).createdAt : now,
+            lastAccessed: now
+        });
+    },
+
+    // Phase 2: Getter with metadata tracking (updates lastAccessed)
+    get(key) {
+        const value = this.cache.get(key);
+        if (value !== undefined && this.cacheMetadata.has(key)) {
+            const metadata = this.cacheMetadata.get(key);
+            metadata.lastAccessed = Date.now();
+        }
+        return value;
+    },
+
+    // Phase 2: Check if key exists
+    has(key) {
+        return this.cache.has(key);
+    },
+
+    // Phase 2: Delete with metadata cleanup
+    delete(key) {
+        this.cacheMetadata.delete(key);
+        return this.cache.delete(key);
     },
 
     // Add an optimistic update (simplified flow)
     addOptimisticUpdate(m, op) {
         const id = m?.id || m?.uuid;
         if (!id) return;
+
+        // Phase 2: Check queue size limit
+        if (this.optimisticQueue.length >= this.maxOptimisticQueueSize) {
+            console.warn(`⚠️ [CACHE] Optimistic queue full (${this.maxOptimisticQueueSize}), removing oldest`);
+            this.optimisticQueue.shift(); // Remove oldest
+        }
 
         // Lightweight logic - the server remains the source of truth
         this.optimisticQueue.push({ id, op, payload: m, ts: Date.now() });
@@ -109,16 +203,16 @@ window.cacheManager = {
             serverMappings.forEach(mapping => {
                 const id = mapping.id || mapping.uuid;
                 if (id && !isImockCacheMapping(mapping)) {
-                    this.cache.set(id, mapping);
+                    this.set(id, mapping); // Phase 2: Use wrapper with metadata
                 }
             });
 
             // Layer optimistic updates on top of the server payload
             for (const item of this.optimisticQueue) {
                 if (item.op === 'delete') {
-                    this.cache.delete(item.id);
+                    this.delete(item.id); // Phase 2: Use wrapper with metadata cleanup
                 } else {
-                    this.cache.set(item.id, item.payload);
+                    this.set(item.id, item.payload); // Phase 2: Use wrapper with metadata
                 }
             }
 
@@ -155,17 +249,18 @@ window.cacheManager = {
 
     // Retrieve a mapping from the cache
     getMapping(id) {
-        return this.cache.get(id);
+        return this.get(id); // Phase 2: Use wrapper with metadata tracking
     },
 
     // Check if a mapping exists
     hasMapping(id) {
-        return this.cache.has(id);
+        return this.has(id); // Phase 2: Use wrapper
     },
 
     // Clear the entire cache
     clear() {
         this.cache.clear();
+        this.cacheMetadata.clear(); // Phase 2: Clear metadata too
         this.optimisticQueue.length = 0;
         this.version = 0;
         console.log('🧹 [CACHE] Cache cleared');
@@ -186,7 +281,6 @@ function isCacheEnabled() {
     }
 }
 
-
 // --- CORE APPLICATION FUNCTIONS ---
 
 // Enhanced WireMock connection routine with accurate uptime handling
@@ -194,20 +288,20 @@ window.connectToWireMock = async () => {
     // Try main page elements first, then fallback to settings page elements
     const hostInput = document.getElementById('wiremock-host') || document.getElementById(SELECTORS.CONNECTION.HOST);
     const portInput = document.getElementById('wiremock-port') || document.getElementById(SELECTORS.CONNECTION.PORT);
-    
+
     if (!hostInput || !portInput) {
         console.error('Connection input elements not found');
         NotificationManager.error('Error: connection fields not found');
         return;
     }
-    
+
     const host = hostInput.value.trim() || 'localhost';
     const port = portInput.value.trim() || '8080';
-    
+
     // DON'T save connection settings here - they should already be saved from Settings page
     // Only use these values for the current connection attempt
     console.log('🔗 Connecting with:', { host, port });
-    
+
     // Update the base URL (with proper scheme/port normalization)
     if (typeof window.normalizeWiremockBaseUrl === 'function') {
         window.wiremockBaseUrl = window.normalizeWiremockBaseUrl(host, port);
@@ -219,23 +313,24 @@ window.connectToWireMock = async () => {
         const finalPort = (port && String(port).trim()) || (scheme === 'https' ? '443' : '8080');
         window.wiremockBaseUrl = `${scheme}://${cleanHost}:${finalPort}/__admin`;
     }
-    
+
     try {
-        let renderSource = 'unknown';
-        // The first health check starts uptime tracking
         await checkHealthAndStartUptime();
-        
+
+        // If we got here, we are online - proceed with full connection
+        console.log('✅ Online mode - proceeding with data loading');
+
         // Update the UI after a successful connection
         const statusDot = document.getElementById(SELECTORS.CONNECTION.STATUS_DOT);
         const statusText = document.getElementById(SELECTORS.CONNECTION.STATUS_TEXT);
         const setupDiv = document.getElementById(SELECTORS.CONNECTION.SETUP);
         const addButton = document.getElementById(SELECTORS.BUTTONS.ADD_MAPPING);
-        
+
         if (statusDot) statusDot.className = 'status-dot connected';
         if (statusText) { if (!window.lastWiremockSuccess) { window.lastWiremockSuccess = Date.now(); } if (typeof window.updateLastSuccessUI === 'function') { window.updateLastSuccessUI(); } }
         if (setupDiv) setupDiv.style.display = 'none';
         if (addButton) addButton.disabled = false;
-        
+
         // Reveal statistics and filters
         const statsElement = document.getElementById(SELECTORS.UI.STATS);
         const statsSpacer = document.getElementById('stats-spacer');
@@ -243,45 +338,183 @@ window.connectToWireMock = async () => {
         if (statsElement) statsElement.style.display = 'flex';
         if (statsSpacer) statsSpacer.style.display = 'none';
         if (filtersElement) filtersElement.style.display = 'block';
-        
-        // Start periodic health checks
-        startHealthMonitoring();
-        
+
+        // Start unified background health check
+        startHealthCheck();
+
         // Load data in parallel while leveraging the Cache Service
         const useCache = isCacheEnabled();
-        const [mappingsLoaded, requestsLoaded] = await Promise.all([
-            fetchAndRenderMappings(null, { useCache }),
-            fetchAndRenderRequests()
-        ]);
+        const mappingsLoaded = await fetchAndRenderMappings(null, { useCache });
 
         await loadScenarios();
 
-        if (mappingsLoaded && requestsLoaded) {
+        if (mappingsLoaded) {
             NotificationManager.success('Connected to WireMock successfully!');
         } else {
-            console.warn('Connected to WireMock, but some resources failed to load', {
-                mappingsLoaded,
-                requestsLoaded
-            });
+            console.warn('Connected to WireMock, but mappings failed to load');
         }
-        
+
     } catch (error) {
-        console.error('Connection error:', error);
-        NotificationManager.error(`Connection error: ${error.message}`);
-        
+        console.error('Connection error - entering offline mode:', error);
+
+        // We are offline - don't make any more requests to server
+        console.log('⚠️ Offline mode - no server requests will be made');
+
         // Stop uptime tracking on failure
         stopUptime();
-        
+
         // Reset connection state
         const statusDot = document.getElementById(SELECTORS.CONNECTION.STATUS_DOT);
         const statusText = document.getElementById(SELECTORS.CONNECTION.STATUS_TEXT);
         if (statusDot) statusDot.className = 'status-dot disconnected';
-        if (statusText) statusText.textContent = 'Disconnected';
+        if (statusText) statusText.textContent = 'Offline';
+
+        // Notify user about offline mode - demo data can be loaded manually if needed
+        NotificationManager.warning('WireMock server is offline. Retrying connection in background...');
+
+        // Start unified background health check (it will handle exponential backoff automatically)
+        startHealthCheck();
     }
 };
 
-// Health monitoring and uptime system
-let healthCheckInterval = null;
+// Unified health monitoring system (always runs in background)
+let healthCheckTimeout = null;
+let healthCheckFailureCount = 0;
+
+// Unified background health check with adaptive timing
+window.startHealthCheck = () => {
+    // Clear any existing check
+    if (healthCheckTimeout) {
+        clearTimeout(healthCheckTimeout);
+        healthCheckTimeout = null;
+    }
+
+    // Calculate delay based on online/offline state
+    let delay;
+    if (window.isOnline) {
+        // Online: check every 30 seconds
+        delay = 30000;
+    } else {
+        // Offline: exponential backoff (2s, 4s, 8s, 16s, 32s, max 60s)
+        const baseDelay = 2000;
+        const maxDelay = 60000;
+        delay = Math.min(baseDelay * Math.pow(2, healthCheckFailureCount), maxDelay);
+    }
+
+    console.log(`🔄 [HEALTH] Scheduling next check in ${delay}ms (${window.isOnline ? 'online' : `offline, attempt ${healthCheckFailureCount + 1}`})`);
+
+    healthCheckTimeout = setTimeout(async () => {
+        try {
+            const startTime = performance.now();
+            let isHealthy = false;
+            let responseTime = 0;
+
+            // Try /health endpoint
+            try {
+                const response = await apiFetch(ENDPOINTS.HEALTH);
+                responseTime = Math.round(performance.now() - startTime);
+                isHealthy = typeof response === 'object' && (
+                    (typeof response.status === 'string' && ['up','healthy','ok'].includes(response.status.toLowerCase())) ||
+                    response.healthy === true
+                );
+            } catch (primaryError) {
+                // Only try fallback if /health endpoint doesn't exist (404), not for connection errors
+                // Connection errors (ERR_CONNECTION_REFUSED, network errors) mean server is offline - no point trying /mappings
+                const is404 = primaryError?.message?.includes('404') || primaryError?.status === 404;
+
+                if (is404) {
+                    // /health endpoint doesn't exist - try /mappings as fallback for older WireMock versions
+                    console.log('[HEALTH] /health not found (404), trying /mappings fallback for older WireMock');
+                    try {
+                        const fallbackResponse = await window.apiFetch(window.ENDPOINTS.MAPPINGS);
+                        responseTime = Math.round(performance.now() - startTime);
+                        // Only consider healthy if we got a REAL response (not demo data)
+                        isHealthy = typeof fallbackResponse === 'object' && fallbackResponse !== null && !fallbackResponse.__isDemo;
+                    } catch (fallbackError) {
+                        isHealthy = false;
+                    }
+                } else {
+                    // Connection error or other error - server is offline, don't try fallback
+                    isHealthy = false;
+                }
+            }
+
+            // Update state based on health check result
+            const wasOnline = window.isOnline;
+            window.isOnline = isHealthy;
+
+            if (isHealthy) {
+                // Server is healthy
+                healthCheckFailureCount = 0;
+
+                // Update UI
+                const healthIndicator = document.getElementById(SELECTORS.HEALTH.INDICATOR);
+                if (healthIndicator) {
+                    healthIndicator.innerHTML = `<span>Response Time: </span><span class="healthy">${responseTime}ms</span>`;
+                }
+
+                // If we just came back online, reconnect
+                if (!wasOnline) {
+                    console.log(`✅ [HEALTH] Server is back online (${responseTime}ms)`);
+                    NotificationManager.success('WireMock server is back online! Reconnecting...');
+
+                    // Reconnect fully (this will load data, start uptime, etc.)
+                    await window.connectToWireMock();
+                } else {
+                    console.log(`✅ [HEALTH] Server is healthy (${responseTime}ms)`);
+                }
+            } else {
+                // Server is offline
+                healthCheckFailureCount++;
+
+                // Update UI
+                const healthIndicator = document.getElementById(SELECTORS.HEALTH.INDICATOR);
+                if (healthIndicator) {
+                    healthIndicator.innerHTML = `<span>Response Time: </span><span class="unhealthy">Offline</span>`;
+                }
+
+                // If we just went offline, update connection state
+                if (wasOnline) {
+                    console.log(`⚠️ [HEALTH] Server went offline`);
+
+                    // Stop uptime
+                    stopUptime();
+
+                    // Update connection status
+                    const statusDot = document.getElementById(SELECTORS.CONNECTION.STATUS_DOT);
+                    const statusText = document.getElementById(SELECTORS.CONNECTION.STATUS_TEXT);
+                    if (statusDot) statusDot.className = 'status-dot disconnected';
+                    if (statusText) statusText.textContent = 'Offline';
+
+                    NotificationManager.warning('WireMock server went offline. Retrying in background...');
+                } else {
+                    console.log(`⚠️ [HEALTH] Server still offline (attempt ${healthCheckFailureCount})`);
+                }
+            }
+
+            // Schedule next check
+            startHealthCheck();
+
+        } catch (error) {
+            console.error('[HEALTH] Check error:', error);
+            window.isOnline = false;
+            healthCheckFailureCount++;
+
+            // Schedule next check
+            startHealthCheck();
+        }
+    }, delay);
+};
+
+// Stop health check
+window.stopHealthCheck = () => {
+    if (healthCheckTimeout) {
+        clearTimeout(healthCheckTimeout);
+        healthCheckTimeout = null;
+        healthCheckFailureCount = 0;
+        console.log('🛑 [HEALTH] Health check stopped');
+    }
+};
 
 // Perform the first health check and start uptime tracking
 window.checkHealthAndStartUptime = async () => {
@@ -291,7 +524,7 @@ window.checkHealthAndStartUptime = async () => {
         let responseTime = 0;
         let isHealthy = false;
 
-        // Try /health first (WireMock 3.x) then fall back to /mappings (compatible with 2.x)
+        // Try /health endpoint - this is the source of truth for online/offline mode
         try {
             const response = await apiFetch(ENDPOINTS.HEALTH);
             responseTime = Math.round(performance.now() - startTime);
@@ -301,101 +534,61 @@ window.checkHealthAndStartUptime = async () => {
             );
             console.log('[HEALTH] initial check:', { rawStatus: response?.status, healthyFlag: response?.healthy, isHealthy });
         } catch (primaryError) {
-            // Fallback: verify core API availability via /mappings
-            const fallback = await fetchMappingsFromServer();
-            responseTime = Math.round(performance.now() - startTime);
-            // Treat a JSON object response (WireMock default) as healthy
-            isHealthy = typeof fallback === 'object';
+            // Only try fallback if /health endpoint doesn't exist (404), not for connection errors
+            const is404 = primaryError?.message?.includes('404') || primaryError?.status === 404;
+
+            if (is404) {
+                // /health endpoint doesn't exist - try /mappings as fallback for older WireMock versions (2.x)
+                console.log('[HEALTH] /health not found (404), trying /mappings fallback for older WireMock');
+                try {
+                    const fallbackResponse = await window.apiFetch(window.ENDPOINTS.MAPPINGS);
+                    responseTime = Math.round(performance.now() - startTime);
+                    // Only consider healthy if we got a REAL response (not demo data)
+                    isHealthy = typeof fallbackResponse === 'object' && fallbackResponse !== null && !fallbackResponse.__isDemo;
+                    console.log('[HEALTH] fallback check (mappings):', { isHealthy, responseTime });
+                } catch (fallbackError) {
+                    console.log('[HEALTH] fallback failed - offline mode');
+                    isHealthy = false;
+                }
+            } else {
+                // Connection error or other error - server is offline
+                console.log('[HEALTH] connection failed - offline mode');
+                isHealthy = false;
+            }
         }
 
         if (isHealthy) {
+            // Mark as online
+            window.isOnline = true;
+
             // Start uptime only after a successful health check
             window.startTime = Date.now();
             if (window.uptimeInterval) window.LifecycleManager.clearInterval(window.uptimeInterval);
             window.uptimeInterval = window.LifecycleManager.setInterval(updateUptime, 1000);
-            // Unified health UI update (fallback below keeps old DOM path)
+
+            // Update health UI
             if (typeof window.applyHealthUI === 'function') {
                 try { window.applyHealthUI(true, responseTime); } catch (e) { console.warn('applyHealthUI failed:', e); }
             }
-            
-            // Update the health indicator with the measured response time
-            // Unified health UI (fallback DOM update remains below)
-            if (typeof window.applyHealthUI === 'function') {
-                try { window.applyHealthUI(isHealthy, isHealthy ? responseTime : null); } catch (e) { console.warn('applyHealthUI failed:', e); }
-            }
+
             const healthIndicator = document.getElementById(SELECTORS.HEALTH.INDICATOR);
             if (healthIndicator) {
                 healthIndicator.style.display = 'inline';
                 healthIndicator.innerHTML = `<span>Response Time: </span><span class="healthy">${responseTime}ms</span>`;
             }
-            
-            console.log(`✅ WireMock health check passed (${responseTime}ms), uptime started`);
+
+            console.log(`✅ WireMock health check passed (${responseTime}ms), uptime started, online mode`);
         } else {
-            throw new Error('WireMock is not healthy');
+            // Mark as offline
+            window.isOnline = false;
+            throw new Error('WireMock is not reachable - offline mode');
         }
     } catch (error) {
-        console.error('Health check failed:', error);
+        window.isOnline = false;
+        console.error('Health check failed - entering offline mode:', error);
         throw error;
     }
 };
-
-// Periodic health monitoring function
-window.startHealthMonitoring = () => {
-    // Clear any previous interval
-    if (healthCheckInterval) {
-        window.LifecycleManager.clearInterval(healthCheckInterval);
-    }
-
-    // Check health every 30 seconds
-    healthCheckInterval = window.LifecycleManager.setInterval(async () => {
-        try {
-            const startTime = performance.now();
-            let responseTime = 0;
-            let isHealthyNow = false;
-
-            try {
-                const healthResponse = await apiFetch(ENDPOINTS.HEALTH);
-                responseTime = Math.round(performance.now() - startTime);
-                isHealthyNow = typeof healthResponse === 'object' && (
-                    (typeof healthResponse.status === 'string' && ['up','healthy','ok'].includes(healthResponse.status.toLowerCase())) ||
-                    healthResponse.healthy === true
-                );
-                console.log('[HEALTH] periodic check:', { rawStatus: healthResponse?.status, healthyFlag: healthResponse?.healthy, isHealthyNow });
-            } catch (primaryError) {
-                // Fallback to /mappings
-                const fallback = await fetchMappingsFromServer();
-                responseTime = Math.round(performance.now() - startTime);
-                isHealthyNow = typeof fallback === 'object';
-            }
-
-            const healthIndicator = document.getElementById(SELECTORS.HEALTH.INDICATOR);
-            if (healthIndicator) {
-                if (isHealthyNow) {
-                    healthIndicator.innerHTML = `<span>Response Time: </span><span class="healthy">${responseTime}ms</span>`;
-                } else {
-                    healthIndicator.innerHTML = `<span>Response Time: </span><span class="unhealthy">Unhealthy</span>`;
-                    // Stop uptime on the first failed health check
-                    stopUptime();
-                    window.LifecycleManager.clearInterval(healthCheckInterval);
-                    NotificationManager.warning('WireMock health check failed, uptime stopped');
-                }
-            }
-        } catch (error) {
-            console.error('Health monitoring failed:', error);
-            // Stop uptime when health monitoring throws
-            const healthIndicator = document.getElementById(SELECTORS.HEALTH.INDICATOR);
-            if (typeof window.applyHealthUI === 'function') {
-                try { window.applyHealthUI(null, null); } catch {}
-            } else if (healthIndicator) {
-                healthIndicator.innerHTML = `<span>Response Time: </span><span class="error">Error</span>`;
-            }
-            stopUptime();
-            window.LifecycleManager.clearInterval(healthCheckInterval);
-            NotificationManager.error('Health monitoring failed, uptime stopped');
-        }
-    }, 30000); // 30 seconds
-};
-
 
 function refreshMappingsFromCache({ maintainFilters = true } = {}) {
     try {
@@ -677,7 +870,6 @@ window.refreshImockCache = async () => {
         }
     }
 };
-
 
 window.refreshMappingsFromCache = refreshMappingsFromCache;
 window.updateOptimisticCache = updateOptimisticCache;

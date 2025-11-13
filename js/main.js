@@ -30,18 +30,23 @@ window.customHeaders = { ...(DEFAULT_SETTINGS.customHeaders || {}) };
 let autoConnectInitiated = false;
 
 function getStoredSettings() {
-    if (typeof window.readWiremockSettings === 'function') {
-        return window.readWiremockSettings();
+    // Try reading using the standard function first
+    const fromStandard = Utils.safeCall(window.readWiremockSettings);
+    if (fromStandard) {
+        return fromStandard;
     }
 
+    // Fallback to direct localStorage read
     try {
         const raw = localStorage.getItem('wiremock-settings');
         if (!raw) {
             return {};
         }
         const parsed = JSON.parse(raw);
-        if (typeof window.normalizeWiremockSettings === 'function') {
-            return window.normalizeWiremockSettings(parsed);
+        // Try normalizing if function exists
+        const normalized = Utils.safeCall(window.normalizeWiremockSettings, parsed);
+        if (normalized) {
+            return normalized;
         }
         return parsed && typeof parsed === 'object' ? parsed : {};
     } catch (error) {
@@ -251,7 +256,6 @@ function initializeOnboardingFlow() {
 window.initializeOnboardingFlow = initializeOnboardingFlow;
 window.attemptAutoConnect = attemptAutoConnect;
 
-
 // === FUNCTIONS FOR EDITOR INTEGRATION ===
     
 window.editMapping = (mappingId) => {
@@ -259,18 +263,7 @@ window.editMapping = (mappingId) => {
 
     // Get current settings to pass to editor
     const currentSettings = getStoredSettings();
-
-    // Option 1: Pass ALL settings (current behavior)
     const settingsParam = encodeURIComponent(JSON.stringify(currentSettings));
-
-    // Option 2: Pass only specific settings (uncomment to use)
-    // const editorSettings = {
-    //     host: currentSettings.host,
-    //     port: currentSettings.port,
-    //     theme: currentSettings.theme
-    // };
-    // const settingsParam = encodeURIComponent(JSON.stringify(editorSettings));
-
     const editorUrl = `editor/json-editor.html?mappingId=${mappingId}&mode=edit&settings=${settingsParam}`;
     const editorWindow = window.open(
         editorUrl,
@@ -291,12 +284,8 @@ window.editMapping = (mappingId) => {
             window.LifecycleManager.clearInterval(checkClosed);
             console.log('🔄 Editor closed, updating counters only');
             // Only update counters, don't refresh data to preserve optimistic updates
-            if (typeof window.updateMappingsCounter === 'function') {
-                window.updateMappingsCounter();
-            }
-            if (typeof window.updateRequestsCounter === 'function') {
-                window.updateRequestsCounter();
-            }
+            Utils.safeCall(window.updateMappingsCounter);
+            Utils.safeCall(window.updateRequestsCounter);
         }
     }, 1000);
 
@@ -449,17 +438,29 @@ window.saveSettings = () => {
 // Reset settings to defaults
 window.resetSettings = () => {
     if (!confirm('Reset all settings to defaults?')) return;
-    
+
     try {
+        // Cache element references
+        const elements = {
+            host: document.getElementById('default-host'),
+            port: document.getElementById('default-port'),
+            timeout: document.getElementById('request-timeout'),
+            cacheEnabled: document.getElementById('cache-enabled'),
+            autoRefresh: document.getElementById('auto-refresh-enabled'),
+            refreshInterval: document.getElementById('refresh-interval'),
+            customHeaders: document.getElementById('custom-headers'),
+            autoConnect: document.getElementById('auto-connect-enabled')
+        };
+
         // Update form fields
-        if (document.getElementById('default-host')) document.getElementById('default-host').value = DEFAULT_SETTINGS.host;
-        if (document.getElementById('default-port')) document.getElementById('default-port').value = DEFAULT_SETTINGS.port;
-        if (document.getElementById('request-timeout')) document.getElementById('request-timeout').value = DEFAULT_SETTINGS.requestTimeout;
-        if (document.getElementById('cache-enabled')) document.getElementById('cache-enabled').checked = DEFAULT_SETTINGS.cacheEnabled;
-        if (document.getElementById('auto-refresh-enabled')) document.getElementById('auto-refresh-enabled').checked = DEFAULT_SETTINGS.autoRefreshEnabled;
-        if (document.getElementById('refresh-interval')) document.getElementById('refresh-interval').value = DEFAULT_SETTINGS.refreshInterval;
-        if (document.getElementById('custom-headers')) document.getElementById('custom-headers').value = DEFAULT_SETTINGS.customHeadersRaw || '';
-        if (document.getElementById('auto-connect-enabled')) document.getElementById('auto-connect-enabled').checked = DEFAULT_SETTINGS.autoConnect;
+        if (elements.host) elements.host.value = DEFAULT_SETTINGS.host;
+        if (elements.port) elements.port.value = DEFAULT_SETTINGS.port;
+        if (elements.timeout) elements.timeout.value = DEFAULT_SETTINGS.requestTimeout;
+        if (elements.cacheEnabled) elements.cacheEnabled.checked = DEFAULT_SETTINGS.cacheEnabled;
+        if (elements.autoRefresh) elements.autoRefresh.checked = DEFAULT_SETTINGS.autoRefreshEnabled;
+        if (elements.refreshInterval) elements.refreshInterval.value = DEFAULT_SETTINGS.refreshInterval;
+        if (elements.customHeaders) elements.customHeaders.value = DEFAULT_SETTINGS.customHeadersRaw || '';
+        if (elements.autoConnect) elements.autoConnect.checked = DEFAULT_SETTINGS.autoConnect;
 
         // Save defaults
         localStorage.setItem('wiremock-settings', JSON.stringify(DEFAULT_SETTINGS));
@@ -492,21 +493,38 @@ window.loadSettings = () => {
         const settings = getStoredSettings();
         console.log('🔧 [main.js] Loading settings from localStorage:', settings);
 
+        // Cache element references
+        const elements = {
+            host: document.getElementById('default-host'),
+            port: document.getElementById('default-port'),
+            timeout: document.getElementById('request-timeout'),
+            cacheEnabled: document.getElementById('cache-enabled'),
+            autoRefresh: document.getElementById('auto-refresh-enabled'),
+            refreshInterval: document.getElementById('refresh-interval'),
+            cacheRebuildDelay: document.getElementById('cache-rebuild-delay'),
+            cacheValidationDelay: document.getElementById('cache-validation-delay'),
+            optimisticCacheAgeLimit: document.getElementById('optimistic-cache-age-limit'),
+            cacheCountDiffThreshold: document.getElementById('cache-count-diff-threshold'),
+            backgroundFetchDelay: document.getElementById('background-fetch-delay'),
+            customHeaders: document.getElementById('custom-headers'),
+            autoConnect: document.getElementById('auto-connect-enabled')
+        };
+
         // Load into settings form fields if they exist
-        if (document.getElementById('default-host')) document.getElementById('default-host').value = settings.host || DEFAULT_SETTINGS.host;
-        if (document.getElementById('default-port')) document.getElementById('default-port').value = settings.port || DEFAULT_SETTINGS.port;
-        if (document.getElementById('request-timeout')) document.getElementById('request-timeout').value = settings.requestTimeout || DEFAULT_SETTINGS.requestTimeout;
-        if (document.getElementById('cache-enabled')) document.getElementById('cache-enabled').checked = settings.cacheEnabled !== undefined ? settings.cacheEnabled : DEFAULT_SETTINGS.cacheEnabled;
-        if (document.getElementById('auto-refresh-enabled')) document.getElementById('auto-refresh-enabled').checked = settings.autoRefreshEnabled !== undefined ? settings.autoRefreshEnabled : DEFAULT_SETTINGS.autoRefreshEnabled;
-        if (document.getElementById('refresh-interval')) document.getElementById('refresh-interval').value = settings.refreshInterval || DEFAULT_SETTINGS.refreshInterval;
+        if (elements.host) elements.host.value = settings.host || DEFAULT_SETTINGS.host;
+        if (elements.port) elements.port.value = settings.port || DEFAULT_SETTINGS.port;
+        if (elements.timeout) elements.timeout.value = settings.requestTimeout || DEFAULT_SETTINGS.requestTimeout;
+        if (elements.cacheEnabled) elements.cacheEnabled.checked = settings.cacheEnabled !== undefined ? settings.cacheEnabled : DEFAULT_SETTINGS.cacheEnabled;
+        if (elements.autoRefresh) elements.autoRefresh.checked = settings.autoRefreshEnabled !== undefined ? settings.autoRefreshEnabled : DEFAULT_SETTINGS.autoRefreshEnabled;
+        if (elements.refreshInterval) elements.refreshInterval.value = settings.refreshInterval || DEFAULT_SETTINGS.refreshInterval;
         // Cache timing settings
-        if (document.getElementById('cache-rebuild-delay')) document.getElementById('cache-rebuild-delay').value = settings.cacheRebuildDelay || DEFAULT_SETTINGS.cacheRebuildDelay;
-        if (document.getElementById('cache-validation-delay')) document.getElementById('cache-validation-delay').value = settings.cacheValidationDelay || DEFAULT_SETTINGS.cacheValidationDelay;
-        if (document.getElementById('optimistic-cache-age-limit')) document.getElementById('optimistic-cache-age-limit').value = settings.optimisticCacheAgeLimit || DEFAULT_SETTINGS.optimisticCacheAgeLimit;
-        if (document.getElementById('cache-count-diff-threshold')) document.getElementById('cache-count-diff-threshold').value = settings.cacheCountDiffThreshold || DEFAULT_SETTINGS.cacheCountDiffThreshold;
-        if (document.getElementById('background-fetch-delay')) document.getElementById('background-fetch-delay').value = settings.backgroundFetchDelay || DEFAULT_SETTINGS.backgroundFetchDelay;
-        if (document.getElementById('custom-headers')) document.getElementById('custom-headers').value = serializeCustomHeaders(settings);
-        if (document.getElementById('auto-connect-enabled')) document.getElementById('auto-connect-enabled').checked = settings.autoConnect !== false;
+        if (elements.cacheRebuildDelay) elements.cacheRebuildDelay.value = settings.cacheRebuildDelay || DEFAULT_SETTINGS.cacheRebuildDelay;
+        if (elements.cacheValidationDelay) elements.cacheValidationDelay.value = settings.cacheValidationDelay || DEFAULT_SETTINGS.cacheValidationDelay;
+        if (elements.optimisticCacheAgeLimit) elements.optimisticCacheAgeLimit.value = settings.optimisticCacheAgeLimit || DEFAULT_SETTINGS.optimisticCacheAgeLimit;
+        if (elements.cacheCountDiffThreshold) elements.cacheCountDiffThreshold.value = settings.cacheCountDiffThreshold || DEFAULT_SETTINGS.cacheCountDiffThreshold;
+        if (elements.backgroundFetchDelay) elements.backgroundFetchDelay.value = settings.backgroundFetchDelay || DEFAULT_SETTINGS.backgroundFetchDelay;
+        if (elements.customHeaders) elements.customHeaders.value = serializeCustomHeaders(settings);
+        if (elements.autoConnect) elements.autoConnect.checked = settings.autoConnect !== false;
 
         // Update global auth header
         window.customHeaders = (settings.customHeaders && typeof settings.customHeaders === 'object' && !Array.isArray(settings.customHeaders))
@@ -630,6 +648,30 @@ document.addEventListener('DOMContentLoaded', async () => {
     initializeOnboardingFlow();
 });
 
+// Handle browser back/forward navigation
+window.addEventListener('popstate', () => {
+    console.log('⬅️ Browser navigation detected, syncing filters from URL');
+
+    if (typeof window.URLStateManager === 'undefined') {
+        return;
+    }
+
+    // Get current active tab to determine which filters to sync
+    const activeTab = window.TabManager?.getCurrentTab();
+
+    if (activeTab === 'mappings') {
+        window.URLStateManager.syncUIFromURL('mappings');
+        if (typeof window.FilterManager !== 'undefined') {
+            window.FilterManager.flushMappingFilters();
+        }
+    } else if (activeTab === 'requests') {
+        window.URLStateManager.syncUIFromURL('requests');
+        if (typeof window.FilterManager !== 'undefined') {
+            window.FilterManager.flushRequestFilters();
+        }
+    }
+});
+
 // Listen for settings changes from editor windows or other sources
 window.addEventListener('storage', (e) => {
     if (e.key === 'wiremock-settings' && e.newValue) {
@@ -746,6 +788,8 @@ window.addEventListener('storage', (e) => {
 if (typeof BroadcastChannel !== 'undefined') {
     try {
         const cacheRefreshChannel = new BroadcastChannel('imock-cache-refresh');
+        const optimisticUpdateChannel = new BroadcastChannel('imock-optimistic-updates');
+
         cacheRefreshChannel.addEventListener('message', (event) => {
             if (event.data && event.data.type === 'cache-refresh') {
                 console.log('📡 [main.js] Received BroadcastChannel cache refresh from:', event.data.source);
@@ -758,7 +802,6 @@ if (typeof BroadcastChannel !== 'undefined') {
         });
 
         // Listen for optimistic mapping updates via BroadcastChannel
-        const optimisticUpdateChannel = new BroadcastChannel('imock-optimistic-updates');
         optimisticUpdateChannel.addEventListener('message', (event) => {
             if (event.data && event.data.type === 'optimistic-mapping-update') {
                 console.log('🎯 [main.js] Received BroadcastChannel optimistic update from:', event.data.source, event.data.mapping.id);
@@ -771,6 +814,12 @@ if (typeof BroadcastChannel !== 'undefined') {
                     }
                 }
             }
+        });
+
+        // Cleanup BroadcastChannels on page unload
+        window.addEventListener('beforeunload', () => {
+            cacheRefreshChannel.close();
+            optimisticUpdateChannel.close();
         });
     } catch (error) {
         console.warn('BroadcastChannel setup failed:', error);
