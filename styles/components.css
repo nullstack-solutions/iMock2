@@ -562,8 +562,8 @@
     position: relative;
     transition: background var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
     contain: layout style paint;
-    content-visibility: auto;
-    contain-intrinsic-size: auto 160px;
+    /* content-visibility removed: causes black boxes and FPS drops with pagination */
+    /* With pagination (20 items), content-visibility optimization is not needed */
     background: rgba(255, 255, 255, 0.02);
     border-radius: var(--radius-lg);
 }
