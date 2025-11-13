@@ -432,7 +432,6 @@ function loadJSONMode() {
     
     const formattedJSON = JSON.stringify(editorState.currentMapping, null, 2);
     jsonEditor.value = formattedJSON;
-    adjustJsonEditorHeight(true);
 
     console.log('🟡 [JSON DEBUG] JSON editor populated with mapping ID:', editorState.currentMapping?.id);
     console.log('🟡 [JSON DEBUG] JSON content length:', formattedJSON.length);
