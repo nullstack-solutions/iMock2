@@ -4,115 +4,56 @@
     const window = global;
     const state = window.FeaturesState || {};
 
-    if (!Array.isArray(window.originalMappings)) {
-        window.originalMappings = [];
-    }
-    if (!Array.isArray(window.allMappings)) {
-        window.allMappings = [];
-    }
-    if (!Array.isArray(window.originalRequests)) {
-        window.originalRequests = [];
-    }
-    if (!Array.isArray(window.allRequests)) {
-        window.allRequests = [];
-    }
-    if (!(window.mappingIndex instanceof Map)) {
-        window.mappingIndex = new Map();
-    }
-    if (typeof window.mappingTabTotals !== 'object' || window.mappingTabTotals === null) {
-        window.mappingTabTotals = { all: 0, get: 0, post: 0, put: 0, patch: 0, delete: 0 };
-    }
-    if (typeof window.requestTabTotals !== 'object' || window.requestTabTotals === null) {
-        window.requestTabTotals = { all: 0, matched: 0, unmatched: 0 };
-    }
-    if (!(window.pendingDeletedIds instanceof Set)) {
-        window.pendingDeletedIds = new Set();
-    }
-    if (!(window.deletionTimeouts instanceof Map)) {
-        window.deletionTimeouts = new Map();
-    }
-
-    if (typeof window.isDemoMode === 'undefined') {
-        window.isDemoMode = false;
-    }
-    if (typeof window.demoModeAnnounced === 'undefined') {
-        window.demoModeAnnounced = false;
-    }
-    if (typeof window.demoModeLastError === 'undefined') {
-        window.demoModeLastError = null;
-    }
+    if (!Array.isArray(window.originalMappings)) window.originalMappings = [];
+    if (!Array.isArray(window.allMappings)) window.allMappings = [];
+    if (!Array.isArray(window.originalRequests)) window.originalRequests = [];
+    if (!Array.isArray(window.allRequests)) window.allRequests = [];
+    if (!(window.mappingIndex instanceof Map)) window.mappingIndex = new Map();
+    window.mappingTabTotals ??= { all: 0, get: 0, post: 0, put: 0, patch: 0, delete: 0 };
+    window.requestTabTotals ??= { all: 0, matched: 0, unmatched: 0 };
+    if (!(window.pendingDeletedIds instanceof Set)) window.pendingDeletedIds = new Set();
+    if (!(window.deletionTimeouts instanceof Map)) window.deletionTimeouts = new Map();
+    window.isDemoMode ??= false;
+    window.demoModeAnnounced ??= false;
+    window.demoModeLastError ??= null;
 
     let mappingsFetchPromise = null;
 
     function markDemoModeActive(reason = 'automatic') {
         window.isDemoMode = true;
         window.demoModeReason = reason;
-        if (!window.demoModeAnnounced && typeof window.NotificationManager !== 'undefined' && window.NotificationManager?.info) {
+        if (!window.demoModeAnnounced && window.NotificationManager?.info) {
             window.NotificationManager.info('WireMock API unreachable. Showing demo data so the interface stays interactive.');
             window.demoModeAnnounced = true;
         }
     }
 
     function addMappingToIndex(mapping) {
-        if (!mapping || typeof mapping !== 'object') {
-            return;
-        }
-        if (!(window.mappingIndex instanceof Map)) {
-            window.mappingIndex = new Map();
-        }
-
+        if (!mapping || typeof mapping !== 'object') return;
+        if (!(window.mappingIndex instanceof Map)) window.mappingIndex = new Map();
         const identifiers = new Set();
-        const fields = ['id', 'uuid', 'stubMappingId', 'stubId', 'mappingId'];
-        fields.forEach(field => {
-            const value = mapping[field];
-            if (value) {
-                identifiers.add(String(value).trim());
-            }
-        });
-        if (mapping.metadata?.id) {
-            identifiers.add(String(mapping.metadata.id).trim());
-        }
-
-        identifiers.forEach(id => {
-            if (id) {
-                window.mappingIndex.set(id, mapping);
-            }
-        });
+        ['id', 'uuid', 'stubMappingId', 'stubId', 'mappingId'].forEach(field => { if (mapping[field]) identifiers.add(String(mapping[field]).trim()); });
+        if (mapping.metadata?.id) identifiers.add(String(mapping.metadata.id).trim());
+        identifiers.forEach(id => { if (id) window.mappingIndex.set(id, mapping); });
     }
 
     function rebuildMappingIndex(mappings) {
-        if (!(window.mappingIndex instanceof Map)) {
-            window.mappingIndex = new Map();
-        } else {
-            window.mappingIndex.clear();
-        }
-        if (!Array.isArray(mappings)) {
-            return;
-        }
-        mappings.forEach(addMappingToIndex);
+        if (!(window.mappingIndex instanceof Map)) window.mappingIndex = new Map();
+        else window.mappingIndex.clear();
+        if (Array.isArray(mappings)) mappings.forEach(addMappingToIndex);
     }
 
     function computeMappingTabTotals(source = []) {
         const totals = { all: 0, get: 0, post: 0, put: 0, patch: 0, delete: 0 };
-        if (!Array.isArray(source) || source.length === 0) {
-            return totals;
-        }
-
+        if (!Array.isArray(source) || source.length === 0) return totals;
         totals.all = source.length;
-        source.forEach(mapping => {
-            const method = (mapping?.request?.method || '').toLowerCase();
-            if (Object.prototype.hasOwnProperty.call(totals, method)) {
-                totals[method] += 1;
-            }
-        });
+        source.forEach(mapping => { const method = (mapping?.request?.method || '').toLowerCase(); if (Object.prototype.hasOwnProperty.call(totals, method)) totals[method] += 1; });
         return totals;
     }
 
     function refreshMappingTabSnapshot() {
         window.mappingTabTotals = computeMappingTabTotals(window.originalMappings);
-        if (typeof window.updateMappingTabCounts === 'function') {
-            window.updateMappingTabCounts();
-        }
+        if (typeof window.updateMappingTabCounts === 'function') window.updateMappingTabCounts();
     }
 
     function computeRequestTabTotals(source = []) {
@@ -211,6 +152,8 @@
     window.fetchMappingsFromServer = fetchMappingsFromServer;
 
     window.FeaturesState = state;
+
+    console.log('✅ state.js loaded - State management functions registered');
 
     if (typeof window.dispatchEvent === 'function') {
         let readyEvent;
