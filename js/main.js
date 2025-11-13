@@ -645,6 +645,35 @@ document.addEventListener('DOMContentLoaded', async () => {
         window.initMappingPagination();
     }
 
+    // Initialize filters from URL parameters (if present)
+    if (typeof window.URLStateManager !== 'undefined') {
+        // Try to load filters from URL first (takes priority)
+        const hasURLFilters = window.URLStateManager.hasURLFilters('mappings');
+        if (hasURLFilters) {
+            console.log('🔗 Loading filters from URL parameters');
+            window.URLStateManager.syncUIFromURL('mappings');
+            // Apply filters to update UI
+            if (typeof window.FilterManager !== 'undefined') {
+                window.FilterManager.flushMappingFilters();
+            }
+        } else if (typeof window.FilterManager !== 'undefined') {
+            // No URL filters - restore from localStorage
+            console.log('💾 Loading filters from localStorage');
+            window.FilterManager.restoreFilters('mappings');
+        }
+
+        // Do the same for requests tab
+        const hasURLFiltersReq = window.URLStateManager.hasURLFilters('requests');
+        if (hasURLFiltersReq) {
+            window.URLStateManager.syncUIFromURL('requests');
+            if (typeof window.FilterManager !== 'undefined') {
+                window.FilterManager.flushRequestFilters();
+            }
+        } else if (typeof window.FilterManager !== 'undefined') {
+            window.FilterManager.restoreFilters('requests');
+        }
+    }
+
     initializeOnboardingFlow();
 });
 

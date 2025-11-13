@@ -54,7 +54,7 @@ const UIComponents = {
                             ${extras.badges || ''}
                         </div>
                     </div>
-                    <div class="${type}-actions" data-stop-propagation>
+                    <div class="${type}-actions">
                         ${actions.map(action => {
                             const dataAction = handlerToAction[action.handler] || action.handler;
                             return `
