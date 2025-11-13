@@ -599,11 +599,32 @@ function executeMappingFilters() {
         return urlA.localeCompare(urlB);
     });
 
-    renderList(container, sortedMappings, {
-        renderItem: renderMappingMarkup,
-        getKey: getMappingRenderKey,
-        getSignature: getMappingRenderSignature
-    });
+    // Update pagination state and render only current page
+    if (window.PaginationManager) {
+        window.PaginationManager.updateState(sortedMappings.length);
+
+        // Get items for current page
+        const pageItems = window.PaginationManager.getCurrentPageItems(sortedMappings);
+
+        renderList(container, pageItems, {
+            renderItem: renderMappingMarkup,
+            getKey: getMappingRenderKey,
+            getSignature: getMappingRenderSignature
+        });
+
+        // Render pagination controls
+        const paginationContainer = document.getElementById('mappings-pagination');
+        if (paginationContainer) {
+            paginationContainer.innerHTML = window.PaginationManager.renderControls();
+        }
+    } else {
+        // Fallback: render all items if pagination not available
+        renderList(container, sortedMappings, {
+            renderItem: renderMappingMarkup,
+            getKey: getMappingRenderKey,
+            getSignature: getMappingRenderSignature
+        });
+    }
 
     if (loadingState) {
         loadingState.classList.add('hidden');
