@@ -17,10 +17,26 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 /**
+ * Set up event listeners for mapping forms
+ */
+function setupMappingFormListeners() {
+    // Add mapping form (simpler form for creating new mappings)
+    const addMappingForm = document.getElementById('mapping-form');
+    if (addMappingForm) {
+        addMappingForm.addEventListener('submit', handleAddMappingSubmit);
+    }
+
+    // Edit mapping form (more comprehensive form for editing existing mappings)
+    const editMappingForm = document.getElementById('edit-mapping-form');
+    if (editMappingForm) {
+        editMappingForm.addEventListener('submit', handleEditMappingSubmit);
+    }
+}
+
+/**
  * Set up editor mode handlers
  */
 function setupEditorModeHandlers() {
-    initializeJsonEditorAutoResize();
 
     // JSON Studio button handler
     const jsonStudioBtn = document.getElementById('open-json-studio-btn');
@@ -432,7 +448,6 @@ function loadJSONMode() {
     
     const formattedJSON = JSON.stringify(editorState.currentMapping, null, 2);
     jsonEditor.value = formattedJSON;
-    adjustJsonEditorHeight(true);
 
     console.log('🟡 [JSON DEBUG] JSON editor populated with mapping ID:', editorState.currentMapping?.id);
     console.log('🟡 [JSON DEBUG] JSON content length:', formattedJSON.length);
