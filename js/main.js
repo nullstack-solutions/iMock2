@@ -178,6 +178,13 @@ function attemptAutoConnect(settings, options = {}) {
 }
 
 function initializeOnboardingFlow() {
+    // Skip onboarding and autoConnect in JSON Studio - URL is initialized from params there
+    const isJsonStudio = window.location.pathname.includes('json-editor.html');
+    if (isJsonStudio) {
+        console.log('🔧 [main.js] Skipping onboarding flow in JSON Studio');
+        return;
+    }
+
     const overlay = document.getElementById('onboarding-overlay');
     const form = document.getElementById('onboarding-form');
     const hostField = document.getElementById('onboarding-host');
