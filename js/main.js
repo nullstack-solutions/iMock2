@@ -575,8 +575,8 @@ function broadcastSettingsUpdate(settings) {
     }
 }
 
-// Initialize default WireMock URL
-if (!window.wiremockBaseUrl) {
+// Initialize default WireMock URL (skip in JSON Studio - URL comes from params)
+if (!window.wiremockBaseUrl && !window.location.pathname.includes('json-editor.html')) {
     window.wiremockBaseUrl = `http://${DEFAULT_SETTINGS.host}:${DEFAULT_SETTINGS.port}/__admin`;
     console.log('🔧 [main.js] Initialized default WireMock URL:', window.wiremockBaseUrl);
 }
