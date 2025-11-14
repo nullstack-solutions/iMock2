@@ -87,11 +87,16 @@ class MonacoLoader {
             console.log(`📦 [Monaco Lazy Loader] Loading from ${primarySource.label}...`);
             await this.#loadScript(`${primarySource.baseUrl}/loader.js`, 'monaco-loader-script');
 
-            // 2. Configure AMD paths
-            window.require = window.require || {};
-            window.require.paths = Object.assign({}, window.require.paths || {}, {
-                vs: primarySource.baseUrl
-            });
+            // 2. Configure AMD paths using require.config
+            if (typeof window.require !== 'undefined' && typeof window.require.config === 'function') {
+                window.require.config({ paths: { vs: primarySource.baseUrl } });
+            } else {
+                // Fallback for older AMD loaders
+                window.require = window.require || {};
+                window.require.paths = Object.assign({}, window.require.paths || {}, {
+                    vs: primarySource.baseUrl
+                });
+            }
 
             // 3. Load Monaco editor main module
             return new Promise((resolve, reject) => {
@@ -134,9 +139,15 @@ class MonacoLoader {
     static async #loadWithFallback(source) {
         await this.#loadScript(`${source.baseUrl}/loader.js`, `monaco-loader-fallback-${source.label}`);
 
-        window.require.paths = Object.assign({}, window.require.paths || {}, {
-            vs: source.baseUrl
-        });
+        // Configure AMD paths using require.config
+        if (typeof window.require !== 'undefined' && typeof window.require.config === 'function') {
+            window.require.config({ paths: { vs: source.baseUrl } });
+        } else {
+            // Fallback for older AMD loaders
+            window.require.paths = Object.assign({}, window.require.paths || {}, {
+                vs: source.baseUrl
+            });
+        }
 
         return new Promise((resolve, reject) => {
             const timeout = setTimeout(() => {

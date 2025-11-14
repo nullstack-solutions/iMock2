@@ -297,29 +297,49 @@ window.connectToWireMock = async () => {
     const hostInput = document.getElementById('wiremock-host') || document.getElementById(SELECTORS.CONNECTION.HOST);
     const portInput = document.getElementById('wiremock-port') || document.getElementById(SELECTORS.CONNECTION.PORT);
 
-    if (!hostInput || !portInput) {
-        console.error('Connection input elements not found');
-        NotificationManager.error('Error: connection fields not found');
-        return;
-    }
+    let host, port;
 
-    const host = hostInput.value.trim() || 'localhost';
-    const port = portInput.value.trim() || '8080';
+    if (hostInput && portInput) {
+        // Standard mode: get from input elements
+        host = hostInput.value.trim() || 'localhost';
+        port = portInput.value.trim() || '8080';
+    } else {
+        // JSON Studio mode or other contexts without input elements
+        // Try to extract from existing wiremockBaseUrl or use settings
+        if (window.wiremockBaseUrl) {
+            console.log('🔗 Using existing wiremockBaseUrl for connection');
+            // Already initialized in JSON Studio - just proceed with checks
+            host = 'localhost'; // Dummy values for logging
+            port = '8080';
+        } else {
+            // Try to get from settings
+            const settings = (typeof window.readWiremockSettings === 'function') ? window.readWiremockSettings() : {};
+            host = settings.host || 'localhost';
+            port = settings.port || '8080';
+            console.log('🔗 Using settings for connection:', { host, port });
+        }
+    }
 
     // DON'T save connection settings here - they should already be saved from Settings page
     // Only use these values for the current connection attempt
     console.log('🔗 Connecting with:', { host, port });
 
     // Update the base URL (with proper scheme/port normalization)
-    if (typeof window.normalizeWiremockBaseUrl === 'function') {
-        window.wiremockBaseUrl = window.normalizeWiremockBaseUrl(host, port);
+    // Only update if not already set (e.g., in JSON Studio it's set from URL params)
+    if (!window.wiremockBaseUrl || hostInput) {
+        if (typeof window.normalizeWiremockBaseUrl === 'function') {
+            window.wiremockBaseUrl = window.normalizeWiremockBaseUrl(host, port);
+        } else {
+            // Fall back to the previous behavior (in case script load order changes)
+            const hasScheme = /^(https?:)\/\//i.test(host);
+            const scheme = hasScheme ? host.split(':')[0] : 'http';
+            const cleanHost = hasScheme ? host.replace(/^(https?:)\/\//i, '') : host;
+            const finalPort = (port && String(port).trim()) || (scheme === 'https' ? '443' : '8080');
+            window.wiremockBaseUrl = `${scheme}://${cleanHost}:${finalPort}/__admin`;
+        }
+        console.log('🔗 Updated wiremockBaseUrl:', window.wiremockBaseUrl);
     } else {
-        // Fall back to the previous behavior (in case script load order changes)
-        const hasScheme = /^(https?:)\/\//i.test(host);
-        const scheme = hasScheme ? host.split(':')[0] : 'http';
-        const cleanHost = hasScheme ? host.replace(/^(https?:)\/\//i, '') : host;
-        const finalPort = (port && String(port).trim()) || (scheme === 'https' ? '443' : '8080');
-        window.wiremockBaseUrl = `${scheme}://${cleanHost}:${finalPort}/__admin`;
+        console.log('🔗 Using pre-configured wiremockBaseUrl:', window.wiremockBaseUrl);
     }
 
     try {
