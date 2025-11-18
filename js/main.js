@@ -640,15 +640,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         window.initializeFilterTabs();
     }
 
-    // Restore saved filter state for mappings
+    // Restore saved filter state for mappings BEFORE autoconnect
+    // so filters are ready when data loads
     if (typeof window.FilterManager?.restoreFilters === 'function') {
         window.FilterManager.restoreFilters('mappings');
         // Update active filters display after restore
-        setTimeout(() => {
-            if (typeof window.updateActiveFiltersDisplay === 'function') {
-                window.updateActiveFiltersDisplay();
-            }
-        }, 100);
+        if (typeof window.updateActiveFiltersDisplay === 'function') {
+            window.updateActiveFiltersDisplay();
+        }
     }
 
     initializeOnboardingFlow();
