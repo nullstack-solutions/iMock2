@@ -440,66 +440,59 @@
                             <span class="filter-tab-count" id="requests-tab-unmatched">0</span>
                         </button>
                     </div>
-                    <!-- First row: Basic filters -->
-                    <div class="filter-grid">
-                        <div class="form-group">
-                            <label class="form-label">Method</label>
-                            <select class="form-select" id="req-filter-method" onchange="applyRequestFilters()">
-                                <option value="">All Methods</option>
-                                <option value="GET">GET</option>
-                                <option value="POST">POST</option>
-                                <option value="PUT">PUT</option>
-                                <option value="DELETE">DELETE</option>
-                                <option value="PATCH">PATCH</option>
-                            </select>
+
+                    <!-- Query-based filter -->
+                    <div class="form-group filter-query-form-group">
+                        <label for="req-filter-query" class="form-label">
+                            Filter Query
+                            <button type="button" class="help-button" onclick="toggleQueryHelp('requests')" aria-label="Show query syntax help" aria-expanded="false" aria-controls="req-query-help">
+                                ?
+                            </button>
+                        </label>
+                        <div class="input-shell">
+                            <span class="input-icon">
+                                <svg class="icon icon-input" aria-hidden="true" focusable="false"><use href="#icon-search"></use></svg>
+                            </span>
+                            <input
+                                type="text"
+                                class="form-input"
+                                id="req-filter-query"
+                                placeholder="e.g., method:GET url:api matched:true status:200,201"
+                                oninput="applyRequestFilters()"
+                                aria-describedby="req-query-help">
+                            <button type="button" class="input-clear" onclick="clearRequestFilters()" title="Clear filters">
+                                <span class="sr-only">Clear filters</span>
+                                &times;
+                            </button>
                         </div>
-                        <div class="form-group">
-                            <label class="form-label">Status</label>
-                            <select class="form-select" id="req-filter-status" onchange="applyRequestFilters()">
-                                <option value="">All Statuses</option>
-                                <option value="matched">Matched</option>
-                                <option value="unmatched">Unmatched</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">URL Pattern</label>
-                            <div class="input-shell">
-                                <span class="input-icon">
-                                    <svg class="icon icon-input" aria-hidden="true" focusable="false"><use href="#icon-search"></use></svg>
-                                </span>
-                                <input type="text" class="form-input" id="req-filter-url" placeholder="e.g., /api/*" oninput="applyRequestFilters()">
-                                <button type="button" class="input-clear" onclick="document.getElementById('req-filter-url').value=''; applyRequestFilters();" title="Clear search">
-                                    <span class="sr-only">Clear search</span>
-                                    &times;
-                                </button>
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Quick Filter</label>
-                            <select class="form-select" id="req-filter-quick" onchange="applyQuickFilter()">
-                                <option value="">Select time range</option>
-                                <option value="5m">Last 5 minutes</option>
-                                <option value="15m">Last 15 minutes</option>
-                                <option value="30m">Last 30 minutes</option>
-                                <option value="1h">Last 1 hour</option>
-                                <option value="3h">Last 3 hours</option>
-                                <option value="6h">Last 6 hours</option>
-                                <option value="12h">Last 12 hours</option>
-                                <option value="1d">Last 1 day</option>
-                                <option value="3d">Last 3 days</option>
-                                <option value="7d">Last 7 days</option>
-                            </select>
+                        <div id="req-query-help" class="query-help hidden" role="region" aria-live="polite">
+                            <strong>Query Syntax:</strong>
+                            <ul>
+                                <li><code>method:GET,POST</code> - Filter by HTTP methods (OR)</li>
+                                <li><code>url:api</code> - Search in URL</li>
+                                <li><code>matched:true</code> - Show only matched requests</li>
+                                <li><code>matched:false</code> - Show only unmatched requests</li>
+                                <li><code>status:200,201</code> - Filter by response status codes</li>
+                                <li><code>client:192.168</code> - Filter by client IP</li>
+                                <li><code>method:GET url:api</code> - Combine filters (AND)</li>
+                                <li><code>-status:500</code> - Exclude status 500</li>
+                            </ul>
                         </div>
                     </div>
-                    
-                    <!-- Second row: Time Range -->
-                    <div class="filter-grid" style="margin-top: var(--space-3);">
-                        <div class="form-group">
-                            <label class="form-label">Custom Time Range</label>
-                            <div style="display: flex; gap: var(--space-2);">
-                                <input type="datetime-local" class="form-input" id="req-filter-from" onchange="clearQuickFilter(); applyRequestFilters()" style="flex: 1;" placeholder="From">
-                                <input type="datetime-local" class="form-input" id="req-filter-to" onchange="clearQuickFilter(); applyRequestFilters()" style="flex: 1;" placeholder="To">
-                            </div>
+
+                    <!-- Quick filter chips for common methods -->
+                    <div class="filter-chips-container">
+                        <div class="quick-filters">
+                            <button type="button" class="filter-chip filter-chip-quick" onclick="applyQuickRequestFilter('GET')">GET</button>
+                            <button type="button" class="filter-chip filter-chip-quick" onclick="applyQuickRequestFilter('POST')">POST</button>
+                            <button type="button" class="filter-chip filter-chip-quick" onclick="applyQuickRequestFilter('PUT')">PUT</button>
+                            <button type="button" class="filter-chip filter-chip-quick" onclick="applyQuickRequestFilter('PATCH')">PATCH</button>
+                            <button type="button" class="filter-chip filter-chip-quick" onclick="applyQuickRequestFilter('DELETE')">DELETE</button>
+                            <button type="button" class="filter-chip filter-chip-quick" onclick="applyQuickRequestFilter('matched:true')">Matched</button>
+                            <button type="button" class="filter-chip filter-chip-quick" onclick="applyQuickRequestFilter('matched:false')">Unmatched</button>
+                        </div>
+                        <div class="active-filters" id="req-active-filters">
+                            <!-- Active filter chips will be rendered here -->
                         </div>
                     </div>
                 </div>
