@@ -488,6 +488,9 @@ function executeMappingFilters() {
     // Save query to filter state
     window.FilterManager.saveFilterState('mappings', { query });
 
+    // Update URL with filter query for sharing
+    updateURLFilterParams(query);
+
     if (!Array.isArray(window.originalMappings) || window.originalMappings.length === 0) {
         window.allMappings = [];
         const emptyState = document.getElementById(SELECTORS.EMPTY.MAPPINGS);
@@ -807,15 +810,26 @@ window.FilterManager = {
     },
     
     // Restore filter state on page load
+    // Priority: URL params > localStorage
     restoreFilters(tabName) {
-        const filters = this.loadFilterState(tabName);
-
         if (tabName === 'mappings') {
-            if (filters.query) {
+            // First check URL parameters (for sharing)
+            const urlFilter = getFilterFromURL();
+
+            if (urlFilter) {
+                // URL has priority - restore from URL
                 const elem = document.getElementById('filter-query');
-                if (elem) elem.value = filters.query;
+                if (elem) elem.value = urlFilter;
+            } else {
+                // Fallback to localStorage
+                const filters = this.loadFilterState(tabName);
+                if (filters.query) {
+                    const elem = document.getElementById('filter-query');
+                    if (elem) elem.value = filters.query;
+                }
             }
         } else if (tabName === 'requests') {
+            const filters = this.loadFilterState(tabName);
             if (filters.method) {
                 const elem = document.getElementById('req-filter-method');
                 if (elem) elem.value = filters.method;
@@ -842,5 +856,39 @@ window.FilterManager = {
 
 window.FilterManager._applyMappingFilters = window.debounce(executeMappingFilters, 180);
 window.FilterManager._applyRequestFilters = window.debounce(executeRequestFilters, 180);
+
+// ===== URL Filter Parameters for Sharing =====
+
+/**
+ * Update URL with filter query parameter for sharing
+ * @param {string} query - Filter query string
+ */
+function updateURLFilterParams(query) {
+    if (!window.history || !window.history.replaceState) return;
+
+    const url = new URL(window.location.href);
+
+    if (query) {
+        url.searchParams.set('filter', query);
+    } else {
+        url.searchParams.delete('filter');
+    }
+
+    // Update URL without reloading page
+    window.history.replaceState({}, '', url.toString());
+}
+
+/**
+ * Get filter query from URL parameters
+ * @returns {string|null} - Filter query or null
+ */
+function getFilterFromURL() {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('filter');
+}
+
+// Make URL functions globally accessible
+window.updateURLFilterParams = updateURLFilterParams;
+window.getFilterFromURL = getFilterFromURL;
 
 console.log('✅ Managers.js loaded - NotificationManager, TabManager, FilterManager');

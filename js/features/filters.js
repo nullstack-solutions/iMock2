@@ -23,6 +23,10 @@ window.clearMappingFilters = () => {
     if (typeof window.updateActiveFiltersDisplay === 'function') {
         window.updateActiveFiltersDisplay();
     }
+    // Clear URL parameters
+    if (typeof window.updateURLFilterParams === 'function') {
+        window.updateURLFilterParams('');
+    }
 };
 
 // Toggle query help visibility
