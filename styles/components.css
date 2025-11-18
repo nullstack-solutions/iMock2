@@ -1382,6 +1382,10 @@
     width: 100%;
 }
 
+.filter-query-form-group {
+    margin-bottom: var(--space-3);
+}
+
 .btn-link {
     background: none;
     border: none;

@@ -186,6 +186,10 @@ function matchesRange(value, range) {
 
 /**
  * Filters array of mappings by parsed query
+ *
+ * Note: When filtering by priority range, mappings without a priority property
+ * will be treated as having a default priority of 1.
+ *
  * @param {Array} mappings - Array of mappings to filter
  * @param {Object} parsedQuery - Result of parseQuery()
  * @returns {Array} - Filtered array
