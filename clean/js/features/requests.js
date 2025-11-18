@@ -193,17 +193,6 @@ window.syncFilterTabsFromSelect = function syncFilterTabsFromSelect(group, value
     }
 };
 
-window.handleMappingTabClick = (button, method) => {
-    setActiveFilterTab(button);
-    const select = document.getElementById('filter-method');
-    if (select) {
-        select.value = method || '';
-        if (typeof applyFilters === 'function') {
-            applyFilters();
-        }
-    }
-};
-
 window.handleRequestTabClick = (button, status) => {
     setActiveFilterTab(button);
     const select = document.getElementById('req-filter-status');
@@ -232,7 +221,6 @@ window.initializeFilterTabs = () => {
         syncFilterTabsFromSelect('requests', requestStatusSelect.value);
     }
 
-    updateMappingTabCounts();
     updateRequestTabCounts();
 };
 

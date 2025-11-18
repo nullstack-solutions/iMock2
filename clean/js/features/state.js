@@ -53,7 +53,6 @@
 
     function refreshMappingTabSnapshot() {
         window.mappingTabTotals = computeMappingTabTotals(window.originalMappings);
-        if (typeof window.updateMappingTabCounts === 'function') window.updateMappingTabCounts();
     }
 
     function computeRequestTabTotals(source = []) {

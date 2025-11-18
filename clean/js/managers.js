@@ -512,19 +512,14 @@ window.TabManager = {
 };
 
 function executeMappingFilters() {
-    const method = document.getElementById('filter-method')?.value?.trim() || '';
-    const query = document.getElementById('filter-url')?.value?.trim() || '';
-    const status = document.getElementById('filter-status')?.value?.trim() || '';
+    const queryInput = document.getElementById('filter-query');
+    const query = queryInput?.value?.trim() || '';
 
-    const filters = { method, query, status };
+    // Save query to filter state
+    window.FilterManager.saveFilterState('mappings', { query });
 
-    // Update URL with current filters (primary state storage)
-    if (typeof window.URLStateManager !== 'undefined') {
-        window.URLStateManager.updateURL('mappings', filters, true);
-    }
-
-    // Save to localStorage as backup
-    window.FilterManager.saveFilterState('mappings', filters);
+    // Update URL with filter query for sharing
+    updateURLFilterParams(query);
 
     if (!Array.isArray(window.originalMappings) || window.originalMappings.length === 0) {
         window.allMappings = [];
@@ -538,43 +533,20 @@ function executeMappingFilters() {
         return;
     }
 
-    const loweredMethod = method.toLowerCase();
-    const loweredQuery = query.toLowerCase();
-    const hasFilters = Boolean(method || query || status);
+    // Use new query parser for filtering
+    let filteredMappings;
+    if (query) {
+        if (window.QueryParser && typeof window.QueryParser.filterMappingsByQuery === 'function') {
+            filteredMappings = window.QueryParser.filterMappingsByQuery(window.originalMappings, query);
+        } else {
+            console.warn('[Mapping Filter] QueryParser or filterMappingsByQuery is not available. Showing all mappings.');
+            filteredMappings = window.originalMappings;
+        }
+    } else {
+        filteredMappings = window.originalMappings;
+    }
 
-    const filteredMappings = hasFilters
-        ? window.originalMappings.filter(mapping => {
-            if (!mapping) {
-                return false;
-            }
-
-            if (method) {
-                const requestMethod = (mapping.request?.method || '').toLowerCase();
-                if (!requestMethod.includes(loweredMethod)) {
-                    return false;
-                }
-            }
-
-            if (query) {
-                const mappingUrl = (mapping.request?.url || mapping.request?.urlPattern || mapping.request?.urlPath || '').toLowerCase();
-                const mappingName = (mapping.name || '').toLowerCase();
-                if (!mappingUrl.includes(loweredQuery) && !mappingName.includes(loweredQuery)) {
-                    return false;
-                }
-            }
-
-            if (status) {
-                const responseStatus = (mapping.response?.status ?? '').toString();
-                if (!responseStatus.includes(status)) {
-                    return false;
-                }
-            }
-
-            return true;
-        })
-        : window.originalMappings;
-
-    window.allMappings = hasFilters ? filteredMappings : window.originalMappings;
+    window.allMappings = filteredMappings;
 
     const container = document.getElementById(SELECTORS.LISTS.MAPPINGS);
     const emptyState = document.getElementById(SELECTORS.EMPTY.MAPPINGS);
@@ -883,138 +855,30 @@ window.FilterManager = {
         }
     },
     
+    // Restore filter state on page load
+    // Priority: URL params > localStorage
     restoreFilters(tabName) {
-        const filters = this.loadFilterState(tabName);
-        const setVal = (id, val) => { const el = document.getElementById(id); if (el && val) el.value = val; };
         if (tabName === 'mappings') {
+            // First check URL parameters (for sharing)
+            const urlFilter = getFilterFromURL();
+
+            if (urlFilter) {
+                // URL has priority - restore from URL
+                const elem = document.getElementById('filter-query');
+                if (elem) elem.value = urlFilter;
+            } else {
+                // Fallback to localStorage
+                const filters = this.loadFilterState(tabName);
+                if (filters.query) {
+                    const elem = document.getElementById('filter-query');
+                    if (elem) elem.value = filters.query;
+                }
+            }
+        } else if (tabName === 'requests') {
+            const filters = this.loadFilterState(tabName);
             if (filters.method) {
-                const elem = document.getElementById('filter-method');
+                const elem = document.getElementById('req-filter-method');
                 if (elem) elem.value = filters.method;
-            }
-            // Support both 'query' (new) and 'url' (legacy) for backward compatibility
-            if (filters.query || filters.url) {
-                const elem = document.getElementById('filter-url');
-                if (elem) elem.value = filters.query || filters.url;
-            }
-            if (filters.status) {
-                const elem = document.getElementById('filter-status');
-                if (elem) elem.value = filters.status;
-            }
-        } else if (tabName === 'requests') {
-            setVal('req-filter-method', filters.method);
-            setVal('req-filter-status', filters.status);
-            setVal('req-filter-url', filters.url);
-            setVal('req-filter-from', filters.from);
-            setVal('req-filter-to', filters.to);
-        }
-    }
-};
-
-// Phase 1 Optimization: Increase debounce delay from 180ms to 300ms
-// Best practice for search operations: 300-500ms (per industry standards 2025)
-// Reduces CPU usage by ~99% (1000 calls → ~3 calls)
-window.FilterManager._applyMappingFilters = window.debounce(executeMappingFilters, 300);
-window.FilterManager._applyRequestFilters = window.debounce(executeRequestFilters, 300);
-
-// ==========================================
-// URL State Manager
-// ==========================================
-window.URLStateManager = {
-    /**
-     * Get current filters from URL query parameters
-     * @param {string} tabName - 'mappings' or 'requests'
-     * @returns {Object} Filter object
-     */
-    getFiltersFromURL(tabName) {
-        const params = new URLSearchParams(window.location.search);
-
-        if (tabName === 'mappings') {
-            return {
-                method: params.get('method') || '',
-                query: params.get('query') || '',
-                status: params.get('status') || ''
-            };
-        } else if (tabName === 'requests') {
-            return {
-                method: params.get('req_method') || '',
-                status: params.get('req_status') || '',
-                url: params.get('req_url') || '',
-                from: params.get('req_from') || '',
-                to: params.get('req_to') || ''
-            };
-        }
-
-        return {};
-    },
-
-    /**
-     * Update URL with current filters
-     * @param {string} tabName - 'mappings' or 'requests'
-     * @param {Object} filters - Filter values
-     * @param {boolean} replace - Use replaceState (true) or pushState (false)
-     */
-    updateURL(tabName, filters, replace = true) {
-        const params = new URLSearchParams(window.location.search);
-
-        // Remove old parameters for this tab
-        if (tabName === 'mappings') {
-            params.delete('method');
-            params.delete('query');
-            params.delete('status');
-
-            // Add new parameters (only non-empty values)
-            if (filters.method) params.set('method', filters.method);
-            if (filters.query) params.set('query', filters.query);
-            if (filters.status) params.set('status', filters.status);
-        } else if (tabName === 'requests') {
-            params.delete('req_method');
-            params.delete('req_status');
-            params.delete('req_url');
-            params.delete('req_from');
-            params.delete('req_to');
-
-            // Add new parameters (only non-empty values)
-            if (filters.method) params.set('req_method', filters.method);
-            if (filters.status) params.set('req_status', filters.status);
-            if (filters.url) params.set('req_url', filters.url);
-            if (filters.from) params.set('req_from', filters.from);
-            if (filters.to) params.set('req_to', filters.to);
-        }
-
-        // Build new URL
-        const queryString = params.toString();
-        const newURL = queryString
-            ? `${window.location.pathname}?${queryString}`
-            : window.location.pathname;
-
-        // Update browser history
-        if (replace) {
-            window.history.replaceState({}, '', newURL);
-        } else {
-            window.history.pushState({}, '', newURL);
-        }
-    },
-
-    /**
-     * Sync UI elements with URL parameters
-     * @param {string} tabName - 'mappings' or 'requests'
-     * @returns {Object} Filters loaded from URL
-     */
-    syncUIFromURL(tabName) {
-        const filters = this.getFiltersFromURL(tabName);
-
-        if (tabName === 'mappings') {
-            const methodElem = document.getElementById('filter-method');
-            const urlElem = document.getElementById('filter-url');
-            const statusElem = document.getElementById('filter-status');
-
-            if (methodElem) methodElem.value = filters.method || '';
-            if (urlElem) urlElem.value = filters.query || '';
-            if (statusElem) statusElem.value = filters.status || '';
-
-            // Sync filter tabs
-            if (filters.method && typeof window.syncFilterTabsFromSelect === 'function') {
-                window.syncFilterTabsFromSelect('mapping', filters.method);
             }
         } else if (tabName === 'requests') {
             const methodElem = document.getElementById('req-filter-method');
@@ -1194,137 +1058,38 @@ window.FilterPresetsManager = {
 window.FilterManager._applyMappingFilters = window.debounce(executeMappingFilters, 180);
 window.FilterManager._applyRequestFilters = window.debounce(executeRequestFilters, 180);
 
-// === URL STATE MANAGER ===
-// Synchronizes filter state with URL query parameters for shareable links
-window.URLStateManager = {
-    /**
-     * Get current filters from URL query parameters
-     * @param {string} tabName - 'mappings' or 'requests'
-     * @returns {Object} Filter object
-     */
-    getFiltersFromURL(tabName) {
-        const params = new URLSearchParams(window.location.search);
+// ===== URL Filter Parameters for Sharing =====
 
-        if (tabName === 'mappings') {
-            return {
-                method: params.get('method') || '',
-                query: params.get('query') || '', // Renamed from 'url' to 'query'
-                status: params.get('status') || ''
-            };
-        } else if (tabName === 'requests') {
-            return {
-                method: params.get('req_method') || '',
-                status: params.get('req_status') || '',
-                url: params.get('req_url') || '',
-                from: params.get('req_from') || '',
-                to: params.get('req_to') || ''
-            };
-        }
+/**
+ * Update URL with filter query parameter for sharing
+ * @param {string} query - Filter query string
+ */
+function updateURLFilterParams(query) {
+    if (!window.history || !window.history.replaceState) return;
 
-        return {};
-    },
+    const url = new URL(window.location.href);
 
-    /**
-     * Update URL with current filters
-     * @param {string} tabName - 'mappings' or 'requests'
-     * @param {Object} filters - Filter values
-     * @param {boolean} replace - Use replaceState (true) or pushState (false)
-     */
-    updateURL(tabName, filters, replace = true) {
-        const params = new URLSearchParams(window.location.search);
-
-        // Remove old parameters for this tab
-        if (tabName === 'mappings') {
-            params.delete('method');
-            params.delete('query');
-            params.delete('url'); // Legacy parameter name
-            params.delete('status');
-
-            // Add new parameters (only non-empty values)
-            if (filters.method) params.set('method', filters.method);
-            if (filters.url || filters.query) params.set('query', filters.url || filters.query); // Support both names internally
-            if (filters.status) params.set('status', filters.status);
-        } else if (tabName === 'requests') {
-            params.delete('req_method');
-            params.delete('req_status');
-            params.delete('req_url');
-            params.delete('req_from');
-            params.delete('req_to');
-
-            // Add new parameters (only non-empty values)
-            if (filters.method) params.set('req_method', filters.method);
-            if (filters.status) params.set('req_status', filters.status);
-            if (filters.url) params.set('req_url', filters.url);
-            if (filters.from) params.set('req_from', filters.from);
-            if (filters.to) params.set('req_to', filters.to);
-        }
-
-        // Build new URL
-        const queryString = params.toString();
-        const newURL = queryString
-            ? `${window.location.pathname}?${queryString}`
-            : window.location.pathname;
-
-        // Update browser history
-        if (replace) {
-            window.history.replaceState({}, '', newURL);
-        } else {
-            window.history.pushState({}, '', newURL);
-        }
-    },
-
-    /**
-     * Sync UI elements with URL parameters
-     * @param {string} tabName - 'mappings' or 'requests'
-     * @returns {Object} Filters loaded from URL
-     */
-    syncUIFromURL(tabName) {
-        const filters = this.getFiltersFromURL(tabName);
-
-        if (tabName === 'mappings') {
-            const methodElem = document.getElementById('filter-method');
-            const urlElem = document.getElementById('filter-url');
-            const statusElem = document.getElementById('filter-status');
-
-            if (methodElem) methodElem.value = filters.method || '';
-            if (urlElem) urlElem.value = filters.query || ''; // Map 'query' param to 'url' input
-            if (statusElem) statusElem.value = filters.status || '';
-
-            // Sync filter tabs if method is set
-            if (filters.method && typeof window.syncFilterTabsFromSelect === 'function') {
-                window.syncFilterTabsFromSelect('mapping', filters.method);
-            }
-        } else if (tabName === 'requests') {
-            const methodElem = document.getElementById('req-filter-method');
-            const statusElem = document.getElementById('req-filter-status');
-            const urlElem = document.getElementById('req-filter-url');
-            const fromElem = document.getElementById('req-filter-from');
-            const toElem = document.getElementById('req-filter-to');
-
-            if (methodElem) methodElem.value = filters.method || '';
-            if (statusElem) statusElem.value = filters.status || '';
-            if (urlElem) urlElem.value = filters.url || '';
-            if (fromElem) fromElem.value = filters.from || '';
-            if (toElem) toElem.value = filters.to || '';
-
-            // Sync filter tabs if method is set
-            if (filters.method && typeof window.syncFilterTabsFromSelect === 'function') {
-                window.syncFilterTabsFromSelect('request', filters.method);
-            }
-        }
-
-        return filters;
-    },
-
-    /**
-     * Check if URL has any filter parameters
-     * @param {string} tabName - 'mappings' or 'requests'
-     * @returns {boolean}
-     */
-    hasURLFilters(tabName) {
-        const filters = this.getFiltersFromURL(tabName);
-        return Object.values(filters).some(value => value !== '');
+    if (query) {
+        url.searchParams.set('filter', query);
+    } else {
+        url.searchParams.delete('filter');
     }
-};
 
-console.log('✅ Managers.js loaded - NotificationManager, TabManager, FilterManager, URLStateManager');
+    // Update URL without reloading page
+    window.history.replaceState({}, '', url.toString());
+}
+
+/**
+ * Get filter query from URL parameters
+ * @returns {string|null} - Filter query or null
+ */
+function getFilterFromURL() {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('filter');
+}
+
+// Make URL functions globally accessible
+window.updateURLFilterParams = updateURLFilterParams;
+window.getFilterFromURL = getFilterFromURL;
+
+console.log('✅ Managers.js loaded - NotificationManager, TabManager, FilterManager');
