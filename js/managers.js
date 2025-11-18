@@ -1090,5 +1090,6 @@ function getActiveTabFromURL() {
 // Make URL functions globally accessible
 window.updateURLFilterParams = updateURLFilterParams;
 window.getFilterFromURL = getFilterFromURL;
+window.getActiveTabFromURL = getActiveTabFromURL;
 
 console.log('✅ Managers.js loaded - NotificationManager, TabManager, FilterManager');
