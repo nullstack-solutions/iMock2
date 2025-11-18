@@ -657,37 +657,29 @@ document.addEventListener('DOMContentLoaded', async () => {
         window.initializeFilterTabs();
     }
 
-    // Restore active tab from URL if present
-    const urlTab = typeof window.getActiveTabFromURL === 'function' ? window.getActiveTabFromURL() : null;
-    const validTabs = ['mappings', 'requests', 'scenarios', 'import-export', 'recording', 'settings'];
-    let activeTab = 'mappings'; // default
+    // Restore ALL filters from URL first (for all tabs)
+    if (typeof window.FilterManager?.restoreFilters === 'function') {
+        // Restore mappings filters
+        window.FilterManager.restoreFilters('mappings');
+        if (typeof window.updateActiveFiltersDisplay === 'function') {
+            window.updateActiveFiltersDisplay();
+        }
 
-    if (urlTab && validTabs.includes(urlTab)) {
-        console.log(`🔗 Restoring tab from URL: ${urlTab}`);
-        activeTab = urlTab;
-        // Find the nav-item button and activate it
-        const tabButton = document.querySelector(`[onclick*="showPage('${urlTab}')"]`);
-        if (tabButton && typeof window.showPage === 'function') {
-            window.showPage(urlTab, tabButton);
+        // Restore requests filters
+        window.FilterManager.restoreFilters('requests');
+        if (typeof window.updateRequestActiveFiltersDisplay === 'function') {
+            window.updateRequestActiveFiltersDisplay();
         }
     }
 
-    // Restore saved filter state for active tab BEFORE autoconnect
-    // so filters are ready when data loads
-    if (typeof window.FilterManager?.restoreFilters === 'function') {
-        if (activeTab === 'mappings') {
-            window.FilterManager.restoreFilters('mappings');
-            // Update active filters display after restore
-            if (typeof window.updateActiveFiltersDisplay === 'function') {
-                window.updateActiveFiltersDisplay();
-            }
-        } else if (activeTab === 'requests') {
-            window.FilterManager.restoreFilters('requests');
-            // Update active filters display after restore
-            if (typeof window.updateRequestActiveFiltersDisplay === 'function') {
-                window.updateRequestActiveFiltersDisplay();
-            }
-        }
+    // Then restore active tab from URL
+    const urlTab = typeof window.getActiveTabFromURL === 'function' ? window.getActiveTabFromURL() : null;
+    const validTabs = ['mappings', 'requests', 'scenarios', 'import-export', 'recording', 'settings'];
+
+    if (urlTab && validTabs.includes(urlTab) && typeof window.showPage === 'function') {
+        console.log(`🔗 Switching to tab from URL: ${urlTab}`);
+        // Call showPage directly - it will find and activate the button itself
+        window.showPage(urlTab, document.querySelector(`[onclick*="showPage('${urlTab}')"]`));
     }
 
     initializeOnboardingFlow();
