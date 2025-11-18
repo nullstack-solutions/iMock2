@@ -354,10 +354,8 @@
                                 <button type="button" class="filter-chip filter-chip-quick" onclick="applyQuickMethodFilter('DELETE')" data-method="DELETE">
                                     DELETE
                                 </button>
-                            </div>
-                            <div class="saved-filters" id="saved-filters" style="display: none;">
-                                <span class="saved-filters-label">Saved:</span>
-                                <div class="saved-filters-list" id="saved-filters-list">
+                                <span class="filters-separator" id="saved-filters-separator" style="display: none;">|</span>
+                                <div class="saved-filters-inline" id="saved-filters-list" style="display: none;">
                                     <!-- Saved filter chips will be inserted here -->
                                 </div>
                             </div>
@@ -512,10 +510,8 @@
                             <button type="button" class="filter-chip filter-chip-quick" onclick="applyQuickRequestFilter('DELETE')">DELETE</button>
                             <button type="button" class="filter-chip filter-chip-quick" onclick="applyQuickRequestFilter('matched:true')">Matched</button>
                             <button type="button" class="filter-chip filter-chip-quick" onclick="applyQuickRequestFilter('matched:false')">Unmatched</button>
-                        </div>
-                        <div class="saved-filters" id="req-saved-filters" style="display: none;">
-                            <span class="saved-filters-label">Saved:</span>
-                            <div class="saved-filters-list" id="req-saved-filters-list">
+                            <span class="filters-separator" id="req-saved-filters-separator" style="display: none;">|</span>
+                            <div class="saved-filters-inline" id="req-saved-filters-list" style="display: none;">
                                 <!-- Saved filter chips will be inserted here -->
                             </div>
                         </div>
