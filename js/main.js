@@ -657,50 +657,29 @@ document.addEventListener('DOMContentLoaded', async () => {
         window.initializeFilterTabs();
     }
 
-    // Restore active tab from URL if present
-    const urlTab = typeof window.getActiveTabFromURL === 'function' ? window.getActiveTabFromURL() : null;
-    const validTabs = ['mappings', 'requests', 'scenarios', 'import-export', 'recording', 'settings'];
-    let activeTab = 'mappings'; // default
+    // Restore ALL filters from URL first (for all tabs)
+    if (typeof window.FilterManager?.restoreFilters === 'function') {
+        // Restore mappings filters
+        window.FilterManager.restoreFilters('mappings');
+        if (typeof window.updateActiveFiltersDisplay === 'function') {
+            window.updateActiveFiltersDisplay();
+        }
 
-    if (urlTab && validTabs.includes(urlTab)) {
-        console.log(`🔗 Restoring tab from URL: ${urlTab}`);
-        activeTab = urlTab;
-        // Find the nav-item button and activate it
-        const selector = `[onclick*="showPage('${urlTab}')"]`;
-        console.log(`🔍 Looking for tab button with selector: ${selector}`);
-        const tabButton = document.querySelector(selector);
-        console.log(`🔍 Tab button found:`, tabButton);
-        console.log(`🔍 showPage function available:`, typeof window.showPage);
-
-        if (tabButton && typeof window.showPage === 'function') {
-            console.log(`✅ Calling showPage('${urlTab}')`);
-            window.showPage(urlTab, tabButton);
-        } else {
-            console.warn(`⚠️ Cannot restore tab: button=${!!tabButton}, showPage=${typeof window.showPage}`);
-            // Fallback: try to call showPage directly without button
-            if (typeof window.showPage === 'function') {
-                console.log(`🔄 Trying to call showPage without button element`);
-                window.showPage(urlTab, null);
-            }
+        // Restore requests filters
+        window.FilterManager.restoreFilters('requests');
+        if (typeof window.updateRequestActiveFiltersDisplay === 'function') {
+            window.updateRequestActiveFiltersDisplay();
         }
     }
 
-    // Restore saved filter state for active tab BEFORE autoconnect
-    // so filters are ready when data loads
-    if (typeof window.FilterManager?.restoreFilters === 'function') {
-        if (activeTab === 'mappings') {
-            window.FilterManager.restoreFilters('mappings');
-            // Update active filters display after restore
-            if (typeof window.updateActiveFiltersDisplay === 'function') {
-                window.updateActiveFiltersDisplay();
-            }
-        } else if (activeTab === 'requests') {
-            window.FilterManager.restoreFilters('requests');
-            // Update active filters display after restore
-            if (typeof window.updateRequestActiveFiltersDisplay === 'function') {
-                window.updateRequestActiveFiltersDisplay();
-            }
-        }
+    // Then restore active tab from URL
+    const urlTab = typeof window.getActiveTabFromURL === 'function' ? window.getActiveTabFromURL() : null;
+    const validTabs = ['mappings', 'requests', 'scenarios', 'import-export', 'recording', 'settings'];
+
+    if (urlTab && validTabs.includes(urlTab) && typeof window.showPage === 'function') {
+        console.log(`🔗 Switching to tab from URL: ${urlTab}`);
+        // Call showPage directly - it will find and activate the button itself
+        window.showPage(urlTab, document.querySelector(`[onclick*="showPage('${urlTab}')"]`));
     }
 
     initializeOnboardingFlow();
