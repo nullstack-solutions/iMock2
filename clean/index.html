@@ -495,6 +495,33 @@
                             <!-- Active filter chips will be rendered here -->
                         </div>
                     </div>
+
+                    <!-- Time Range Filters -->
+                    <div class="filter-grid" style="margin-top: var(--space-3);">
+                        <div class="form-group">
+                            <label class="form-label">Quick Time Filter</label>
+                            <select class="form-select" id="req-filter-quick" onchange="applyQuickTimeFilter()">
+                                <option value="">All Time</option>
+                                <option value="5m">Last 5 minutes</option>
+                                <option value="15m">Last 15 minutes</option>
+                                <option value="30m">Last 30 minutes</option>
+                                <option value="1h">Last 1 hour</option>
+                                <option value="3h">Last 3 hours</option>
+                                <option value="6h">Last 6 hours</option>
+                                <option value="12h">Last 12 hours</option>
+                                <option value="1d">Last 1 day</option>
+                                <option value="3d">Last 3 days</option>
+                                <option value="7d">Last 7 days</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Custom Time Range</label>
+                            <div style="display: flex; gap: var(--space-2);">
+                                <input type="datetime-local" class="form-input" id="req-filter-from" onchange="clearQuickTimeFilter(); applyRequestFilters()" style="flex: 1;" placeholder="From">
+                                <input type="datetime-local" class="form-input" id="req-filter-to" onchange="clearQuickTimeFilter(); applyRequestFilters()" style="flex: 1;" placeholder="To">
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 
                 <div id="requests-loading" class="loading hidden">Loading requests...</div>

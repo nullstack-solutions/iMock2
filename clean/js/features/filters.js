@@ -22,9 +22,9 @@ window.clearMappingFilters = () => {
     if (typeof window.updateActiveFiltersDisplay === 'function') {
         window.updateActiveFiltersDisplay();
     }
-    // Clear URL parameters
+    // Clear URL parameters (tab-scoped)
     if (typeof window.updateURLFilterParams === 'function') {
-        window.updateURLFilterParams('');
+        window.updateURLFilterParams('', 'mappings');
     }
 };
 
@@ -223,15 +223,83 @@ window.applyQuickFilter = () => {
     }
 };
 
-// Clear quick filter selection (used when custom time range is set)
-window.clearQuickFilter = () => {
-    const quickEl = document.getElementById(SELECTORS.REQUEST_FILTERS.QUICK);
+// Clear quick time filter selection (used when custom time range is set)
+window.clearQuickTimeFilter = () => {
+    const quickEl = document.getElementById('req-filter-quick');
     if (quickEl) quickEl.value = '';
 };
+
+// Apply quick time filter (5m, 15m, 30m, 1h, etc.)
+window.applyQuickTimeFilter = () => {
+    const quickEl = document.getElementById('req-filter-quick');
+    const fromEl = document.getElementById('req-filter-from');
+    const toEl = document.getElementById('req-filter-to');
+
+    if (!quickEl || !fromEl || !toEl) return;
+
+    const value = quickEl.value;
+    if (!value) {
+        // Clear time filters
+        fromEl.value = '';
+        toEl.value = '';
+        FilterManager.applyRequestFilters();
+        if (typeof FilterManager.flushRequestFilters === 'function') {
+            FilterManager.flushRequestFilters();
+        }
+        return;
+    }
+
+    // Calculate time range
+    const now = new Date();
+    const toTime = now;
+    let fromTime = new Date(now);
+
+    // Parse time value
+    const match = value.match(/^(\d+)([mhd])$/);
+    if (match) {
+        const amount = parseInt(match[1], 10);
+        const unit = match[2];
+
+        switch (unit) {
+            case 'm': // minutes
+                fromTime.setMinutes(fromTime.getMinutes() - amount);
+                break;
+            case 'h': // hours
+                fromTime.setHours(fromTime.getHours() - amount);
+                break;
+            case 'd': // days
+                fromTime.setDate(fromTime.getDate() - amount);
+                break;
+        }
+    }
+
+    // Format datetime for input fields (YYYY-MM-DDTHH:mm)
+    const formatDateTime = (date) => {
+        const pad = (n) => String(n).padStart(2, '0');
+        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    };
+
+    fromEl.value = formatDateTime(fromTime);
+    toEl.value = formatDateTime(toTime);
+
+    FilterManager.applyRequestFilters();
+    if (typeof FilterManager.flushRequestFilters === 'function') {
+        FilterManager.flushRequestFilters();
+    }
+};
+
 window.clearRequestFilters = () => {
     // Clear query-based filter
     const queryInput = document.getElementById('req-filter-query');
     if (queryInput) queryInput.value = '';
+
+    // Clear time range filters
+    const fromEl = document.getElementById('req-filter-from');
+    const toEl = document.getElementById('req-filter-to');
+    const quickEl = document.getElementById('req-filter-quick');
+    if (fromEl) fromEl.value = '';
+    if (toEl) toEl.value = '';
+    if (quickEl) quickEl.value = '';
 
     FilterManager.applyRequestFilters();
     if (typeof FilterManager.flushRequestFilters === 'function') {
@@ -243,9 +311,9 @@ window.clearRequestFilters = () => {
         window.updateRequestActiveFiltersDisplay();
     }
 
-    // Clear URL parameters
+    // Clear URL parameters (tab-scoped)
     if (typeof window.updateURLFilterParams === 'function') {
-        window.updateURLFilterParams('');
+        window.updateURLFilterParams('', 'requests');
     }
 };
 
@@ -254,25 +322,39 @@ window.applyQuickRequestFilter = (filter) => {
     const queryInput = document.getElementById('req-filter-query');
     if (!queryInput) return;
 
+    const existingQuery = queryInput.value.trim();
+
     // Check if it's a method filter (GET, POST, etc.) or other filter (matched:true, etc.)
     if (/^[A-Z]+$/.test(filter)) {
         // It's a method - set as method:XXX
-        // Parse existing query to check if method already exists
-        const existingQuery = queryInput.value.trim();
         const methodPattern = /method:[\w,]+/i;
 
         if (methodPattern.test(existingQuery)) {
             // Replace existing method
             queryInput.value = existingQuery.replace(methodPattern, `method:${filter}`);
         } else {
-            // Add method
-            const newQuery = existingQuery ? `method:${filter} ${existingQuery}` : `method:${filter}`;
-            queryInput.value = newQuery;
+            // Add method at the beginning
+            queryInput.value = existingQuery ? `method:${filter} ${existingQuery}` : `method:${filter}`;
         }
     } else {
-        // It's a complex filter like "matched:true"
-        const existingQuery = queryInput.value.trim();
-        queryInput.value = existingQuery ? `${filter} ${existingQuery}` : filter;
+        // It's a key:value filter like "matched:true"
+        // Extract the key (matched, status, client, etc.)
+        const keyMatch = filter.match(/^(\w+):/);
+        if (keyMatch) {
+            const key = keyMatch[1];
+            const keyPattern = new RegExp(`${key}:[^\\s]+`, 'i');
+
+            if (keyPattern.test(existingQuery)) {
+                // Replace existing filter with same key
+                queryInput.value = existingQuery.replace(keyPattern, filter);
+            } else {
+                // Add new filter at the beginning
+                queryInput.value = existingQuery ? `${filter} ${existingQuery}` : filter;
+            }
+        } else {
+            // Fallback: just append
+            queryInput.value = existingQuery ? `${filter} ${existingQuery}` : filter;
+        }
     }
 
     FilterManager.applyRequestFilters();
