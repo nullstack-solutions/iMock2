@@ -666,9 +666,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.log(`🔗 Restoring tab from URL: ${urlTab}`);
         activeTab = urlTab;
         // Find the nav-item button and activate it
-        const tabButton = document.querySelector(`[onclick*="showPage('${urlTab}')"]`);
+        const selector = `[onclick*="showPage('${urlTab}')"]`;
+        console.log(`🔍 Looking for tab button with selector: ${selector}`);
+        const tabButton = document.querySelector(selector);
+        console.log(`🔍 Tab button found:`, tabButton);
+        console.log(`🔍 showPage function available:`, typeof window.showPage);
+
         if (tabButton && typeof window.showPage === 'function') {
+            console.log(`✅ Calling showPage('${urlTab}')`);
             window.showPage(urlTab, tabButton);
+        } else {
+            console.warn(`⚠️ Cannot restore tab: button=${!!tabButton}, showPage=${typeof window.showPage}`);
+            // Fallback: try to call showPage directly without button
+            if (typeof window.showPage === 'function') {
+                console.log(`🔄 Trying to call showPage without button element`);
+                window.showPage(urlTab, null);
+            }
         }
     }
 
