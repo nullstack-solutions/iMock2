@@ -366,8 +366,6 @@ window.openEditModal = async (identifier) => {
         if (typeof window.setMappingEditorBusyState === 'function') {
             window.setMappingEditorBusyState(false);
         }
-    }
-    } finally {
         // Reset flag to allow future modal openings
         isModalOpening = false;
     }

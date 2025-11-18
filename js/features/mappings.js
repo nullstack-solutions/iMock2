@@ -31,7 +31,12 @@ const MAX_TOAST_STATE_SIZE = 100;         // Notification history limit
 const MAX_OPTIMISTIC_MAPPINGS = 50;       // Active editing sessions limit
 
 // Periodic cleanup for memory management (runs every minute)
-if (!window.mappingMemoryCleanupInterval && typeof window.LifecycleManager !== 'undefined') {
+// Clear any existing interval to prevent memory leaks on hot reload
+if (window.mappingMemoryCleanupInterval && typeof window.LifecycleManager !== 'undefined') {
+    window.LifecycleManager.clearInterval(window.mappingMemoryCleanupInterval);
+}
+
+if (typeof window.LifecycleManager !== 'undefined') {
     window.mappingMemoryCleanupInterval = window.LifecycleManager.setInterval(() => {
         // 1. Clean up preview state - keep only most recent items
         if (window.mappingPreviewState.size > MAX_PREVIEW_STATE_SIZE) {
