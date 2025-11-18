@@ -27,9 +27,7 @@ window.SELECTORS = {
 
     // Mapping filters
     MAPPING_FILTERS: {
-        METHOD: 'filter-method',
-        URL: 'filter-url',
-        STATUS: 'filter-status'
+        QUERY: 'filter-query'
     },
 
     // Data lists

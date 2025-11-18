@@ -6,12 +6,28 @@
 // Compact filtering helpers via FilterManager
 window.applyFilters = () => FilterManager.applyMappingFilters();
 window.clearMappingFilters = () => {
-    document.getElementById(SELECTORS.MAPPING_FILTERS.METHOD).value = '';
-    document.getElementById(SELECTORS.MAPPING_FILTERS.URL).value = '';
-    document.getElementById(SELECTORS.MAPPING_FILTERS.STATUS).value = '';
+    const queryInput = document.getElementById('filter-query');
+    if (queryInput) queryInput.value = '';
     FilterManager.applyMappingFilters();
     if (typeof FilterManager.flushMappingFilters === 'function') {
         FilterManager.flushMappingFilters();
+    }
+};
+
+// Toggle query help visibility
+window.toggleQueryHelp = () => {
+    const helpEl = document.getElementById('query-help');
+    if (!helpEl) return;
+
+    const isHidden = helpEl.classList.contains('hidden');
+    const button = document.querySelector('[onclick="toggleQueryHelp()"]');
+
+    if (isHidden) {
+        helpEl.classList.remove('hidden');
+        if (button) button.textContent = 'Hide Examples';
+    } else {
+        helpEl.classList.add('hidden');
+        if (button) button.textContent = 'Show Examples';
     }
 };
 window.applyRequestFilters = () => FilterManager.applyRequestFilters();

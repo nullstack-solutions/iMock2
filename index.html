@@ -295,63 +295,65 @@
                 
                 
                 <div class="search-filters" id="search-filters" style="display: none;">
-                    <div class="filter-tabs" role="tablist">
-                        <button type="button" class="filter-tab active" data-filter-group="mapping" data-filter-value="" onclick="handleMappingTabClick(this, '')">
-                            <span>All</span>
-                            <span class="filter-tab-count" id="mapping-tab-all">0</span>
-                        </button>
-                        <button type="button" class="filter-tab" data-filter-group="mapping" data-filter-value="GET" onclick="handleMappingTabClick(this, 'GET')">
-                            <span>GET</span>
-                            <span class="filter-tab-count" id="mapping-tab-get">0</span>
-                        </button>
-                        <button type="button" class="filter-tab" data-filter-group="mapping" data-filter-value="POST" onclick="handleMappingTabClick(this, 'POST')">
-                            <span>POST</span>
-                            <span class="filter-tab-count" id="mapping-tab-post">0</span>
-                        </button>
-                        <button type="button" class="filter-tab" data-filter-group="mapping" data-filter-value="PUT" onclick="handleMappingTabClick(this, 'PUT')">
-                            <span>PUT</span>
-                            <span class="filter-tab-count" id="mapping-tab-put">0</span>
-                        </button>
-                        <button type="button" class="filter-tab" data-filter-group="mapping" data-filter-value="PATCH" onclick="handleMappingTabClick(this, 'PATCH')">
-                            <span>PATCH</span>
-                            <span class="filter-tab-count" id="mapping-tab-patch">0</span>
-                        </button>
-                        <button type="button" class="filter-tab" data-filter-group="mapping" data-filter-value="DELETE" onclick="handleMappingTabClick(this, 'DELETE')">
-                            <span>DELETE</span>
-                            <span class="filter-tab-count" id="mapping-tab-delete">0</span>
-                        </button>
-                    </div>
-                    <div class="filter-grid">
-                        <div class="form-group">
-                            <label class="form-label">Method</label>
-                            <select class="form-select" id="filter-method" onchange="applyFilters()">
-                                <option value="">All Methods</option>
-                                <option value="GET">GET</option>
-                                <option value="POST">POST</option>
-                                <option value="PUT">PUT</option>
-                                <option value="DELETE">DELETE</option>
-                                <option value="PATCH">PATCH</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Search by URL or Name</label>
+                    <div class="filter-query-container">
+                        <div class="form-group" style="margin-bottom: var(--space-3);">
+                            <label class="form-label">
+                                Filter Query
+                                <button type="button" class="btn-link" onclick="toggleQueryHelp()" style="margin-left: var(--space-2); font-size: 0.875rem;">
+                                    Show Examples
+                                </button>
+                            </label>
                             <div class="input-shell">
                                 <span class="input-icon">
                                     <svg class="icon icon-input" aria-hidden="true" focusable="false"><use href="#icon-search"></use></svg>
                                 </span>
-                                <input type="text" class="form-input" id="filter-url" placeholder="Enter URL or Name" oninput="applyFilters()">
-                                <button type="button" class="input-clear" onclick="document.getElementById('filter-url').value=''; applyFilters();" title="Clear search">
-                                    <span class="sr-only">Clear search</span>
+                                <input
+                                    type="text"
+                                    class="form-input"
+                                    id="filter-query"
+                                    placeholder="e.g., method:GET,POST url:api status:200"
+                                    oninput="applyFilters()"
+                                    autocomplete="off"
+                                >
+                                <button type="button" class="input-clear" onclick="clearMappingFilters()" title="Clear query">
+                                    <span class="sr-only">Clear query</span>
                                     &times;
                                 </button>
                             </div>
                         </div>
-                        <div class="form-group">
-                            <label class="form-label">Status</label>
-                            <input type="number" class="form-input" id="filter-status" placeholder="e.g., 200" min="100" max="599" oninput="applyFilters()">
-                        </div>
-                        <div class="form-group">
-                            <button class="btn btn-secondary" onclick="clearMappingFilters()">Clear Filters</button>
+
+                        <div id="query-help" class="query-help hidden">
+                            <div class="query-help-title">Query Syntax Examples:</div>
+                            <div class="query-help-examples">
+                                <div class="query-help-example">
+                                    <code>method:GET,POST</code>
+                                    <span>Filter by GET or POST methods</span>
+                                </div>
+                                <div class="query-help-example">
+                                    <code>url:api</code>
+                                    <span>URL contains "api"</span>
+                                </div>
+                                <div class="query-help-example">
+                                    <code>status:200,201</code>
+                                    <span>Status is 200 or 201</span>
+                                </div>
+                                <div class="query-help-example">
+                                    <code>name:user</code>
+                                    <span>Name contains "user"</span>
+                                </div>
+                                <div class="query-help-example">
+                                    <code>-status:404</code>
+                                    <span>Exclude 404 status</span>
+                                </div>
+                                <div class="query-help-example">
+                                    <code>priority:1-5</code>
+                                    <span>Priority between 1 and 5</span>
+                                </div>
+                                <div class="query-help-example">
+                                    <code>method:GET url:users status:200</code>
+                                    <span>Combine multiple filters (AND logic)</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1024,6 +1026,7 @@
 <script src="js/demo-data.js"></script>
 <script src="js/features/state.js"></script>
 <script src="js/features/utils.js"></script>
+<script src="js/features/queryParser.js"></script>
 <script src="js/features/filters.js"></script>
 <script src="js/features/cache.js"></script>
 <script src="js/features/mappings.js"></script>

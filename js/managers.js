@@ -482,12 +482,11 @@ window.TabManager = {
 };
 
 function executeMappingFilters() {
-    const method = document.getElementById('filter-method')?.value?.trim() || '';
-    const url = document.getElementById('filter-url')?.value?.trim() || '';
-    const status = document.getElementById('filter-status')?.value?.trim() || '';
+    const queryInput = document.getElementById('filter-query');
+    const query = queryInput?.value?.trim() || '';
 
-    const filters = { method, url, status };
-    window.FilterManager.saveFilterState('mappings', filters);
+    // Сохраняем query в filter state
+    window.FilterManager.saveFilterState('mappings', { query });
 
     if (!Array.isArray(window.originalMappings) || window.originalMappings.length === 0) {
         window.allMappings = [];
@@ -501,43 +500,12 @@ function executeMappingFilters() {
         return;
     }
 
-    const loweredMethod = method.toLowerCase();
-    const loweredUrl = url.toLowerCase();
-    const hasFilters = Boolean(method || url || status);
-
-    const filteredMappings = hasFilters
-        ? window.originalMappings.filter(mapping => {
-            if (!mapping) {
-                return false;
-            }
-
-            if (method) {
-                const requestMethod = (mapping.request?.method || '').toLowerCase();
-                if (!requestMethod.includes(loweredMethod)) {
-                    return false;
-                }
-            }
-
-            if (url) {
-                const mappingUrl = (mapping.request?.url || mapping.request?.urlPattern || mapping.request?.urlPath || '').toLowerCase();
-                const mappingName = (mapping.name || '').toLowerCase();
-                if (!mappingUrl.includes(loweredUrl) && !mappingName.includes(loweredUrl)) {
-                    return false;
-                }
-            }
-
-            if (status) {
-                const responseStatus = (mapping.response?.status ?? '').toString();
-                if (!responseStatus.includes(status)) {
-                    return false;
-                }
-            }
-
-            return true;
-        })
+    // Используем новый query parser для фильтрации
+    const filteredMappings = query && window.QueryParser
+        ? window.QueryParser.filterMappingsByQuery(window.originalMappings, query)
         : window.originalMappings;
 
-    window.allMappings = hasFilters ? filteredMappings : window.originalMappings;
+    window.allMappings = filteredMappings;
 
     const container = document.getElementById(SELECTORS.LISTS.MAPPINGS);
     const emptyState = document.getElementById(SELECTORS.EMPTY.MAPPINGS);
@@ -833,19 +801,11 @@ window.FilterManager = {
     // Restore filter state on page load
     restoreFilters(tabName) {
         const filters = this.loadFilterState(tabName);
-        
+
         if (tabName === 'mappings') {
-            if (filters.method) {
-                const elem = document.getElementById('filter-method');
-                if (elem) elem.value = filters.method;
-            }
-            if (filters.url) {
-                const elem = document.getElementById('filter-url');
-                if (elem) elem.value = filters.url;
-            }
-            if (filters.status) {
-                const elem = document.getElementById('filter-status');
-                if (elem) elem.value = filters.status;
+            if (filters.query) {
+                const elem = document.getElementById('filter-query');
+                if (elem) elem.value = filters.query;
             }
         } else if (tabName === 'requests') {
             if (filters.method) {
