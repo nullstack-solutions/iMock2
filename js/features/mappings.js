@@ -1063,6 +1063,12 @@ window.updateMappingsCounter = function() {
     }
 };
 
+// Legacy stub for removed tab counting system (kept for backward compatibility)
+window.updateMappingTabCounts = function() {
+    // No-op: Quick filter chips replaced the old tab system
+    // This stub prevents errors in legacy code that still calls this function
+};
+
 // Update the data-source indicator (cache/remote/direct)
 function updateDataSourceIndicator(source) {
     const el = document.getElementById('data-source-indicator');
