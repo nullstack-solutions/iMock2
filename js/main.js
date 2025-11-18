@@ -657,6 +657,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         window.initializeFilterTabs();
     }
 
+    // Restore active tab from URL if present
+    const urlTab = typeof window.getActiveTabFromURL === 'function' ? window.getActiveTabFromURL() : null;
+    const validTabs = ['mappings', 'requests', 'scenarios', 'import-export', 'recording', 'settings'];
+    if (urlTab && validTabs.includes(urlTab)) {
+        console.log(`🔗 Restoring tab from URL: ${urlTab}`);
+        // Find the tab button and click it
+        const tabButton = document.querySelector(`[onclick*="showTab('${urlTab}')"]`);
+        if (tabButton && typeof window.showTab === 'function') {
+            window.showTab(urlTab, tabButton);
+        }
+    }
+
     // Restore saved filter state for mappings BEFORE autoconnect
     // so filters are ready when data loads
     if (typeof window.FilterManager?.restoreFilters === 'function') {
