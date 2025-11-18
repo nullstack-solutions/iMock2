@@ -714,10 +714,8 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
         }
         // Reapply mapping filters if any are active, preserving user's view
         try {
-            const hasFilters = (document.getElementById(SELECTORS.MAPPING_FILTERS.METHOD)?.value || '')
-                || (document.getElementById(SELECTORS.MAPPING_FILTERS.URL)?.value || '')
-                || (document.getElementById(SELECTORS.MAPPING_FILTERS.STATUS)?.value || '');
-            if (hasFilters && typeof FilterManager !== 'undefined' && FilterManager.applyMappingFilters) {
+            const filterQuery = document.getElementById(SELECTORS.MAPPING_FILTERS.QUERY)?.value?.trim() || '';
+            if (filterQuery && typeof FilterManager !== 'undefined' && FilterManager.applyMappingFilters) {
                 FilterManager.applyMappingFilters();
                 if (typeof FilterManager.flushMappingFilters === 'function') {
                     FilterManager.flushMappingFilters();
