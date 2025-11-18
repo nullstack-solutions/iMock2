@@ -588,6 +588,8 @@ window.apiFetch = async (endpoint, options = {}) => {
 // --- CORE UI HELPERS ---
 
 window.showPage = (pageId, element) => {
+    console.log(`🔄 [showPage] Switching to tab: ${pageId}`);
+
     document.querySelectorAll('.main-content > div[id$="-page"]').forEach(p => p.classList.add('hidden'));
     const targetPage = document.getElementById(SELECTORS.PAGES[pageId.toUpperCase()]);
     if (!targetPage) { console.warn(`Page not found: ${pageId}`); return; }
@@ -598,8 +600,14 @@ window.showPage = (pageId, element) => {
     // Update URL with active tab
     if (window.history && window.history.replaceState) {
         const url = new URL(window.location.href);
+        const oldTab = url.searchParams.get('tab');
         url.searchParams.set('tab', pageId);
-        window.history.replaceState({}, '', url.toString());
+        const newUrl = url.toString();
+        console.log(`🔗 [showPage] Updating URL: ${oldTab} → ${pageId}`);
+        console.log(`🔗 [showPage] New URL: ${newUrl}`);
+        window.history.replaceState({}, '', newUrl);
+    } else {
+        console.warn('⚠️ [showPage] history.replaceState not available');
     }
 };
 
