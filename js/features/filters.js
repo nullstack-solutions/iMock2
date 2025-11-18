@@ -5,8 +5,10 @@
 // Compact filtering helpers via FilterManager
 window.applyFilters = () => {
     FilterManager.applyMappingFilters();
-    // Update active filters display
-    if (typeof window.updateActiveFiltersDisplay === 'function') {
+    // Update active filters display with debounce
+    if (typeof window._updateActiveFiltersDisplayDebounced === 'function') {
+        window._updateActiveFiltersDisplayDebounced();
+    } else if (typeof window.updateActiveFiltersDisplay === 'function') {
         window.updateActiveFiltersDisplay();
     }
 };
@@ -135,6 +137,11 @@ window.updateActiveFiltersDisplay = () => {
     activeFiltersList.innerHTML = chips.join('');
     activeFiltersContainer.style.display = chips.length > 0 ? 'flex' : 'none';
 };
+
+// Debounced version for oninput events (prevents memory leaks from rapid DOM updates)
+window._updateActiveFiltersDisplayDebounced = window.debounce ?
+    window.debounce(window.updateActiveFiltersDisplay, 200) :
+    window.updateActiveFiltersDisplay;
 
 // Remove active filter from query
 window.removeActiveFilter = (key) => {
@@ -362,8 +369,10 @@ window.applyQuickRequestFilter = (filter) => {
         FilterManager.flushRequestFilters();
     }
 
-    // Update active filters display
-    if (typeof window.updateRequestActiveFiltersDisplay === 'function') {
+    // Update active filters display with debounce
+    if (typeof window._updateRequestActiveFiltersDisplayDebounced === 'function') {
+        window._updateRequestActiveFiltersDisplayDebounced();
+    } else if (typeof window.updateRequestActiveFiltersDisplay === 'function') {
         window.updateRequestActiveFiltersDisplay();
     }
 };
@@ -415,6 +424,11 @@ window.updateRequestActiveFiltersDisplay = () => {
 
     container.innerHTML = chips.join('');
 };
+
+// Debounced version for oninput events (prevents memory leaks from rapid DOM updates)
+window._updateRequestActiveFiltersDisplayDebounced = window.debounce ?
+    window.debounce(window.updateRequestActiveFiltersDisplay, 200) :
+    window.updateRequestActiveFiltersDisplay;
 
 // Remove active filter for requests
 window.removeRequestActiveFilter = (key) => {
