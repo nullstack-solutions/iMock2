@@ -22,9 +22,9 @@ window.clearMappingFilters = () => {
     if (typeof window.updateActiveFiltersDisplay === 'function') {
         window.updateActiveFiltersDisplay();
     }
-    // Clear URL parameters
+    // Clear URL parameters (tab-scoped)
     if (typeof window.updateURLFilterParams === 'function') {
-        window.updateURLFilterParams('');
+        window.updateURLFilterParams('', 'mappings');
     }
 };
 
@@ -311,9 +311,9 @@ window.clearRequestFilters = () => {
         window.updateRequestActiveFiltersDisplay();
     }
 
-    // Clear URL parameters
+    // Clear URL parameters (tab-scoped)
     if (typeof window.updateURLFilterParams === 'function') {
-        window.updateURLFilterParams('');
+        window.updateURLFilterParams('', 'requests');
     }
 };
 

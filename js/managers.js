@@ -519,7 +519,7 @@ function executeMappingFilters() {
     window.FilterManager.saveFilterState('mappings', { query });
 
     // Update URL with filter query for sharing
-    updateURLFilterParams(query);
+    updateURLFilterParams(query, 'mappings');
 
     if (!Array.isArray(window.originalMappings) || window.originalMappings.length === 0) {
         window.allMappings = [];
@@ -628,7 +628,7 @@ function executeRequestFilters() {
 
     // Save filters to localStorage and URL
     window.FilterManager.saveFilterState('requests', { query, from, to });
-    updateURLFilterParams(query);
+    updateURLFilterParams(query, 'requests');
 
     if (!Array.isArray(window.originalRequests) || window.originalRequests.length === 0) {
         window.allRequests = [];
@@ -829,8 +829,8 @@ window.FilterManager = {
     // Priority: URL params > localStorage
     restoreFilters(tabName) {
         if (tabName === 'mappings') {
-            // First check URL parameters (for sharing)
-            const urlFilter = getFilterFromURL();
+            // First check URL parameters (for sharing) - tab-scoped
+            const urlFilter = getFilterFromURL('mappings');
 
             if (urlFilter) {
                 // URL has priority - restore from URL
@@ -847,9 +847,8 @@ window.FilterManager = {
                 return filters;
             }
         } else if (tabName === 'requests') {
-            // Check URL parameters first (for sharing)
-            const urlParams = new URLSearchParams(window.location.search);
-            const urlFilter = urlParams.get('filter');
+            // Check URL parameters first (for sharing) - tab-scoped
+            const urlFilter = getFilterFromURL('requests');
 
             if (urlFilter) {
                 // URL has priority - restore from URL
@@ -1040,18 +1039,28 @@ window.FilterManager._applyRequestFilters = window.debounce(executeRequestFilter
 // ===== URL Filter Parameters for Sharing =====
 
 /**
- * Update URL with filter query parameter for sharing
+ * Update URL with filter query parameter for sharing (tab-scoped)
  * @param {string} query - Filter query string
+ * @param {string} tabName - Tab name ('mappings' or 'requests')
  */
-function updateURLFilterParams(query) {
+function updateURLFilterParams(query, tabName = 'mappings') {
     if (!window.history || !window.history.replaceState) return;
 
     const url = new URL(window.location.href);
+    const paramName = `${tabName}_filter`;
 
     if (query) {
-        url.searchParams.set('filter', query);
+        url.searchParams.set(paramName, query);
     } else {
-        url.searchParams.delete('filter');
+        url.searchParams.delete(paramName);
+    }
+
+    // Also set active tab in URL
+    if (typeof window.TabManager !== 'undefined') {
+        const currentTab = window.TabManager.getCurrentTab();
+        if (currentTab) {
+            url.searchParams.set('tab', currentTab);
+        }
     }
 
     // Update URL without reloading page
@@ -1059,12 +1068,23 @@ function updateURLFilterParams(query) {
 }
 
 /**
- * Get filter query from URL parameters
+ * Get filter query from URL parameters (tab-scoped)
+ * @param {string} tabName - Tab name ('mappings' or 'requests')
  * @returns {string|null} - Filter query or null
  */
-function getFilterFromURL() {
+function getFilterFromURL(tabName = 'mappings') {
     const urlParams = new URLSearchParams(window.location.search);
-    return urlParams.get('filter');
+    const paramName = `${tabName}_filter`;
+    return urlParams.get(paramName);
+}
+
+/**
+ * Get active tab from URL
+ * @returns {string|null} - Tab name or null
+ */
+function getActiveTabFromURL() {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('tab');
 }
 
 // Make URL functions globally accessible

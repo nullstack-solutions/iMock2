@@ -677,6 +677,13 @@ window.showTab = (tabName, button) => {
     document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
     document.getElementById(`${tabName}-tab`).classList.remove('hidden');
     button.classList.add('active');
+
+    // Update URL with active tab
+    if (window.history && window.history.replaceState) {
+        const url = new URL(window.location.href);
+        url.searchParams.set('tab', tabName);
+        window.history.replaceState({}, '', url.toString());
+    }
 };
 
 const applyThemeToDom = (theme) => {
