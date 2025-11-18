@@ -145,34 +145,45 @@ function hideOnboardingOverlay() {
 }
 
 function attemptAutoConnect(settings, options = {}) {
+    console.log('🔌 [attemptAutoConnect] Called with settings:', settings);
+    console.log('🔌 [attemptAutoConnect] Options:', options);
+    console.log('🔌 [attemptAutoConnect] shouldAutoConnect:', shouldAutoConnect(settings));
+    console.log('🔌 [attemptAutoConnect] autoConnectInitiated:', autoConnectInitiated);
+
     if (!shouldAutoConnect(settings)) {
+        console.log('⚠️ [attemptAutoConnect] Skipping - shouldAutoConnect returned false');
         return;
     }
 
     if (autoConnectInitiated && !options.force) {
+        console.log('⚠️ [attemptAutoConnect] Skipping - already initiated and not forced');
         return;
     }
 
     autoConnectInitiated = true;
+    console.log('✅ [attemptAutoConnect] Proceeding with autoconnect');
 
     const triggerConnection = () => {
         try {
+            console.log('🔌 [attemptAutoConnect] Triggering connection...');
             const result = typeof window.connectToWireMock === 'function' ? window.connectToWireMock() : null;
             if (result && typeof result.catch === 'function') {
                 result.catch((error) => {
-                    console.error('Auto-connect failed:', error);
+                    console.error('❌ Auto-connect failed:', error);
                     autoConnectInitiated = false;
                 });
             }
         } catch (error) {
-            console.error('Auto-connect encountered an error:', error);
+            console.error('❌ Auto-connect encountered an error:', error);
             autoConnectInitiated = false;
         }
     };
 
     if (options.immediate) {
+        console.log('🔌 [attemptAutoConnect] Immediate mode - connecting now');
         triggerConnection();
     } else {
+        console.log('🔌 [attemptAutoConnect] Delayed mode - connecting in 150ms');
         setTimeout(triggerConnection, 150);
     }
 }
@@ -188,14 +199,20 @@ function initializeOnboardingFlow() {
     const settings = getStoredSettings();
     const hasConfiguration = Boolean(settings.host && settings.port);
 
+    console.log('🔧 [initializeOnboardingFlow] Settings:', settings);
+    console.log('🔧 [initializeOnboardingFlow] Has configuration:', hasConfiguration);
+    console.log('🔧 [initializeOnboardingFlow] autoConnect setting:', settings.autoConnect);
+
     if (hostField) hostField.value = settings.host || DEFAULT_SETTINGS.host || '';
     if (portField) portField.value = settings.port || DEFAULT_SETTINGS.port || '';
     if (headersField) headersField.value = serializeCustomHeaders(settings);
     if (autoConnectField) autoConnectField.checked = settings.autoConnect !== false;
 
     if (!hasConfiguration) {
+        console.log('⚠️ [initializeOnboardingFlow] No configuration - showing onboarding overlay');
         showOnboardingOverlay();
     } else {
+        console.log('✅ [initializeOnboardingFlow] Configuration found - attempting autoconnect');
         attemptAutoConnect(settings);
     }
 
@@ -640,15 +657,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         window.initializeFilterTabs();
     }
 
-    // Restore saved filter state for mappings
+    // Restore saved filter state for mappings BEFORE autoconnect
+    // so filters are ready when data loads
     if (typeof window.FilterManager?.restoreFilters === 'function') {
         window.FilterManager.restoreFilters('mappings');
         // Update active filters display after restore
-        setTimeout(() => {
-            if (typeof window.updateActiveFiltersDisplay === 'function') {
-                window.updateActiveFiltersDisplay();
-            }
-        }, 100);
+        if (typeof window.updateActiveFiltersDisplay === 'function') {
+            window.updateActiveFiltersDisplay();
+        }
     }
 
     initializeOnboardingFlow();
