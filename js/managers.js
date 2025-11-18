@@ -616,21 +616,13 @@ function executeMappingFilters() {
 }
 
 function executeRequestFilters() {
-    const method = document.getElementById('req-filter-method')?.value?.trim() || '';
-    const status = document.getElementById('req-filter-status')?.value?.trim() || '';
-    const url = document.getElementById('req-filter-url')?.value?.trim() || '';
-    const from = document.getElementById('req-filter-from')?.value || '';
-    const to = document.getElementById('req-filter-to')?.value || '';
+    // Try new query-based filter first
+    const queryInput = document.getElementById('req-filter-query');
+    const query = queryInput?.value?.trim() || '';
 
-    const filters = { method, status, url, from, to };
-
-    // Update URL with current filters (primary state storage)
-    if (typeof window.URLStateManager !== 'undefined') {
-        window.URLStateManager.updateURL('requests', filters, true);
-    }
-
-    // Save to localStorage as backup
-    window.FilterManager.saveFilterState('requests', filters);
+    // Save query to localStorage and URL
+    window.FilterManager.saveFilterState('requests', { query });
+    updateURLFilterParams(query);
 
     if (!Array.isArray(window.originalRequests) || window.originalRequests.length === 0) {
         window.allRequests = [];
@@ -644,66 +636,12 @@ function executeRequestFilters() {
         return;
     }
 
-    const loweredMethod = method.toLowerCase();
-    const loweredUrl = url.toLowerCase();
-    const fromTime = from ? new Date(from).getTime() : null;
-    const toTime = to ? new Date(to).getTime() : null;
-    const hasFilters = Boolean(method || status || url || fromTime !== null || toTime !== null);
-
-    const filteredRequests = hasFilters
-        ? window.originalRequests.filter(request => {
-            if (!request) {
-                return false;
-            }
-
-            if (method) {
-                const reqMethod = (request.request?.method || '').toLowerCase();
-                if (!reqMethod.includes(loweredMethod)) {
-                    return false;
-                }
-            }
-
-            if (status) {
-                if (status === 'matched' && request.wasMatched === false) {
-                    return false;
-                }
-                if (status === 'unmatched' && request.wasMatched !== false) {
-                    return false;
-                }
-                if (status !== 'matched' && status !== 'unmatched') {
-                    const responseStatus = request.response?.status ?? request.responseDefinition?.status ?? '';
-                    if (!responseStatus.toString().includes(status)) {
-                        return false;
-                    }
-                }
-            }
-
-            if (url) {
-                const requestUrl = (request.request?.url || '').toLowerCase();
-                if (!requestUrl.includes(loweredUrl)) {
-                    return false;
-                }
-            }
-
-            if (fromTime) {
-                const requestTime = new Date(request.request?.loggedDate || request.loggedDate).getTime();
-                if (Number.isFinite(fromTime) && (!Number.isFinite(requestTime) || requestTime < fromTime)) {
-                    return false;
-                }
-            }
-
-            if (toTime) {
-                const requestTime = new Date(request.request?.loggedDate || request.loggedDate).getTime();
-                if (Number.isFinite(toTime) && (!Number.isFinite(requestTime) || requestTime > toTime)) {
-                    return false;
-                }
-            }
-
-            return true;
-        })
+    // Use QueryParser if query is provided
+    const filteredRequests = query && window.QueryParser
+        ? window.QueryParser.filterRequestsByQuery(window.originalRequests, query)
         : window.originalRequests;
 
-    window.allRequests = hasFilters ? filteredRequests : window.originalRequests;
+    window.allRequests = query ? filteredRequests : window.originalRequests;
 
     const container = document.getElementById(SELECTORS.LISTS.REQUESTS);
     const emptyState = document.getElementById(SELECTORS.EMPTY.REQUESTS);
@@ -866,6 +804,7 @@ window.FilterManager = {
                 // URL has priority - restore from URL
                 const elem = document.getElementById('filter-query');
                 if (elem) elem.value = urlFilter;
+                return { query: urlFilter };
             } else {
                 // Fallback to localStorage
                 const filters = this.loadFilterState(tabName);
@@ -873,14 +812,35 @@ window.FilterManager = {
                     const elem = document.getElementById('filter-query');
                     if (elem) elem.value = filters.query;
                 }
+                return filters;
             }
         } else if (tabName === 'requests') {
+            // Check URL parameters first (for sharing)
+            const urlParams = new URLSearchParams(window.location.search);
+            const urlFilter = urlParams.get('filter');
+
+            if (urlFilter) {
+                // URL has priority - restore from URL
+                const elem = document.getElementById('req-filter-query');
+                if (elem) {
+                    elem.value = urlFilter;
+                    return { query: urlFilter };
+                }
+            }
+
+            // Fallback to localStorage
             const filters = this.loadFilterState(tabName);
-            if (filters.method) {
-                const elem = document.getElementById('req-filter-method');
-                if (elem) elem.value = filters.method;
+
+            // Try new query-based filter first
+            if (filters.query) {
+                const elem = document.getElementById('req-filter-query');
+                if (elem) {
+                    elem.value = filters.query;
+                    return filters;
+                }
             }
-        } else if (tabName === 'requests') {
+
+            // Legacy fallback for old filter fields
             const methodElem = document.getElementById('req-filter-method');
             const statusElem = document.getElementById('req-filter-status');
             const urlElem = document.getElementById('req-filter-url');
@@ -897,9 +857,11 @@ window.FilterManager = {
             if (filters.method && typeof window.syncFilterTabsFromSelect === 'function') {
                 window.syncFilterTabsFromSelect('request', filters.method);
             }
+
+            return filters;
         }
 
-        return filters;
+        return {};
     },
 
     /**

@@ -1,18 +1,26 @@
 /**
- * Query Parser for filtering mappings
+ * Query Parser for filtering mappings and requests
  * Simple Gmail-like syntax parser without external dependencies
  *
  * Example queries:
+ * Mappings:
  * - method:GET,POST          → OR between methods
  * - url:api status:200       → AND between different fields
  * - method:GET url:/users    → combination of conditions
  * - -status:404              → exclusion
  * - priority:1-5             → priority range
+ *
+ * Requests:
+ * - method:GET url:api       → filter by method and URL
+ * - matched:true             → show only matched requests
+ * - matched:false            → show only unmatched requests
+ * - status:200,201           → filter by response status codes
+ * - client:192.168           → filter by client IP
  */
 
 'use strict';
 
-const KEYWORDS = ['method', 'url', 'status', 'name', 'scenario'];
+const KEYWORDS = ['method', 'url', 'status', 'name', 'scenario', 'matched', 'client'];
 const RANGE_KEYWORDS = ['priority'];
 
 /**
@@ -290,11 +298,121 @@ function filterMappingsByQuery(mappings, queryString) {
     return filterMappings(mappings, parsed);
 }
 
+/**
+ * Filters array of requests by parsed query
+ * @param {Array} requests - Array of requests to filter
+ * @param {Object} parsedQuery - Result of parseQuery()
+ * @returns {Array} - Filtered array
+ */
+function filterRequests(requests, parsedQuery) {
+    if (!Array.isArray(requests)) {
+        return [];
+    }
+
+    if (!parsedQuery || typeof parsedQuery !== 'object') {
+        return requests;
+    }
+
+    return requests.filter(request => {
+        if (!request) {
+            return false;
+        }
+
+        // Check method
+        if (parsedQuery.method) {
+            const requestMethod = request.request?.method || '';
+            if (!matchesCondition(requestMethod, parsedQuery.method)) {
+                return false;
+            }
+        }
+
+        // Check URL
+        if (parsedQuery.url) {
+            const requestUrl = request.request?.url || request.request?.urlPath || '';
+            if (!matchesCondition(requestUrl, parsedQuery.url)) {
+                return false;
+            }
+        }
+
+        // Check status (response status code)
+        if (parsedQuery.status) {
+            const responseStatus = request.response?.status ??
+                                 request.responseDefinition?.status ?? '';
+            if (!matchesCondition(responseStatus, parsedQuery.status)) {
+                return false;
+            }
+        }
+
+        // Check matched/unmatched
+        if (parsedQuery.matched !== undefined) {
+            const isMatched = request.wasMatched !== false;
+            const matchValues = Array.isArray(parsedQuery.matched)
+                ? parsedQuery.matched
+                : [parsedQuery.matched];
+
+            // Check if any value matches
+            let matchFound = false;
+            for (const val of matchValues) {
+                const valStr = String(val).toLowerCase();
+                if ((valStr === 'true' || valStr === 'yes' || valStr === '1') && isMatched) {
+                    matchFound = true;
+                    break;
+                }
+                if ((valStr === 'false' || valStr === 'no' || valStr === '0') && !isMatched) {
+                    matchFound = true;
+                    break;
+                }
+            }
+
+            if (!matchFound) {
+                return false;
+            }
+        }
+
+        // Check client IP
+        if (parsedQuery.client) {
+            const clientIp = request.request?.clientIp || '';
+            if (!matchesCondition(clientIp, parsedQuery.client)) {
+                return false;
+            }
+        }
+
+        // Check text search (if there is text without a key)
+        if (parsedQuery.text) {
+            const searchText = String(parsedQuery.text).toLowerCase();
+            const requestUrl = (request.request?.url || request.request?.urlPath || '').toLowerCase();
+            const requestMethod = (request.request?.method || '').toLowerCase();
+            const clientIp = (request.request?.clientIp || '').toLowerCase();
+
+            if (!requestUrl.includes(searchText) &&
+                !requestMethod.includes(searchText) &&
+                !clientIp.includes(searchText)) {
+                return false;
+            }
+        }
+
+        return true;
+    });
+}
+
+/**
+ * Main filtering function - parses query and filters requests
+ * @param {Array} requests - Array of requests
+ * @param {string} queryString - Query string
+ * @returns {Array} - Filtered array
+ */
+function filterRequestsByQuery(requests, queryString) {
+    const parsed = parseQuery(queryString);
+    return filterRequests(requests, parsed);
+}
+
 // Export for use in browser
 window.QueryParser = {
     parseQuery,
     filterMappings,
     filterMappingsByQuery,
+    filterRequests,
+    filterRequestsByQuery,
     matchesCondition,
     matchesRange
 };
