@@ -400,6 +400,7 @@
                     <div class="cards-container" id="mappings-list" style="display: none;">
                         <!-- Mapping items will be dynamically inserted here -->
                     </div>
+                    <div id="mappings-pagination" class="pagination-container"></div>
                 </div>
             </div>
             
@@ -634,7 +635,7 @@
                             <p class="form-help">Select how WireMock should handle existing mappings during import.</p>
                         </div>
                         <div class="form-group" id="import-actions" style="display: none;">
-                            <button class="btn btn-primary" id="import-submit-btn" onclick="executeImportFromUi()">
+                            <button class="btn btn-primary" id="import-submit-btn" onclick="executeImport()">
                                 <span class="btn-spinner loading-spinner" aria-hidden="true"></span>
                                 <span class="btn-label">
                                     <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-request-in"></use></svg>
@@ -863,6 +864,12 @@
                     <span id="editor-dirty-indicator" class="dirty-indicator" style="display: none;">● Unsaved changes</span>
                 </div>
                 <div class="modal-header-actions">
+                    <button type="button" class="btn btn-secondary" id="open-json-studio-btn" title="Open in advanced JSON Studio editor">
+                        <svg class="icon icon-16" aria-hidden="true" focusable="false">
+                            <use href="#icon-open-external"></use>
+                        </svg>
+                        <span class="btn-label">JSON Studio</span>
+                    </button>
                     <button type="button" class="btn btn-secondary btn-sm" data-action="format-json">Format</button>
                     <button type="button" class="btn btn-secondary btn-sm" data-action="minify-json">Minify</button>
                     <button type="button" class="btn btn-primary" id="update-mapping-btn" onclick="updateMapping()">
@@ -871,88 +878,7 @@
                     </button>
                 </div>
             </div>
-            
-            <!-- Form Editor (Hidden by default) -->
-            <div id="form-editor-container" style="display: none;">
-            <form id="edit-mapping-form">
-                <input type="hidden" id="edit-mapping-id">
-                
-                <div class="form-group">
-                    <label class="form-label">Mapping Name</label>
-                    <input type="text" class="form-input" id="edit-mapping-name" placeholder="Enter mapping name">
-                </div>
-                
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label">Method</label>
-                        <select class="form-select" id="edit-method">
-                            <option value="GET">GET</option>
-                            <option value="POST">POST</option>
-                            <option value="PUT">PUT</option>
-                            <option value="DELETE">DELETE</option>
-                            <option value="PATCH">PATCH</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">URL Pattern</label>
-                        <input type="text" class="form-input" id="edit-url-pattern" placeholder="/api/users" required>
-                    </div>
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Response Status</label>
-                    <input type="number" class="form-input" id="edit-response-status" value="200" min="100" max="599">
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Response Delay (ms)</label>
-                    <input type="number" class="form-input" id="edit-response-delay" placeholder="Delay in milliseconds">
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Request Headers (JSON)</label>
-                    <textarea class="form-textarea" id="edit-request-headers" rows="3" placeholder='{ "Content-Type": "application/json" }'></textarea>
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Request Body</label>
-                    <textarea class="form-textarea" id="edit-request-body" rows="3" placeholder='{ "name": "example" }'></textarea>
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Response Headers (JSON)</label>
-                    <textarea class="form-textarea" id="edit-response-headers" rows="3" placeholder='{ "Content-Type": "application/json" }'></textarea>
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Response Body</label>
-                    <textarea class="form-textarea" id="edit-response-body" rows="6" placeholder='{ "message": "Hello World" }'></textarea>
-                </div>
-                
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label">Priority</label>
-                        <input type="number" class="form-input" id="edit-mapping-priority" placeholder="Priority">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Scenario Name</label>
-                        <input type="text" class="form-input" id="edit-mapping-scenario" placeholder="Scenario name">
-                    </div>
-                </div>
 
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label">Required Scenario State</label>
-                        <input type="text" class="form-input" id="edit-required-scenario-state" placeholder="State required to match">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">New Scenario State</label>
-                        <input type="text" class="form-input" id="edit-new-scenario-state" placeholder="State after match">
-                    </div>
-                </div>
-            </form>
-            </div>
-            
             <!-- JSON Editor Container -->
             <div id="json-editor-container" class="json-editor-wrapper">
                 <textarea id="json-editor" class="json-editor" rows="1" placeholder="{
@@ -1061,14 +987,16 @@
 <script src="js/features/utils.js"></script>
 <script src="js/features/queryParser.js"></script>
 <script src="js/features/filters.js"></script>
+<script src="js/features/filter-presets.js"></script>
 <script src="js/features/cache.js"></script>
 <script src="js/features/mappings.js"></script>
+<script src="js/features/pagination.js"></script>
+<script src="js/features/event-delegation.js"></script>
 <script src="js/features/requests.js"></script>
 <script src="js/features/scenarios.js"></script>
 <script src="js/features/recording.js"></script>
 <script src="js/features/management.js"></script>
 <script src="js/features/request-api.js"></script>
-<script src="js/features/near-misses.js"></script>
 <script src="js/features/wiremock-extras.js"></script>
 <script src="js/features/demo.js"></script>
 <script src="js/features.js"></script>

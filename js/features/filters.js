@@ -2,7 +2,6 @@
 
 // --- UNIVERSAL FILTER MANAGER (eliminate ~90 lines of duplication) ---
 
-
 // Compact filtering helpers via FilterManager
 window.applyFilters = () => {
     FilterManager.applyMappingFilters();
@@ -209,22 +208,12 @@ window.applyQuickFilter = () => {
             return;
     }
     
-    // Format dates for datetime-local input (YYYY-MM-DDTHH:MM)
-    const formatDateTime = (date) => {
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        const hours = String(date.getHours()).padStart(2, '0');
-        const minutes = String(date.getMinutes()).padStart(2, '0');
-        return `${year}-${month}-${day}T${hours}:${minutes}`;
-    };
-    
     // Set the time range inputs
     const dateFromEl = document.getElementById(SELECTORS.REQUEST_FILTERS.DATE_FROM);
     const dateToEl = document.getElementById(SELECTORS.REQUEST_FILTERS.DATE_TO);
-    
-    if (dateFromEl) dateFromEl.value = formatDateTime(fromTime);
-    if (dateToEl) dateToEl.value = formatDateTime(now);
+
+    if (dateFromEl) dateFromEl.value = Utils.formatDateTime(fromTime);
+    if (dateToEl) dateToEl.value = Utils.formatDateTime(now);
 
     // Apply the filters
     FilterManager.applyRequestFilters();
@@ -246,13 +235,18 @@ window.clearRequestFilters = () => {
     const dateFromEl = document.getElementById(SELECTORS.REQUEST_FILTERS.DATE_FROM);
     const dateToEl = document.getElementById(SELECTORS.REQUEST_FILTERS.DATE_TO);
     const quickEl = document.getElementById(SELECTORS.REQUEST_FILTERS.QUICK);
-    
+
     if (methodEl) methodEl.value = '';
     if (urlEl) urlEl.value = '';
     if (statusEl) statusEl.value = '';
     if (dateFromEl) dateFromEl.value = '';
     if (dateToEl) dateToEl.value = '';
     if (quickEl) quickEl.value = ''; // Reset quick filter selection
+
+    // Clear URL parameters when clearing filters
+    if (typeof window.URLStateManager !== 'undefined') {
+        window.URLStateManager.updateURL('requests', { method: '', status: '', url: '', from: '', to: '' }, true);
+    }
 
     FilterManager.applyRequestFilters();
     if (typeof FilterManager.flushRequestFilters === 'function') {

@@ -52,7 +52,22 @@ if (!window.NotificationManager) {
 
             if (!this._boundHandleKeydown) {
                 this._boundHandleKeydown = this.handleKeydown.bind(this);
-                document.addEventListener('keydown', this._boundHandleKeydown);
+                if (window.LifecycleManager) {
+                    window.LifecycleManager.addEventListener(document, 'keydown', this._boundHandleKeydown);
+                } else {
+                    document.addEventListener('keydown', this._boundHandleKeydown);
+                }
+            }
+        },
+
+        cleanup() {
+            if (this._boundHandleKeydown) {
+                if (window.LifecycleManager) {
+                    window.LifecycleManager.removeEventListener(document, 'keydown', this._boundHandleKeydown);
+                } else {
+                    document.removeEventListener('keydown', this._boundHandleKeydown);
+                }
+                this._boundHandleKeydown = null;
             }
         },
 
@@ -433,7 +448,7 @@ window.TabManager = {
             clearFunction: 'clearMappingFilters'
         },
         requests: {
-            name: 'Requests', 
+            name: 'Requests',
             loadFunction: 'loadRequests',
             clearFunction: 'clearRequestFilters'
         },
@@ -443,14 +458,29 @@ window.TabManager = {
             clearFunction: null
         }
     },
-    
+
+    /**
+     * Get currently active tab name
+     * @returns {string} Active tab name ('mappings', 'requests', or 'scenarios')
+     */
+    getCurrentTab() {
+        // Find active tab button
+        const activeButton = document.querySelector('.tab-link.active');
+        if (activeButton) {
+            // Extract tab name from onclick attribute or data attribute
+            const onclick = activeButton.getAttribute('onclick');
+            if (onclick) {
+                const match = onclick.match(/showTab\(['"](\w+)['"]\)/);
+                if (match) return match[1];
+            }
+        }
+        // Default to mappings if no active tab found
+        return 'mappings';
+    },
+
     async refresh(tabName) {
         const config = this.configs[tabName];
-        if (!config) {
-            console.warn(`Tab config not found: ${tabName}`);
-            return;
-        }
-        
+        if (!config) { console.warn(`Tab config not found: ${tabName}`); return; }
         try {
             const loadFn = window[config.loadFunction];
             if (typeof loadFn === 'function') {
@@ -541,11 +571,32 @@ function executeMappingFilters() {
         return urlA.localeCompare(urlB);
     });
 
-    renderList(container, sortedMappings, {
-        renderItem: renderMappingMarkup,
-        getKey: getMappingRenderKey,
-        getSignature: getMappingRenderSignature
-    });
+    // Update pagination state and render only current page
+    if (window.PaginationManager) {
+        window.PaginationManager.updateState(sortedMappings.length);
+
+        // Get items for current page
+        const pageItems = window.PaginationManager.getCurrentPageItems(sortedMappings);
+
+        renderList(container, pageItems, {
+            renderItem: renderMappingMarkup,
+            getKey: getMappingRenderKey,
+            getSignature: getMappingRenderSignature
+        });
+
+        // Render pagination controls
+        const paginationContainer = document.getElementById('mappings-pagination');
+        if (paginationContainer) {
+            paginationContainer.innerHTML = window.PaginationManager.renderControls();
+        }
+    } else {
+        // Fallback: render all items if pagination not available
+        renderList(container, sortedMappings, {
+            renderItem: renderMappingMarkup,
+            getKey: getMappingRenderKey,
+            getSignature: getMappingRenderSignature
+        });
+    }
 
     if (loadingState) {
         loadingState.classList.add('hidden');
@@ -572,6 +623,13 @@ function executeRequestFilters() {
     const to = document.getElementById('req-filter-to')?.value || '';
 
     const filters = { method, status, url, from, to };
+
+    // Update URL with current filters (primary state storage)
+    if (typeof window.URLStateManager !== 'undefined') {
+        window.URLStateManager.updateURL('requests', filters, true);
+    }
+
+    // Save to localStorage as backup
     window.FilterManager.saveFilterState('requests', filters);
 
     if (!Array.isArray(window.originalRequests) || window.originalRequests.length === 0) {
@@ -682,30 +740,30 @@ function executeRequestFilters() {
 
 // --- FILTER MANAGER ---
 // Centralized filter management
-function getMappingRenderKey(mapping) {
-    if (!mapping || typeof mapping !== 'object') {
-        return '';
+function getRenderKey(item, ...keys) {
+    if (!item || typeof item !== 'object') return '';
+    for (const key of keys) {
+        const value = key.includes('.') ? key.split('.').reduce((obj, k) => obj?.[k], item) : item[key];
+        if (value != null) return String(value);
     }
-    return String(mapping.id || mapping.uuid || mapping.stubId || '');
+    return '';
+}
+
+function getMappingRenderKey(mapping) {
+    return getRenderKey(mapping, 'id', 'uuid', 'stubId');
 }
 
 function getMappingRenderSignature(mapping) {
-    if (!mapping || typeof mapping !== 'object') {
-        return '';
-    }
+    if (!mapping || typeof mapping !== 'object') return '';
     const request = mapping.request || {};
     const response = mapping.response || {};
     const metadata = mapping.metadata || {};
     const stringifyForSignature = (value) => {
-        if (value === undefined || value === null) {
-            return '';
-        }
+        if (value == null) return '';
         try {
             const str = typeof value === 'string' ? value : JSON.stringify(value);
             return str.length > 300 ? `${str.slice(0, 300)}…` : str;
-        } catch {
-            return '';
-        }
+        } catch { return ''; }
     };
     return [
         request.method || '',
@@ -731,27 +789,15 @@ function renderMappingMarkup(mapping) {
 }
 
 function getRequestRenderKey(request) {
-    if (!request || typeof request !== 'object') {
-        return '';
-    }
-    return String(request.id || request.requestId || request.mappingUuid || request.request?.id || request.request?.loggedDate || request.loggedDate || '');
+    return getRenderKey(request, 'id', 'requestId', 'mappingUuid', 'request.id', 'request.loggedDate', 'loggedDate');
 }
 
 function getRequestRenderSignature(request) {
-    if (!request || typeof request !== 'object') {
-        return '';
-    }
-    const req = request.request || {};
-    const res = request.responseDefinition || {};
-    return [
-        req.method || '',
-        req.url || req.urlPath || '',
-        req.loggedDate || request.loggedDate || '',
-        request.wasMatched === false ? 'unmatched' : 'matched',
-        res.status ?? '',
-        (res.body || res.jsonBody || '').length,
-        (req.body || '').length
-    ].join('|');
+    if (!request || typeof request !== 'object') return '';
+    const req = request.request || {}, res = request.responseDefinition || {};
+    return [req.method || '', req.url || req.urlPath || '', req.loggedDate || request.loggedDate || '',
+            request.wasMatched === false ? 'unmatched' : 'matched', res.status ?? '',
+            (res.body || res.jsonBody || '').length, (req.body || '').length].join('|');
 }
 
 function renderRequestMarkup(request) {
@@ -834,23 +880,178 @@ window.FilterManager = {
                 const elem = document.getElementById('req-filter-method');
                 if (elem) elem.value = filters.method;
             }
-            if (filters.status) {
-                const elem = document.getElementById('req-filter-status');
-                if (elem) elem.value = filters.status;
-            }
-            if (filters.url) {
-                const elem = document.getElementById('req-filter-url');
-                if (elem) elem.value = filters.url;
-            }
-            if (filters.from) {
-                const elem = document.getElementById('req-filter-from');
-                if (elem) elem.value = filters.from;
-            }
-            if (filters.to) {
-                const elem = document.getElementById('req-filter-to');
-                if (elem) elem.value = filters.to;
+        } else if (tabName === 'requests') {
+            const methodElem = document.getElementById('req-filter-method');
+            const statusElem = document.getElementById('req-filter-status');
+            const urlElem = document.getElementById('req-filter-url');
+            const fromElem = document.getElementById('req-filter-from');
+            const toElem = document.getElementById('req-filter-to');
+
+            if (methodElem) methodElem.value = filters.method || '';
+            if (statusElem) statusElem.value = filters.status || '';
+            if (urlElem) urlElem.value = filters.url || '';
+            if (fromElem) fromElem.value = filters.from || '';
+            if (toElem) toElem.value = filters.to || '';
+
+            // Sync filter tabs
+            if (filters.method && typeof window.syncFilterTabsFromSelect === 'function') {
+                window.syncFilterTabsFromSelect('request', filters.method);
             }
         }
+
+        return filters;
+    },
+
+    /**
+     * Check if URL has any filter parameters
+     * @param {string} tabName - 'mappings' or 'requests'
+     * @returns {boolean}
+     */
+    hasURLFilters(tabName) {
+        const filters = this.getFiltersFromURL(tabName);
+        return Object.values(filters).some(value => value !== '');
+    }
+};
+
+// ==========================================
+// Filter Presets Manager
+// ==========================================
+window.FilterPresetsManager = {
+    /**
+     * Get all custom presets
+     * @returns {Object} Custom presets
+     */
+    getAllPresets() {
+        try {
+            const customPresets = localStorage.getItem('imock-filter-presets-custom');
+            return customPresets ? JSON.parse(customPresets) : {};
+        } catch (error) {
+            console.warn('Failed to load custom presets:', error);
+            return {};
+        }
+    },
+
+    /**
+     * Apply a preset by ID
+     * @param {string} presetId - Preset identifier
+     * @param {string} tabName - 'mappings' or 'requests'
+     */
+    applyPreset(presetId, tabName = 'mappings') {
+        const presets = this.getAllPresets();
+        const preset = presets[presetId];
+
+        if (!preset) {
+            console.warn(`Preset not found: ${presetId}`);
+            return;
+        }
+
+        if (tabName === 'mappings') {
+            const methodElem = document.getElementById('filter-method');
+            const queryElem = document.getElementById('filter-url');
+            const statusElem = document.getElementById('filter-status');
+
+            if (methodElem) methodElem.value = preset.filters.method || '';
+            if (queryElem) queryElem.value = preset.filters.query || '';
+            if (statusElem) statusElem.value = preset.filters.status || '';
+
+            // Apply filters
+            if (typeof window.applyFilters === 'function') {
+                window.applyFilters();
+            }
+
+            // Sync tabs
+            if (preset.filters.method && typeof window.syncFilterTabsFromSelect === 'function') {
+                window.syncFilterTabsFromSelect('mapping', preset.filters.method);
+            }
+
+            // Show notification
+            if (typeof NotificationManager !== 'undefined') {
+                NotificationManager.info(`Applied preset: ${preset.name}`);
+            }
+        }
+    },
+
+    /**
+     * Save a custom preset
+     * @param {string} presetId - Unique preset ID
+     * @param {Object} presetData - Preset data { name, icon, filters }
+     */
+    saveCustomPreset(presetId, presetData) {
+        try {
+            const customPresets = this.getCustomPresets();
+            customPresets[presetId] = presetData;
+            localStorage.setItem('imock-filter-presets-custom', JSON.stringify(customPresets));
+
+            if (typeof NotificationManager !== 'undefined') {
+                NotificationManager.success(`Preset "${presetData.name}" saved`);
+            }
+
+            // Refresh preset UI if available
+            if (typeof window.renderFilterPresets === 'function') {
+                window.renderFilterPresets();
+            }
+        } catch (error) {
+            console.error('Failed to save preset:', error);
+            if (typeof NotificationManager !== 'undefined') {
+                NotificationManager.error('Failed to save preset');
+            }
+        }
+    },
+
+    /**
+     * Get custom presets only
+     * @returns {Object} Custom presets
+     */
+    getCustomPresets() {
+        try {
+            const customPresets = localStorage.getItem('imock-filter-presets-custom');
+            return customPresets ? JSON.parse(customPresets) : {};
+        } catch (error) {
+            console.warn('Failed to load custom presets:', error);
+            return {};
+        }
+    },
+
+    /**
+     * Delete a custom preset
+     * @param {string} presetId - Preset ID to delete
+     */
+    deleteCustomPreset(presetId) {
+        try {
+            const customPresets = this.getCustomPresets();
+            delete customPresets[presetId];
+            localStorage.setItem('imock-filter-presets-custom', JSON.stringify(customPresets));
+
+            if (typeof NotificationManager !== 'undefined') {
+                NotificationManager.success('Preset deleted');
+            }
+
+            // Refresh preset UI
+            if (typeof window.renderFilterPresets === 'function') {
+                window.renderFilterPresets();
+            }
+        } catch (error) {
+            console.error('Failed to delete preset:', error);
+            if (typeof NotificationManager !== 'undefined') {
+                NotificationManager.error('Failed to delete preset');
+            }
+        }
+    },
+
+    /**
+     * Get current filters as preset data
+     * @param {string} tabName - 'mappings' or 'requests'
+     * @returns {Object} Current filters
+     */
+    getCurrentFiltersAsPreset(tabName = 'mappings') {
+        if (tabName === 'mappings') {
+            return {
+                method: document.getElementById('filter-method')?.value || '',
+                query: document.getElementById('filter-url')?.value || '',
+                status: document.getElementById('filter-status')?.value || ''
+            };
+        }
+        return {};
     }
 };
 

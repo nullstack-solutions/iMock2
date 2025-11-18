@@ -562,8 +562,8 @@
     position: relative;
     transition: background var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
     contain: layout style paint;
-    content-visibility: auto;
-    contain-intrinsic-size: auto 160px;
+    /* content-visibility removed: causes black boxes and FPS drops with pagination */
+    /* With pagination (20 items), content-visibility optimization is not needed */
     background: rgba(255, 255, 255, 0.02);
     border-radius: var(--radius-lg);
 }
@@ -1826,5 +1826,87 @@
     .toast.show {
         transition: none;
         transform: none;
+    }
+}
+
+/* === PAGINATION CONTROLS === */
+.pagination-container {
+    margin-top: var(--space-4);
+    margin-bottom: var(--space-4);
+    padding: var(--space-4) 0;
+    border-top: 1px solid var(--border-color);
+}
+
+.pagination-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--space-4);
+}
+
+.pagination-info {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+}
+
+.pagination-buttons {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+}
+
+.pagination-btn {
+    min-width: 2rem;
+    height: 2rem;
+    padding: 0 var(--space-2);
+    border: 1px solid var(--border-color);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-size: 0.875rem;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.pagination-btn:hover:not(:disabled) {
+    background: var(--bg-hover);
+    border-color: var(--accent-color);
+}
+
+.pagination-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.pagination-btn.active {
+    background: var(--accent-color);
+    color: var(--bg-primary);
+    border-color: var(--accent-color);
+    font-weight: 600;
+}
+
+.pagination-ellipsis {
+    padding: 0 var(--space-2);
+    color: var(--text-secondary);
+}
+
+/* Responsive pagination */
+@media (max-width: 640px) {
+    .pagination-controls {
+        flex-direction: column;
+        gap: var(--space-3);
+    }
+
+    .pagination-info {
+        order: 2;
+    }
+
+    .pagination-buttons {
+        order: 1;
+        flex-wrap: wrap;
+        justify-content: center;
     }
 }
