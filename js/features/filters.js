@@ -590,46 +590,45 @@ window.deleteSavedFilter = (tab, name) => {
 function updateSavedFiltersDisplay(tab) {
     const savedFilters = getSavedFilters(tab);
 
-    let containerId, listId;
+    let listId, separatorId;
     if (tab === 'mappings') {
-        containerId = 'saved-filters';
         listId = 'saved-filters-list';
+        separatorId = 'saved-filters-separator';
     } else if (tab === 'requests') {
-        containerId = 'req-saved-filters';
         listId = 'req-saved-filters-list';
+        separatorId = 'req-saved-filters-separator';
     } else {
         return;
     }
 
-    const container = document.getElementById(containerId);
     const list = document.getElementById(listId);
+    const separator = document.getElementById(separatorId);
 
-    if (!container || !list) return;
+    if (!list) return;
 
     if (savedFilters.length === 0) {
-        container.style.display = 'none';
+        list.style.display = 'none';
+        if (separator) separator.style.display = 'none';
         return;
     }
 
-    // Build chips HTML
+    // Build chips HTML - with X inside the button
     const chips = savedFilters.map(filter => `
         <button type="button"
                 class="filter-chip filter-chip-saved"
                 onclick="applySavedFilter('${tab}', '${filter.name.replace(/'/g, "\\'")}')"
                 title="${filter.query}">
-            ${filter.name}
-            <button type="button"
-                    class="filter-chip-remove"
-                    onclick="event.stopPropagation(); deleteSavedFilter('${tab}', '${filter.name.replace(/'/g, "\\'")}')"
-                    title="Delete filter"
-                    aria-label="Delete filter">
-                ×
-            </button>
+            <span class="filter-chip-text">${filter.name}</span>
+            <span class="filter-chip-remove"
+                  onclick="event.stopPropagation(); deleteSavedFilter('${tab}', '${filter.name.replace(/'/g, "\\'")}')"
+                  title="Delete filter"
+                  aria-label="Delete filter">×</span>
         </button>
     `);
 
     list.innerHTML = chips.join('');
-    container.style.display = 'flex';
+    list.style.display = 'inline-flex';
+    if (separator) separator.style.display = 'inline';
 }
 
 // Load saved filters on page load
