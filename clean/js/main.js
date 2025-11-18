@@ -660,22 +660,33 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Restore active tab from URL if present
     const urlTab = typeof window.getActiveTabFromURL === 'function' ? window.getActiveTabFromURL() : null;
     const validTabs = ['mappings', 'requests', 'scenarios', 'import-export', 'recording', 'settings'];
+    let activeTab = 'mappings'; // default
+
     if (urlTab && validTabs.includes(urlTab)) {
         console.log(`🔗 Restoring tab from URL: ${urlTab}`);
-        // Find the tab button and click it
-        const tabButton = document.querySelector(`[onclick*="showTab('${urlTab}')"]`);
-        if (tabButton && typeof window.showTab === 'function') {
-            window.showTab(urlTab, tabButton);
+        activeTab = urlTab;
+        // Find the nav-item button and activate it
+        const tabButton = document.querySelector(`[onclick*="showPage('${urlTab}')"]`);
+        if (tabButton && typeof window.showPage === 'function') {
+            window.showPage(urlTab, tabButton);
         }
     }
 
-    // Restore saved filter state for mappings BEFORE autoconnect
+    // Restore saved filter state for active tab BEFORE autoconnect
     // so filters are ready when data loads
     if (typeof window.FilterManager?.restoreFilters === 'function') {
-        window.FilterManager.restoreFilters('mappings');
-        // Update active filters display after restore
-        if (typeof window.updateActiveFiltersDisplay === 'function') {
-            window.updateActiveFiltersDisplay();
+        if (activeTab === 'mappings') {
+            window.FilterManager.restoreFilters('mappings');
+            // Update active filters display after restore
+            if (typeof window.updateActiveFiltersDisplay === 'function') {
+                window.updateActiveFiltersDisplay();
+            }
+        } else if (activeTab === 'requests') {
+            window.FilterManager.restoreFilters('requests');
+            // Update active filters display after restore
+            if (typeof window.updateRequestActiveFiltersDisplay === 'function') {
+                window.updateRequestActiveFiltersDisplay();
+            }
         }
     }
 

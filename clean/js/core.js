@@ -594,6 +594,13 @@ window.showPage = (pageId, element) => {
     targetPage.classList.remove('hidden');
     document.querySelectorAll('.sidebar .nav-item').forEach(i => i.classList.remove('active'));
     if (element) element.classList.add('active');
+
+    // Update URL with active tab
+    if (window.history && window.history.replaceState) {
+        const url = new URL(window.location.href);
+        url.searchParams.set('tab', pageId);
+        window.history.replaceState({}, '', url.toString());
+    }
 };
 
 // Sidebar collapse helpers

@@ -1055,13 +1055,8 @@ function updateURLFilterParams(query, tabName = 'mappings') {
         url.searchParams.delete(paramName);
     }
 
-    // Also set active tab in URL
-    if (typeof window.TabManager !== 'undefined') {
-        const currentTab = window.TabManager.getCurrentTab();
-        if (currentTab) {
-            url.searchParams.set('tab', currentTab);
-        }
-    }
+    // Note: tab parameter is managed by showPage() function
+    // Don't update it here to avoid conflicts
 
     // Update URL without reloading page
     window.history.replaceState({}, '', url.toString());
