@@ -1477,7 +1477,8 @@
 }
 
 .quick-filters,
-.active-filters {
+.active-filters,
+.saved-filters {
     display: flex;
     align-items: center;
     gap: var(--space-2);
@@ -1485,7 +1486,8 @@
 }
 
 .quick-filters-label,
-.active-filters-label {
+.active-filters-label,
+.saved-filters-label {
     font-size: var(--font-size-xs);
     font-weight: 600;
     color: var(--text-secondary);
@@ -1493,7 +1495,8 @@
     letter-spacing: 0.05em;
 }
 
-.active-filters-list {
+.active-filters-list,
+.saved-filters-list {
     display: flex;
     align-items: center;
     gap: var(--space-2);
@@ -1543,6 +1546,37 @@
     color: #ef4444;
 }
 
+.filter-chip-saved {
+    background: rgba(168, 85, 247, 0.2);
+    border-color: rgba(168, 85, 247, 0.5);
+    color: #a855f7;
+    padding-right: 0.5rem;
+    position: relative;
+}
+
+.filter-chip-saved:hover {
+    background: rgba(168, 85, 247, 0.3);
+    border-color: rgba(168, 85, 247, 0.6);
+    transform: translateY(-1px);
+}
+
+.filter-chip-saved .filter-chip-remove {
+    background: transparent;
+    border: none;
+    padding: 0;
+    margin-left: var(--space-1);
+    font-size: 1rem;
+    line-height: 1;
+    color: inherit;
+    opacity: 0.7;
+    cursor: pointer;
+}
+
+.filter-chip-saved:hover .filter-chip-remove {
+    opacity: 1;
+    color: #ef4444;
+}
+
 .filter-chip-remove {
     margin-left: var(--space-1);
     font-size: 1rem;
@@ -1576,6 +1610,17 @@
     background: rgba(239, 68, 68, 0.12);
     border-color: rgba(239, 68, 68, 0.3);
     color: #dc2626;
+}
+
+[data-theme="light"] .filter-chip-saved {
+    background: rgba(168, 85, 247, 0.12);
+    border-color: rgba(168, 85, 247, 0.3);
+    color: #7c3aed;
+}
+
+[data-theme="light"] .filter-chip-saved:hover {
+    background: rgba(168, 85, 247, 0.18);
+    border-color: rgba(168, 85, 247, 0.4);
 }
 
 /* ===== MESSAGES ===== */
