@@ -322,25 +322,39 @@ window.applyQuickRequestFilter = (filter) => {
     const queryInput = document.getElementById('req-filter-query');
     if (!queryInput) return;
 
+    const existingQuery = queryInput.value.trim();
+
     // Check if it's a method filter (GET, POST, etc.) or other filter (matched:true, etc.)
     if (/^[A-Z]+$/.test(filter)) {
         // It's a method - set as method:XXX
-        // Parse existing query to check if method already exists
-        const existingQuery = queryInput.value.trim();
         const methodPattern = /method:[\w,]+/i;
 
         if (methodPattern.test(existingQuery)) {
             // Replace existing method
             queryInput.value = existingQuery.replace(methodPattern, `method:${filter}`);
         } else {
-            // Add method
-            const newQuery = existingQuery ? `method:${filter} ${existingQuery}` : `method:${filter}`;
-            queryInput.value = newQuery;
+            // Add method at the beginning
+            queryInput.value = existingQuery ? `method:${filter} ${existingQuery}` : `method:${filter}`;
         }
     } else {
-        // It's a complex filter like "matched:true"
-        const existingQuery = queryInput.value.trim();
-        queryInput.value = existingQuery ? `${filter} ${existingQuery}` : filter;
+        // It's a key:value filter like "matched:true"
+        // Extract the key (matched, status, client, etc.)
+        const keyMatch = filter.match(/^(\w+):/);
+        if (keyMatch) {
+            const key = keyMatch[1];
+            const keyPattern = new RegExp(`${key}:[^\\s]+`, 'i');
+
+            if (keyPattern.test(existingQuery)) {
+                // Replace existing filter with same key
+                queryInput.value = existingQuery.replace(keyPattern, filter);
+            } else {
+                // Add new filter at the beginning
+                queryInput.value = existingQuery ? `${filter} ${existingQuery}` : filter;
+            }
+        } else {
+            // Fallback: just append
+            queryInput.value = existingQuery ? `${filter} ${existingQuery}` : filter;
+        }
     }
 
     FilterManager.applyRequestFilters();
