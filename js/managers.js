@@ -485,7 +485,7 @@ function executeMappingFilters() {
     const queryInput = document.getElementById('filter-query');
     const query = queryInput?.value?.trim() || '';
 
-    // Сохраняем query в filter state
+    // Save query to filter state
     window.FilterManager.saveFilterState('mappings', { query });
 
     if (!Array.isArray(window.originalMappings) || window.originalMappings.length === 0) {
@@ -500,10 +500,18 @@ function executeMappingFilters() {
         return;
     }
 
-    // Используем новый query parser для фильтрации
-    const filteredMappings = query && window.QueryParser
-        ? window.QueryParser.filterMappingsByQuery(window.originalMappings, query)
-        : window.originalMappings;
+    // Use new query parser for filtering
+    let filteredMappings;
+    if (query) {
+        if (window.QueryParser && typeof window.QueryParser.filterMappingsByQuery === 'function') {
+            filteredMappings = window.QueryParser.filterMappingsByQuery(window.originalMappings, query);
+        } else {
+            console.warn('[Mapping Filter] QueryParser or filterMappingsByQuery is not available. Showing all mappings.');
+            filteredMappings = window.originalMappings;
+        }
+    } else {
+        filteredMappings = window.originalMappings;
+    }
 
     window.allMappings = filteredMappings;
 

@@ -1,13 +1,13 @@
 /**
- * Query Parser для фильтрации mappings
- * Простой парсер Gmail-like синтаксиса без внешних зависимостей
+ * Query Parser for filtering mappings
+ * Simple Gmail-like syntax parser without external dependencies
  *
- * Примеры запросов:
- * - method:GET,POST          → OR между методами
- * - url:api status:200       → AND между разными полями
- * - method:GET url:/users    → комбинация условий
- * - -status:404              → исключение
- * - priority:1-5             → диапазон приоритетов
+ * Example queries:
+ * - method:GET,POST          → OR between methods
+ * - url:api status:200       → AND between different fields
+ * - method:GET url:/users    → combination of conditions
+ * - -status:404              → exclusion
+ * - priority:1-5             → priority range
  */
 
 'use strict';
@@ -16,9 +16,9 @@ const KEYWORDS = ['method', 'url', 'status', 'name', 'scenario'];
 const RANGE_KEYWORDS = ['priority'];
 
 /**
- * Парсит query строку в структурированный объект
- * @param {string} query - строка запроса (например: "method:GET,POST url:api")
- * @returns {Object} - распарсенный объект или null при ошибке
+ * Parses query string into structured object
+ * @param {string} query - Query string (e.g., "method:GET,POST url:api")
+ * @returns {Object|null} - Parsed object or null on error
  */
 function parseQuery(query) {
     if (!query || typeof query !== 'string') {
@@ -32,11 +32,10 @@ function parseQuery(query) {
 
     try {
         const result = {};
-        let remaining = trimmed;
 
-        // Регулярное выражение для поиска key:value пар
-        // Поддерживает: key:value, key:value1,value2, -key:value
-        const keyValuePattern = /(-?)(\w+):([\w\/\*\.\-,]+|"[^"]*")/g;
+        // Regular expression to find key:value pairs
+        // Supports: key:value, key:value1,value2, -key:value
+        const keyValuePattern = /(-?)(\w+):([\w\/\*.,\-]+|"[^"]*")/g;
         let match;
         const processedIndices = [];
 
@@ -45,19 +44,19 @@ function parseQuery(query) {
             const key = match[2];
             let value = match[3];
 
-            // Убираем кавычки если есть
+            // Remove quotes if present
             if (value.startsWith('"') && value.endsWith('"')) {
                 value = value.slice(1, -1);
             }
 
-            // Проверяем что это известный keyword
+            // Check that this is a known keyword
             if (!KEYWORDS.includes(key) && !RANGE_KEYWORDS.includes(key)) {
                 continue;
             }
 
             processedIndices.push({ start: match.index, end: match.index + match[0].length });
 
-            // Обработка диапазонов (например: priority:1-5)
+            // Handle ranges (e.g., priority:1-5)
             if (RANGE_KEYWORDS.includes(key)) {
                 const rangeParts = value.split('-');
                 if (rangeParts.length === 2) {
@@ -74,7 +73,7 @@ function parseQuery(query) {
                 continue;
             }
 
-            // Обработка исключений
+            // Handle exclusions
             if (isExclude) {
                 const values = value.split(',');
                 result[key] = {
@@ -83,12 +82,12 @@ function parseQuery(query) {
                 continue;
             }
 
-            // Обработка обычных значений (с поддержкой запятых для OR)
+            // Handle regular values (with comma support for OR)
             const values = value.split(',');
             result[key] = values.length > 1 ? values : values[0];
         }
 
-        // Собираем оставшийся текст (свободный поиск)
+        // Collect remaining text (free search)
         if (processedIndices.length > 0) {
             let textParts = [];
             let lastEnd = 0;
@@ -113,7 +112,7 @@ function parseQuery(query) {
                 result.text = freeText;
             }
         } else {
-            // Если нет key:value пар, весь текст это свободный поиск
+            // If there are no key:value pairs, all text is free search
             result.text = trimmed;
         }
 
@@ -125,9 +124,9 @@ function parseQuery(query) {
 }
 
 /**
- * Проверяет соответствие значения условию
- * @param {*} value - значение для проверки
- * @param {*} condition - условие (строка, массив строк, или объект с exclude)
+ * Checks if value matches condition
+ * @param {*} value - Value to check
+ * @param {*} condition - Condition (string, array of strings, or object with exclude)
  * @returns {boolean}
  */
 function matchesCondition(value, condition) {
@@ -137,7 +136,7 @@ function matchesCondition(value, condition) {
 
     const stringValue = String(value).toLowerCase();
 
-    // Проверка на исключение (exclude)
+    // Check for exclusion
     if (condition && typeof condition === 'object' && condition.exclude) {
         const excludeValues = Array.isArray(condition.exclude)
             ? condition.exclude
@@ -151,7 +150,7 @@ function matchesCondition(value, condition) {
         return true;
     }
 
-    // Обычное совпадение (OR между значениями если массив)
+    // Regular match (OR between values if array)
     const conditions = Array.isArray(condition) ? condition : [condition];
 
     for (const cond of conditions) {
@@ -165,9 +164,9 @@ function matchesCondition(value, condition) {
 }
 
 /**
- * Проверяет соответствие значения диапазону
- * @param {number} value - значение для проверки
- * @param {Object} range - объект с from и to
+ * Checks if value matches range
+ * @param {number} value - Value to check
+ * @param {Object} range - Object with from and to properties
  * @returns {boolean}
  */
 function matchesRange(value, range) {
@@ -183,10 +182,10 @@ function matchesRange(value, range) {
 }
 
 /**
- * Фильтрует массив mappings по распарсенному query
- * @param {Array} mappings - массив mappings для фильтрации
- * @param {Object} parsedQuery - результат parseQuery()
- * @returns {Array} - отфильтрованный массив
+ * Filters array of mappings by parsed query
+ * @param {Array} mappings - Array of mappings to filter
+ * @param {Object} parsedQuery - Result of parseQuery()
+ * @returns {Array} - Filtered array
  */
 function filterMappings(mappings, parsedQuery) {
     if (!Array.isArray(mappings)) {
@@ -202,7 +201,7 @@ function filterMappings(mappings, parsedQuery) {
             return false;
         }
 
-        // Проверка method
+        // Check method
         if (parsedQuery.method) {
             const requestMethod = mapping.request?.method || '';
             if (!matchesCondition(requestMethod, parsedQuery.method)) {
@@ -210,7 +209,7 @@ function filterMappings(mappings, parsedQuery) {
             }
         }
 
-        // Проверка url (ищем в url, urlPattern, urlPath)
+        // Check url (search in url, urlPattern, urlPath)
         if (parsedQuery.url) {
             const mappingUrl = mapping.request?.url ||
                              mapping.request?.urlPattern ||
@@ -220,7 +219,7 @@ function filterMappings(mappings, parsedQuery) {
             }
         }
 
-        // Проверка status
+        // Check status
         if (parsedQuery.status) {
             const responseStatus = mapping.response?.status ?? '';
             if (!matchesCondition(responseStatus, parsedQuery.status)) {
@@ -228,7 +227,7 @@ function filterMappings(mappings, parsedQuery) {
             }
         }
 
-        // Проверка name
+        // Check name
         if (parsedQuery.name) {
             const mappingName = mapping.name || '';
             if (!matchesCondition(mappingName, parsedQuery.name)) {
@@ -236,7 +235,7 @@ function filterMappings(mappings, parsedQuery) {
             }
         }
 
-        // Проверка scenario
+        // Check scenario
         if (parsedQuery.scenario) {
             const scenarioName = mapping.scenarioName || '';
             if (!matchesCondition(scenarioName, parsedQuery.scenario)) {
@@ -244,7 +243,8 @@ function filterMappings(mappings, parsedQuery) {
             }
         }
 
-        // Проверка priority (диапазон)
+        // Check priority (range)
+        // Note: Default priority is 1 if not specified on the mapping
         if (parsedQuery.priority) {
             const mappingPriority = mapping.priority ?? 1;
             if (!matchesRange(mappingPriority, parsedQuery.priority)) {
@@ -252,7 +252,7 @@ function filterMappings(mappings, parsedQuery) {
             }
         }
 
-        // Проверка текстового поиска (если есть text без ключа)
+        // Check text search (if there is text without a key)
         if (parsedQuery.text) {
             const searchText = String(parsedQuery.text).toLowerCase();
             const mappingUrl = (mapping.request?.url ||
@@ -273,17 +273,17 @@ function filterMappings(mappings, parsedQuery) {
 }
 
 /**
- * Главная функция фильтрации - парсит query и фильтрует mappings
- * @param {Array} mappings - массив mappings
- * @param {string} queryString - строка запроса
- * @returns {Array} - отфильтрованный массив
+ * Main filtering function - parses query and filters mappings
+ * @param {Array} mappings - Array of mappings
+ * @param {string} queryString - Query string
+ * @returns {Array} - Filtered array
  */
 function filterMappingsByQuery(mappings, queryString) {
     const parsed = parseQuery(queryString);
     return filterMappings(mappings, parsed);
 }
 
-// Экспорт для использования в браузере
+// Export for use in browser
 window.QueryParser = {
     parseQuery,
     filterMappings,
