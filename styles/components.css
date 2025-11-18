@@ -1474,6 +1474,8 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
+    min-height: 2.5rem; /* Reserve space to prevent CLS */
+    contain: layout; /* Isolate layout changes */
 }
 
 .quick-filters,
@@ -1482,6 +1484,7 @@
     align-items: center;
     gap: var(--space-2);
     flex-wrap: wrap;
+    min-height: 2rem; /* Prevent CLS when chips appear */
 }
 
 .quick-filters-label,
@@ -1506,6 +1509,18 @@
     opacity: 0.3;
     margin: 0 var(--space-1);
     font-weight: 300;
+}
+
+/* Hidden class for filters - avoids layout shift (CLS optimization) */
+.active-filters.hidden,
+.saved-filters-inline.hidden,
+.filters-separator.hidden {
+    visibility: hidden;
+    height: 0;
+    min-height: 0;
+    overflow: hidden;
+    margin: 0;
+    padding: 0;
 }
 
 .filter-chip {
