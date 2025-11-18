@@ -622,6 +622,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         window.initializeFilterTabs();
     }
 
+    // Restore saved filter state for mappings
+    if (typeof window.FilterManager?.restoreFilters === 'function') {
+        window.FilterManager.restoreFilters('mappings');
+        // Update active filters display after restore
+        setTimeout(() => {
+            if (typeof window.updateActiveFiltersDisplay === 'function') {
+                window.updateActiveFiltersDisplay();
+            }
+        }, 100);
+    }
+
     initializeOnboardingFlow();
 });
 

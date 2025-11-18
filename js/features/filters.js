@@ -4,13 +4,24 @@
 
 
 // Compact filtering helpers via FilterManager
-window.applyFilters = () => FilterManager.applyMappingFilters();
+window.applyFilters = () => {
+    FilterManager.applyMappingFilters();
+    // Update active filters display
+    if (typeof window.updateActiveFiltersDisplay === 'function') {
+        window.updateActiveFiltersDisplay();
+    }
+};
+
 window.clearMappingFilters = () => {
     const queryInput = document.getElementById('filter-query');
     if (queryInput) queryInput.value = '';
     FilterManager.applyMappingFilters();
     if (typeof FilterManager.flushMappingFilters === 'function') {
         FilterManager.flushMappingFilters();
+    }
+    // Update active filters display
+    if (typeof window.updateActiveFiltersDisplay === 'function') {
+        window.updateActiveFiltersDisplay();
     }
 };
 
@@ -35,6 +46,118 @@ window.toggleQueryHelp = () => {
             button.setAttribute('aria-expanded', 'false');
         }
     }
+};
+
+// Quick method filter - sets method in query
+window.applyQuickMethodFilter = (method) => {
+    const queryInput = document.getElementById('filter-query');
+    if (!queryInput) return;
+
+    const currentQuery = queryInput.value.trim();
+
+    // Parse existing query to check if method filter exists
+    const methodPattern = /method:[^\s]+/;
+
+    if (methodPattern.test(currentQuery)) {
+        // Replace existing method filter
+        queryInput.value = currentQuery.replace(methodPattern, `method:${method}`);
+    } else {
+        // Add new method filter
+        queryInput.value = currentQuery ? `method:${method} ${currentQuery}` : `method:${method}`;
+    }
+
+    // Apply filters and update active chips display
+    applyFilters();
+    updateActiveFiltersDisplay();
+};
+
+// Update active filters display as chips
+window.updateActiveFiltersDisplay = () => {
+    const queryInput = document.getElementById('filter-query');
+    const activeFiltersContainer = document.getElementById('active-filters');
+    const activeFiltersList = document.getElementById('active-filters-list');
+
+    if (!queryInput || !activeFiltersContainer || !activeFiltersList) return;
+
+    const query = queryInput.value.trim();
+
+    if (!query) {
+        activeFiltersContainer.style.display = 'none';
+        return;
+    }
+
+    // Parse query to extract filters
+    const parsed = window.QueryParser ? window.QueryParser.parseQuery(query) : null;
+
+    if (!parsed || Object.keys(parsed).length === 0) {
+        activeFiltersContainer.style.display = 'none';
+        return;
+    }
+
+    // Build chips HTML
+    const chips = [];
+
+    for (const [key, value] of Object.entries(parsed)) {
+        if (key === 'text') continue; // Skip free text search
+
+        let chipText = '';
+
+        if (typeof value === 'object' && value.exclude) {
+            // Exclusion filter
+            const excludeValue = Array.isArray(value.exclude) ? value.exclude.join(',') : value.exclude;
+            chipText = `-${key}:${excludeValue}`;
+        } else if (typeof value === 'object' && value.from && value.to) {
+            // Range filter
+            chipText = `${key}:${value.from}-${value.to}`;
+        } else if (Array.isArray(value)) {
+            // Multiple values (OR)
+            chipText = `${key}:${value.join(',')}`;
+        } else {
+            // Single value
+            chipText = `${key}:${value}`;
+        }
+
+        chips.push(`
+            <button type="button"
+                    class="filter-chip filter-chip-active"
+                    onclick="removeActiveFilter('${key}')"
+                    title="Click to remove">
+                ${chipText}
+                <span class="filter-chip-remove" aria-hidden="true">×</span>
+            </button>
+        `);
+    }
+
+    activeFiltersList.innerHTML = chips.join('');
+    activeFiltersContainer.style.display = chips.length > 0 ? 'flex' : 'none';
+};
+
+// Remove active filter from query
+window.removeActiveFilter = (key) => {
+    const queryInput = document.getElementById('filter-query');
+    if (!queryInput) return;
+
+    const currentQuery = queryInput.value.trim();
+
+    // Remove the filter from query string
+    // Handle various formats: key:value, -key:value, key:value1,value2, key:from-to
+    const patterns = [
+        new RegExp(`-?${key}:[^\\s]+`, 'g'), // Remove key:value or -key:value
+        new RegExp(`\\s+${key}:[^\\s]+`, 'g'), // Remove with leading space
+        new RegExp(`${key}:[^\\s]+\\s+`, 'g')  // Remove with trailing space
+    ];
+
+    let newQuery = currentQuery;
+    for (const pattern of patterns) {
+        newQuery = newQuery.replace(pattern, ' ');
+    }
+
+    // Clean up extra spaces
+    newQuery = newQuery.replace(/\s+/g, ' ').trim();
+
+    queryInput.value = newQuery;
+    applyFilters();
+    updateActiveFiltersDisplay();
 };
 window.applyRequestFilters = () => FilterManager.applyRequestFilters();
 

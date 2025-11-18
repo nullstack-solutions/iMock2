@@ -327,6 +327,34 @@
                             </div>
                         </div>
 
+                        <!-- Quick filters and active filters -->
+                        <div class="filter-chips-container">
+                            <div class="quick-filters">
+                                <span class="quick-filters-label">Quick:</span>
+                                <button type="button" class="filter-chip filter-chip-quick" onclick="applyQuickMethodFilter('GET')" data-method="GET">
+                                    GET
+                                </button>
+                                <button type="button" class="filter-chip filter-chip-quick" onclick="applyQuickMethodFilter('POST')" data-method="POST">
+                                    POST
+                                </button>
+                                <button type="button" class="filter-chip filter-chip-quick" onclick="applyQuickMethodFilter('PUT')" data-method="PUT">
+                                    PUT
+                                </button>
+                                <button type="button" class="filter-chip filter-chip-quick" onclick="applyQuickMethodFilter('PATCH')" data-method="PATCH">
+                                    PATCH
+                                </button>
+                                <button type="button" class="filter-chip filter-chip-quick" onclick="applyQuickMethodFilter('DELETE')" data-method="DELETE">
+                                    DELETE
+                                </button>
+                            </div>
+                            <div class="active-filters" id="active-filters" style="display: none;">
+                                <span class="active-filters-label">Active:</span>
+                                <div class="active-filters-list" id="active-filters-list">
+                                    <!-- Active filter chips will be inserted here -->
+                                </div>
+                            </div>
+                        </div>
+
                         <div id="query-help" class="query-help hidden">
                             <div class="query-help-title">Query Syntax Examples:</div>
                             <div class="query-help-examples">
