@@ -88,7 +88,7 @@ window.updateActiveFiltersDisplay = () => {
     const query = queryInput.value.trim();
 
     if (!query) {
-        activeFiltersContainer.classList.add('hidden');
+        activeFiltersContainer.classList.add('filter-hidden');
         return;
     }
 
@@ -96,7 +96,7 @@ window.updateActiveFiltersDisplay = () => {
     const parsed = window.QueryParser ? window.QueryParser.parseQuery(query) : null;
 
     if (!parsed || Object.keys(parsed).length === 0) {
-        activeFiltersContainer.classList.add('hidden');
+        activeFiltersContainer.classList.add('filter-hidden');
         return;
     }
 
@@ -137,9 +137,9 @@ window.updateActiveFiltersDisplay = () => {
     activeFiltersList.innerHTML = chips.join('');
     // Use classList to avoid layout shift (CLS optimization)
     if (chips.length > 0) {
-        activeFiltersContainer.classList.remove('hidden');
+        activeFiltersContainer.classList.remove('filter-hidden');
     } else {
-        activeFiltersContainer.classList.add('hidden');
+        activeFiltersContainer.classList.add('filter-hidden');
     }
 };
 
@@ -392,14 +392,14 @@ window.updateRequestActiveFiltersDisplay = () => {
     const query = queryInput.value.trim();
     if (!query || !window.QueryParser) {
         container.innerHTML = '';
-        container.classList.add('hidden');
+        container.classList.add('filter-hidden');
         return;
     }
 
     const parsed = window.QueryParser.parseQuery(query);
     if (!parsed) {
         container.innerHTML = '';
-        container.classList.add('hidden');
+        container.classList.add('filter-hidden');
         return;
     }
 
@@ -432,9 +432,9 @@ window.updateRequestActiveFiltersDisplay = () => {
     container.innerHTML = chips.join('');
     // Use classList to avoid layout shift (CLS optimization)
     if (chips.length > 0) {
-        container.classList.remove('hidden');
+        container.classList.remove('filter-hidden');
     } else {
-        container.classList.add('hidden');
+        container.classList.add('filter-hidden');
     }
 };
 
@@ -634,8 +634,8 @@ function updateSavedFiltersDisplay(tab) {
     if (!list) return;
 
     if (savedFilters.length === 0) {
-        list.classList.add('hidden');
-        if (separator) separator.classList.add('hidden');
+        list.classList.add('filter-hidden');
+        if (separator) separator.classList.add('filter-hidden');
         return;
     }
 
@@ -654,8 +654,8 @@ function updateSavedFiltersDisplay(tab) {
     `);
 
     list.innerHTML = chips.join('');
-    list.classList.remove('hidden');
-    if (separator) separator.classList.remove('hidden');
+    list.classList.remove('filter-hidden');
+    if (separator) separator.classList.remove('filter-hidden');
 }
 
 // Load saved filters on page load
