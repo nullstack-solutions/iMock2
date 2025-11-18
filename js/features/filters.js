@@ -223,15 +223,83 @@ window.applyQuickFilter = () => {
     }
 };
 
-// Clear quick filter selection (used when custom time range is set)
-window.clearQuickFilter = () => {
-    const quickEl = document.getElementById(SELECTORS.REQUEST_FILTERS.QUICK);
+// Clear quick time filter selection (used when custom time range is set)
+window.clearQuickTimeFilter = () => {
+    const quickEl = document.getElementById('req-filter-quick');
     if (quickEl) quickEl.value = '';
 };
+
+// Apply quick time filter (5m, 15m, 30m, 1h, etc.)
+window.applyQuickTimeFilter = () => {
+    const quickEl = document.getElementById('req-filter-quick');
+    const fromEl = document.getElementById('req-filter-from');
+    const toEl = document.getElementById('req-filter-to');
+
+    if (!quickEl || !fromEl || !toEl) return;
+
+    const value = quickEl.value;
+    if (!value) {
+        // Clear time filters
+        fromEl.value = '';
+        toEl.value = '';
+        FilterManager.applyRequestFilters();
+        if (typeof FilterManager.flushRequestFilters === 'function') {
+            FilterManager.flushRequestFilters();
+        }
+        return;
+    }
+
+    // Calculate time range
+    const now = new Date();
+    const toTime = now;
+    let fromTime = new Date(now);
+
+    // Parse time value
+    const match = value.match(/^(\d+)([mhd])$/);
+    if (match) {
+        const amount = parseInt(match[1], 10);
+        const unit = match[2];
+
+        switch (unit) {
+            case 'm': // minutes
+                fromTime.setMinutes(fromTime.getMinutes() - amount);
+                break;
+            case 'h': // hours
+                fromTime.setHours(fromTime.getHours() - amount);
+                break;
+            case 'd': // days
+                fromTime.setDate(fromTime.getDate() - amount);
+                break;
+        }
+    }
+
+    // Format datetime for input fields (YYYY-MM-DDTHH:mm)
+    const formatDateTime = (date) => {
+        const pad = (n) => String(n).padStart(2, '0');
+        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    };
+
+    fromEl.value = formatDateTime(fromTime);
+    toEl.value = formatDateTime(toTime);
+
+    FilterManager.applyRequestFilters();
+    if (typeof FilterManager.flushRequestFilters === 'function') {
+        FilterManager.flushRequestFilters();
+    }
+};
+
 window.clearRequestFilters = () => {
     // Clear query-based filter
     const queryInput = document.getElementById('req-filter-query');
     if (queryInput) queryInput.value = '';
+
+    // Clear time range filters
+    const fromEl = document.getElementById('req-filter-from');
+    const toEl = document.getElementById('req-filter-to');
+    const quickEl = document.getElementById('req-filter-quick');
+    if (fromEl) fromEl.value = '';
+    if (toEl) toEl.value = '';
+    if (quickEl) quickEl.value = '';
 
     FilterManager.applyRequestFilters();
     if (typeof FilterManager.flushRequestFilters === 'function') {

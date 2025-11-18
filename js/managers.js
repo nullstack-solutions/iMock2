@@ -616,12 +616,18 @@ function executeMappingFilters() {
 }
 
 function executeRequestFilters() {
-    // Try new query-based filter first
+    // Get query-based filter
     const queryInput = document.getElementById('req-filter-query');
     const query = queryInput?.value?.trim() || '';
 
-    // Save query to localStorage and URL
-    window.FilterManager.saveFilterState('requests', { query });
+    // Get time range filters
+    const fromInput = document.getElementById('req-filter-from');
+    const toInput = document.getElementById('req-filter-to');
+    const from = fromInput?.value || '';
+    const to = toInput?.value || '';
+
+    // Save filters to localStorage and URL
+    window.FilterManager.saveFilterState('requests', { query, from, to });
     updateURLFilterParams(query);
 
     if (!Array.isArray(window.originalRequests) || window.originalRequests.length === 0) {
@@ -636,12 +642,38 @@ function executeRequestFilters() {
         return;
     }
 
-    // Use QueryParser if query is provided
-    const filteredRequests = query && window.QueryParser
+    // Step 1: Apply query-based filters
+    let filteredRequests = query && window.QueryParser
         ? window.QueryParser.filterRequestsByQuery(window.originalRequests, query)
         : window.originalRequests;
 
-    window.allRequests = query ? filteredRequests : window.originalRequests;
+    // Step 2: Apply time range filters
+    const fromTime = from ? new Date(from).getTime() : null;
+    const toTime = to ? new Date(to).getTime() : null;
+
+    if (fromTime !== null || toTime !== null) {
+        filteredRequests = filteredRequests.filter(request => {
+            if (!request) return false;
+
+            const requestTime = new Date(request.request?.loggedDate || request.loggedDate).getTime();
+
+            if (fromTime !== null && Number.isFinite(fromTime)) {
+                if (!Number.isFinite(requestTime) || requestTime < fromTime) {
+                    return false;
+                }
+            }
+
+            if (toTime !== null && Number.isFinite(toTime)) {
+                if (!Number.isFinite(requestTime) || requestTime > toTime) {
+                    return false;
+                }
+            }
+
+            return true;
+        });
+    }
+
+    window.allRequests = filteredRequests;
 
     const container = document.getElementById(SELECTORS.LISTS.REQUESTS);
     const emptyState = document.getElementById(SELECTORS.EMPTY.REQUESTS);
@@ -831,32 +863,17 @@ window.FilterManager = {
             // Fallback to localStorage
             const filters = this.loadFilterState(tabName);
 
-            // Try new query-based filter first
-            if (filters.query) {
-                const elem = document.getElementById('req-filter-query');
-                if (elem) {
-                    elem.value = filters.query;
-                    return filters;
-                }
+            // Restore query-based filter
+            const queryElem = document.getElementById('req-filter-query');
+            if (queryElem && filters.query) {
+                queryElem.value = filters.query;
             }
 
-            // Legacy fallback for old filter fields
-            const methodElem = document.getElementById('req-filter-method');
-            const statusElem = document.getElementById('req-filter-status');
-            const urlElem = document.getElementById('req-filter-url');
+            // Restore time range filters (always restore from/to regardless of query)
             const fromElem = document.getElementById('req-filter-from');
             const toElem = document.getElementById('req-filter-to');
-
-            if (methodElem) methodElem.value = filters.method || '';
-            if (statusElem) statusElem.value = filters.status || '';
-            if (urlElem) urlElem.value = filters.url || '';
             if (fromElem) fromElem.value = filters.from || '';
             if (toElem) toElem.value = filters.to || '';
-
-            // Sync filter tabs
-            if (filters.method && typeof window.syncFilterTabsFromSelect === 'function') {
-                window.syncFilterTabsFromSelect('request', filters.method);
-            }
 
             return filters;
         }
