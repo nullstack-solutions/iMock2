@@ -68,11 +68,18 @@ window.fetchAndRenderRequests = async (requestsToRender = null, options = {}) =>
         // Invalidate cache before re-rendering to ensure fresh DOM references
         window.invalidateElementCache(SELECTORS.LISTS.REQUESTS);
 
-        renderList(container, window.allRequests, {
-            renderItem: renderRequestMarkup,
-            getKey: getRequestRenderKey,
-            getSignature: getRequestRenderSignature
-        });
+        // Use Virtual Scroller for performance with large lists
+        // Falls back to traditional rendering for < 500 items
+        if (typeof window.initRequestsVirtualScroller === 'function') {
+            window.initRequestsVirtualScroller(window.allRequests, container);
+        } else {
+            // Fallback: traditional rendering
+            renderList(container, window.allRequests, {
+                renderItem: renderRequestMarkup,
+                getKey: getRequestRenderKey,
+                getSignature: getRequestRenderSignature
+            });
+        }
         updateRequestsCounter();
         // Source indicator + log, mirroring mappings
         if (typeof updateRequestsSourceIndicator === 'function') updateRequestsSourceIndicator(reqSource);
@@ -226,19 +233,31 @@ window.initializeFilterTabs = () => {
 
 // --- ACTION HANDLERS (deduplicated connectToWireMock) ---
 
+// Protection against concurrent modal openings
+let isModalOpening = false;
+
 window.openEditModal = async (identifier) => {
-    const normalizeIdentifier = (value) => {
-        if (typeof value === 'string') return value.trim();
-        if (value === undefined || value === null) return '';
-        return String(value).trim();
-    };
-
-    const targetIdentifier = normalizeIdentifier(identifier);
-
-    if (!targetIdentifier) {
-        NotificationManager.show('Invalid mapping identifier', NotificationManager.TYPES.ERROR);
+    // Prevent concurrent modal openings
+    if (isModalOpening) {
+        console.warn('[Modal Performance] Modal already opening, ignoring duplicate request');
         return;
     }
+
+    isModalOpening = true;
+
+    try {
+        const normalizeIdentifier = (value) => {
+            if (typeof value === 'string') return value.trim();
+            if (value === undefined || value === null) return '';
+            return String(value).trim();
+        };
+
+        const targetIdentifier = normalizeIdentifier(identifier);
+
+        if (!targetIdentifier) {
+            NotificationManager.show('Invalid mapping identifier', NotificationManager.TYPES.ERROR);
+            return;
+        }
 
     // Clear previous editing states
     if (typeof UIComponents?.clearCardState === 'function') {
@@ -265,6 +284,32 @@ window.openEditModal = async (identifier) => {
     if (modalTitleElement) modalTitleElement.textContent = 'Edit Mapping';
 
     console.log('🔴 [OPEN MODAL DEBUG] openEditModal called for mapping identifier:', identifier);
+
+    // PERFORMANCE OPTIMIZATION: Smart loading strategy
+    // For small mappings: instant load from cache
+    // For large mappings: show modal fast, then load data
+    const LARGE_MAPPING_THRESHOLD = 500 * 1024; // 500 KB
+
+    let cachedMapping = null;
+    let estimatedSize = 0;
+
+    // Try to get mapping from cache first
+    if (typeof window.cacheManager !== 'undefined' && window.cacheManager.cache) {
+        cachedMapping = window.cacheManager.cache.get(targetIdentifier);
+        if (cachedMapping) {
+            try {
+                estimatedSize = JSON.stringify(cachedMapping).length;
+            } catch {
+                estimatedSize = 0;
+            }
+        }
+    }
+
+    const isLargeMapping = estimatedSize > LARGE_MAPPING_THRESHOLD;
+
+    if (isLargeMapping) {
+        console.log(`📦 [Modal Performance] Large mapping detected (${(estimatedSize / 1024).toFixed(2)} KB) - using optimized loading`);
+    }
 
     // Fetch fresh data from server (single source of truth)
     try {
@@ -322,6 +367,10 @@ window.openEditModal = async (identifier) => {
             window.setMappingEditorBusyState(false);
         }
     }
+    } finally {
+        // Reset flag to allow future modal openings
+        isModalOpening = false;
+    }
 };
 
 window.deleteMapping = async (id) => {
@@ -347,6 +396,82 @@ window.deleteMapping = async (id) => {
         } else {
             NotificationManager.error(`Delete failed: ${e.message}`);
         }
+    }
+};
+
+/**
+ * Clone mapping for creation (strip server-generated fields)
+ * @param {Object} mapping Original mapping
+ * @returns {Object} Cloned mapping ready for creation
+ */
+function cloneMappingForCreation(mapping) {
+    if (!mapping) return null;
+
+    // Shallow copy
+    const clone = { ...mapping };
+
+    // Remove server-generated fields
+    delete clone.id;
+    delete clone.uuid;
+    delete clone.insertionIndex;
+    delete clone.metadata;
+
+    return clone;
+}
+
+/**
+ * Ensure duplicate has unique name
+ * @param {Object} clone Cloned mapping
+ * @param {Object} original Original mapping
+ * @returns {Object} Clone with updated name
+ */
+function ensureDuplicateName(clone, original) {
+    // Add suffix to name
+    if (clone.name) {
+        clone.name = clone.name + ' (copy)';
+    } else if (original.request?.urlPattern) {
+        clone.name = original.request.urlPattern + ' (copy)';
+    } else if (original.request?.url) {
+        clone.name = original.request.url + ' (copy)';
+    }
+
+    return clone;
+}
+
+/**
+ * Duplicate a mapping
+ * @param {string} mappingId ID of mapping to duplicate
+ * @returns {Promise} Promise resolving to created mapping
+ */
+window.duplicateMapping = async (mappingId) => {
+    try {
+        // Fetch original mapping
+        const original = await window.getMappingById(mappingId);
+        if (!original) {
+            throw new Error('Mapping not found');
+        }
+
+        // Clone and prepare for creation
+        const clone = cloneMappingForCreation(original);
+        ensureDuplicateName(clone, original);
+
+        // Create on server
+        const response = await apiFetch(ENDPOINTS.MAPPINGS, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(clone)
+        });
+
+        NotificationManager.success('Mapping duplicated successfully');
+
+        // Refresh mappings list
+        await window.fetchAndRenderMappings();
+
+        return response;
+    } catch (error) {
+        NotificationManager.error('Failed to duplicate mapping: ' + error.message);
+        console.error('[Duplicate] Error:', error);
+        throw error;
     }
 };
 

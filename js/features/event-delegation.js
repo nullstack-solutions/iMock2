@@ -78,6 +78,17 @@ class EventDelegationManager {
             return;
         }
 
+        // Duplicate mapping button
+        const duplicateBtn = e.target.closest('[data-action="duplicateMapping"]');
+        if (duplicateBtn) {
+            e.stopPropagation();
+            const mappingId = duplicateBtn.dataset.mappingId;
+            if (mappingId && typeof window.duplicateMapping === 'function') {
+                window.duplicateMapping(mappingId);
+            }
+            return;
+        }
+
         // Show full content button (for large JSON previews)
         const showFullBtn = e.target.closest('[data-action="show-full-content"]');
         if (showFullBtn) {

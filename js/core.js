@@ -412,6 +412,10 @@ window.ENDPOINTS = {
     REQUESTS_UNMATCHED: '/requests/unmatched',
     REQUESTS_UNMATCHED_NEAR_MISSES: '/requests/unmatched/near-misses',
 
+    // Near Misses API (for debugging unmatched requests)
+    NEAR_MISSES_REQUEST: '/near-misses/request',
+    NEAR_MISSES_PATTERN: '/near-misses/request-pattern',
+
     // Recording endpoints (corrected)
     RECORDINGS_START: '/recordings/start', // Requires POST
     RECORDINGS_STOP: '/recordings/stop', // Requires POST
@@ -423,20 +427,122 @@ window.ENDPOINTS = {
     SCENARIOS_RESET: '/scenarios/reset'
 };
 
+// ===== HTTP HEADER VALIDATION =====
+// RFC 7230 compliant header name and value validation
+
+/**
+ * Valid HTTP header name regex (RFC 7230)
+ * Allowed: alphanumeric, -, !, #, $, %, &, ', *, +, ., ^, _, `, |, ~
+ */
+const HTTP_HEADER_NAME_REGEX = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
+
+/**
+ * Invalid control characters in header values (U+0000-U+001F, U+007F)
+ */
+const HTTP_HEADER_CONTROL_CHAR_REGEX = /[\u0000-\u001F\u007F]/;
+
+/**
+ * Strip wrapping quotes from header value
+ * @param {string} value Header value
+ * @returns {string} Value without wrapping quotes
+ */
+const stripWrappingQuotes = (value) => {
+    if (typeof value !== 'string') {
+        return '';
+    }
+
+    let result = value.trim();
+
+    // Remove wrapping quotes (", ', `)
+    while (result.length >= 2) {
+        const firstChar = result[0];
+        const lastChar = result[result.length - 1];
+        if ((firstChar === lastChar) &&
+            (firstChar === '"' || firstChar === "'" || firstChar === '`')) {
+            result = result.slice(1, -1).trim();
+            continue;
+        }
+        break;
+    }
+
+    return result;
+};
+
+/**
+ * Normalize custom header name (trim only)
+ * @param {string} headerName Header name
+ * @returns {string} Normalized header name
+ */
+window.normalizeCustomHeaderName = (headerName) => {
+    return String(headerName || '').trim();
+};
+
+/**
+ * Normalize custom header value (trim and strip quotes)
+ * @param {string} headerValue Header value
+ * @returns {string} Normalized header value
+ */
+window.normalizeCustomHeaderValue = (headerValue) => {
+    if (typeof headerValue !== 'string') {
+        return '';
+    }
+    return stripWrappingQuotes(headerValue);
+};
+
+/**
+ * Check if header name is valid (RFC 7230)
+ * @param {string} headerName Header name
+ * @returns {boolean} True if valid
+ */
+window.isValidCustomHeaderName = (headerName) => {
+    return HTTP_HEADER_NAME_REGEX.test(headerName);
+};
+
+/**
+ * Check if header value contains invalid control characters
+ * @param {string} headerValue Header value
+ * @returns {boolean} True if contains invalid characters
+ */
+window.hasInvalidCustomHeaderValue = (headerValue) => {
+    const valueToTest = String(headerValue || '');
+    return HTTP_HEADER_CONTROL_CHAR_REGEX.test(valueToTest);
+};
+
+// ===== END HTTP HEADER VALIDATION =====
+
 const ensureCustomHeaderObject = (value) => {
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
         return {};
     }
 
     return Object.keys(value).reduce((acc, key) => {
-        const normalizedKey = String(key).trim();
+        const normalizedKey = window.normalizeCustomHeaderName(key);
         if (!normalizedKey) {
             return acc;
         }
-        acc[normalizedKey] = value[key];
+
+        // Validate header name
+        if (!window.isValidCustomHeaderName(normalizedKey)) {
+            console.warn(`[HTTP Headers] Ignoring invalid custom header name: ${key}`);
+            return acc;
+        }
+
+        // Normalize header value
+        const normalizedValue = window.normalizeCustomHeaderValue(value[key]);
+
+        // Validate header value (check for control characters)
+        if (window.hasInvalidCustomHeaderValue(normalizedValue)) {
+            console.warn(`[HTTP Headers] Ignoring header "${normalizedKey}" - value contains invalid control characters`);
+            return acc;
+        }
+
+        acc[normalizedKey] = normalizedValue;
         return acc;
     }, {});
 };
+
+// Export for testing/external use
+window.ensureCustomHeaderObject = ensureCustomHeaderObject;
 
 const migrateLegacySettings = (rawSettings) => {
     if (!rawSettings || typeof rawSettings !== 'object' || Array.isArray(rawSettings)) {

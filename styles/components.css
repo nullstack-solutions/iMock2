@@ -1985,3 +1985,39 @@
         justify-content: center;
     }
 }
+
+/* ===== VIRTUAL SCROLLER ===== */
+
+/**
+ * Virtual Scroller Styles
+ * Supports virtual scrolling for large lists (500+ items)
+ */
+
+.virtual-scroller-wrapper {
+    position: relative;
+    width: 100%;
+    /* Padding will be set dynamically by JS to maintain scroll height */
+}
+
+/* Optional: Visual indicator when scrolling */
+.is-scrolling {
+    /* Uncomment if you want to disable pointer events during scroll */
+    /* pointer-events: none; */
+}
+
+.is-scrolling .virtual-scroller-wrapper {
+    /* Optional: Add visual feedback during scrolling */
+    /* opacity: 0.95; */
+}
+
+/* Smooth transitions for virtual scroller items */
+.virtual-scroller-wrapper > * {
+    /* Items are rendered naturally in document flow */
+    /* No special positioning needed */
+}
+
+/* Debug mode: Show virtual index */
+[data-virtual-index]::before {
+    /* Only visible when DEBUG_VIRTUAL_SCROLLER is enabled */
+    /* Content will be added via JS if needed */
+}
