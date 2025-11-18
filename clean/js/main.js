@@ -683,6 +683,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    // Load saved filters from localStorage
+    if (typeof window.loadAllSavedFilters === 'function') {
+        window.loadAllSavedFilters();
+    }
+
     // Then restore active tab from URL
     const urlTab = typeof window.getActiveTabFromURL === 'function' ? window.getActiveTabFromURL() : null;
     const validTabs = ['mappings', 'requests', 'scenarios', 'import-export', 'recording', 'settings'];

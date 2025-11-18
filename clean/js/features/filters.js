@@ -441,3 +441,200 @@ window.removeRequestActiveFilter = (key) => {
     }
 };
 
+// === SAVED FILTERS MANAGEMENT ===
+
+// Get saved filters from localStorage
+function getSavedFilters(tab) {
+    const key = `saved-filters-${tab}`;
+    try {
+        const stored = localStorage.getItem(key);
+        return stored ? JSON.parse(stored) : [];
+    } catch (error) {
+        console.warn(`Failed to load saved filters for ${tab}:`, error);
+        return [];
+    }
+}
+
+// Save filters to localStorage
+function setSavedFilters(tab, filters) {
+    const key = `saved-filters-${tab}`;
+    try {
+        localStorage.setItem(key, JSON.stringify(filters));
+    } catch (error) {
+        console.error(`Failed to save filters for ${tab}:`, error);
+    }
+}
+
+// Save current mapping filter
+window.saveCurrentMappingFilter = () => {
+    const queryInput = document.getElementById('filter-query');
+    if (!queryInput) return;
+
+    const query = queryInput.value.trim();
+    if (!query) {
+        if (typeof NotificationManager !== 'undefined') {
+            NotificationManager.warning('No filter to save');
+        }
+        return;
+    }
+
+    // Prompt for filter name
+    const name = prompt('Enter a name for this filter:', query.substring(0, 30));
+    if (!name) return;
+
+    // Get existing saved filters
+    const savedFilters = getSavedFilters('mappings');
+
+    // Check if filter with same name exists
+    const existingIndex = savedFilters.findIndex(f => f.name === name);
+    if (existingIndex >= 0) {
+        if (!confirm(`Filter "${name}" already exists. Overwrite?`)) return;
+        savedFilters[existingIndex] = { name, query };
+    } else {
+        savedFilters.push({ name, query });
+    }
+
+    // Save to localStorage
+    setSavedFilters('mappings', savedFilters);
+
+    // Update display
+    updateSavedFiltersDisplay('mappings');
+
+    if (typeof NotificationManager !== 'undefined') {
+        NotificationManager.success(`Filter "${name}" saved`);
+    }
+};
+
+// Save current request filter
+window.saveCurrentRequestFilter = () => {
+    const queryInput = document.getElementById('req-filter-query');
+    if (!queryInput) return;
+
+    const query = queryInput.value.trim();
+    if (!query) {
+        if (typeof NotificationManager !== 'undefined') {
+            NotificationManager.warning('No filter to save');
+        }
+        return;
+    }
+
+    // Prompt for filter name
+    const name = prompt('Enter a name for this filter:', query.substring(0, 30));
+    if (!name) return;
+
+    // Get existing saved filters
+    const savedFilters = getSavedFilters('requests');
+
+    // Check if filter with same name exists
+    const existingIndex = savedFilters.findIndex(f => f.name === name);
+    if (existingIndex >= 0) {
+        if (!confirm(`Filter "${name}" already exists. Overwrite?`)) return;
+        savedFilters[existingIndex] = { name, query };
+    } else {
+        savedFilters.push({ name, query });
+    }
+
+    // Save to localStorage
+    setSavedFilters('requests', savedFilters);
+
+    // Update display
+    updateSavedFiltersDisplay('requests');
+
+    if (typeof NotificationManager !== 'undefined') {
+        NotificationManager.success(`Filter "${name}" saved`);
+    }
+};
+
+// Apply saved filter
+window.applySavedFilter = (tab, name) => {
+    const savedFilters = getSavedFilters(tab);
+    const filter = savedFilters.find(f => f.name === name);
+
+    if (!filter) {
+        console.warn(`Saved filter "${name}" not found`);
+        return;
+    }
+
+    // Set the query input
+    if (tab === 'mappings') {
+        const queryInput = document.getElementById('filter-query');
+        if (queryInput) {
+            queryInput.value = filter.query;
+            applyFilters();
+            updateActiveFiltersDisplay();
+        }
+    } else if (tab === 'requests') {
+        const queryInput = document.getElementById('req-filter-query');
+        if (queryInput) {
+            queryInput.value = filter.query;
+            FilterManager.applyRequestFilters();
+            updateRequestActiveFiltersDisplay();
+        }
+    }
+};
+
+// Delete saved filter
+window.deleteSavedFilter = (tab, name) => {
+    const savedFilters = getSavedFilters(tab);
+    const filteredFilters = savedFilters.filter(f => f.name !== name);
+
+    setSavedFilters(tab, filteredFilters);
+    updateSavedFiltersDisplay(tab);
+
+    if (typeof NotificationManager !== 'undefined') {
+        NotificationManager.info(`Filter "${name}" deleted`);
+    }
+};
+
+// Update saved filters display
+function updateSavedFiltersDisplay(tab) {
+    const savedFilters = getSavedFilters(tab);
+
+    let containerId, listId;
+    if (tab === 'mappings') {
+        containerId = 'saved-filters';
+        listId = 'saved-filters-list';
+    } else if (tab === 'requests') {
+        containerId = 'req-saved-filters';
+        listId = 'req-saved-filters-list';
+    } else {
+        return;
+    }
+
+    const container = document.getElementById(containerId);
+    const list = document.getElementById(listId);
+
+    if (!container || !list) return;
+
+    if (savedFilters.length === 0) {
+        container.style.display = 'none';
+        return;
+    }
+
+    // Build chips HTML
+    const chips = savedFilters.map(filter => `
+        <button type="button"
+                class="filter-chip filter-chip-saved"
+                onclick="applySavedFilter('${tab}', '${filter.name.replace(/'/g, "\\'")}')"
+                title="${filter.query}">
+            ${filter.name}
+            <button type="button"
+                    class="filter-chip-remove"
+                    onclick="event.stopPropagation(); deleteSavedFilter('${tab}', '${filter.name.replace(/'/g, "\\'")}')"
+                    title="Delete filter"
+                    aria-label="Delete filter">
+                ×
+            </button>
+        </button>
+    `);
+
+    list.innerHTML = chips.join('');
+    container.style.display = 'flex';
+}
+
+// Load saved filters on page load
+window.loadAllSavedFilters = () => {
+    updateSavedFiltersDisplay('mappings');
+    updateSavedFiltersDisplay('requests');
+};
+
