@@ -621,6 +621,17 @@ window.applyDefaultsToForm = () => {
 document.addEventListener('DOMContentLoaded', async () => {
     await new Promise(resolve => requestAnimationFrame(resolve));
 
+    // Check if we're on the JSON Editor page - if so, skip main app initialization
+    const isEditorPage = window.location.pathname.includes('json-editor.html') ||
+                         window.location.search.includes('mappingId=') ||
+                         window.location.search.includes('mode=edit') ||
+                         window.location.search.includes('mode=create');
+
+    if (isEditorPage) {
+        console.log('📝 JSON Editor page detected - skipping main app initialization');
+        return; // Exit early, don't initialize main app logic
+    }
+
     if (typeof window.initializeSidebarPreference === 'function') {
         window.initializeSidebarPreference();
     }
