@@ -264,7 +264,7 @@
                             <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-bolt"></use></svg>
                             <span class="btn-label">Force Refresh Cache</span>
                         </button>
-                        <button class="btn btn-primary" onclick="openAddMappingModal()" id="add-mapping-btn" disabled>
+                        <button class="btn btn-primary" onclick="openNewMappingModal()" id="add-mapping-btn" disabled>
                             <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-plus"></use></svg>
                             <span>Add Mapping</span>
                         </button>
@@ -923,6 +923,20 @@
                 </div>
             </div>
 
+            <!-- Template Selection Section -->
+            <div id="mapping-template-section" class="template-section" style="display: none;">
+                <div class="template-header">
+                    <h4>Create from Template</h4>
+                    <button type="button" class="btn btn-sm btn-secondary" onclick="toggleTemplateSection()">
+                        <span id="template-toggle-text">Hide Templates</span>
+                    </button>
+                </div>
+                <div id="mapping-template-grid" class="template-grid"></div>
+                <div id="mapping-template-empty" class="template-empty" style="display: none;">
+                    No templates available
+                </div>
+            </div>
+
             <!-- JSON Editor Container -->
             <div id="json-editor-container" class="json-editor-wrapper">
                 <textarea id="json-editor" class="json-editor" rows="1" placeholder="{
@@ -1049,6 +1063,8 @@
 <script src="js/features/wiremock-extras.js"></script>
 <script src="js/features/demo.js"></script>
 <script src="js/features.js"></script>
+<!-- Mapping Templates -->
+<script src="js/templates/mapping-templates.js"></script>
 <script src="js/editor.js"></script>
 <script src="js/main.js"></script>
 

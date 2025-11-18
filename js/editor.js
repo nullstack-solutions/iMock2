@@ -545,3 +545,265 @@ window.saveMappingWrapper = () => {
         NotificationManager.error('Save failed: ' + error.message);
     });
 };
+
+// ===== MAPPING TEMPLATES =====
+
+/**
+ * Initialize mapping template section
+ * Populates template grid with available templates
+ */
+window.initializeMappingTemplateSection = function() {
+    const grid = document.getElementById('mapping-template-grid');
+    const emptyElement = document.getElementById('mapping-template-empty');
+    const section = document.getElementById('mapping-template-section');
+
+    if (!grid || !section) {
+        console.warn('[Templates] Template grid or section not found');
+        return;
+    }
+
+    // Get all templates
+    const templates = typeof window.getAllMappingTemplates === 'function'
+        ? window.getAllMappingTemplates()
+        : [];
+
+    if (templates.length === 0) {
+        if (emptyElement) emptyElement.style.display = 'block';
+        return;
+    }
+
+    // Group templates by category
+    const categories = typeof window.getMappingTemplateCategories === 'function'
+        ? window.getMappingTemplateCategories()
+        : {};
+
+    const grouped = {};
+    templates.forEach(template => {
+        if (!grouped[template.category]) {
+            grouped[template.category] = [];
+        }
+        grouped[template.category].push(template);
+    });
+
+    // Render templates by category
+    let html = '';
+    for (const [category, categoryTemplates] of Object.entries(grouped)) {
+        const categoryLabel = categories[category] || category;
+        html += `<div class="template-category">`;
+        html += `<h5 class="template-category-label">${categoryLabel}</h5>`;
+        html += `<div class="template-cards">`;
+
+        categoryTemplates.forEach(template => {
+            html += `
+                <div class="template-card" data-template-id="${template.id}">
+                    <div class="template-card-header">
+                        <span class="template-icon">${template.icon || '📄'}</span>
+                        <h6 class="template-name">${template.name}</h6>
+                    </div>
+                    <p class="template-description">${template.description}</p>
+                    <div class="template-card-actions">
+                        <button type="button" class="btn btn-xs btn-secondary"
+                                onclick="toggleMappingTemplatePreview('${template.id}')">
+                            Preview
+                        </button>
+                        <button type="button" class="btn btn-xs btn-secondary"
+                                onclick="copyTemplateJson('${template.id}')">
+                            Copy JSON
+                        </button>
+                        <button type="button" class="btn btn-xs btn-primary"
+                                onclick="useTemplate('${template.id}')">
+                            Use Template
+                        </button>
+                    </div>
+                    <div class="template-preview" id="template-preview-${template.id}" style="display: none;">
+                        <pre class="template-preview-code"></pre>
+                    </div>
+                </div>
+            `;
+        });
+
+        html += `</div></div>`;
+    }
+
+    grid.innerHTML = html;
+
+    console.log('✅ [Templates] Initialized with', templates.length, 'templates');
+};
+
+/**
+ * Toggle template preview visibility
+ * @param {string} templateId Template ID
+ */
+window.toggleMappingTemplatePreview = function(templateId) {
+    const previewElement = document.getElementById(`template-preview-${templateId}`);
+    const template = typeof window.getMappingTemplateById === 'function'
+        ? window.getMappingTemplateById(templateId)
+        : null;
+
+    if (!previewElement || !template) {
+        console.warn('[Templates] Preview element or template not found:', templateId);
+        return;
+    }
+
+    if (previewElement.style.display === 'none') {
+        // Show preview
+        const codeElement = previewElement.querySelector('.template-preview-code');
+        if (codeElement) {
+            codeElement.textContent = JSON.stringify(template.mapping, null, 2);
+        }
+        previewElement.style.display = 'block';
+    } else {
+        // Hide preview
+        previewElement.style.display = 'none';
+    }
+};
+
+/**
+ * Copy template JSON to clipboard
+ * @param {string} templateId Template ID
+ */
+window.copyTemplateJson = async function(templateId) {
+    const template = typeof window.getMappingTemplateById === 'function'
+        ? window.getMappingTemplateById(templateId)
+        : null;
+
+    if (!template) {
+        console.warn('[Templates] Template not found:', templateId);
+        return;
+    }
+
+    try {
+        const json = JSON.stringify(template.mapping, null, 2);
+        await navigator.clipboard.writeText(json);
+
+        if (typeof NotificationManager !== 'undefined') {
+            NotificationManager.success('Template JSON copied to clipboard');
+        } else {
+            console.log('✅ [Templates] JSON copied to clipboard');
+        }
+    } catch (error) {
+        console.error('[Templates] Failed to copy to clipboard:', error);
+        if (typeof NotificationManager !== 'undefined') {
+            NotificationManager.error('Failed to copy template');
+        }
+    }
+};
+
+/**
+ * Use template - load it into the editor
+ * @param {string} templateId Template ID
+ */
+window.useTemplate = function(templateId) {
+    const template = typeof window.getMappingTemplateById === 'function'
+        ? window.getMappingTemplateById(templateId)
+        : null;
+
+    if (!template) {
+        console.warn('[Templates] Template not found:', templateId);
+        return;
+    }
+
+    // Populate editor with template
+    const editor = document.getElementById('json-editor');
+    if (editor) {
+        editor.value = JSON.stringify(template.mapping, null, 2);
+
+        // Mark as dirty since user loaded a template
+        if (typeof editorState !== 'undefined') {
+            editorState.isDirty = true;
+        }
+
+        // Update dirty indicator
+        const dirtyIndicator = document.getElementById('editor-dirty-indicator');
+        if (dirtyIndicator) {
+            dirtyIndicator.style.display = 'inline';
+        }
+
+        // Auto-resize editor
+        if (typeof autoResizeJsonEditor === 'function') {
+            autoResizeJsonEditor();
+        }
+
+        if (typeof NotificationManager !== 'undefined') {
+            NotificationManager.success(`Template "${template.name}" loaded into editor`);
+        } else {
+            console.log('✅ [Templates] Template loaded:', template.name);
+        }
+    } else {
+        console.error('[Templates] JSON editor not found');
+    }
+};
+
+/**
+ * Toggle template section visibility
+ */
+window.toggleTemplateSection = function() {
+    const section = document.getElementById('mapping-template-section');
+    const toggleText = document.getElementById('template-toggle-text');
+
+    if (!section) return;
+
+    if (section.style.display === 'none') {
+        section.style.display = 'block';
+        if (toggleText) toggleText.textContent = 'Hide Templates';
+    } else {
+        section.style.display = 'none';
+        if (toggleText) toggleText.textContent = 'Show Templates';
+    }
+};
+
+/**
+ * Show template section (called when opening editor for new mapping)
+ */
+window.showTemplateSection = function() {
+    const section = document.getElementById('mapping-template-section');
+    if (section) {
+        section.style.display = 'block';
+
+        // Initialize if not already done
+        const grid = document.getElementById('mapping-template-grid');
+        if (grid && grid.innerHTML.trim() === '') {
+            window.initializeMappingTemplateSection();
+        }
+    }
+};
+
+/**
+ * Open modal for creating new mapping with templates
+ */
+window.openNewMappingModal = function() {
+    // Show modal
+    if (typeof window.showModal === 'function') {
+        window.showModal('edit-mapping-modal');
+    }
+
+    // Update modal title
+    const modalTitle = document.getElementById('edit-modal-title');
+    if (modalTitle) {
+        modalTitle.textContent = 'Create New Mapping';
+    }
+
+    // Clear editor
+    const editor = document.getElementById('json-editor');
+    if (editor) {
+        editor.value = '';
+    }
+
+    // Reset editor state
+    if (typeof editorState !== 'undefined') {
+        editorState.originalMapping = null;
+        editorState.currentMapping = null;
+        editorState.isDirty = false;
+    }
+
+    // Hide dirty indicator
+    const dirtyIndicator = document.getElementById('editor-dirty-indicator');
+    if (dirtyIndicator) {
+        dirtyIndicator.style.display = 'none';
+    }
+
+    // Show templates
+    window.showTemplateSection();
+
+    console.log('✅ [Templates] New mapping modal opened with templates');
+};
