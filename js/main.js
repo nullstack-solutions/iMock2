@@ -659,7 +659,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Restore active tab from URL if present
     const urlTab = typeof window.getActiveTabFromURL === 'function' ? window.getActiveTabFromURL() : null;
-    if (urlTab && ['mappings', 'requests', 'scenarios'].includes(urlTab)) {
+    const validTabs = ['mappings', 'requests', 'scenarios', 'import-export', 'recording', 'settings'];
+    if (urlTab && validTabs.includes(urlTab)) {
         console.log(`🔗 Restoring tab from URL: ${urlTab}`);
         // Find the tab button and click it
         const tabButton = document.querySelector(`[onclick*="showTab('${urlTab}')"]`);
