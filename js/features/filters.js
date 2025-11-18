@@ -20,14 +20,20 @@ window.toggleQueryHelp = () => {
     if (!helpEl) return;
 
     const isHidden = helpEl.classList.contains('hidden');
-    const button = document.querySelector('[onclick="toggleQueryHelp()"]');
+    const button = document.querySelector('[aria-controls="query-help"]');
 
     if (isHidden) {
         helpEl.classList.remove('hidden');
-        if (button) button.textContent = 'Hide Examples';
+        if (button) {
+            button.textContent = 'Hide Examples';
+            button.setAttribute('aria-expanded', 'true');
+        }
     } else {
         helpEl.classList.add('hidden');
-        if (button) button.textContent = 'Show Examples';
+        if (button) {
+            button.textContent = 'Show Examples';
+            button.setAttribute('aria-expanded', 'false');
+        }
     }
 };
 window.applyRequestFilters = () => FilterManager.applyRequestFilters();

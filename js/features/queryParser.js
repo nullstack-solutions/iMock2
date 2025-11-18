@@ -58,18 +58,21 @@ function parseQuery(query) {
 
             // Handle ranges (e.g., priority:1-5)
             if (RANGE_KEYWORDS.includes(key)) {
-                const rangeParts = value.split('-');
-                if (rangeParts.length === 2) {
+                // Only treat as range if value matches two numbers separated by a single hyphen
+                const rangeMatch = value.match(/^(\d+)-(\d+)$/);
+                if (rangeMatch) {
                     result[key] = {
-                        from: rangeParts[0],
-                        to: rangeParts[1]
+                        from: rangeMatch[1],
+                        to: rangeMatch[2]
                     };
-                } else {
+                } else if (/^\d+$/.test(value)) {
+                    // Single numeric value
                     result[key] = {
                         from: value,
                         to: value
                     };
                 }
+                // Skip invalid range values (non-numeric)
                 continue;
             }
 
@@ -291,5 +294,3 @@ window.QueryParser = {
     matchesCondition,
     matchesRange
 };
-
-console.log('✅ Query Parser loaded');

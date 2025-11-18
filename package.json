@@ -1,1 +1,10 @@
-{}
+{
+  "name": "imock2",
+  "version": "1.0.0",
+  "description": "WireMock UI - Modern web interface for WireMock mock server",
+  "private": true,
+  "scripts": {},
+  "keywords": ["wiremock", "mock", "testing", "api"],
+  "author": "",
+  "license": "MIT"
+}

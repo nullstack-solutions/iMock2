@@ -299,7 +299,11 @@
                         <div class="form-group" style="margin-bottom: var(--space-3);">
                             <label class="form-label">
                                 Filter Query
-                                <button type="button" class="btn-link btn-help-toggle" onclick="toggleQueryHelp()">
+                                <button type="button"
+                                        class="btn-link btn-help-toggle"
+                                        onclick="toggleQueryHelp()"
+                                        aria-expanded="false"
+                                        aria-controls="query-help">
                                     Show Examples
                                 </button>
                             </label>
@@ -314,6 +318,7 @@
                                     placeholder="e.g., method:GET,POST url:api status:200"
                                     oninput="applyFilters()"
                                     autocomplete="off"
+                                    aria-describedby="query-help"
                                 >
                                 <button type="button" class="input-clear" onclick="clearMappingFilters()" title="Clear query">
                                     <span class="sr-only">Clear query</span>
