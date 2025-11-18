@@ -1062,13 +1062,6 @@ window.updateMappingsCounter = function() {
         counter.textContent = Array.isArray(window.allMappings) ? window.allMappings.length : 0;
     }
 };
-
-// Legacy stub for removed tab counting system (kept for backward compatibility)
-window.updateMappingTabCounts = function() {
-    // No-op: Quick filter chips replaced the old tab system
-    // This stub prevents errors in legacy code that still calls this function
-};
-
 // Update the data-source indicator (cache/remote/direct)
 function updateDataSourceIndicator(source) {
     const el = document.getElementById('data-source-indicator');
@@ -1178,6 +1171,5 @@ window.toggleMappingDetails = (mappingId) => UIComponents.toggleDetails(mappingI
 window.toggleRequestDetails = (requestId) => UIComponents.toggleDetails(requestId, 'request');
 
 window.UIComponents = UIComponents;
-window.updateMappingTabCounts = updateMappingTabCounts;
 window.updateDataSourceIndicator = updateDataSourceIndicator;
 window.updateRequestsSourceIndicator = updateRequestsSourceIndicator;

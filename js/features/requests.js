@@ -221,7 +221,6 @@ window.initializeFilterTabs = () => {
         syncFilterTabsFromSelect('requests', requestStatusSelect.value);
     }
 
-    updateMappingTabCounts();
     updateRequestTabCounts();
 };
 
