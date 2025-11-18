@@ -29,23 +29,24 @@ window.clearMappingFilters = () => {
 };
 
 // Toggle query help visibility
-window.toggleQueryHelp = () => {
-    const helpEl = document.getElementById('query-help');
+window.toggleQueryHelp = (tab = 'mappings') => {
+    const helpId = tab === 'requests' ? 'req-query-help' : 'query-help';
+    const helpEl = document.getElementById(helpId);
     if (!helpEl) return;
 
     const isHidden = helpEl.classList.contains('hidden');
-    const button = document.querySelector('[aria-controls="query-help"]');
+    const button = document.querySelector(`[aria-controls="${helpId}"]`);
 
     if (isHidden) {
         helpEl.classList.remove('hidden');
         if (button) {
-            button.textContent = 'Hide Examples';
+            button.textContent = '×';
             button.setAttribute('aria-expanded', 'true');
         }
     } else {
         helpEl.classList.add('hidden');
         if (button) {
-            button.textContent = 'Show Examples';
+            button.textContent = '?';
             button.setAttribute('aria-expanded', 'false');
         }
     }
@@ -228,29 +229,133 @@ window.clearQuickFilter = () => {
     if (quickEl) quickEl.value = '';
 };
 window.clearRequestFilters = () => {
-    // Clear existing filters with safe access
-    const methodEl = document.getElementById(SELECTORS.REQUEST_FILTERS.METHOD);
-    const urlEl = document.getElementById(SELECTORS.REQUEST_FILTERS.URL);
-    const statusEl = document.getElementById(SELECTORS.REQUEST_FILTERS.STATUS);
-    const dateFromEl = document.getElementById(SELECTORS.REQUEST_FILTERS.DATE_FROM);
-    const dateToEl = document.getElementById(SELECTORS.REQUEST_FILTERS.DATE_TO);
-    const quickEl = document.getElementById(SELECTORS.REQUEST_FILTERS.QUICK);
+    // Clear query-based filter
+    const queryInput = document.getElementById('req-filter-query');
+    if (queryInput) queryInput.value = '';
 
-    if (methodEl) methodEl.value = '';
-    if (urlEl) urlEl.value = '';
-    if (statusEl) statusEl.value = '';
-    if (dateFromEl) dateFromEl.value = '';
-    if (dateToEl) dateToEl.value = '';
-    if (quickEl) quickEl.value = ''; // Reset quick filter selection
+    FilterManager.applyRequestFilters();
+    if (typeof FilterManager.flushRequestFilters === 'function') {
+        FilterManager.flushRequestFilters();
+    }
 
-    // Clear URL parameters when clearing filters
-    if (typeof window.URLStateManager !== 'undefined') {
-        window.URLStateManager.updateURL('requests', { method: '', status: '', url: '', from: '', to: '' }, true);
+    // Update active filters display
+    if (typeof window.updateRequestActiveFiltersDisplay === 'function') {
+        window.updateRequestActiveFiltersDisplay();
+    }
+
+    // Clear URL parameters
+    if (typeof window.updateURLFilterParams === 'function') {
+        window.updateURLFilterParams('');
+    }
+};
+
+// Apply quick filter for requests (similar to mappings)
+window.applyQuickRequestFilter = (filter) => {
+    const queryInput = document.getElementById('req-filter-query');
+    if (!queryInput) return;
+
+    // Check if it's a method filter (GET, POST, etc.) or other filter (matched:true, etc.)
+    if (/^[A-Z]+$/.test(filter)) {
+        // It's a method - set as method:XXX
+        // Parse existing query to check if method already exists
+        const existingQuery = queryInput.value.trim();
+        const methodPattern = /method:[\w,]+/i;
+
+        if (methodPattern.test(existingQuery)) {
+            // Replace existing method
+            queryInput.value = existingQuery.replace(methodPattern, `method:${filter}`);
+        } else {
+            // Add method
+            const newQuery = existingQuery ? `method:${filter} ${existingQuery}` : `method:${filter}`;
+            queryInput.value = newQuery;
+        }
+    } else {
+        // It's a complex filter like "matched:true"
+        const existingQuery = queryInput.value.trim();
+        queryInput.value = existingQuery ? `${filter} ${existingQuery}` : filter;
     }
 
     FilterManager.applyRequestFilters();
     if (typeof FilterManager.flushRequestFilters === 'function') {
         FilterManager.flushRequestFilters();
+    }
+
+    // Update active filters display
+    if (typeof window.updateRequestActiveFiltersDisplay === 'function') {
+        window.updateRequestActiveFiltersDisplay();
+    }
+};
+
+// Update active request filters display
+window.updateRequestActiveFiltersDisplay = () => {
+    const container = document.getElementById('req-active-filters');
+    const queryInput = document.getElementById('req-filter-query');
+
+    if (!container || !queryInput) return;
+
+    const query = queryInput.value.trim();
+    if (!query || !window.QueryParser) {
+        container.innerHTML = '';
+        return;
+    }
+
+    const parsed = window.QueryParser.parseQuery(query);
+    if (!parsed) {
+        container.innerHTML = '';
+        return;
+    }
+
+    const chips = [];
+
+    for (const [key, value] of Object.entries(parsed)) {
+        if (key === 'text') continue; // Skip free text for now
+
+        let chipText = '';
+        if (key === 'matched') {
+            const matchValues = Array.isArray(value) ? value : [value];
+            const valStr = String(matchValues[0]).toLowerCase();
+            if (valStr === 'true' || valStr === 'yes' || valStr === '1') {
+                chipText = 'Matched';
+            } else {
+                chipText = 'Unmatched';
+            }
+        } else if (Array.isArray(value)) {
+            chipText = `${key}: ${value.join(', ')}`;
+        } else if (typeof value === 'object' && value.exclude) {
+            const excludeVals = Array.isArray(value.exclude) ? value.exclude : [value.exclude];
+            chipText = `NOT ${key}: ${excludeVals.join(', ')}`;
+        } else {
+            chipText = `${key}: ${value}`;
+        }
+
+        chips.push(`<button type="button" class="filter-chip filter-chip-active" onclick="removeRequestActiveFilter('${key}')" title="Remove filter">${chipText} ×</button>`);
+    }
+
+    container.innerHTML = chips.join('');
+};
+
+// Remove active filter for requests
+window.removeRequestActiveFilter = (key) => {
+    const queryInput = document.getElementById('req-filter-query');
+    if (!queryInput) return;
+
+    const query = queryInput.value.trim();
+    if (!query) return;
+
+    // Remove the key:value pattern from query
+    const pattern = new RegExp(`-?${key}:[\\w\\/\\*.,\\-]+(\\s+|$)`, 'gi');
+    const newQuery = query.replace(pattern, '').replace(/\s+/g, ' ').trim();
+
+    queryInput.value = newQuery;
+
+    FilterManager.applyRequestFilters();
+    if (typeof FilterManager.flushRequestFilters === 'function') {
+        FilterManager.flushRequestFilters();
+    }
+
+    // Update active filters display
+    if (typeof window.updateRequestActiveFiltersDisplay === 'function') {
+        window.updateRequestActiveFiltersDisplay();
     }
 };
 
