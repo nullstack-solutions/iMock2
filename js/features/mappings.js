@@ -1061,28 +1061,7 @@ window.updateMappingsCounter = function() {
     if (counter) {
         counter.textContent = Array.isArray(window.allMappings) ? window.allMappings.length : 0;
     }
-    updateMappingTabCounts();
 };
-
-function updateMappingTabCounts() {
-    const counts = window.mappingTabTotals || computeMappingTabTotals(window.originalMappings);
-
-    const mappingCountTargets = {
-        all: document.getElementById('mapping-tab-all'),
-        get: document.getElementById('mapping-tab-get'),
-        post: document.getElementById('mapping-tab-post'),
-        put: document.getElementById('mapping-tab-put'),
-        patch: document.getElementById('mapping-tab-patch'),
-        delete: document.getElementById('mapping-tab-delete')
-    };
-
-    Object.entries(mappingCountTargets).forEach(([key, element]) => {
-        if (element) {
-            element.textContent = counts?.[key] ?? 0;
-        }
-    });
-}
-
 // Update the data-source indicator (cache/remote/direct)
 function updateDataSourceIndicator(source) {
     const el = document.getElementById('data-source-indicator');
@@ -1192,6 +1171,5 @@ window.toggleMappingDetails = (mappingId) => UIComponents.toggleDetails(mappingI
 window.toggleRequestDetails = (requestId) => UIComponents.toggleDetails(requestId, 'request');
 
 window.UIComponents = UIComponents;
-window.updateMappingTabCounts = updateMappingTabCounts;
 window.updateDataSourceIndicator = updateDataSourceIndicator;
 window.updateRequestsSourceIndicator = updateRequestsSourceIndicator;

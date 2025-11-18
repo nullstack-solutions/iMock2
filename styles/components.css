@@ -1378,89 +1378,204 @@
     box-shadow: 0 18px 42px rgba(15, 23, 42, 0.12);
 }
 
-.filter-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: var(--space-4);
-    align-items: end;
+.filter-query-container {
+    width: 100%;
 }
 
-.filter-tabs {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-2);
-    margin-bottom: var(--space-4);
+.filter-query-form-group {
+    margin-bottom: var(--space-3);
 }
 
-.filter-tab {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-2) var(--space-3);
-    border-radius: 999px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    background: rgba(255, 255, 255, 0.05);
-    color: var(--text-secondary);
-    font-size: var(--font-size-xs);
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
+.btn-link {
+    background: none;
+    border: none;
+    color: var(--color-primary);
     cursor: pointer;
-    transition: transform var(--transition-fast), box-shadow var(--transition-fast), background var(--transition-fast), color var(--transition-fast);
+    padding: 0;
+    font-size: inherit;
+    text-decoration: underline;
+    transition: color var(--transition-fast);
 }
 
-.filter-tab:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 16px 30px rgba(2, 6, 23, 0.35);
-    background: rgba(59, 130, 246, 0.18);
-    color: var(--text-primary);
+.btn-link:hover {
+    color: var(--color-primary-hover);
 }
 
-.filter-tab.active {
-    background: var(--gradient-button);
-    border-color: rgba(59, 130, 246, 0.5);
-    color: #ffffff;
-    box-shadow: 0 20px 40px rgba(37, 99, 235, 0.35);
-}
-
-.filter-tab.active .filter-tab-count {
-    background: rgba(255, 255, 255, 0.25);
-    color: #ffffff;
-}
-
-[data-theme="light"] .filter-tab {
-    background: rgba(148, 163, 184, 0.18);
-    border-color: rgba(148, 163, 184, 0.4);
-    color: #334155;
-}
-
-[data-theme="light"] .filter-tab:hover {
-    background: rgba(59, 130, 246, 0.18);
+[data-theme="light"] .btn-link {
     color: #1d4ed8;
 }
 
-[data-theme="light"] .filter-tab.active {
-    background: linear-gradient(135deg, #3b82f6, #1d4ed8);
-    color: #ffffff;
-    border-color: rgba(59, 130, 246, 0.55);
+[data-theme="light"] .btn-link:hover {
+    color: #2563eb;
 }
 
-.filter-tab-count {
+.btn-help-toggle {
+    margin-left: var(--space-2);
+    font-size: 0.875rem;
+}
+
+.query-help {
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
+    margin-top: var(--space-3);
+}
+
+[data-theme="light"] .query-help {
+    background: rgba(255, 255, 255, 0.6);
+    border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.query-help-title {
+    font-weight: 600;
+    margin-bottom: var(--space-3);
+    color: var(--text-primary);
+    font-size: var(--font-size-sm);
+}
+
+.query-help-examples {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: var(--space-2);
+}
+
+.query-help-example {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2);
+    font-size: var(--font-size-xs);
+}
+
+.query-help-example code {
+    background: rgba(59, 130, 246, 0.15);
+    color: #60a5fa;
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--radius-md);
+    font-family: 'Courier New', monospace;
+    font-size: var(--font-size-xs);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+[data-theme="light"] .query-help-example code {
+    background: rgba(59, 130, 246, 0.12);
+    color: #1d4ed8;
+}
+
+.query-help-example span {
+    color: var(--text-secondary);
+}
+
+/* Filter chips */
+.filter-chips-container {
+    margin-top: var(--space-3);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.quick-filters,
+.active-filters {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+}
+
+.quick-filters-label,
+.active-filters-label {
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.active-filters-list {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+}
+
+.filter-chip {
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    min-width: 28px;
-    padding: 0.15rem 0.35rem;
+    gap: var(--space-1);
+    padding: 0.25rem 0.75rem;
     border-radius: 999px;
-    background: rgba(255, 255, 255, 0.12);
-    color: var(--text-primary);
-    position: relative;
-    z-index: 2;
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+    border: 1px solid;
 }
 
-[data-theme="light"] .filter-tab-count {
-    background: rgba(59, 130, 246, 0.18);
+.filter-chip-quick {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.15);
+    color: var(--text-secondary);
+}
+
+.filter-chip-quick:hover {
+    background: rgba(59, 130, 246, 0.15);
+    border-color: rgba(59, 130, 246, 0.4);
+    color: var(--color-primary);
+    transform: translateY(-1px);
+}
+
+.filter-chip-quick:active {
+    transform: translateY(0);
+}
+
+.filter-chip-active {
+    background: rgba(59, 130, 246, 0.2);
+    border-color: rgba(59, 130, 246, 0.5);
+    color: var(--color-primary);
+    padding-right: 0.5rem;
+}
+
+.filter-chip-active:hover {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.4);
+    color: #ef4444;
+}
+
+.filter-chip-remove {
+    margin-left: var(--space-1);
+    font-size: 1rem;
+    line-height: 1;
+    opacity: 0.7;
+}
+
+.filter-chip-active:hover .filter-chip-remove {
+    opacity: 1;
+}
+
+[data-theme="light"] .filter-chip-quick {
+    background: rgba(148, 163, 184, 0.1);
+    border-color: rgba(148, 163, 184, 0.3);
+    color: #475569;
+}
+
+[data-theme="light"] .filter-chip-quick:hover {
+    background: rgba(59, 130, 246, 0.12);
+    border-color: rgba(59, 130, 246, 0.4);
     color: #1d4ed8;
+}
+
+[data-theme="light"] .filter-chip-active {
+    background: rgba(59, 130, 246, 0.15);
+    border-color: rgba(59, 130, 246, 0.4);
+    color: #1d4ed8;
+}
+
+[data-theme="light"] .filter-chip-active:hover {
+    background: rgba(239, 68, 68, 0.12);
+    border-color: rgba(239, 68, 68, 0.3);
+    color: #dc2626;
 }
 
 /* ===== MESSAGES ===== */

@@ -38,7 +38,6 @@ const sandbox = {
 sandbox.window = sandbox;
 sandbox.NotificationManager = createNotificationStub();
 
-sandbox.updateMappingTabCounts = () => { sandbox.__mappingCountsCalled = true; };
 sandbox.updateRequestTabCounts = () => { sandbox.__requestCountsCalled = true; };
 
 const context = vm.createContext(sandbox);
@@ -65,16 +64,14 @@ runTest('computeMappingTabTotals aggregates HTTP methods', () => {
     assert.strictEqual(totals.patch, 0);
 });
 
-runTest('refreshMappingTabSnapshot stores totals and triggers counter update', () => {
+runTest('refreshMappingTabSnapshot stores totals correctly', () => {
     context.originalMappings = [
         { request: { method: 'GET' } },
         { request: { method: 'POST' } },
     ];
-    context.__mappingCountsCalled = false;
     context.refreshMappingTabSnapshot();
     assert.strictEqual(context.mappingTabTotals.get, 1);
     assert.strictEqual(context.mappingTabTotals.post, 1);
-    assert.ok(context.__mappingCountsCalled, 'updateMappingTabCounts should be invoked');
 });
 
 runTest('computeRequestTabTotals distinguishes matched requests', () => {
