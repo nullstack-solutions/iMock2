@@ -247,7 +247,6 @@
 
     function formatFeatureValue(value) {
         if (value === null) return 'null';
-        if (typeof value === 'undefined') return '';
         if (typeof value === 'string') return value.length > 64 ? `${value.slice(0, 61)}…` : value;
         if (typeof value === 'number' || typeof value === 'boolean') return String(value);
 
