@@ -545,6 +545,11 @@
     gap: var(--space-2);
 }
 
+.template-preview-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-3);
+}
 .template-preview-body {
     gap: var(--space-5);
 }
