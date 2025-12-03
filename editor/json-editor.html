@@ -206,7 +206,7 @@
                                 <span class="sr-only">Validate JSON</span>
                             </button>
                             <span class="search-actions__divider" role="presentation" aria-hidden="true"></span>
-                            <button class="btn btn-icon btn-secondary btn-icon-compact" onclick="openModal()" title="WireMock Templates" data-tooltip="WireMock templates">
+                            <button class="btn btn-icon btn-secondary btn-icon-compact" type="button" data-template-trigger data-template-target="editor" title="WireMock Templates" data-tooltip="WireMock templates">
                                 <svg class="icon icon-16" aria-hidden="true" focusable="false">
                                     <use href="#icon-box"></use>
                                 </svg>
@@ -291,43 +291,43 @@
     </div>
 
     <!-- Templates Modal -->
-    <div class="modal hidden" id="fullscreenModal" role="dialog" aria-modal="true" aria-labelledby="modal-title-templates" aria-hidden="true">
-        <div class="modal-content">
-            <button class="modal-close" type="button" onclick="closeModal()" aria-label="Close templates modal">
+    <div class="modal hidden" id="template-gallery-modal">
+        <div class="modal-content modal-content--wide">
+            <button class="modal-close" type="button" onclick="hideModal('template-gallery-modal')" aria-label="Close template gallery">
                 <svg class="icon icon-16" aria-hidden="true" focusable="false">
                     <use href="#icon-x-circle"></use>
                 </svg>
                 <span class="sr-only">Close</span>
             </button>
             <div class="modal-header">
-                <h2 id="modal-title-templates">WireMock Templates</h2>
+                <h3 id="template-gallery-title">WireMock templates</h3>
             </div>
             <div class="modal-body">
-                <div class="template-grid" id="templateGrid">
-                <!-- Templates will be loaded here -->
-            </div>
+                <div class="template-wizard-shell" id="template-gallery-shell"></div>
             </div>
         </div>
     </div>
 
-    <div class="modal hidden" id="templatePreviewModal" role="dialog" aria-modal="true" aria-labelledby="modal-title-template-preview" aria-hidden="true">
+    <div class="modal hidden" id="template-preview-modal">
         <div class="modal-content modal-content--wide">
-            <button class="modal-close" type="button" onclick="closeModal('templatePreviewModal')" aria-label="Close template preview">
+            <button class="modal-close" type="button" onclick="hideModal('template-preview-modal')" aria-label="Close template preview">
                 <svg class="icon icon-16" aria-hidden="true" focusable="false">
                     <use href="#icon-x-circle"></use>
                 </svg>
                 <span class="sr-only">Close</span>
             </button>
             <div class="modal-header">
-                <h2 id="modal-title-template-preview">Template preview</h2>
+                <h3 id="template-preview-title">Template preview</h3>
             </div>
             <div class="modal-body template-preview-body">
-                <p class="template-preview-description" id="templatePreviewDescription"></p>
-                <div class="template-preview-meta" id="templatePreviewMeta"></div>
-                <pre class="template-preview-code" id="templatePreviewCode"></pre>
-                <div class="template-preview-actions" id="templatePreviewActions">
+                <p class="template-preview-description" id="template-preview-description"></p>
+                <div class="template-preview-meta" id="template-preview-meta"></div>
+                <pre class="template-preview-code" id="template-preview-code"></pre>
+                <div class="template-preview-actions" id="template-preview-actions">
                     <button class="btn btn-primary btn-sm" type="button" data-template-action="apply">Use template</button>
+                    <button class="btn btn-secondary btn-sm" type="button" data-template-action="create-studio" style="display: none;">Create &amp; open JSON Studio</button>
                     <button class="btn btn-secondary btn-sm" type="button" data-template-action="copy">Copy JSON</button>
+                    <button class="btn btn-secondary btn-ghost btn-sm" type="button" data-template-action="close">Close</button>
                 </div>
             </div>
         </div>
@@ -386,7 +386,10 @@
     <!-- Monaco Editor Lazy Loader (Phase 1 Optimization) -->
     <!-- Monaco will be loaded only when editor is actually opened -->
     <script src="monaco-loader.js"></script>
-    
+
+    <!-- Template Library & Helpers -->
+    <script src="monaco-template-library.js"></script>
+
     <!-- WireMock URL initialization - moved to initializeFromURL -->
 
     <!-- WireMock Integration -->
@@ -396,6 +399,7 @@
     <script src="../js/demo-data.js"></script>
     <script src="../js/features/state.js"></script>
     <script src="../js/features/utils.js"></script>
+    <script src="../js/features/templates.js"></script>
     <script src="../js/features/filters.js"></script>
     <script src="../js/features/cache.js"></script>
     <script src="../js/features/mappings.js"></script>
@@ -410,7 +414,6 @@
     <script src="../js/main.js"></script>
 
     <!-- Monaco Enhanced (our main editor) -->
-    <script src="monaco-template-library.js"></script>
     <script src="monaco-enhanced.js"></script>
 
     <script>
@@ -804,15 +807,14 @@
             }
         }
 
-        function openModal(modalId = 'fullscreenModal') {
+        function openModal(modalId) {
+            if (!modalId) {
+                return;
+            }
             const modal = document.getElementById(modalId);
             if (!modal) {
                 console.warn(`Modal with id "${modalId}" not found`);
                 return;
-            }
-
-            if (modalId === 'fullscreenModal' && typeof window.renderTemplateLibrary === 'function') {
-                window.renderTemplateLibrary();
             }
 
             if (modalId === 'historyModal' && typeof window.renderHistoryModal === 'function') {
@@ -822,7 +824,10 @@
             setModalVisibility(modal, true);
         }
 
-        function closeModal(modalId = 'fullscreenModal') {
+        function closeModal(modalId) {
+            if (!modalId) {
+                return;
+            }
             const modal = document.getElementById(modalId);
             if (!modal) {
                 console.warn(`Modal with id "${modalId}" not found`);

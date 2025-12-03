@@ -23,41 +23,41 @@
             id: 'happy-path',
             icon: '✓',
             title: 'Happy path',
-            subtitle: 'Клиент успешно ходит в сервис',
+            subtitle: 'Client flows succeed',
             color: '#10b981',
-            description: 'Стандартные успешные ответы API',
+            description: 'Standard successful API responses',
         },
         {
             id: 'errors',
             icon: '⚠',
-            title: 'Ошибки',
-            subtitle: 'Клиент правильно реагирует на ошибки',
+            title: 'Errors',
+            subtitle: 'Client handles failures correctly',
             color: '#f59e0b',
-            description: 'HTTP ошибки и валидация',
+            description: 'HTTP errors and validation cases',
         },
         {
             id: 'faults',
             icon: '⚡',
-            title: 'Сетевые сбои',
-            subtitle: 'Таймауты, обрывы соединения, медленные ответы',
+            title: 'Network issues',
+            subtitle: 'Timeouts, disconnects, slow responses',
             color: '#ef4444',
-            description: 'Симуляция проблем сети',
+            description: 'Network fault simulation',
         },
         {
             id: 'scenarios',
             icon: '↻',
-            title: 'Сценарии',
-            subtitle: 'Stateful поведение, шаги, ретраи',
+            title: 'Scenarios',
+            subtitle: 'Stateful steps and retries',
             color: '#8b5cf6',
-            description: 'Изменяющееся поведение сервиса',
+            description: 'Changing service behaviour',
         },
         {
             id: 'dynamic',
             icon: '⎇',
-            title: 'Динамический ответ',
-            subtitle: 'Response templating, условная логика',
+            title: 'Dynamic response',
+            subtitle: 'Response templating and conditions',
             color: '#3b82f6',
-            description: 'Ответ зависит от запроса',
+            description: 'Response depends on request',
         },
         {
             id: 'matching',
@@ -65,23 +65,23 @@
             title: 'Request Matching',
             subtitle: 'URL, headers, body, JSONPath',
             color: '#06b6d4',
-            description: 'Продвинутое сопоставление запросов',
+            description: 'Advanced request matching',
         },
         {
             id: 'webhooks',
             icon: '📤',
             title: 'Webhooks',
-            subtitle: 'Асинхронные callback вызовы',
+            subtitle: 'Asynchronous callbacks',
             color: '#ec4899',
-            description: 'Исходящие HTTP вызовы',
+            description: 'Outgoing HTTP callbacks',
         },
         {
             id: 'proxy',
             icon: '⇄',
             title: 'Proxy & Record',
-            subtitle: 'Проксирование и запись',
+            subtitle: 'Proxying and recording',
             color: '#14b8a6',
-            description: 'Работа с реальным API',
+            description: 'Working against real APIs',
         },
     ];
     const wizardState = {
@@ -288,6 +288,27 @@
         }
 
         const payload = template.content ?? {};
+        const initializer = global.monacoInitializer;
+
+        if (initializer && (typeof initializer.applyTemplate === 'function' || typeof initializer.applyTemplateById === 'function')) {
+            let applied = false;
+
+            if (typeof initializer.applyTemplate === 'function') {
+                applied = initializer.applyTemplate(template);
+            } else {
+                applied = initializer.applyTemplateById?.(template.id);
+            }
+
+            notify(
+                applied
+                    ? `Template "${template.title || template.id}" applied to editor`
+                    : 'Template could not be applied',
+                applied ? 'success' : 'error'
+            );
+
+            return;
+        }
+
         const jsonString = typeof payload === 'string' ? payload : JSON.stringify(payload, null, 2);
         const editor = document.getElementById('json-editor');
         if (editor) {
@@ -711,7 +732,7 @@
                 <span class="template-goal__icon" aria-hidden="true">${goal.icon}</span>
                 <span class="template-goal__title">${goal.title}</span>
                 <span class="template-goal__subtitle">${goal.subtitle}</span>
-                <span class="template-goal__count">${count} шаблонов</span>
+                <span class="template-goal__count">${count} templates</span>
             `;
             card.style.setProperty('--goal-color', goal.color);
             card.disabled = count === 0;
@@ -742,7 +763,7 @@
             <div class="template-card__header">
                 <span class="badge badge-soft" data-method="${template.method}">${template.method}</span>
                 <span class="badge badge-soft" data-outcome="${template.outcome}">${outcomeLabel}</span>
-                ${template.isScenario ? `<span class="badge badge-soft badge-scenario">${template.content?.mappings?.length || 0} шагов</span>` : ''}
+                ${template.isScenario ? `<span class="badge badge-soft badge-scenario">${template.content?.mappings?.length || 0} steps</span>` : ''}
                 ${template.popular ? '<span class="template-card__star" aria-hidden="true">⭐</span>' : ''}
             </div>
             <div class="template-card__title">${template.title || template.name || template.id}</div>
@@ -752,8 +773,8 @@
                 ${template.tags.slice(0, 4).map(tag => `<span class="chip">${tag}</span>`).join('')}
             </div>
             <div class="template-card__actions">
-                <span class="btn btn-primary btn-sm">${creationMode ? 'Создать' : 'Выбрать'}</span>
-                <span class="btn btn-secondary btn-sm" aria-hidden="true">Подробнее</span>
+                <span class="btn btn-primary btn-sm">${creationMode ? 'Create' : 'Select'}</span>
+                <span class="btn btn-secondary btn-sm" aria-hidden="true">Details</span>
             </div>
         `;
 
@@ -788,11 +809,11 @@
             <div class="template-toolbar template-toolbar--wizard">
                 <div class="template-toolbar__search">
                     <svg class="icon icon-16" aria-hidden="true" focusable="false"><use href="#icon-search"></use></svg>
-                    <input type="search" placeholder="Поиск шаблонов..." value="${wizardState.searchQuery}" aria-label="Поиск шаблонов" />
+                    <input type="search" placeholder="Search templates..." value="${wizardState.searchQuery}" aria-label="Search templates" />
                 </div>
                 <div class="template-toolbar__actions">
-                    <button type="button" class="btn btn-secondary btn-sm" data-action="toggle-popular" aria-pressed="${wizardState.showPopularOnly}">⭐ Популярные</button>
-                    <button type="button" class="btn btn-ghost btn-sm" data-action="back">← Назад</button>
+                    <button type="button" class="btn btn-secondary btn-sm" data-action="toggle-popular" aria-pressed="${wizardState.showPopularOnly}">⭐ Popular</button>
+                    <button type="button" class="btn btn-ghost btn-sm" data-action="back">← Back</button>
                 </div>
             </div>
             <div class="template-tags" aria-label="Tags">
@@ -800,14 +821,14 @@
             </div>
             <div class="template-wizard__grid template-wizard__cards" id="template-wizard-cards"></div>
             <div class="template-info template-info--inline">
-                <p class="template-info__lead">Нужны другие примеры? Посмотрите <a href="https://library.wiremock.org/" target="_blank" rel="noopener">официальную библиотеку WireMock</a> и импортируйте JSON через Import/Export → Import Data.</p>
+                <p class="template-info__lead">Need more examples? Visit the <a href="https://library.wiremock.org/" target="_blank" rel="noopener">official WireMock Template Library</a> and import JSON via Import/Export → Import Data.</p>
             </div>
         `;
 
         const cardsContainer = body.querySelector('#template-wizard-cards');
         const emptyState = document.createElement('div');
         emptyState.className = 'history-empty';
-        emptyState.innerHTML = '<p>Шаблоны не найдены</p><small>Измените фильтры или импортируйте JSON из WireMock Template Library.</small>';
+        emptyState.innerHTML = '<p>No templates found</p><small>Adjust filters or import JSON from the WireMock Template Library.</small>';
 
         if (!filtered.length) {
             cardsContainer.replaceWith(emptyState);
@@ -876,7 +897,7 @@
                     <div class="template-preview-card__badges">
                         <span class="badge badge-soft" data-method="${template.method}">${template.method}</span>
                         <span class="badge badge-soft" data-outcome="${template.outcome}">${template.outcome === 'proxy' ? 'proxy' : template.outcome}</span>
-                        ${template.isScenario ? `<span class="badge badge-soft badge-scenario">${template.content?.mappings?.length || 0} шагов</span>` : ''}
+                        ${template.isScenario ? `<span class="badge badge-soft badge-scenario">${template.content?.mappings?.length || 0} steps</span>` : ''}
                     </div>
                     <h4 class="template-preview-card__title">${template.title || template.name || template.id}</h4>
                     <p class="template-preview-card__desc">${template.description || ''}</p>
@@ -887,10 +908,10 @@
                 <pre class="template-preview-card__code" id="template-preview-code-inline"></pre>
             </div>
             <div class="template-preview-actions template-preview-actions--wizard" id="template-preview-actions">
-                <button class="btn btn-secondary btn-sm" type="button" data-template-action="back">← Назад</button>
+                <button class="btn btn-secondary btn-sm" type="button" data-template-action="back">← Back</button>
                 <div class="template-preview-actions__primary">
-                    ${creationMode ? '<button class="btn btn-primary btn-sm" type="button" data-template-action="apply">Создать и открыть редактор</button>' : '<button class="btn btn-primary btn-sm" type="button" data-template-action="apply">Use template</button>'}
-                    ${creationMode ? '<button class="btn btn-secondary btn-sm" type="button" data-template-action="create-studio">Создать в JSON Studio</button>' : ''}
+                    ${creationMode ? '<button class="btn btn-primary btn-sm" type="button" data-template-action="apply">Create and open editor</button>' : '<button class="btn btn-primary btn-sm" type="button" data-template-action="apply">Use template</button>'}
+                    ${creationMode ? '<button class="btn btn-secondary btn-sm" type="button" data-template-action="create-studio">Create in JSON Studio</button>' : ''}
                     <button class="btn btn-secondary btn-sm" type="button" data-template-action="copy">Copy JSON</button>
                 </div>
             </div>
@@ -947,12 +968,13 @@
             <div class="template-wizard">
                 <div class="template-wizard__header">
                     <div>
-                        <p class="template-wizard__eyebrow">Шаг ${stepIndex}/3</p>
-                        <h3 class="template-wizard__title">${wizardState.step === 'goals' ? 'Создать mapping' : selectedGoal?.title || 'Выберите шаблон'}</h3>
-                        <p class="template-wizard__subtitle">${wizardState.step === 'goals' ? 'Подберите подходящий сценарий по цели теста' : selectedGoal?.description || ''}</p>
+                        <p class="template-wizard__eyebrow">Step ${stepIndex}/3</p>
+                        <h3 class="template-wizard__title">${wizardState.step === 'goals' ? 'Create a mapping' : selectedGoal?.title || 'Pick a template'}</h3>
+                        <p class="template-wizard__subtitle">${wizardState.step === 'goals' ? 'Choose the scenario that fits your testing goal' : selectedGoal?.description || ''}</p>
                     </div>
-                    <div class="template-wizard__progress">
-                        ${[1, 2, 3].map((i) => `<span class="template-wizard__dot ${i <= stepIndex ? 'is-active' : ''}"></span>`).join('')}
+                    <div class="template-wizard__progress" role="progressbar" aria-label="Wizard progress" aria-valuemin="1" aria-valuemax="3" aria-valuenow="${stepIndex}">
+                        <span class="sr-only">Step ${stepIndex} of 3</span>
+                        ${[1, 2, 3].map((i) => `<span class="template-wizard__dot ${i <= stepIndex ? 'is-active' : ''}" aria-current="${i === stepIndex ? 'step' : 'false'}" aria-label="Step ${i}"></span>`).join('')}
                     </div>
                 </div>
                 <div class="template-wizard__body" id="template-wizard-body"></div>
