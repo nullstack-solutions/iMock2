@@ -44,6 +44,11 @@
     position: relative;
 }
 
+.modal-content--wide {
+    height: auto;
+    max-height: 90vh;
+}
+
 .modal-header {
     display: flex;
     flex-wrap: wrap;
