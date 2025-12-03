@@ -551,9 +551,9 @@
             const payload = template && template.content ? template.content : {};
             if (typeof payload === 'string') return payload;
             const pretty = JSON.stringify(payload, null, 2);
-            const lines = pretty.split('\n').slice(0, 8);
+            const lines = pretty.split('\n').slice(0, 16);
             const preview = lines.join('\n');
-            return preview.length > 320 ? `${preview.slice(0, 319)}…` : preview;
+            return preview.length > 640 ? `${preview.slice(0, 639)}…` : preview;
         } catch (error) {
             return '[unavailable template preview]';
         }
@@ -1014,6 +1014,17 @@
         });
     }
 
+    function goBackFromWizard() {
+        if (wizardState.step === 'preview') {
+            wizardState.step = 'templates';
+            return;
+        }
+
+        wizardState.step = 'goals';
+        wizardState.goalId = null;
+        wizardState.selectedTemplateId = null;
+    }
+
     function renderTemplateWizard(options = {}) {
         const { force = false } = options;
         const shell = document.getElementById('template-gallery-shell');
@@ -1053,31 +1064,18 @@
 
         if (!templates.length) {
             body.innerHTML = '<div class="history-empty"><p>No templates available</p><small>Add or import templates to populate this view.</small></div>';
-            return;
-        }
-
-        if (wizardState.step === 'goals') {
+        } else if (wizardState.step === 'goals') {
             renderGoalStep(body, templates);
-            return;
-        }
-
-        if (wizardState.step === 'templates') {
+        } else if (wizardState.step === 'templates') {
             renderTemplateStep(body, templates);
-            return;
+        } else {
+            renderPreviewStep(body, templates);
         }
-
-        renderPreviewStep(body, templates);
 
         const backButton = shell.querySelector('#template-wizard-back');
         if (backButton) {
             backButton.addEventListener('click', () => {
-                if (wizardState.step === 'preview') {
-                    wizardState.step = 'templates';
-                } else {
-                    wizardState.step = 'goals';
-                    wizardState.goalId = null;
-                    wizardState.selectedTemplateId = null;
-                }
+                goBackFromWizard();
                 renderTemplateWizard({ force: true });
             });
         }
