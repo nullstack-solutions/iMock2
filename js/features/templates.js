@@ -403,7 +403,7 @@
 
         const code = modal.querySelector('#template-preview-code');
         if (code) {
-            const payload = template && template.content ? template.content : {};
+            const payload = template.content ? template.content : {};
             const json = typeof payload === 'string' ? payload : JSON.stringify(payload, null, 2);
             code.textContent = json;
         }
