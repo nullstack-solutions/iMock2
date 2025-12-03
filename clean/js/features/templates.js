@@ -162,6 +162,56 @@
         notify(`Template "${template.title || template.id}" applied to editor`, 'success');
     }
 
+    async function createMappingFromTemplate(template, options = {}) {
+        const { openMode = 'inline' } = options;
+
+        if (!template) {
+            notify('Select a template first', 'warning');
+            return;
+        }
+
+        const payload = normalizeTemplatePayload(template);
+        if (!payload) {
+            notify('Template content is not available', 'error');
+            return;
+        }
+
+        try {
+            const response = await apiFetch('/mappings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const createdMapping = response?.mapping || response;
+            const createdId = createdMapping?.id;
+
+            if (createdId && typeof updateOptimisticCache === 'function') {
+                try {
+                    updateOptimisticCache(createdMapping, 'create');
+                } catch (cacheError) {
+                    console.warn('Failed to update optimistic cache after template create:', cacheError);
+                }
+            }
+
+            notify(`Mapping "${payload.name}" created from template`, 'success');
+
+            if (createdId) {
+                if (openMode === 'studio' && typeof global.editMapping === 'function') {
+                    global.editMapping(createdId);
+                } else if (typeof global.openEditModal === 'function') {
+                    global.openEditModal(createdId);
+                }
+            }
+        } catch (error) {
+            notify(`Failed to create mapping: ${error.message}`, 'error');
+            console.error('Failed to create mapping from template', error);
+        } finally {
+            global.hideModal?.(MODALS.GALLERY);
+            global.hideModal?.(MODALS.PREVIEW);
+        }
+    }
+
     function saveFormAsTemplate() {
         const title = (prompt('Template name', document.getElementById('mapping-name')?.value || '') || '').trim();
         if (!title) {
@@ -334,8 +384,53 @@
         return template.category || 'basic';
     }
 
+    function isCreationTarget(target = activeTarget) {
+        return typeof target === 'string' && target.startsWith('create');
+    }
+
+    function normalizeTemplatePayload(template) {
+        if (!template) return null;
+
+        let payload = template.content ?? {};
+        if (typeof payload === 'string') {
+            try {
+                payload = JSON.parse(payload);
+            } catch (e) {
+                console.warn('Failed to parse string template content:', e);
+                payload = {};
+            }
+        }
+
+        const normalized = JSON.parse(JSON.stringify(payload || {}));
+        ['id', 'uuid', 'stubMappingId', 'stubId', 'mappingId'].forEach((key) => delete normalized[key]);
+
+        if (!normalized.name) normalized.name = template.title || template.id || 'New mapping';
+        if (!normalized.request) normalized.request = {};
+        if (!normalized.response) normalized.response = {};
+
+        const nowIso = new Date().toISOString();
+        normalized.metadata = {
+            ...(normalized.metadata || {}),
+            created: normalized.metadata?.created || nowIso,
+            edited: nowIso,
+            source: normalized.metadata?.source || 'template'
+        };
+
+        return normalized;
+    }
+
     function applyTemplateForTarget(template, target = activeTarget) {
         if (!template) return;
+        if (target === 'create-inline') {
+            createMappingFromTemplate(template, { openMode: 'inline' });
+            return;
+        }
+
+        if (target === 'create-studio') {
+            createMappingFromTemplate(template, { openMode: 'studio' });
+            return;
+        }
+
         if (target === 'editor') {
             applyTemplateToEditor(template);
         } else {
@@ -410,6 +505,17 @@
             code.textContent = json;
         }
 
+        const creationMode = isCreationTarget(modal.dataset.templateTarget);
+        const applyButton = modal.querySelector('[data-template-action="apply"]');
+        if (applyButton) {
+            applyButton.textContent = creationMode ? 'Create & open editor' : 'Use template';
+        }
+
+        const studioButton = modal.querySelector('[data-template-action="create-studio"]');
+        if (studioButton) {
+            studioButton.style.display = creationMode ? '' : 'none';
+        }
+
         ensurePreviewHandlers();
         global.showModal?.(MODALS.PREVIEW);
     }
@@ -470,13 +576,19 @@
         const actions = document.createElement('div');
         actions.className = 'template-actions';
 
+        const creationMode = isCreationTarget(activeTarget);
+
         const useButton = document.createElement('button');
         useButton.className = 'btn btn-primary btn-sm';
         useButton.type = 'button';
-        useButton.textContent = 'Use template';
+        useButton.textContent = creationMode ? 'Create & open editor' : 'Use template';
         useButton.addEventListener('click', (event) => {
             event.stopPropagation();
-            applyTemplateForTarget(template);
+            if (creationMode) {
+                createMappingFromTemplate(template, { openMode: 'inline' });
+            } else {
+                applyTemplateForTarget(template);
+            }
         });
 
         const copyButton = document.createElement('button');
@@ -493,6 +605,17 @@
         });
 
         actions.appendChild(useButton);
+        if (creationMode) {
+            const studioButton = document.createElement('button');
+            studioButton.className = 'btn btn-secondary btn-sm';
+            studioButton.type = 'button';
+            studioButton.textContent = 'Create & open JSON Studio';
+            studioButton.addEventListener('click', (event) => {
+                event.stopPropagation();
+                createMappingFromTemplate(template, { openMode: 'studio' });
+            });
+            actions.appendChild(studioButton);
+        }
         actions.appendChild(copyButton);
 
         card.addEventListener('click', () => openTemplatePreview(template));
@@ -532,10 +655,17 @@
 
         const infoPanel = document.createElement('section');
         infoPanel.className = 'template-info';
+
+        const creationMode = isCreationTarget(activeTarget);
+        const useTargetLabel = creationMode
+            ? 'create a mapping and open the inline editor'
+            : `drop the JSON straight into the ${activeTarget === 'editor' ? 'editor' : 'form'}`;
+
         infoPanel.innerHTML = `
             <p class="template-info__lead">Browse ready-made WireMock snippets or treat this gallery as a quick reference:</p>
             <ul>
-                <li><strong>Use template</strong> drops the JSON straight into the ${activeTarget === 'editor' ? 'editor' : 'form'}.</li>
+                <li><strong>Use template</strong> will ${useTargetLabel}.</li>
+                ${creationMode ? '<li><strong>Create & open JSON Studio</strong> jumps into the full-page editor right after creation.</li>' : ''}
                 <li><strong>Copy JSON</strong> copies the snippet so you can adapt it manually.</li>
                 <li>Each card highlights key features like matchers, templating, webhooks, or proxy settings.</li>
             </ul>
@@ -581,6 +711,11 @@
                     return;
                 }
 
+                if (action === 'create-studio') {
+                    createMappingFromTemplate(template, { openMode: 'studio' });
+                    return;
+                }
+
                 if (action === 'copy') {
                     const json = typeof template.content === 'string'
                         ? template.content
@@ -605,6 +740,12 @@
         applyFn(template);
     }
 
+    function openGalleryForTarget(target = 'form') {
+        activeTarget = target;
+        renderTemplateGallery({ force: true });
+        global.showModal?.(MODALS.GALLERY);
+    }
+
     function init() {
         populateSelectors();
         renderTemplateGallery();
@@ -612,9 +753,7 @@
         document.querySelectorAll('[data-template-trigger]').forEach((button) => {
             button.addEventListener('click', (event) => {
                 event.preventDefault();
-                activeTarget = button.dataset.templateTarget || 'form';
-                renderTemplateGallery();
-                global.showModal?.(MODALS.GALLERY);
+                openGalleryForTarget(button.dataset.templateTarget || 'form');
             });
         });
 
@@ -633,8 +772,10 @@
         getTemplates: getAllTemplates,
         refresh: populateSelectors,
         openGallery: renderTemplateGallery,
+        openGalleryForTarget,
         applyTemplateToForm,
         applyTemplateToEditor,
+        createMappingFromTemplate,
         saveFormAsTemplate,
         saveEditorAsTemplate
     };
