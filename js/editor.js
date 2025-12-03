@@ -1,5 +1,5 @@
 // ===== EDITOR.JS - Mapping Editor Functionality =====
-// Centralized editor logic for both add and edit mapping workflows with JSON mode support
+// Centralized editor logic for editing mappings with JSON mode support
 
 // Current editor state (JSON mode only - form editor removed as dead code)
 let editorState = {
@@ -20,12 +20,6 @@ document.addEventListener('DOMContentLoaded', () => {
  * Set up event listeners for mapping forms
  */
 function setupMappingFormListeners() {
-    // Add mapping form (simpler form for creating new mappings)
-    const addMappingForm = document.getElementById('mapping-form');
-    if (addMappingForm) {
-        addMappingForm.addEventListener('submit', handleAddMappingSubmit);
-    }
-
     // Edit mapping form (more comprehensive form for editing existing mappings)
     const editMappingForm = document.getElementById('edit-mapping-form');
     if (editMappingForm) {
@@ -162,170 +156,9 @@ window.setMappingEditorBusyState = (isLoading, loadingLabel) => {
     setButtonLoadingState(updateButton, isLoading, loadingLabel);
 };
 
-/**
- * Handle submission of the add mapping form
- */
-async function handleAddMappingSubmit(e) {
-    e.preventDefault();
-    await saveMapping();
-}
-
-/**
- * Handle submission of the edit mapping form
- */
 async function handleEditMappingSubmit(e) {
     e.preventDefault();
     await updateMapping();
-}
-
-/**
- * Save a new mapping or update an existing one through the add mapping form
- */
-async function saveMapping() {
-    console.log('saveMapping called');
-    
-    const form = document.getElementById('mapping-form');
-    const idElement = document.getElementById('mapping-id');
-    
-    if (!form) {
-        console.error('Form not found: mapping-form');
-        NotificationManager.error('Mapping creation form not found');
-        return;
-    }
-    
-    const id = idElement ? idElement.value : null;
-    console.log('Mapping ID:', id);
-    
-    // Collect data from the form
-    const mappingData = {
-        name: document.getElementById('mapping-name')?.value || 'Unnamed Mapping',
-        request: {
-            method: document.getElementById('method').value,
-            urlPath: document.getElementById('url-pattern').value
-        },
-        response: {
-            status: parseInt(document.getElementById('response-status').value),
-            body: document.getElementById('response-body').value
-        }
-    };
-    
-    try {
-        if (id) {
-            // Update existing mapping
-            // Ensure metadata with timestamps and source
-            (function(){
-                try {
-                    const nowIso = new Date().toISOString();
-                    if (typeof mappingData === 'object' && mappingData) {
-                        // Initialize metadata object if it doesn't exist
-                        if (!mappingData.metadata) {
-                            mappingData.metadata = {};
-                            console.log('📅 [METADATA] Initialized metadata object (update)');
-                        }
-
-                        // Set created timestamp if not exists (first save)
-                        if (!mappingData.metadata.created) {
-                            mappingData.metadata.created = nowIso;
-                            console.log('📅 [METADATA] Set created timestamp (UI):', mappingData.metadata.created);
-                        }
-
-                        // Always update edited timestamp and source
-                        mappingData.metadata.edited = nowIso;
-                        mappingData.metadata.source = 'ui';
-
-                        console.log('📅 [METADATA] Updated edited timestamp (UI):', mappingData.metadata.edited);
-                        console.log('📅 [METADATA] Set source: ui');
-                    }
-                } catch (e) {
-                    console.warn('📅 [METADATA] Failed to update metadata:', e);
-                }
-            })();
-            const response = await apiFetch(`/mappings/${id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(mappingData)
-            });
-            const updatedMapping = response?.mapping || response;
-
-            NotificationManager.success('Mapping updated!');
-
-            // NEW SEQUENCE: API → Cache → UI (reuse same flow as create)
-            try {
-                if (updatedMapping) {
-                    if (typeof updateOptimisticCache === 'function') {
-                        updateOptimisticCache(updatedMapping, 'update');
-                    } else if (typeof window.applyOptimisticMappingUpdate === 'function') {
-                        window.applyOptimisticMappingUpdate(updatedMapping);
-                    }
-                } else {
-                    console.warn('Update response missing mapping payload, skipping optimistic updates');
-                }
-            } catch (e) { console.warn('optimistic updates after inline update failed:', e); }
-        } else {
-            // Create new mapping
-            // Ensure metadata with timestamps and source
-            (function(){
-                try {
-                    const nowIso = new Date().toISOString();
-                    if (typeof mappingData === 'object' && mappingData) {
-                        // Initialize metadata object if it doesn't exist
-                        if (!mappingData.metadata) {
-                            mappingData.metadata = {};
-                            console.log('📅 [METADATA] Initialized metadata object (create)');
-                        }
-
-                        // Set created timestamp (always for new mappings)
-                        mappingData.metadata.created = nowIso;
-                        mappingData.metadata.edited = nowIso;
-                        mappingData.metadata.source = 'ui';
-
-                        console.log('📅 [METADATA] Set created timestamp (UI):', mappingData.metadata.created);
-                        console.log('📅 [METADATA] Set source: ui');
-                    }
-                } catch (e) {
-                    console.warn('📅 [METADATA] Failed to update metadata:', e);
-                }
-            })();
-            const response = await apiFetch('/mappings', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(mappingData)
-            });
-            const createdMapping = response?.mapping || response;
-            NotificationManager.success('Mapping created!');
-
-            // NEW SEQUENCE: API → Optimistic Cache → UI
-            try {
-                if (createdMapping && createdMapping.id) {
-                    // Update cache and UI optimistically using the unified function
-                    if (typeof updateOptimisticCache === 'function') {
-                        updateOptimisticCache(createdMapping, 'create');
-                    } else if (typeof window.applyOptimisticMappingUpdate === 'function') {
-                        // Fallback if updateOptimisticCache is not available
-                        window.applyOptimisticMappingUpdate(createdMapping);
-                    }
-                } else {
-                    console.warn('Created mapping has no id, skipping optimistic updates');
-                }
-            } catch (e) { console.warn('optimistic updates after create failed:', e); }
-        }
-        
-        hideModal('add-mapping-modal');
-        // Optimistic cache update already done - no need for additional cache rebuild
-        
-        // Reapply filters after updating mappings
-        const hasActiveFilters = document.getElementById(SELECTORS.MAPPING_FILTERS.METHOD)?.value ||
-                               document.getElementById(SELECTORS.MAPPING_FILTERS.URL)?.value ||
-                               document.getElementById(SELECTORS.MAPPING_FILTERS.STATUS)?.value;
-        
-        if (hasActiveFilters) {
-            FilterManager.applyMappingFilters();
-        }
-        
-    } catch (e) {
-        console.error('Error in saveMapping:', e);
-        NotificationManager.error(`Save failed: ${e.message}`);
-    }
 }
 
 /**
@@ -539,9 +372,3 @@ function showNotification(message, type = 'info') {
     console.log(`[${type.toUpperCase()}] ${message}`);
 }
 
-// Wrapper function for HTML onclick handler
-window.saveMappingWrapper = () => {
-    saveMapping().catch(error => {
-        NotificationManager.error('Save failed: ' + error.message);
-    });
-};
