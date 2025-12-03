@@ -256,7 +256,7 @@
                             <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-bolt"></use></svg>
                             <span class="btn-label">Force Refresh Cache</span>
                         </button>
-                        <button class="btn btn-primary" onclick="openAddMappingModal()" id="add-mapping-btn" disabled>
+                        <button class="btn btn-primary" data-template-trigger data-template-target="create-inline" id="add-mapping-btn" disabled>
                             <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-plus"></use></svg>
                             <span>Add Mapping</span>
                         </button>
@@ -742,63 +742,6 @@
         </div>
     </div>
 
-    <!-- MODAL FOR ADDING/EDITING MAPPINGS -->
-    <div id="add-mapping-modal" class="modal hidden">
-        <div class="modal-content">
-            <button class="modal-close" type="button" onclick="hideModal('add-mapping-modal')" aria-label="Close add mapping modal">
-                <svg class="icon icon-16" aria-hidden="true" focusable="false">
-                    <use href="#icon-x-circle"></use>
-                </svg>
-                <span class="sr-only">Close</span>
-            </button>
-            <div class="modal-header">
-                <div class="modal-header-main">
-                    <h3 id="modal-title">Add New Mapping</h3>
-                </div>
-                <div class="modal-header-actions">
-                    <button type="button" class="btn btn-primary" onclick="saveMappingWrapper()">
-                        <span class="btn-label">Save Mapping</span>
-                    </button>
-                </div>
-            </div>
-            <form id="mapping-form">
-                <input type="hidden" id="mapping-id">
-                
-                <div class="form-group">
-                    <label class="form-label">Mapping Name</label>
-                    <input type="text" class="form-input" id="mapping-name" placeholder="Enter mapping name">
-                </div>
-                
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label">Method</label>
-                        <select class="form-select" id="method">
-                            <option value="GET">GET</option>
-                            <option value="POST">POST</option>
-                            <option value="PUT">PUT</option>
-                            <option value="DELETE">DELETE</option>
-                            <option value="PATCH">PATCH</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">URL Pattern</label>
-                        <input type="text" class="form-input" id="url-pattern" placeholder="/api/users" required>
-                    </div>
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Response Status</label>
-                    <input type="number" class="form-input" id="response-status" value="200" min="100" max="599">
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Response Body</label>
-                    <textarea class="form-textarea" id="response-body" rows="6" placeholder='{ "message": "Hello World" }'></textarea>
-                </div>
-            </form>
-        </div>
-    </div>
-
     <!-- MODAL FOR EDITING MAPPINGS -->
     <div id="edit-mapping-modal" class="modal hidden">
         <div class="modal-content">
@@ -822,7 +765,20 @@
                     </button>
                 </div>
             </div>
-            
+
+            <div class="template-toolbar" id="editor-template-toolbar">
+                <div class="template-toolbar__controls template-toolbar__controls--stacked">
+                    <div class="template-toolbar__title">
+                        <label class="form-label" for="editor-template-selector">Templates</label>
+                        <p class="form-hint">Apply prepared stubs directly to the JSON editor or save your own.</p>
+                    </div>
+                    <div class="template-toolbar__actions">
+                        <button type="button" class="btn btn-secondary btn-sm" data-template-trigger data-template-target="editor">Browse templates</button>
+                        <button type="button" class="btn btn-secondary btn-sm" id="editor-save-template">Save current as template</button>
+                    </div>
+                </div>
+            </div>
+
             <!-- Form Editor (Hidden by default) -->
             <div id="form-editor-container" style="display: none;">
             <form id="edit-mapping-form">
@@ -924,6 +880,49 @@
         </div>
     </div>
 
+    <!-- TEMPLATE GALLERY -->
+    <div class="modal hidden" id="template-gallery-modal">
+        <div class="modal-content modal-content--wide">
+            <button class="modal-close" type="button" onclick="hideModal('template-gallery-modal')" aria-label="Close template gallery">
+                <svg class="icon icon-16" aria-hidden="true" focusable="false">
+                    <use href="#icon-x-circle"></use>
+                </svg>
+                <span class="sr-only">Close</span>
+            </button>
+            <div class="modal-header">
+                <h3 id="template-gallery-title">WireMock templates</h3>
+            </div>
+            <div class="modal-body">
+                <div class="template-wizard-shell" id="template-gallery-shell"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal hidden" id="template-preview-modal">
+        <div class="modal-content modal-content--wide">
+            <button class="modal-close" type="button" onclick="hideModal('template-preview-modal')" aria-label="Close template preview">
+                <svg class="icon icon-16" aria-hidden="true" focusable="false">
+                    <use href="#icon-x-circle"></use>
+                </svg>
+                <span class="sr-only">Close</span>
+            </button>
+            <div class="modal-header">
+                <h3 id="template-preview-title">Template preview</h3>
+            </div>
+            <div class="modal-body template-preview-body">
+                <p class="template-preview-description" id="template-preview-description"></p>
+                <div class="template-preview-meta" id="template-preview-meta"></div>
+                <pre class="template-preview-code" id="template-preview-code"></pre>
+                <div class="template-preview-actions" id="template-preview-actions">
+                    <button class="btn btn-primary btn-sm" type="button" data-template-action="apply">Use template</button>
+                    <button class="btn btn-secondary btn-sm" type="button" data-template-action="create-studio" style="display: none;">Create &amp; open JSON Studio</button>
+                    <button class="btn btn-secondary btn-sm" type="button" data-template-action="copy">Copy JSON</button>
+                    <button class="btn btn-secondary btn-ghost btn-sm" type="button" data-template-action="close">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- MODAL FOR REQUEST DETAILS -->
     <div id="request-details-modal" class="modal hidden">
         <div class="modal-content">
@@ -971,12 +970,14 @@
     </div>
 
 <!-- JavaScript modules in loading order -->
+<script src="editor/monaco-template-library.js"></script>
 <script src="js/vendor-js-yaml.min.js"></script>
 <script src="js/core.js"></script>
 <script src="js/managers.js"></script>
 <script src="js/demo-data.js"></script>
 <script src="js/features/state.js"></script>
 <script src="js/features/utils.js"></script>
+<script src="js/features/templates.js"></script>
 <script src="js/features/filters.js"></script>
 <script src="js/features/cache.js"></script>
 <script src="js/features/mappings.js"></script>
