@@ -411,7 +411,7 @@
     justify-content: flex-start;
 }
 
-.modal-content--wide {
+.modal-content--wide-760 {
     width: min(90vw, 760px);
     max-width: 760px;
 }
