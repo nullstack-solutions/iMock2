@@ -288,6 +288,27 @@
         }
 
         const payload = template.content ?? {};
+        const initializer = global.monacoInitializer;
+
+        if (initializer && (typeof initializer.applyTemplate === 'function' || typeof initializer.applyTemplateById === 'function')) {
+            let applied = false;
+
+            if (typeof initializer.applyTemplate === 'function') {
+                applied = initializer.applyTemplate(template);
+            } else {
+                applied = initializer.applyTemplateById?.(template.id);
+            }
+
+            notify(
+                applied
+                    ? `Template "${template.title || template.id}" applied to editor`
+                    : 'Template could not be applied',
+                applied ? 'success' : 'error'
+            );
+
+            return;
+        }
+
         const jsonString = typeof payload === 'string' ? payload : JSON.stringify(payload, null, 2);
         const editor = document.getElementById('json-editor');
         if (editor) {

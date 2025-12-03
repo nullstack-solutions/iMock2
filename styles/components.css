@@ -426,12 +426,6 @@
     max-width: 760px;
 }
 
-.template-grid {
-    display: grid;
-    gap: var(--space-4);
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-}
-
 .template-wizard-shell {
     height: 100%;
 }
