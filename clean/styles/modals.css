@@ -45,7 +45,7 @@
 }
 
 .modal-content--wide {
-    height: auto;
+    height: 90vh;
     max-height: 90vh;
 }
 
@@ -84,6 +84,7 @@
 .modal-content > .modal-body {
     flex: 1;
     overflow-y: auto;
+    min-height: 0;
 }
 
 .modal-content > #json-editor-container {
@@ -170,8 +171,8 @@
 
 .modal-body {
     padding: var(--space-6);
-    max-height: 70vh;
     overflow-y: auto;
+    min-height: 0;
 }
 
 .modal-footer {
