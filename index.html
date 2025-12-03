@@ -879,7 +879,22 @@
                         <input type="text" class="form-input" id="url-pattern" placeholder="/api/users" required>
                     </div>
                 </div>
-                
+
+                <div class="form-group">
+                    <div class="template-toolbar template-toolbar--inline">
+                        <div class="template-toolbar__controls">
+                            <div class="template-toolbar__title">
+                                <label class="form-label" for="template-selector">Templates</label>
+                                <p class="form-hint">Browse ready-made stubs or save the current form for reuse.</p>
+                            </div>
+                            <div class="template-toolbar__actions">
+                                <button type="button" class="btn btn-secondary btn-sm" data-template-trigger data-template-target="form">Browse templates</button>
+                                <button type="button" class="btn btn-secondary btn-sm" id="save-template-btn">Save as template</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="form-group">
                     <label class="form-label">Response Status</label>
                     <input type="number" class="form-input" id="response-status" value="200" min="100" max="599">
@@ -923,6 +938,19 @@
                 </div>
             </div>
 
+            <div class="template-toolbar" id="editor-template-toolbar">
+                <div class="template-toolbar__controls template-toolbar__controls--stacked">
+                    <div class="template-toolbar__title">
+                        <label class="form-label" for="editor-template-selector">Templates</label>
+                        <p class="form-hint">Apply prepared stubs directly to the JSON editor or save your own.</p>
+                    </div>
+                    <div class="template-toolbar__actions">
+                        <button type="button" class="btn btn-secondary btn-sm" data-template-trigger data-template-target="editor">Browse templates</button>
+                        <button type="button" class="btn btn-secondary btn-sm" id="editor-save-template">Save current as template</button>
+                    </div>
+                </div>
+            </div>
+
             <!-- JSON Editor Container -->
             <div id="json-editor-container" class="json-editor-wrapper">
                 <textarea id="json-editor" class="json-editor" rows="1" placeholder="{
@@ -939,6 +967,48 @@
     }
   }
 }"></textarea>
+            </div>
+        </div>
+    </div>
+
+    <!-- TEMPLATE GALLERY -->
+    <div class="modal hidden" id="template-gallery-modal">
+        <div class="modal-content modal-content--wide">
+            <button class="modal-close" type="button" onclick="hideModal('template-gallery-modal')" aria-label="Close template gallery">
+                <svg class="icon icon-16" aria-hidden="true" focusable="false">
+                    <use href="#icon-x-circle"></use>
+                </svg>
+                <span class="sr-only">Close</span>
+            </button>
+            <div class="modal-header">
+                <h3 id="template-gallery-title">WireMock templates</h3>
+            </div>
+            <div class="modal-body">
+                <div class="template-grid" id="template-gallery-grid"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal hidden" id="template-preview-modal">
+        <div class="modal-content modal-content--wide">
+            <button class="modal-close" type="button" onclick="hideModal('template-preview-modal')" aria-label="Close template preview">
+                <svg class="icon icon-16" aria-hidden="true" focusable="false">
+                    <use href="#icon-x-circle"></use>
+                </svg>
+                <span class="sr-only">Close</span>
+            </button>
+            <div class="modal-header">
+                <h3 id="template-preview-title">Template preview</h3>
+            </div>
+            <div class="modal-body template-preview-body">
+                <p class="template-preview-description" id="template-preview-description"></p>
+                <div class="template-preview-meta" id="template-preview-meta"></div>
+                <pre class="template-preview-code" id="template-preview-code"></pre>
+                <div class="template-preview-actions" id="template-preview-actions">
+                    <button class="btn btn-primary btn-sm" type="button" data-template-action="apply">Use template</button>
+                    <button class="btn btn-secondary btn-sm" type="button" data-template-action="copy">Copy JSON</button>
+                    <button class="btn btn-secondary btn-ghost btn-sm" type="button" data-template-action="close">Close</button>
+                </div>
             </div>
         </div>
     </div>
@@ -1023,12 +1093,14 @@
     </div>
 
 <!-- JavaScript modules in loading order -->
+<script src="editor/monaco-template-library.js"></script>
 <script src="js/vendor-js-yaml.min.js"></script>
 <script src="js/core.js"></script>
 <script src="js/managers.js"></script>
 <script src="js/demo-data.js"></script>
 <script src="js/features/state.js"></script>
 <script src="js/features/utils.js"></script>
+<script src="js/features/templates.js"></script>
 <script src="js/features/queryParser.js"></script>
 <script src="js/features/filters.js"></script>
 <script src="js/features/filter-presets.js"></script>
