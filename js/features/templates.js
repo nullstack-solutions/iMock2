@@ -19,6 +19,7 @@
         user: 'Custom'
     };
     let activeTarget = 'form';
+    let lastRenderSignature = '';
 
     function notify(message, type = 'info') {
         if (global.NotificationManager && typeof NotificationManager[type] === 'function') {
@@ -194,7 +195,7 @@
         const nextTemplates = readUserTemplates();
         nextTemplates.push(userTemplate);
         persistUserTemplates(nextTemplates);
-        renderTemplateGallery();
+        renderTemplateGallery({ force: true });
         populateSelectors();
         notify(`Template "${title}" saved`, 'success');
     }
@@ -231,7 +232,7 @@
         const nextTemplates = readUserTemplates();
         nextTemplates.push(userTemplate);
         persistUserTemplates(nextTemplates);
-        renderTemplateGallery();
+        renderTemplateGallery({ force: true });
         populateSelectors();
         notify(`Template "${title}" saved`, 'success');
     }
@@ -247,6 +248,7 @@
 
     function formatFeatureValue(value) {
         if (value === null) return 'null';
+        if (typeof value === 'undefined') return '';
         if (typeof value === 'string') return value.length > 64 ? `${value.slice(0, 61)}…` : value;
         if (typeof value === 'number' || typeof value === 'boolean') return String(value);
 
@@ -403,7 +405,7 @@
 
         const code = modal.querySelector('#template-preview-code');
         if (code) {
-            const payload = template.content ? template.content : {};
+            const payload = template && template.content ? template.content : {};
             const json = typeof payload === 'string' ? payload : JSON.stringify(payload, null, 2);
             code.textContent = json;
         }
@@ -511,11 +513,21 @@
         return card;
     }
 
-    function renderTemplateGallery() {
+    function buildGallerySignature(templates) {
+        const ids = templates.map((template) => `${template.id}:${template.source || ''}:${template.title || ''}`).join('|');
+        return `${activeTarget}:${ids}`;
+    }
+
+    function renderTemplateGallery(options = {}) {
+        const { force = false } = options;
         const container = document.getElementById('template-gallery-grid');
         if (!container) return;
 
         const templates = getAllTemplates();
+        const signature = buildGallerySignature(templates);
+        if (!force && signature === lastRenderSignature) return;
+        lastRenderSignature = signature;
+
         container.innerHTML = '';
 
         const infoPanel = document.createElement('section');
