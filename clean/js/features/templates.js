@@ -18,6 +18,80 @@
         custom: 'Custom',
         user: 'Custom'
     };
+    const GOAL_GROUPS = [
+        {
+            id: 'happy-path',
+            icon: '✓',
+            title: 'Happy path',
+            subtitle: 'Клиент успешно ходит в сервис',
+            color: '#10b981',
+            description: 'Стандартные успешные ответы API',
+        },
+        {
+            id: 'errors',
+            icon: '⚠',
+            title: 'Ошибки',
+            subtitle: 'Клиент правильно реагирует на ошибки',
+            color: '#f59e0b',
+            description: 'HTTP ошибки и валидация',
+        },
+        {
+            id: 'faults',
+            icon: '⚡',
+            title: 'Сетевые сбои',
+            subtitle: 'Таймауты, обрывы соединения, медленные ответы',
+            color: '#ef4444',
+            description: 'Симуляция проблем сети',
+        },
+        {
+            id: 'scenarios',
+            icon: '↻',
+            title: 'Сценарии',
+            subtitle: 'Stateful поведение, шаги, ретраи',
+            color: '#8b5cf6',
+            description: 'Изменяющееся поведение сервиса',
+        },
+        {
+            id: 'dynamic',
+            icon: '⎇',
+            title: 'Динамический ответ',
+            subtitle: 'Response templating, условная логика',
+            color: '#3b82f6',
+            description: 'Ответ зависит от запроса',
+        },
+        {
+            id: 'matching',
+            icon: '🎯',
+            title: 'Request Matching',
+            subtitle: 'URL, headers, body, JSONPath',
+            color: '#06b6d4',
+            description: 'Продвинутое сопоставление запросов',
+        },
+        {
+            id: 'webhooks',
+            icon: '📤',
+            title: 'Webhooks',
+            subtitle: 'Асинхронные callback вызовы',
+            color: '#ec4899',
+            description: 'Исходящие HTTP вызовы',
+        },
+        {
+            id: 'proxy',
+            icon: '⇄',
+            title: 'Proxy & Record',
+            subtitle: 'Проксирование и запись',
+            color: '#14b8a6',
+            description: 'Работа с реальным API',
+        },
+    ];
+    const wizardState = {
+        step: 'goals',
+        goalId: null,
+        selectedTemplateId: null,
+        searchQuery: '',
+        activeTags: [],
+        showPopularOnly: false,
+    };
     let activeTarget = 'form';
     let lastRenderSignature = '';
 
@@ -65,6 +139,78 @@
 
     function findTemplateById(templateId) {
         return getAllTemplates().find(item => item.id === templateId) || null;
+    }
+
+    function deriveTemplateTags(template) {
+        const tags = new Set();
+        const content = template.content || {};
+        const request = content.request || {};
+        const response = content.response || {};
+        const method = request.method || 'ANY';
+        tags.add(method);
+        if (content.category) tags.add(content.category);
+        if (template.category) tags.add(template.category);
+        if (template.source === 'user') tags.add('custom');
+
+        if (request.bodyPatterns || request.multipartPatterns) tags.add('matching');
+        if (request.headers) tags.add('headers');
+        if (request.queryParameters) tags.add('query');
+        if (request.cookies) tags.add('cookies');
+        if (request.urlPathPattern || request.urlPattern || request.urlPathTemplate) tags.add('pattern');
+        if (Array.isArray(request.bodyPatterns)) {
+            const hasJsonPath = request.bodyPatterns.some(pattern => pattern.matchesJsonPath || pattern.matchesXPath);
+            if (hasJsonPath) tags.add('jsonpath');
+        }
+
+        if (response.proxyBaseUrl || content.proxyBaseUrl) tags.add('proxy');
+        if (response.serveEventListeners || content.serveEventListeners || response.postServeActions) tags.add('webhook');
+        if (response.transformers || content.transformers) tags.add('templating');
+        if (response.fixedDelayMilliseconds || response.delayDistribution || response.chunkedDribbleDelay) tags.add('delay');
+        if (response.fault) tags.add('fault');
+        if (content.mappings) tags.add('scenario');
+        if (template.popular) tags.add('popular');
+
+        return Array.from(tags);
+    }
+
+    function deriveOutcome(template) {
+        const content = template.content || {};
+        const response = content.response || {};
+        if (response.proxyBaseUrl || content.proxyBaseUrl) return 'proxy';
+        if (response.fault) return 'fault';
+        if (response.status) return `${response.status}`;
+        if (Array.isArray(content.mappings) && content.mappings.length) return 'scenario';
+        return '200';
+    }
+
+    function deriveMethod(template) {
+        const content = template.content || {};
+        const request = content.request || {};
+        if (request.method) return request.method;
+        if (Array.isArray(content.mappings) && content.mappings[0]?.request?.method) {
+            return content.mappings[0].request.method;
+        }
+        return 'ANY';
+    }
+
+    function enrichTemplate(template) {
+        const method = deriveMethod(template);
+        const outcome = deriveOutcome(template);
+        const tags = deriveTemplateTags(template);
+        const popular = Boolean(template.popular) || ['basic', 'integration', 'proxy'].includes(template.category);
+        const isScenario = Array.isArray(template.content?.mappings) && template.content.mappings.length > 0;
+        return {
+            ...template,
+            method,
+            outcome,
+            tags,
+            popular,
+            isScenario,
+        };
+    }
+
+    function getTemplatesWithMeta() {
+        return getAllTemplates().map(enrichTemplate);
     }
 
     function createOption(template) {
@@ -245,7 +391,7 @@
         const nextTemplates = readUserTemplates();
         nextTemplates.push(userTemplate);
         persistUserTemplates(nextTemplates);
-        renderTemplateGallery({ force: true });
+        renderTemplateWizard({ force: true });
         populateSelectors();
         notify(`Template "${title}" saved`, 'success');
     }
@@ -282,7 +428,7 @@
         const nextTemplates = readUserTemplates();
         nextTemplates.push(userTemplate);
         persistUserTemplates(nextTemplates);
-        renderTemplateGallery({ force: true });
+        renderTemplateWizard({ force: true });
         populateSelectors();
         notify(`Template "${title}" saved`, 'success');
     }
@@ -520,216 +666,318 @@
         global.showModal?.(MODALS.PREVIEW);
     }
 
-    function buildTemplateCard(template) {
-        const card = document.createElement('article');
-        card.className = 'template-card';
-        card.dataset.templateId = template.id;
-        card.setAttribute('role', 'button');
-        card.setAttribute('tabindex', '0');
+    function buildGallerySignature(templates) {
+        const ids = templates.map((template) => `${template.id}:${template.source || ''}:${template.title || ''}:${template.method}:${template.outcome}`).join('|');
+        return [
+            activeTarget,
+            wizardState.goalId || 'none',
+            wizardState.searchQuery,
+            wizardState.activeTags.join(','),
+            wizardState.showPopularOnly,
+            ids,
+        ].join('|');
+    }
 
-        const header = document.createElement('div');
-        header.className = 'template-header';
+    function templateMatchesGoal(template, goalId) {
+        if (!goalId) return true;
+        if (goalId === 'happy-path') return template.outcome.startsWith('2');
+        if (goalId === 'errors') return ['4', '5'].includes(template.outcome.charAt(0));
+        if (goalId === 'faults') return template.tags.includes('fault') || template.tags.includes('delay');
+        if (goalId === 'scenarios') return template.isScenario;
+        if (goalId === 'dynamic') return template.tags.includes('templating');
+        if (goalId === 'matching') return template.tags.includes('matching') || template.tags.includes('pattern') || template.tags.includes('jsonpath');
+        if (goalId === 'webhooks') return template.tags.includes('webhook');
+        if (goalId === 'proxy') return template.tags.includes('proxy');
+        return true;
+    }
 
-        const title = document.createElement('h3');
-        title.textContent = template.title || template.id;
-        header.appendChild(title);
+    function getTemplatesByGoal(goalId) {
+        return getTemplatesWithMeta().filter((template) => templateMatchesGoal(template, goalId));
+    }
 
-        const badge = document.createElement('span');
-        const badgeCategory = templateCategory(template);
-        badge.className = `badge ${badgeCategory}`;
-        badge.textContent = TEMPLATE_CATEGORY_LABELS[badgeCategory] || 'Template';
-        header.appendChild(badge);
+    function renderGoalStep(body, templates) {
+        body.innerHTML = `
+            <div class="template-wizard__grid template-wizard__goals"></div>
+        `;
 
-        const description = document.createElement('p');
-        description.className = 'template-description';
-        description.textContent = template.description || 'Ready-to-use WireMock template.';
-
-        const highlight = document.createElement('span');
-        highlight.className = 'template-highlight';
-        highlight.textContent = getTemplateHeadline(template);
-
-        const featuresContainer = document.createElement('div');
-        featuresContainer.className = 'template-features';
-
-        const featureData = getTemplateFeature(template);
-        if (featureData) {
-            const feature = document.createElement('div');
-            feature.className = 'template-feature';
-
-            const key = document.createElement('div');
-            key.className = 'template-feature__key';
-            key.textContent = featureData.label;
-
-            const value = document.createElement('div');
-            value.className = 'template-feature__value';
-            value.textContent = featureData.value;
-
-            feature.appendChild(key);
-            feature.appendChild(value);
-            featuresContainer.appendChild(feature);
-        }
-
-        const preview = document.createElement('pre');
-        preview.className = 'history-preview';
-        preview.textContent = buildTemplatePreview(template);
-
-        const actions = document.createElement('div');
-        actions.className = 'template-actions';
-
-        const creationMode = isCreationTarget(activeTarget);
-
-        const useButton = document.createElement('button');
-        useButton.className = 'btn btn-primary btn-sm';
-        useButton.type = 'button';
-        useButton.textContent = creationMode ? 'Create & open editor' : 'Use template';
-        useButton.addEventListener('click', (event) => {
-            event.stopPropagation();
-            if (creationMode) {
-                createMappingFromTemplate(template, { openMode: 'inline' });
-            } else {
-                applyTemplateForTarget(template);
-            }
-        });
-
-        const copyButton = document.createElement('button');
-        copyButton.className = 'btn btn-secondary btn-sm';
-        copyButton.type = 'button';
-        copyButton.textContent = 'Copy JSON';
-        copyButton.addEventListener('click', async (event) => {
-            event.stopPropagation();
-            const json = template && template.content && typeof template.content === 'string'
-                ? template.content
-                : JSON.stringify(template.content, null, 2);
-            const success = await copyTextToClipboard(json);
-            notify(success ? `Template "${template.title}" copied` : 'Clipboard copy failed', success ? 'success' : 'error');
-        });
-
-        actions.appendChild(useButton);
-        if (creationMode) {
-            const studioButton = document.createElement('button');
-            studioButton.className = 'btn btn-secondary btn-sm';
-            studioButton.type = 'button';
-            studioButton.textContent = 'Create & open JSON Studio';
-            studioButton.addEventListener('click', (event) => {
-                event.stopPropagation();
-                createMappingFromTemplate(template, { openMode: 'studio' });
+        const grid = body.querySelector('.template-wizard__grid');
+        GOAL_GROUPS.forEach((goal) => {
+            const count = templates.filter((template) => templateMatchesGoal(template, goal.id)).length;
+            const card = document.createElement('button');
+            card.type = 'button';
+            card.className = 'template-goal';
+            card.dataset.goalId = goal.id;
+            card.innerHTML = `
+                <span class="template-goal__icon" aria-hidden="true">${goal.icon}</span>
+                <span class="template-goal__title">${goal.title}</span>
+                <span class="template-goal__subtitle">${goal.subtitle}</span>
+                <span class="template-goal__count">${count} шаблонов</span>
+            `;
+            card.style.setProperty('--goal-color', goal.color);
+            card.disabled = count === 0;
+            card.addEventListener('click', () => {
+                wizardState.goalId = goal.id;
+                wizardState.step = 'templates';
+                wizardState.activeTags = [];
+                wizardState.searchQuery = '';
+                wizardState.showPopularOnly = false;
+                renderTemplateWizard({ force: true });
             });
-            actions.appendChild(studioButton);
-        }
-        actions.appendChild(copyButton);
+            grid.appendChild(card);
+        });
+    }
 
-        card.addEventListener('click', () => openTemplatePreview(template));
+    function renderTemplateCard(template, onSelect) {
+        const outcomeLabel = template.outcome === 'proxy'
+            ? 'proxy'
+            : template.outcome === 'fault'
+                ? 'fault'
+                : template.outcome;
+        const creationMode = isCreationTarget(activeTarget);
+        const card = document.createElement('button');
+        card.type = 'button';
+        card.className = 'template-card template-card--wizard';
+        card.dataset.templateId = template.id;
+        card.innerHTML = `
+            <div class="template-card__header">
+                <span class="badge badge-soft" data-method="${template.method}">${template.method}</span>
+                <span class="badge badge-soft" data-outcome="${template.outcome}">${outcomeLabel}</span>
+                ${template.isScenario ? `<span class="badge badge-soft badge-scenario">${template.content?.mappings?.length || 0} шагов</span>` : ''}
+                ${template.popular ? '<span class="template-card__star" aria-hidden="true">⭐</span>' : ''}
+            </div>
+            <div class="template-card__title">${template.title || template.name || template.id}</div>
+            <div class="template-card__desc">${template.description || 'WireMock template'}</div>
+            <div class="template-card__meta">${getTemplateHeadline(template)}</div>
+            <div class="template-card__tags">
+                ${template.tags.slice(0, 4).map(tag => `<span class="chip">${tag}</span>`).join('')}
+            </div>
+            <div class="template-card__actions">
+                <span class="btn btn-primary btn-sm">${creationMode ? 'Создать' : 'Выбрать'}</span>
+                <span class="btn btn-secondary btn-sm" aria-hidden="true">Подробнее</span>
+            </div>
+        `;
+
+        card.addEventListener('click', () => onSelect(template));
         card.addEventListener('keydown', (event) => {
             if (event.key === 'Enter' || event.key === ' ') {
                 event.preventDefault();
-                openTemplatePreview(template);
+                onSelect(template);
             }
         });
-
-        card.appendChild(header);
-        card.appendChild(description);
-        if (highlight.textContent) card.appendChild(highlight);
-        if (featuresContainer.childNodes.length) card.appendChild(featuresContainer);
-        card.appendChild(preview);
-        card.appendChild(actions);
 
         return card;
     }
 
-    function buildGallerySignature(templates) {
-        const ids = templates.map((template) => `${template.id}:${template.source || ''}:${template.title || ''}`).join('|');
-        return `${activeTarget}:${ids}`;
+    function renderTemplateStep(body, templates) {
+        const filteredByGoal = getTemplatesByGoal(wizardState.goalId);
+        const availableTags = Array.from(new Set(filteredByGoal.flatMap(template => template.tags))).sort();
+
+        let filtered = filteredByGoal.filter((template) => {
+            if (wizardState.showPopularOnly && !template.popular) return false;
+            if (wizardState.activeTags.length && !wizardState.activeTags.every(tag => template.tags.includes(tag))) return false;
+            if (!wizardState.searchQuery) return true;
+            const query = wizardState.searchQuery.toLowerCase();
+            return (
+                (template.title || template.id).toLowerCase().includes(query)
+                || (template.description || '').toLowerCase().includes(query)
+                || template.tags.some(tag => tag.toLowerCase().includes(query))
+            );
+        });
+
+        body.innerHTML = `
+            <div class="template-toolbar template-toolbar--wizard">
+                <div class="template-toolbar__search">
+                    <svg class="icon icon-16" aria-hidden="true" focusable="false"><use href="#icon-search"></use></svg>
+                    <input type="search" placeholder="Поиск шаблонов..." value="${wizardState.searchQuery}" aria-label="Поиск шаблонов" />
+                </div>
+                <div class="template-toolbar__actions">
+                    <button type="button" class="btn btn-secondary btn-sm" data-action="toggle-popular" aria-pressed="${wizardState.showPopularOnly}">⭐ Популярные</button>
+                    <button type="button" class="btn btn-ghost btn-sm" data-action="back">← Назад</button>
+                </div>
+            </div>
+            <div class="template-tags" aria-label="Tags">
+                ${availableTags.map(tag => `<button type="button" class="chip chip--toggle ${wizardState.activeTags.includes(tag) ? 'is-active' : ''}" data-tag="${tag}">${tag}</button>`).join('')}
+            </div>
+            <div class="template-wizard__grid template-wizard__cards" id="template-wizard-cards"></div>
+            <div class="template-info template-info--inline">
+                <p class="template-info__lead">Нужны другие примеры? Посмотрите <a href="https://library.wiremock.org/" target="_blank" rel="noopener">официальную библиотеку WireMock</a> и импортируйте JSON через Import/Export → Import Data.</p>
+            </div>
+        `;
+
+        const cardsContainer = body.querySelector('#template-wizard-cards');
+        const emptyState = document.createElement('div');
+        emptyState.className = 'history-empty';
+        emptyState.innerHTML = '<p>Шаблоны не найдены</p><small>Измените фильтры или импортируйте JSON из WireMock Template Library.</small>';
+
+        if (!filtered.length) {
+            cardsContainer.replaceWith(emptyState);
+        } else {
+            filtered.forEach((template) => {
+                cardsContainer.appendChild(renderTemplateCard(template, (selected) => {
+                    wizardState.selectedTemplateId = selected.id;
+                    wizardState.step = 'preview';
+                    renderTemplateWizard({ force: true });
+                }));
+            });
+        }
+
+        const searchInput = body.querySelector('input[type="search"]');
+        if (searchInput) {
+            searchInput.addEventListener('input', (event) => {
+                wizardState.searchQuery = event.target.value;
+                renderTemplateWizard({ force: true });
+            });
+        }
+
+        body.querySelectorAll('[data-action="toggle-popular"]').forEach((button) => {
+            button.addEventListener('click', () => {
+                wizardState.showPopularOnly = !wizardState.showPopularOnly;
+                renderTemplateWizard({ force: true });
+            });
+        });
+
+        body.querySelectorAll('[data-action="back"]').forEach((button) => {
+            button.addEventListener('click', () => {
+                wizardState.step = 'goals';
+                renderTemplateWizard({ force: true });
+            });
+        });
+
+        body.querySelectorAll('[data-tag]').forEach((button) => {
+            button.addEventListener('click', () => {
+                const tag = button.dataset.tag;
+                if (wizardState.activeTags.includes(tag)) {
+                    wizardState.activeTags = wizardState.activeTags.filter((t) => t !== tag);
+                } else {
+                    wizardState.activeTags = [...wizardState.activeTags, tag];
+                }
+                renderTemplateWizard({ force: true });
+            });
+        });
     }
 
-    function renderTemplateGallery(options = {}) {
-        const { force = false } = options;
-        const container = document.getElementById('template-gallery-grid');
-        if (!container) return;
+    function renderPreviewStep(body, templates) {
+        const template = templates.find((item) => item.id === wizardState.selectedTemplateId);
+        if (!template) {
+            wizardState.step = 'templates';
+            renderTemplateWizard({ force: true });
+            return;
+        }
 
-        const templates = getAllTemplates();
+        const creationMode = isCreationTarget(activeTarget);
+        const headline = getTemplateHeadline(template);
+        const feature = getTemplateFeature(template);
+        const previewCode = buildTemplatePreview(template);
+        const tags = template.tags || [];
+
+        body.innerHTML = `
+            <div class="template-preview-card">
+                <div class="template-preview-card__meta">
+                    <div class="template-preview-card__badges">
+                        <span class="badge badge-soft" data-method="${template.method}">${template.method}</span>
+                        <span class="badge badge-soft" data-outcome="${template.outcome}">${template.outcome === 'proxy' ? 'proxy' : template.outcome}</span>
+                        ${template.isScenario ? `<span class="badge badge-soft badge-scenario">${template.content?.mappings?.length || 0} шагов</span>` : ''}
+                    </div>
+                    <h4 class="template-preview-card__title">${template.title || template.name || template.id}</h4>
+                    <p class="template-preview-card__desc">${template.description || ''}</p>
+                    <div class="template-preview-card__summary">${headline || '—'}</div>
+                    ${feature ? `<div class="template-preview-meta__row"><span class="template-preview-meta__label">${feature.label}</span><code class="template-preview-meta__code">${feature.value}</code></div>` : ''}
+                    <div class="template-preview-card__tags">${tags.map(tag => `<span class="chip">${tag}</span>`).join('')}</div>
+                </div>
+                <pre class="template-preview-card__code" id="template-preview-code-inline"></pre>
+            </div>
+            <div class="template-preview-actions template-preview-actions--wizard" id="template-preview-actions">
+                <button class="btn btn-secondary btn-sm" type="button" data-template-action="back">← Назад</button>
+                <div class="template-preview-actions__primary">
+                    ${creationMode ? '<button class="btn btn-primary btn-sm" type="button" data-template-action="apply">Создать и открыть редактор</button>' : '<button class="btn btn-primary btn-sm" type="button" data-template-action="apply">Use template</button>'}
+                    ${creationMode ? '<button class="btn btn-secondary btn-sm" type="button" data-template-action="create-studio">Создать в JSON Studio</button>' : ''}
+                    <button class="btn btn-secondary btn-sm" type="button" data-template-action="copy">Copy JSON</button>
+                </div>
+            </div>
+        `;
+
+        const codeBlock = body.querySelector('#template-preview-code-inline');
+        if (codeBlock) {
+            codeBlock.textContent = previewCode;
+        }
+
+        const actions = body.querySelector('#template-preview-actions');
+        if (!actions) return;
+        actions.addEventListener('click', async (event) => {
+            const button = event.target instanceof HTMLElement ? event.target.closest('[data-template-action]') : null;
+            if (!button) return;
+            const action = button.dataset.templateAction;
+            if (action === 'back') {
+                wizardState.step = 'templates';
+                renderTemplateWizard({ force: true });
+                return;
+            }
+            if (action === 'apply') {
+                applyTemplateForTarget(template, activeTarget);
+                return;
+            }
+            if (action === 'create-studio') {
+                createMappingFromTemplate(template, { openMode: 'studio' });
+                return;
+            }
+            if (action === 'copy') {
+                const json = typeof template.content === 'string'
+                    ? template.content
+                    : JSON.stringify(template.content, null, 2);
+                const success = await copyTextToClipboard(json);
+                notify(success ? `Template "${template.title}" copied` : 'Clipboard copy failed', success ? 'success' : 'error');
+            }
+        });
+    }
+
+    function renderTemplateWizard(options = {}) {
+        const { force = false } = options;
+        const shell = document.getElementById('template-gallery-shell');
+        if (!shell) return;
+
+        const templates = getTemplatesWithMeta();
         const signature = buildGallerySignature(templates);
         if (!force && signature === lastRenderSignature) return;
         lastRenderSignature = signature;
 
-        container.innerHTML = '';
+        const stepIndex = wizardState.step === 'goals' ? 1 : wizardState.step === 'templates' ? 2 : 3;
+        const selectedGoal = GOAL_GROUPS.find(goal => goal.id === wizardState.goalId);
 
-        const infoPanel = document.createElement('section');
-        infoPanel.className = 'template-info';
-
-        const creationMode = isCreationTarget(activeTarget);
-        const useTargetLabel = creationMode
-            ? 'create a mapping and open the inline editor'
-            : `drop the JSON straight into the ${activeTarget === 'editor' ? 'editor' : 'form'}`;
-
-        infoPanel.innerHTML = `
-            <p class="template-info__lead">Browse ready-made WireMock snippets or treat this gallery as a quick reference:</p>
-            <ul>
-                <li><strong>Use template</strong> will ${useTargetLabel}.</li>
-                ${creationMode ? '<li><strong>Create & open JSON Studio</strong> jumps into the full-page editor right after creation.</li>' : ''}
-                <li><strong>Copy JSON</strong> copies the snippet so you can adapt it manually.</li>
-                <li>Each card highlights key features like matchers, templating, webhooks, or proxy settings.</li>
-            </ul>
-            <p>It's perfectly fine to just read through these examples—no need to apply a template if you only need guidance.</p>
+        shell.innerHTML = `
+            <div class="template-wizard">
+                <div class="template-wizard__header">
+                    <div>
+                        <p class="template-wizard__eyebrow">Шаг ${stepIndex}/3</p>
+                        <h3 class="template-wizard__title">${wizardState.step === 'goals' ? 'Создать mapping' : selectedGoal?.title || 'Выберите шаблон'}</h3>
+                        <p class="template-wizard__subtitle">${wizardState.step === 'goals' ? 'Подберите подходящий сценарий по цели теста' : selectedGoal?.description || ''}</p>
+                    </div>
+                    <div class="template-wizard__progress">
+                        ${[1, 2, 3].map((i) => `<span class="template-wizard__dot ${i <= stepIndex ? 'is-active' : ''}"></span>`).join('')}
+                    </div>
+                </div>
+                <div class="template-wizard__body" id="template-wizard-body"></div>
+            </div>
         `;
-        container.appendChild(infoPanel);
+
+        const body = shell.querySelector('#template-wizard-body');
+        if (!body) return;
 
         if (!templates.length) {
-            const empty = document.createElement('div');
-            empty.className = 'history-empty';
-            empty.innerHTML = '<p>No templates available</p><small>Add templates or save your own to populate this view.</small>';
-            container.appendChild(empty);
+            body.innerHTML = '<div class="history-empty"><p>No templates available</p><small>Add or import templates to populate this view.</small></div>';
             return;
         }
 
-        templates.forEach((template) => {
-            container.appendChild(buildTemplateCard(template));
-        });
-    }
-
-    function ensurePreviewHandlers() {
-        const modal = document.getElementById(MODALS.PREVIEW);
-        if (!modal || modal.dataset.previewBound === 'true') return;
-
-        modal.dataset.previewBound = 'true';
-        const actions = modal.querySelector('#template-preview-actions');
-        if (actions) {
-            actions.addEventListener('click', async (event) => {
-                const button = event.target instanceof HTMLElement
-                    ? event.target.closest('[data-template-action]')
-                    : null;
-                if (!button) return;
-
-                event.preventDefault();
-                const action = button.dataset.templateAction;
-                const templateId = modal.dataset.templateId;
-                const template = templateId ? findTemplateById(templateId) : null;
-                const target = modal.dataset.templateTarget || activeTarget;
-                if (!template) return;
-
-                if (action === 'apply') {
-                    applyTemplateForTarget(template, target);
-                    return;
-                }
-
-                if (action === 'create-studio') {
-                    createMappingFromTemplate(template, { openMode: 'studio' });
-                    return;
-                }
-
-                if (action === 'copy') {
-                    const json = typeof template.content === 'string'
-                        ? template.content
-                        : JSON.stringify(template.content, null, 2);
-                    const success = await copyTextToClipboard(json);
-                    notify(success ? `Template "${template.title}" copied` : 'Clipboard copy failed', success ? 'success' : 'error');
-                    return;
-                }
-
-                if (action === 'close') {
-                    global.hideModal?.(MODALS.PREVIEW);
-                }
-            });
+        if (wizardState.step === 'goals') {
+            renderGoalStep(body, templates);
+            return;
         }
+
+        if (wizardState.step === 'templates') {
+            renderTemplateStep(body, templates);
+            return;
+        }
+
+        renderPreviewStep(body, templates);
     }
 
     function handleTemplateApply(event, targetSelector, applyFn) {
@@ -742,13 +990,19 @@
 
     function openGalleryForTarget(target = 'form') {
         activeTarget = target;
-        renderTemplateGallery({ force: true });
+        wizardState.step = 'goals';
+        wizardState.goalId = null;
+        wizardState.selectedTemplateId = null;
+        wizardState.searchQuery = '';
+        wizardState.activeTags = [];
+        wizardState.showPopularOnly = false;
+        renderTemplateWizard({ force: true });
         global.showModal?.(MODALS.GALLERY);
     }
 
     function init() {
         populateSelectors();
-        renderTemplateGallery();
+        renderTemplateWizard();
 
         document.querySelectorAll('[data-template-trigger]').forEach((button) => {
             button.addEventListener('click', (event) => {
@@ -771,7 +1025,7 @@
     global.TemplateManager = {
         getTemplates: getAllTemplates,
         refresh: populateSelectors,
-        openGallery: renderTemplateGallery,
+        openGallery: renderTemplateWizard,
         openGalleryForTarget,
         applyTemplateToForm,
         applyTemplateToEditor,
