@@ -3,7 +3,10 @@
   "version": "1.0.0",
   "description": "WireMock UI - Modern web interface for WireMock mock server",
   "private": true,
-  "scripts": {},
+  "scripts": {
+    "test": "node tests/run-all.js",
+    "coverage": "rm -rf coverage && NODE_V8_COVERAGE=coverage node tests/run-all.js && npx --yes c8 report --reporter=text-summary --temp-directory=coverage"
+  },
   "keywords": ["wiremock", "mock", "testing", "api"],
   "author": "",
   "license": "MIT"
