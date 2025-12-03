@@ -845,26 +845,30 @@
                 </svg>
                 <span class="sr-only">Close</span>
             </button>
-            <div class="modal-header">
-                <div class="modal-header-main">
-                    <h3 id="edit-modal-title">Edit Mapping</h3>
-                    <span id="editor-dirty-indicator" class="dirty-indicator" style="display: none;">● Unsaved changes</span>
+                <div class="modal-header">
+                    <div class="modal-header-main">
+                        <h3 id="edit-modal-title">Edit Mapping</h3>
+                        <span id="editor-dirty-indicator" class="dirty-indicator" style="display: none;">● Unsaved changes</span>
+                    </div>
+                    <div class="modal-header-actions">
+                        <button type="button" class="btn btn-secondary" id="open-json-studio-btn" title="Open in advanced JSON Studio editor">
+                            <svg class="icon icon-16" aria-hidden="true" focusable="false">
+                                <use href="#icon-open-external"></use>
+                            </svg>
+                            <span class="btn-label">JSON Studio</span>
+                        </button>
+                        <button type="button" class="btn btn-secondary btn-sm" data-action="format-json">Format</button>
+                        <button type="button" class="btn btn-secondary btn-sm" data-action="minify-json">Minify</button>
+                        <button type="button" class="btn btn-ghost btn-sm" id="editor-save-template" title="Save current mapping as template">
+                            <svg class="icon icon-16" aria-hidden="true" focusable="false"><use href="#icon-star"></use></svg>
+                            <span class="btn-label">Save as Template</span>
+                        </button>
+                        <button type="button" class="btn btn-primary" id="update-mapping-btn" onclick="updateMapping()">
+                            <span class="btn-label">Update Mapping</span>
+                            <span class="btn-spinner loading-spinner" aria-hidden="true"></span>
+                        </button>
+                    </div>
                 </div>
-                <div class="modal-header-actions">
-                    <button type="button" class="btn btn-secondary" id="open-json-studio-btn" title="Open in advanced JSON Studio editor">
-                        <svg class="icon icon-16" aria-hidden="true" focusable="false">
-                            <use href="#icon-open-external"></use>
-                        </svg>
-                        <span class="btn-label">JSON Studio</span>
-                    </button>
-                    <button type="button" class="btn btn-secondary btn-sm" data-action="format-json">Format</button>
-                    <button type="button" class="btn btn-secondary btn-sm" data-action="minify-json">Minify</button>
-                    <button type="button" class="btn btn-primary" id="update-mapping-btn" onclick="updateMapping()">
-                        <span class="btn-label">Update Mapping</span>
-                        <span class="btn-spinner loading-spinner" aria-hidden="true"></span>
-                    </button>
-                </div>
-            </div>
 
             <div class="template-toolbar" id="editor-template-toolbar">
                 <div class="template-toolbar__controls template-toolbar__controls--stacked">
