@@ -881,17 +881,18 @@
                 </div>
 
                 <div class="form-group">
-                    <label class="form-label" for="template-selector">Templates</label>
-                    <div class="template-controls">
-                        <select class="form-select" id="template-selector">
-                            <option value="">Select a template</option>
-                        </select>
-                        <div class="template-controls__actions">
-                            <button type="button" class="btn btn-secondary btn-sm" id="apply-template-btn">Apply</button>
-                            <button type="button" class="btn btn-secondary btn-sm" id="save-template-btn">Save as template</button>
+                    <div class="template-toolbar template-toolbar--inline">
+                        <div class="template-toolbar__controls">
+                            <div class="template-toolbar__title">
+                                <label class="form-label">Templates</label>
+                                <p class="form-hint">Browse ready-made stubs or save the current form for reuse.</p>
+                            </div>
+                            <div class="template-toolbar__actions">
+                                <button type="button" class="btn btn-secondary btn-sm" data-template-trigger data-template-target="form">Browse templates</button>
+                                <button type="button" class="btn btn-secondary btn-sm" id="save-template-btn">Save as template</button>
+                            </div>
                         </div>
                     </div>
-                    <p class="form-hint">Use ready-made stubs or save the current form for reuse.</p>
                 </div>
 
                 <div class="form-group">
@@ -938,17 +939,16 @@
             </div>
 
             <div class="template-toolbar" id="editor-template-toolbar">
-                <div class="template-toolbar__controls">
-                    <label class="form-label" for="editor-template-selector">Templates</label>
-                    <select class="form-select" id="editor-template-selector">
-                        <option value="">Select a template</option>
-                    </select>
+                <div class="template-toolbar__controls template-toolbar__controls--stacked">
+                    <div class="template-toolbar__title">
+                        <label class="form-label" for="editor-template-selector">Templates</label>
+                        <p class="form-hint">Apply prepared stubs directly to the JSON editor or save your own.</p>
+                    </div>
                     <div class="template-toolbar__actions">
-                        <button type="button" class="btn btn-secondary btn-sm" id="editor-apply-template">Apply</button>
+                        <button type="button" class="btn btn-secondary btn-sm" data-template-trigger data-template-target="editor">Browse templates</button>
                         <button type="button" class="btn btn-secondary btn-sm" id="editor-save-template">Save current as template</button>
                     </div>
                 </div>
-                <p class="form-hint">Apply prepared stubs directly to the JSON editor or save your own.</p>
             </div>
 
             <!-- JSON Editor Container -->
@@ -967,6 +967,48 @@
     }
   }
 }"></textarea>
+            </div>
+        </div>
+    </div>
+
+    <!-- TEMPLATE GALLERY -->
+    <div class="modal hidden" id="template-gallery-modal">
+        <div class="modal-content modal-content--wide">
+            <button class="modal-close" type="button" onclick="hideModal('template-gallery-modal')" aria-label="Close template gallery">
+                <svg class="icon icon-16" aria-hidden="true" focusable="false">
+                    <use href="#icon-x-circle"></use>
+                </svg>
+                <span class="sr-only">Close</span>
+            </button>
+            <div class="modal-header">
+                <h3 id="template-gallery-title">WireMock templates</h3>
+            </div>
+            <div class="modal-body">
+                <div class="template-grid" id="template-gallery-grid"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal hidden" id="template-preview-modal">
+        <div class="modal-content modal-content--wide">
+            <button class="modal-close" type="button" onclick="hideModal('template-preview-modal')" aria-label="Close template preview">
+                <svg class="icon icon-16" aria-hidden="true" focusable="false">
+                    <use href="#icon-x-circle"></use>
+                </svg>
+                <span class="sr-only">Close</span>
+            </button>
+            <div class="modal-header">
+                <h3 id="template-preview-title">Template preview</h3>
+            </div>
+            <div class="modal-body template-preview-body">
+                <p class="template-preview-description" id="template-preview-description"></p>
+                <div class="template-preview-meta" id="template-preview-meta"></div>
+                <pre class="template-preview-code" id="template-preview-code"></pre>
+                <div class="template-preview-actions" id="template-preview-actions">
+                    <button class="btn btn-primary btn-sm" type="button" data-template-action="apply">Use template</button>
+                    <button class="btn btn-secondary btn-sm" type="button" data-template-action="copy">Copy JSON</button>
+                    <button class="btn btn-secondary btn-ghost btn-sm" type="button" data-template-action="close">Close</button>
+                </div>
             </div>
         </div>
     </div>
