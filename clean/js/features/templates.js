@@ -84,6 +84,7 @@
             description: 'Working against real APIs',
         },
     ];
+    const EMPTY_TEMPLATE_ID = 'empty-mapping-skeleton';
     const wizardState = {
         step: 'goals',
         goalId: null,
@@ -94,6 +95,29 @@
     };
     let activeTarget = 'form';
     let lastRenderSignature = '';
+
+    function getEmptyTemplate() {
+        return {
+            id: EMPTY_TEMPLATE_ID,
+            title: 'Empty mapping',
+            description: 'Create a minimal stub and fill in the request/response yourself.',
+            category: 'happy-path',
+            highlight: 'ANY · /example',
+            feature: {
+                path: ['response', 'status'],
+                label: 'response.status'
+            },
+            content: {
+                request: {
+                    method: 'ANY',
+                    urlPath: '/example'
+                },
+                response: {
+                    status: 200
+                }
+            }
+        };
+    }
 
     function notify(message, type = 'info') {
         if (global.NotificationManager && typeof NotificationManager[type] === 'function') {
@@ -134,7 +158,12 @@
     }
 
     function getAllTemplates() {
-        return [...getBuiltInTemplates(), ...readUserTemplates()];
+        const templates = [...getBuiltInTemplates(), ...readUserTemplates()];
+        const emptyTemplate = getEmptyTemplate();
+        if (!templates.some((template) => template.id === emptyTemplate.id)) {
+            templates.unshift(emptyTemplate);
+        }
+        return templates;
     }
 
     function findTemplateById(templateId) {
@@ -377,6 +406,17 @@
             global.hideModal?.(MODALS.GALLERY);
             global.hideModal?.(MODALS.PREVIEW);
         }
+    }
+
+    function createEmptyMapping() {
+        const template = getEmptyTemplate();
+        if (isCreationTarget()) {
+            const openMode = activeTarget === 'create-studio' ? 'studio' : 'inline';
+            createMappingFromTemplate(template, { openMode });
+            return;
+        }
+
+        applyTemplateForTarget(template, activeTarget);
     }
 
     function saveFormAsTemplate() {
@@ -719,6 +759,12 @@
     function renderGoalStep(body, templates) {
         body.innerHTML = `
             <div class="template-wizard__grid template-wizard__goals"></div>
+            <div class="template-wizard__actions">
+                <button type="button" class="btn btn-ghost" data-action="show-all">Show all templates</button>
+                <div class="template-wizard__actions-right">
+                    <button type="button" class="btn btn-primary" data-action="create-empty">Create empty</button>
+                </div>
+            </div>
         `;
 
         const grid = body.querySelector('.template-wizard__grid');
@@ -745,6 +791,20 @@
                 renderTemplateWizard({ force: true });
             });
             grid.appendChild(card);
+        });
+
+        body.querySelectorAll('[data-action="show-all"]').forEach((button) => {
+            button.addEventListener('click', () => {
+                wizardState.goalId = null;
+                wizardState.step = 'templates';
+                renderTemplateWizard({ force: true });
+            });
+        });
+
+        body.querySelectorAll('[data-action="create-empty"]').forEach((button) => {
+            button.addEventListener('click', () => {
+                createEmptyMapping();
+            });
         });
     }
 
@@ -792,6 +852,7 @@
     function renderTemplateStep(body, templates) {
         const filteredByGoal = getTemplatesByGoal(wizardState.goalId);
         const availableTags = Array.from(new Set(filteredByGoal.flatMap(template => template.tags))).sort();
+        const showingAll = !wizardState.goalId;
 
         let filtered = filteredByGoal.filter((template) => {
             if (wizardState.showPopularOnly && !template.popular) return false;
@@ -812,8 +873,9 @@
                     <input type="search" placeholder="Search templates..." value="${wizardState.searchQuery}" aria-label="Search templates" />
                 </div>
                 <div class="template-toolbar__actions">
+                    <button type="button" class="btn btn-ghost btn-sm" data-action="show-all" ${showingAll ? 'disabled' : ''}>Show all</button>
                     <button type="button" class="btn btn-secondary btn-sm" data-action="toggle-popular" aria-pressed="${wizardState.showPopularOnly}">⭐ Popular</button>
-                    <button type="button" class="btn btn-ghost btn-sm" data-action="back">← Back</button>
+                    <button type="button" class="btn btn-primary btn-sm" data-action="create-empty">Create empty</button>
                 </div>
             </div>
             <div class="template-tags" aria-label="Tags">
@@ -857,10 +919,17 @@
             });
         });
 
-        body.querySelectorAll('[data-action="back"]').forEach((button) => {
+        body.querySelectorAll('[data-action="show-all"]').forEach((button) => {
             button.addEventListener('click', () => {
-                wizardState.step = 'goals';
+                wizardState.goalId = null;
+                wizardState.step = 'templates';
                 renderTemplateWizard({ force: true });
+            });
+        });
+
+        body.querySelectorAll('[data-action="create-empty"]').forEach((button) => {
+            button.addEventListener('click', () => {
+                createEmptyMapping();
             });
         });
 
@@ -908,7 +977,6 @@
                 <pre class="template-preview-card__code" id="template-preview-code-inline"></pre>
             </div>
             <div class="template-preview-actions template-preview-actions--wizard" id="template-preview-actions">
-                <button class="btn btn-secondary btn-sm" type="button" data-template-action="back">← Back</button>
                 <div class="template-preview-actions__primary">
                     ${creationMode ? '<button class="btn btn-primary btn-sm" type="button" data-template-action="apply">Create and open editor</button>' : '<button class="btn btn-primary btn-sm" type="button" data-template-action="apply">Use template</button>'}
                     ${creationMode ? '<button class="btn btn-secondary btn-sm" type="button" data-template-action="create-studio">Create in JSON Studio</button>' : ''}
@@ -928,11 +996,6 @@
             const button = event.target instanceof HTMLElement ? event.target.closest('[data-template-action]') : null;
             if (!button) return;
             const action = button.dataset.templateAction;
-            if (action === 'back') {
-                wizardState.step = 'templates';
-                renderTemplateWizard({ force: true });
-                return;
-            }
             if (action === 'apply') {
                 applyTemplateForTarget(template, activeTarget);
                 return;
@@ -963,6 +1026,7 @@
 
         const stepIndex = wizardState.step === 'goals' ? 1 : wizardState.step === 'templates' ? 2 : 3;
         const selectedGoal = GOAL_GROUPS.find(goal => goal.id === wizardState.goalId);
+        const canGoBack = wizardState.step !== 'goals';
 
         shell.innerHTML = `
             <div class="template-wizard">
@@ -972,9 +1036,12 @@
                         <h3 class="template-wizard__title">${wizardState.step === 'goals' ? 'Create a mapping' : selectedGoal?.title || 'Pick a template'}</h3>
                         <p class="template-wizard__subtitle">${wizardState.step === 'goals' ? 'Choose the scenario that fits your testing goal' : selectedGoal?.description || ''}</p>
                     </div>
-                    <div class="template-wizard__progress" role="progressbar" aria-label="Wizard progress" aria-valuemin="1" aria-valuemax="3" aria-valuenow="${stepIndex}">
-                        <span class="sr-only">Step ${stepIndex} of 3</span>
-                        ${[1, 2, 3].map((i) => `<span class="template-wizard__dot ${i <= stepIndex ? 'is-active' : ''}" aria-current="${i === stepIndex ? 'step' : 'false'}" aria-label="Step ${i}"></span>`).join('')}
+                    <div class="template-wizard__header-actions">
+                        <div class="template-wizard__progress" role="progressbar" aria-label="Wizard progress" aria-valuemin="1" aria-valuemax="3" aria-valuenow="${stepIndex}">
+                            <span class="sr-only">Step ${stepIndex} of 3</span>
+                            ${[1, 2, 3].map((i) => `<span class="template-wizard__dot ${i <= stepIndex ? 'is-active' : ''}" aria-current="${i === stepIndex ? 'step' : 'false'}" aria-label="Step ${i}"></span>`).join('')}
+                        </div>
+                        ${canGoBack ? '<button type="button" class="btn btn-ghost btn-sm" id="template-wizard-back">← Back</button>' : ''}
                     </div>
                 </div>
                 <div class="template-wizard__body" id="template-wizard-body"></div>
@@ -1000,6 +1067,20 @@
         }
 
         renderPreviewStep(body, templates);
+
+        const backButton = shell.querySelector('#template-wizard-back');
+        if (backButton) {
+            backButton.addEventListener('click', () => {
+                if (wizardState.step === 'preview') {
+                    wizardState.step = 'templates';
+                } else {
+                    wizardState.step = 'goals';
+                    wizardState.goalId = null;
+                    wizardState.selectedTemplateId = null;
+                }
+                renderTemplateWizard({ force: true });
+            });
+        }
     }
 
     function handleTemplateApply(event, targetSelector, applyFn) {
@@ -1052,6 +1133,7 @@
         applyTemplateToForm,
         applyTemplateToEditor,
         createMappingFromTemplate,
+        createEmptyMapping,
         saveFormAsTemplate,
         saveEditorAsTemplate
     };
