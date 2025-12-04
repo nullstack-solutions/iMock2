@@ -10,7 +10,8 @@ const specs = [
     'requests.spec.js',
     'scenarios.spec.js',
     'recording.spec.js',
-    'mappings.spec.js'
+    'mappings.spec.js',
+    'templates.spec.js'
 ];
 
 const coverageDir = process.env.NODE_V8_COVERAGE;
