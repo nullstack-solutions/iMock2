@@ -277,7 +277,7 @@
                         scenarioName: 'To do list',
                         requiredScenarioState: 'Started',
                         request: { method: 'GET', url: '/todo/items' },
-                        response: { jsonBody: { items: ['Buy milk'] } }
+                        response: { status: 200, jsonBody: { items: ['Buy milk'] } }
                     },
                     {
                         scenarioName: 'To do list',
@@ -294,7 +294,7 @@
                         scenarioName: 'To do list',
                         requiredScenarioState: 'Item added',
                         request: { method: 'GET', url: '/todo/items' },
-                        response: { jsonBody: { items: ['Buy milk', 'Cancel subscription'] } }
+                        response: { status: 200, jsonBody: { items: ['Buy milk', 'Cancel subscription'] } }
                     }
                 ]
             }
@@ -312,20 +312,20 @@
                         requiredScenarioState: 'Started',
                         newScenarioState: 'Processing',
                         request: { method: 'GET', urlPath: '/orders/123/status' },
-                        response: { jsonBody: { status: 'pending' } }
+                        response: { status: 200, jsonBody: { status: 'pending' } }
                     },
                     {
                         scenarioName: 'Order Status',
                         requiredScenarioState: 'Processing',
                         newScenarioState: 'Shipped',
                         request: { method: 'GET', urlPath: '/orders/123/status' },
-                        response: { jsonBody: { status: 'processing' } }
+                        response: { status: 200, jsonBody: { status: 'processing' } }
                     },
                     {
                         scenarioName: 'Order Status',
                         requiredScenarioState: 'Shipped',
                         request: { method: 'GET', urlPath: '/orders/123/status' },
-                        response: { jsonBody: { status: 'shipped' } }
+                        response: { status: 200, jsonBody: { status: 'shipped' } }
                     }
                 ]
             }
@@ -341,6 +341,7 @@
             content: {
                 request: { method: 'ANY', urlPathPattern: '/api/echo/.*' },
                 response: {
+                    status: 200,
                     jsonBody: {
                         path: '{{request.path}}',
                         query: '{{request.query.q}}',
@@ -360,6 +361,7 @@
             content: {
                 request: { method: 'POST', urlPath: '/api/process' },
                 response: {
+                    status: 200,
                     body: "{\"name\": \"{{jsonPath request.body '$.name'}}\"}",
                     transformers: ['response-template']
                 }
@@ -374,6 +376,7 @@
             content: {
                 request: { method: 'GET', urlPath: '/api/generate' },
                 response: {
+                    status: 200,
                     jsonBody: {
                         uuid: "{{randomValue type='UUID'}}",
                         code: "{{randomValue length=8 type='ALPHANUMERIC'}}",
@@ -563,7 +566,7 @@
             content: {
                 priority: 10,
                 request: { method: 'ANY', urlPattern: '/api/.*' },
-                response: { proxyBaseUrl: 'https://api.example.com' }
+                response: { status: 200, proxyBaseUrl: 'https://api.example.com' }
             }
         },
         {
@@ -576,6 +579,7 @@
                 priority: 100,
                 request: { method: 'ANY', urlPattern: '/api/.*' },
                 response: {
+                    status: 200,
                     proxyBaseUrl: 'https://api.example.com',
                     additionalProxyRequestHeaders: {
                         'X-Forwarded-By': 'WireMock'
@@ -590,6 +594,8 @@
             category: 'proxy',
             highlight: 'ADMIN · recording',
             content: {
+                request: { method: 'POST', urlPath: '/__admin/recordings/start' },
+                response: { status: 200 },
                 targetBaseUrl: 'https://api.example.com',
                 captureHeaders: {
                     'Accept': {},
