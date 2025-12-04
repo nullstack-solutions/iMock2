@@ -373,30 +373,42 @@
         }
 
         try {
-            const response = await apiFetch('/mappings', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
+            const payloads = Array.isArray(payload) ? payload : [payload];
+            const createdIds = [];
 
-            const createdMapping = response?.mapping || response;
-            const createdId = createdMapping?.id;
+            for (let i = 0; i < payloads.length; i += 1) {
+                const entry = payloads[i];
+                const response = await apiFetch('/mappings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(entry)
+                });
 
-            if (createdId && typeof updateOptimisticCache === 'function') {
-                try {
-                    updateOptimisticCache(createdMapping, 'create');
-                } catch (cacheError) {
-                    console.warn('Failed to update optimistic cache after template create:', cacheError);
+                const createdMapping = response?.mapping || response;
+                const createdId = createdMapping?.id;
+
+                if (createdId && typeof updateOptimisticCache === 'function') {
+                    try {
+                        updateOptimisticCache(createdMapping, 'create');
+                    } catch (cacheError) {
+                        console.warn('Failed to update optimistic cache after template create:', cacheError);
+                    }
+                }
+
+                if (createdId) {
+                    createdIds.push(createdId);
                 }
             }
 
-            notify(`Mapping "${payload.name}" created from template`, 'success');
+            const createdCount = createdIds.length || payloads.length;
+            notify(`Created ${createdCount} mapping${createdCount === 1 ? '' : 's'} from template`, 'success');
 
-            if (createdId) {
+            const targetId = createdIds[0];
+            if (targetId) {
                 if (openMode === 'studio' && typeof global.editMapping === 'function') {
-                    global.editMapping(createdId);
+                    global.editMapping(targetId);
                 } else if (typeof global.openEditModal === 'function') {
-                    global.openEditModal(createdId);
+                    global.openEditModal(targetId);
                 }
             }
         } catch (error) {
@@ -608,14 +620,37 @@
             }
         }
 
+        const nowIso = new Date().toISOString();
+        const stripIds = (obj) => {
+            ['id', 'uuid', 'stubMappingId', 'stubId', 'mappingId'].forEach((key) => delete obj[key]);
+        };
+
+        if (Array.isArray(payload?.mappings)) {
+            return payload.mappings.map((mapping, index) => {
+                const normalized = JSON.parse(JSON.stringify(mapping || {}));
+                stripIds(normalized);
+                normalized.name =
+                    normalized.name
+                    || `${template.title || template.id || 'Scenario mapping'} #${index + 1}`;
+                if (!normalized.request) normalized.request = {};
+                if (!normalized.response) normalized.response = {};
+                normalized.metadata = {
+                    ...(normalized.metadata || {}),
+                    created: normalized.metadata?.created || nowIso,
+                    edited: nowIso,
+                    source: normalized.metadata?.source || 'template'
+                };
+                return normalized;
+            });
+        }
+
         const normalized = JSON.parse(JSON.stringify(payload || {}));
-        ['id', 'uuid', 'stubMappingId', 'stubId', 'mappingId'].forEach((key) => delete normalized[key]);
+        stripIds(normalized);
 
         if (!normalized.name) normalized.name = template.title || template.id || 'New mapping';
         if (!normalized.request) normalized.request = {};
         if (!normalized.response) normalized.response = {};
 
-        const nowIso = new Date().toISOString();
         normalized.metadata = {
             ...(normalized.metadata || {}),
             created: normalized.metadata?.created || nowIso,

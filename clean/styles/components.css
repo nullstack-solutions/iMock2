@@ -823,7 +823,7 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
-    transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+    transition: box-shadow 0.15s ease-in-out, border-color var(--transition-fast);
     cursor: pointer;
     overflow: hidden;
 }
@@ -839,15 +839,15 @@
     overflow: hidden;
 }
 
-.template-card:hover {
-    transform: translateY(-4px);
-    box-shadow: var(--shadow-md);
+.template-card:hover,
+.template-card:focus-visible {
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+    border-color: var(--primary-400);
 }
 
 .template-card.template-card--wizard:hover,
 .template-card.template-card--wizard:focus-visible {
-    transform: none;
-    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.14);
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
     border-color: var(--primary-400);
 }
 
