@@ -104,27 +104,43 @@
         };
     }
 
+    function buildEmptyMapping(seed = getEmptyTemplateSeed()) {
+        const normalizedSeed = {
+            method: (seed?.method || 'GET').toUpperCase(),
+            urlPath: seed?.urlPath || '/api/example'
+        };
+
+        return {
+            name: 'Empty mapping',
+            request: {
+                method: normalizedSeed.method,
+                urlPath: normalizedSeed.urlPath
+            },
+            response: {
+                status: 200
+            }
+        };
+    }
+
+    function getEmptyMappingContent(seed) {
+        return deepClone(buildEmptyMapping(seed));
+    }
+
     function getEmptyTemplate() {
         const seed = getEmptyTemplateSeed();
+        const emptyContent = getEmptyMappingContent(seed);
+
         return {
             id: EMPTY_TEMPLATE_ID,
             title: 'Empty mapping',
             description: 'Create a minimal stub and fill in the request/response yourself.',
             category: 'happy-path',
-            highlight: `${seed.method} · ${seed.urlPath}`,
+            highlight: `${emptyContent.request.method} · ${emptyContent.request.urlPath}`,
             feature: {
                 path: ['response', 'status'],
                 label: 'response.status'
             },
-            content: {
-                request: {
-                    method: seed.method,
-                    urlPath: seed.urlPath
-                },
-                response: {
-                    status: 200
-                }
-            }
+            content: emptyContent
         };
     }
 
@@ -842,7 +858,7 @@
             const pretty = JSON.stringify(payload, null, 2);
             const lines = pretty.split('\n').slice(0, 16);
             const preview = lines.join('\n');
-            return preview.length > 640 ? `${preview.slice(0, 639)}…` : preview;
+            return preview.length > 896 ? `${preview.slice(0, 895)}…` : preview;
         } catch (error) {
             return '[unavailable template preview]';
         }
@@ -1394,6 +1410,8 @@
         refresh: populateSelectors,
         openGallery: renderTemplateWizard,
         openGalleryForTarget,
+        getEmptyTemplateSeed,
+        getEmptyMappingContent,
         applyTemplateToForm,
         applyTemplateToEditor,
         createMappingFromTemplate,
