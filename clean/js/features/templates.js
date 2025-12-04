@@ -94,6 +94,10 @@
         showPopularOnly: false,
     };
     let activeTarget = 'form';
+    const editContext = {
+        templateId: null,
+        target: null,
+    };
     let lastRenderSignature = '';
     let templateNameResolver = null;
 
@@ -179,6 +183,11 @@
         }
 
         return value;
+    }
+
+    function setEditContext(templateId, target) {
+        editContext.templateId = templateId || null;
+        editContext.target = templateId ? target : null;
     }
 
     function stripMappingIdentifiers(mapping) {
@@ -761,10 +770,15 @@
         const status = parseInt(document.getElementById('response-status')?.value, 10) || 200;
         const rawBody = document.getElementById('response-body')?.value || '';
 
+        const isEditing = Boolean(editContext.templateId) && (!editContext.target || editContext.target === 'form');
+        const existing = isEditing
+            ? readUserTemplates().find((template) => template.id === editContext.templateId)
+            : null;
+
         const userTemplate = {
-            id: `user-${Date.now()}`,
+            id: isEditing && existing ? existing.id : `user-${Date.now()}`,
             title: title.trim(),
-            description: 'User template saved from mapping form',
+            description: existing?.description || 'User template saved from mapping form',
             category: 'custom',
             source: 'user',
             content: {
@@ -780,12 +794,19 @@
             }
         };
 
-        const nextTemplates = readUserTemplates();
-        nextTemplates.push(userTemplate);
-        persistUserTemplates(nextTemplates);
-        renderTemplateWizard({ force: true });
-        populateSelectors();
-        notify(`Template "${title.trim()}" saved`, 'success');
+        if (isEditing && existing) {
+            updateUserTemplate(existing.id, userTemplate);
+            setEditContext(null);
+            notify(`Template "${title.trim()}" updated`, 'success');
+        } else {
+            const nextTemplates = readUserTemplates();
+            nextTemplates.push(userTemplate);
+            persistUserTemplates(nextTemplates);
+            renderTemplateWizard({ force: true });
+            populateSelectors();
+            notify(`Template "${title.trim()}" saved`, 'success');
+            setEditContext(null);
+        }
     }
 
     async function saveEditorAsTemplate() {
@@ -809,21 +830,106 @@
             return;
         }
 
+        const isEditing = Boolean(editContext.templateId) && (!editContext.target || editContext.target === 'editor');
+        const existing = isEditing
+            ? readUserTemplates().find((template) => template.id === editContext.templateId)
+            : null;
+
         const userTemplate = {
-            id: `user-${Date.now()}`,
+            id: isEditing && existing ? existing.id : `user-${Date.now()}`,
             title: title.trim(),
-            description: 'User template saved from JSON editor',
+            description: existing?.description || 'User template saved from JSON editor',
             category: 'custom',
             source: 'user',
             content: parsed
         };
 
-        const nextTemplates = readUserTemplates();
-        nextTemplates.push(userTemplate);
-        persistUserTemplates(nextTemplates);
+        if (isEditing && existing) {
+            updateUserTemplate(existing.id, userTemplate);
+            setEditContext(null);
+            notify(`Template "${title.trim()}" updated`, 'success');
+        } else {
+            const nextTemplates = readUserTemplates();
+            nextTemplates.push(userTemplate);
+            persistUserTemplates(nextTemplates);
+            renderTemplateWizard({ force: true });
+            populateSelectors();
+            notify(`Template "${title.trim()}" saved`, 'success');
+            setEditContext(null);
+        }
+    }
+
+    function updateUserTemplate(templateId, updates = {}) {
+        if (!templateId) return null;
+
+        const templates = readUserTemplates();
+        const index = templates.findIndex((template) => template.id === templateId);
+        if (index === -1) return null;
+
+        const existing = templates[index];
+        const updated = normalizeUserTemplate({
+            ...existing,
+            ...(updates.title ? { title: updates.title } : {}),
+            ...(updates.description ? { description: updates.description } : {}),
+            ...(updates.content ? { content: updates.content } : {}),
+        });
+
+        templates[index] = updated;
+        persistUserTemplates(templates);
         renderTemplateWizard({ force: true });
         populateSelectors();
-        notify(`Template "${title.trim()}" saved`, 'success');
+
+        return updated;
+    }
+
+    async function editUserTemplate(templateId, options = {}) {
+        const template = readUserTemplates().find((entry) => entry.id === templateId);
+        if (!template) {
+            notify('Template not found', 'warning');
+            return false;
+        }
+
+        const preferredTarget = options.target
+            || (document.getElementById('json-editor') ? 'editor'
+                : 'form');
+
+        setEditContext(templateId, preferredTarget);
+
+        if (preferredTarget === 'editor') {
+            applyTemplateForTarget(template, 'editor');
+            notify('Template loaded into JSON Studio. Update and save to keep changes.', 'info');
+            document.getElementById('editor-save-template')?.focus?.();
+        } else {
+            applyTemplateForTarget(template, 'form');
+            notify('Template loaded into mapping form. Update and save to keep changes.', 'info');
+            document.getElementById('save-template-btn')?.focus?.();
+        }
+
+        return true;
+    }
+
+    function deleteUserTemplate(templateId, options = {}) {
+        const { skipConfirm = false } = options;
+        if (!templateId) return false;
+
+        const templates = readUserTemplates();
+        const template = templates.find((entry) => entry.id === templateId);
+        if (!template) return false;
+
+        if (!skipConfirm && typeof global.confirm === 'function') {
+            const confirmed = global.confirm(`Delete template "${template.title || template.id}"? This cannot be undone.`);
+            if (!confirmed) return false;
+        }
+
+        const remaining = templates.filter((entry) => entry.id !== templateId);
+        persistUserTemplates(remaining);
+        renderTemplateWizard({ force: true });
+        populateSelectors();
+        notify(`Template "${template.title || template.id}" deleted`, 'info');
+        if (editContext.templateId === templateId) {
+            setEditContext(null);
+        }
+        return true;
     }
 
     function updateUserTemplate(templateId, updates = {}) {
@@ -1229,10 +1335,11 @@
                 ? 'fault'
                 : template.outcome;
         const creationMode = isCreationTarget(activeTarget);
-        const card = document.createElement('button');
-        card.type = 'button';
+        const card = document.createElement('div');
         card.className = 'template-card template-card--wizard';
         card.dataset.templateId = template.id;
+        card.setAttribute('role', 'button');
+        card.tabIndex = 0;
         card.innerHTML = `
             <div class="template-card__header">
                 <span class="badge badge-soft" data-method="${template.method}">${template.method}</span>
@@ -1247,12 +1354,34 @@
                 ${template.tags.slice(0, 4).map(tag => `<span class="chip">${tag}</span>`).join('')}
             </div>
             <div class="template-card__actions">
-                <span class="btn btn-primary btn-sm">${creationMode ? 'Create' : 'Select'}</span>
-                <span class="btn btn-secondary btn-sm" aria-hidden="true">Details</span>
+                <button class="btn btn-primary btn-sm" type="button" data-card-action="select">${creationMode ? 'Create' : 'Select'}</button>
+                <button class="btn btn-secondary btn-sm" type="button" data-card-action="details">Details</button>
+                ${template.source === 'user'
+        ? '<button class="btn btn-ghost btn-sm" type="button" data-card-action="edit-template">Edit</button>'
+        : ''}
+                ${template.source === 'user'
+        ? '<button class="btn btn-ghost btn-sm" type="button" data-card-action="delete-template">Delete</button>'
+        : ''}
             </div>
         `;
 
-        card.addEventListener('click', () => onSelect(template));
+        card.addEventListener('click', (event) => {
+            const button = event.target instanceof HTMLElement ? event.target.closest('[data-card-action]') : null;
+            if (button) {
+                event.stopPropagation();
+                const action = button.dataset.cardAction;
+                if (action === 'edit-template') {
+                    editUserTemplate(template.id);
+                    return;
+                }
+                if (action === 'delete-template') {
+                    deleteUserTemplate(template.id);
+                    return;
+                }
+            }
+
+            onSelect(template);
+        });
         card.addEventListener('keydown', (event) => {
             if (event.key === 'Enter' || event.key === ' ') {
                 event.preventDefault();
