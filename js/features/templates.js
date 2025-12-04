@@ -659,14 +659,27 @@
         notify(`Template "${template.title || template.id}" applied to form`, 'success');
     }
 
-    function applyTemplateToEditor(template) {
+    async function waitForEditorInitializer() {
+        if (global.monacoInitializer?.isInitialized) return global.monacoInitializer;
+        if (global.monacoInitializationPromise?.then) {
+            try {
+                await global.monacoInitializationPromise;
+                if (global.monacoInitializer?.isInitialized) return global.monacoInitializer;
+            } catch (error) {
+                console.warn('Monaco initializer failed to load in time', error);
+            }
+        }
+        return global.monacoInitializer;
+    }
+
+    async function applyTemplateToEditor(template) {
         if (!template) {
             notify('Select a template first', 'warning');
             return;
         }
 
         const payload = template.content ?? {};
-        const initializer = global.monacoInitializer;
+        const initializer = await waitForEditorInitializer();
 
         if (initializer && (typeof initializer.applyTemplate === 'function' || typeof initializer.applyTemplateById === 'function')) {
             let applied = false;
@@ -932,102 +945,6 @@
         return true;
     }
 
-    function updateUserTemplate(templateId, updates = {}) {
-        if (!templateId) return null;
-
-        const templates = readUserTemplates();
-        const index = templates.findIndex((template) => template.id === templateId);
-        if (index === -1) return null;
-
-        const existing = templates[index];
-        const updated = normalizeUserTemplate({
-            ...existing,
-            ...(updates.title ? { title: updates.title } : {}),
-            ...(updates.description ? { description: updates.description } : {}),
-            ...(updates.content ? { content: updates.content } : {}),
-        });
-
-        templates[index] = updated;
-        persistUserTemplates(templates);
-        renderTemplateWizard({ force: true });
-        populateSelectors();
-
-        return updated;
-    }
-
-    async function editUserTemplate(templateId, options = {}) {
-        const template = readUserTemplates().find((entry) => entry.id === templateId);
-        if (!template) {
-            notify('Template not found', 'warning');
-            return false;
-        }
-
-        const interactive = options.interactive !== false;
-        const baseTitle = template.title || template.name || template.id || 'User template';
-        const baseDescription = template.description || 'User template';
-        let title = options.title ?? baseTitle;
-        let description = options.description ?? baseDescription;
-        let content = options.content ?? template.content;
-
-        if (interactive && typeof global.prompt === 'function') {
-            const providedTitle = global.prompt('Template name', baseTitle);
-            if (providedTitle === null) return false;
-            title = providedTitle.trim() || baseTitle;
-
-            const providedDesc = global.prompt('Template description', baseDescription);
-            if (providedDesc === null) return false;
-            description = providedDesc.trim();
-
-            const jsonInput = global.prompt('Template JSON', JSON.stringify(content, null, 2));
-            if (jsonInput === null) return false;
-            try {
-                content = JSON.parse(jsonInput);
-            } catch (e) {
-                notify('Template JSON is invalid', 'error');
-                return false;
-            }
-        }
-
-        if (!title) {
-            notify('Template name is required', 'warning');
-            return false;
-        }
-
-        const updated = updateUserTemplate(templateId, {
-            title,
-            description,
-            content,
-        });
-
-        if (updated) {
-            notify(`Template "${updated.title}" updated`, 'success');
-            return true;
-        }
-
-        return false;
-    }
-
-    function deleteUserTemplate(templateId, options = {}) {
-        const { skipConfirm = false } = options;
-        if (!templateId) return false;
-
-        const templates = readUserTemplates();
-        const template = templates.find((entry) => entry.id === templateId);
-        if (!template) return false;
-
-        if (!skipConfirm && typeof global.confirm === 'function') {
-            const confirmed = global.confirm(`Delete template "${template.title || template.id}"? This cannot be undone.`);
-            if (!confirmed) return false;
-        }
-
-        const remaining = templates.filter((entry) => entry.id !== templateId);
-        persistUserTemplates(remaining);
-        renderTemplateWizard({ force: true });
-        populateSelectors();
-        notify(`Template "${template.title || template.id}" deleted`, 'info');
-        return true;
-    }
-
     function resolveTemplatePath(value, path) {
         if (!path) return undefined;
         const segments = Array.isArray(path)
@@ -1085,9 +1002,9 @@
             const payload = template.content ? template.content : {};
             if (typeof payload === 'string') return payload;
             const pretty = JSON.stringify(payload, null, 2);
-            const lines = pretty.split('\n').slice(0, 16);
+            const lines = pretty.split('\n').slice(0, 48);
             const preview = lines.join('\n');
-            return preview.length > 896 ? `${preview.slice(0, 895)}…` : preview;
+            return preview.length > 1280 ? `${preview.slice(0, 1279)}…` : preview;
         } catch (error) {
             return '[unavailable template preview]';
         }
