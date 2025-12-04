@@ -668,6 +668,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         window.initializeFilterTabs();
     }
 
+    // Initialize mapping pagination controls once DOM is ready
+    if (typeof window.initMappingPagination === 'function') {
+        window.initMappingPagination();
+    }
+
     // Restore ALL filters from URL first (for all tabs)
     if (typeof window.FilterManager?.restoreFilters === 'function') {
         // Restore mappings filters
