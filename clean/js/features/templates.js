@@ -75,6 +75,14 @@
             color: '#14b8a6',
             description: 'Working against real APIs',
         },
+        {
+            id: 'custom',
+            icon: '★',
+            title: 'My templates',
+            subtitle: 'Saved by you',
+            color: '#0ea5e9',
+            description: 'Personal templates you created',
+        },
     ];
     const EMPTY_TEMPLATE_ID = 'empty-mapping-skeleton';
     const wizardState = {
@@ -399,6 +407,7 @@
     const templateCache = {
         builtIn: null,
         user: null,
+        userSignature: '',
         merged: null,
         mergedSignature: '',
         enriched: null,
@@ -429,11 +438,14 @@
     }
 
     function readUserTemplates() {
-        if (templateCache.user) return [...templateCache.user];
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (templateCache.user && templateCache.userSignature === raw) return [...templateCache.user];
         try {
-            const raw = localStorage.getItem(STORAGE_KEY);
             const parsed = raw ? JSON.parse(raw) : [];
-            templateCache.user = Array.isArray(parsed) ? parsed : [];
+            templateCache.user = Array.isArray(parsed)
+                ? parsed.map((template) => normalizeUserTemplate(template))
+                : [];
+            templateCache.userSignature = raw || '';
             return [...templateCache.user];
         } catch (e) {
             console.warn('Failed to read user templates from storage:', e);
@@ -441,10 +453,23 @@
         }
     }
 
+    function normalizeUserTemplate(template) {
+        return {
+            category: 'custom',
+            source: 'user',
+            ...template,
+            category: template?.category || 'custom',
+            source: template?.source || 'user'
+        };
+    }
+
     function persistUserTemplates(templates) {
         try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(templates));
-            templateCache.user = [...templates];
+            const sanitized = (templates || []).filter(Boolean).map((template) => normalizeUserTemplate(template));
+            const serialized = JSON.stringify(sanitized);
+            localStorage.setItem(STORAGE_KEY, serialized);
+            templateCache.user = [...sanitized];
+            templateCache.userSignature = serialized;
             invalidateTemplateCache('user');
         } catch (e) {
             console.warn('Failed to persist user templates:', e);
@@ -740,6 +765,7 @@
             id: `user-${Date.now()}`,
             title: title.trim(),
             description: 'User template saved from mapping form',
+            category: 'custom',
             source: 'user',
             content: {
                 name: title.trim(),
@@ -787,6 +813,7 @@
             id: `user-${Date.now()}`,
             title: title.trim(),
             description: 'User template saved from JSON editor',
+            category: 'custom',
             source: 'user',
             content: parsed
         };
@@ -797,6 +824,102 @@
         renderTemplateWizard({ force: true });
         populateSelectors();
         notify(`Template "${title.trim()}" saved`, 'success');
+    }
+
+    function updateUserTemplate(templateId, updates = {}) {
+        if (!templateId) return null;
+
+        const templates = readUserTemplates();
+        const index = templates.findIndex((template) => template.id === templateId);
+        if (index === -1) return null;
+
+        const existing = templates[index];
+        const updated = normalizeUserTemplate({
+            ...existing,
+            ...(updates.title ? { title: updates.title } : {}),
+            ...(updates.description ? { description: updates.description } : {}),
+            ...(updates.content ? { content: updates.content } : {}),
+        });
+
+        templates[index] = updated;
+        persistUserTemplates(templates);
+        renderTemplateWizard({ force: true });
+        populateSelectors();
+
+        return updated;
+    }
+
+    async function editUserTemplate(templateId, options = {}) {
+        const template = readUserTemplates().find((entry) => entry.id === templateId);
+        if (!template) {
+            notify('Template not found', 'warning');
+            return false;
+        }
+
+        const interactive = options.interactive !== false;
+        const baseTitle = template.title || template.name || template.id || 'User template';
+        const baseDescription = template.description || 'User template';
+        let title = options.title ?? baseTitle;
+        let description = options.description ?? baseDescription;
+        let content = options.content ?? template.content;
+
+        if (interactive && typeof global.prompt === 'function') {
+            const providedTitle = global.prompt('Template name', baseTitle);
+            if (providedTitle === null) return false;
+            title = providedTitle.trim() || baseTitle;
+
+            const providedDesc = global.prompt('Template description', baseDescription);
+            if (providedDesc === null) return false;
+            description = providedDesc.trim();
+
+            const jsonInput = global.prompt('Template JSON', JSON.stringify(content, null, 2));
+            if (jsonInput === null) return false;
+            try {
+                content = JSON.parse(jsonInput);
+            } catch (e) {
+                notify('Template JSON is invalid', 'error');
+                return false;
+            }
+        }
+
+        if (!title) {
+            notify('Template name is required', 'warning');
+            return false;
+        }
+
+        const updated = updateUserTemplate(templateId, {
+            title,
+            description,
+            content,
+        });
+
+        if (updated) {
+            notify(`Template "${updated.title}" updated`, 'success');
+            return true;
+        }
+
+        return false;
+    }
+
+    function deleteUserTemplate(templateId, options = {}) {
+        const { skipConfirm = false } = options;
+        if (!templateId) return false;
+
+        const templates = readUserTemplates();
+        const template = templates.find((entry) => entry.id === templateId);
+        if (!template) return false;
+
+        if (!skipConfirm && typeof global.confirm === 'function') {
+            const confirmed = global.confirm(`Delete template "${template.title || template.id}"? This cannot be undone.`);
+            if (!confirmed) return false;
+        }
+
+        const remaining = templates.filter((entry) => entry.id !== templateId);
+        persistUserTemplates(remaining);
+        renderTemplateWizard({ force: true });
+        populateSelectors();
+        notify(`Template "${template.title || template.id}" deleted`, 'info');
+        return true;
     }
 
     function resolveTemplatePath(value, path) {
@@ -1039,6 +1162,7 @@
         if (goalId === 'matching') return template.tags.includes('matching') || template.tags.includes('pattern') || template.tags.includes('jsonpath');
         if (goalId === 'webhooks') return template.tags.includes('webhook');
         if (goalId === 'proxy') return template.tags.includes('proxy');
+        if (goalId === 'custom') return template.source === 'user';
         return true;
     }
 
@@ -1272,6 +1396,12 @@
                     ${creationMode ? '<button class="btn btn-secondary btn-sm" type="button" data-template-action="create-studio">Create in JSON Studio</button>' : ''}
                     <button class="btn btn-secondary btn-sm" type="button" data-template-action="copy">Copy JSON</button>
                 </div>
+                ${template.source === 'user'
+        ? `<div class="template-preview-actions__secondary">
+                        <button class="btn btn-ghost btn-sm" type="button" data-template-action="edit-template">Edit template</button>
+                        <button class="btn btn-ghost btn-sm" type="button" data-template-action="delete-template">Delete</button>
+                    </div>`
+        : ''}
             </div>
         `;
 
@@ -1300,6 +1430,13 @@
                     : JSON.stringify(template.content, null, 2);
                 const success = await copyTextToClipboard(json);
                 notify(success ? `Template "${template.title}" copied` : 'Clipboard copy failed', success ? 'success' : 'error');
+            }
+            if (action === 'edit-template') {
+                await editUserTemplate(template.id);
+                return;
+            }
+            if (action === 'delete-template') {
+                deleteUserTemplate(template.id);
             }
         });
     }
@@ -1410,6 +1547,7 @@
         refresh: populateSelectors,
         openGallery: renderTemplateWizard,
         openGalleryForTarget,
+        getTemplatesWithMeta,
         getEmptyTemplateSeed,
         getEmptyMappingContent,
         applyTemplateToForm,
@@ -1419,7 +1557,10 @@
         prepareMappingForCreation,
         createEmptyMapping,
         saveFormAsTemplate,
-        saveEditorAsTemplate
+        saveEditorAsTemplate,
+        updateUserTemplate,
+        editUserTemplate,
+        deleteUserTemplate
     };
 
     if (document.readyState === 'loading') {
