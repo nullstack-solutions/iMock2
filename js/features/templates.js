@@ -1002,7 +1002,7 @@
             const payload = template.content ? template.content : {};
             if (typeof payload === 'string') return payload;
             const pretty = JSON.stringify(payload, null, 2);
-            const lines = pretty.split('\n').slice(0, 24);
+            const lines = pretty.split('\n').slice(0, 48);
             const preview = lines.join('\n');
             return preview.length > 1280 ? `${preview.slice(0, 1279)}…` : preview;
         } catch (error) {
