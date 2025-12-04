@@ -10,14 +10,6 @@
         GALLERY: 'template-gallery-modal',
         PREVIEW: 'template-preview-modal'
     };
-    const TEMPLATE_CATEGORY_LABELS = {
-        basic: 'Starter',
-        advanced: 'Advanced',
-        integration: 'Integration',
-        testing: 'Testing',
-        custom: 'Custom',
-        user: 'Custom'
-    };
     const GOAL_GROUPS = [
         {
             id: 'happy-path',
@@ -220,6 +212,10 @@
         }
 
         modal.classList.remove('hidden');
+
+        if (templateNameResolver) {
+            resolveTemplateName(null);
+        }
 
         return new Promise((resolve) => {
             templateNameResolver = resolve;
@@ -744,7 +740,7 @@
 
     function buildTemplatePreview(template) {
         try {
-            const payload = template && template.content ? template.content : {};
+            const payload = template.content ? template.content : {};
             if (typeof payload === 'string') return payload;
             const pretty = JSON.stringify(payload, null, 2);
             const lines = pretty.split('\n').slice(0, 16);
@@ -779,12 +775,6 @@
                 return false;
             }
         }
-    }
-
-    function templateCategory(template) {
-        if (template.source === 'user') return 'custom';
-        if (template.source === 'built-in') return template.category || 'basic';
-        return template.category || 'basic';
     }
 
     function isCreationTarget(target = activeTarget) {
@@ -886,7 +876,9 @@
         );
 
         if (!hasPath) return 'request URL or pattern is required';
-        if (typeof response.status !== 'number') return 'response.status is required';
+        const hasStatus = typeof response.status === 'number';
+        const hasFault = Boolean(response.fault);
+        if (!hasStatus && !hasFault) return 'response.status is required';
 
         return null;
     }
@@ -910,86 +902,6 @@
         }
         global.hideModal?.(MODALS.GALLERY);
         global.hideModal?.(MODALS.PREVIEW);
-    }
-
-    function openTemplatePreview(template) {
-        if (!template || !template.id) return;
-
-        const modal = document.getElementById(MODALS.PREVIEW);
-        if (!modal) return;
-
-        modal.dataset.templateId = template.id;
-        modal.dataset.templateTarget = activeTarget;
-
-        const title = modal.querySelector('#template-preview-title');
-        if (title) title.textContent = template.title || 'Template preview';
-
-        const description = modal.querySelector('#template-preview-description');
-        if (description) {
-            description.textContent = template.description || '';
-            description.style.display = template.description ? '' : 'none';
-        }
-
-        const meta = modal.querySelector('#template-preview-meta');
-        if (meta) {
-            const headline = getTemplateHeadline(template) || '—';
-            const feature = getTemplateFeature(template);
-
-            meta.innerHTML = '';
-
-            const endpointRow = document.createElement('div');
-            endpointRow.className = 'template-preview-meta__row';
-
-            const endpointLabel = document.createElement('span');
-            endpointLabel.className = 'template-preview-meta__label';
-            endpointLabel.textContent = 'Endpoint';
-
-            const endpointValue = document.createElement('span');
-            endpointValue.className = 'template-preview-meta__value';
-            endpointValue.textContent = headline;
-
-            endpointRow.appendChild(endpointLabel);
-            endpointRow.appendChild(endpointValue);
-            meta.appendChild(endpointRow);
-
-            if (feature) {
-                const featureRow = document.createElement('div');
-                featureRow.className = 'template-preview-meta__row';
-
-                const featureLabel = document.createElement('span');
-                featureLabel.className = 'template-preview-meta__label';
-                featureLabel.textContent = 'Highlight';
-
-                const featureCode = document.createElement('code');
-                featureCode.className = 'template-preview-meta__code';
-                featureCode.textContent = `${feature.label} = ${feature.value}`;
-
-                featureRow.appendChild(featureLabel);
-                featureRow.appendChild(featureCode);
-                meta.appendChild(featureRow);
-            }
-        }
-
-        const code = modal.querySelector('#template-preview-code');
-        if (code) {
-            const payload = template && template.content ? template.content : {};
-            const json = typeof payload === 'string' ? payload : JSON.stringify(payload, null, 2);
-            code.textContent = json;
-        }
-
-        const creationMode = isCreationTarget(modal.dataset.templateTarget);
-        const applyButton = modal.querySelector('[data-template-action="apply"]');
-        if (applyButton) {
-            applyButton.textContent = creationMode ? 'Create & open editor' : 'Use template';
-        }
-
-        const studioButton = modal.querySelector('[data-template-action="create-studio"]');
-        if (studioButton) {
-            studioButton.style.display = creationMode ? '' : 'none';
-        }
-
-        ensurePreviewHandlers();
-        global.showModal?.(MODALS.PREVIEW);
     }
 
     function buildGallerySignature(templates) {
@@ -1344,14 +1256,6 @@
                 renderTemplateWizard({ force: true });
             });
         }
-    }
-
-    function handleTemplateApply(event, targetSelector, applyFn) {
-        event?.preventDefault?.();
-        const select = document.getElementById(targetSelector);
-        if (!select) return;
-        const template = findTemplateById(select.value);
-        applyFn(template);
     }
 
     function openGalleryForTarget(target = 'form') {

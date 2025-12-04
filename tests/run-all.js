@@ -24,6 +24,15 @@ for (const spec of specs) {
     const absoluteSpec = path.join(__dirname, spec);
     const result = spawnSync('node', [absoluteSpec], { stdio: 'inherit', env: process.env });
 
+    if (result.error) {
+        failures++;
+        console.error(`\n❌ Failed to run spec "${spec}": ${result.error.message}`);
+        if (result.error.code) {
+            console.error(`Error code: ${result.error.code}`);
+        }
+        continue;
+    }
+
     if (result.status !== 0) {
         failures++;
     }

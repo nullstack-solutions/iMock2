@@ -125,6 +125,7 @@
             highlight: 'ANY · 429 Too Many Requests',
             popular: true,
             content: {
+                request: { method: 'ANY', urlPattern: '/api/.*' },
                 response: {
                     status: 429,
                     headers: {
@@ -158,6 +159,7 @@
             category: 'faults',
             highlight: 'ANY · delayDistribution.uniform',
             content: {
+                request: { method: 'GET', urlPath: '/api/variable-latency' },
                 response: {
                     status: 200,
                     delayDistribution: {
@@ -175,6 +177,7 @@
             category: 'faults',
             highlight: 'ANY · delayDistribution.lognormal',
             content: {
+                request: { method: 'GET', urlPath: '/api/realistic-latency' },
                 response: {
                     status: 200,
                     delayDistribution: {
@@ -222,7 +225,8 @@
             category: 'faults',
             highlight: 'ANY · fault: EMPTY_RESPONSE',
             content: {
-                response: { fault: 'EMPTY_RESPONSE' }
+                request: { method: 'GET', urlPath: '/api/empty' },
+                response: { status: 200, fault: 'EMPTY_RESPONSE' }
             }
         },
         {
@@ -232,7 +236,8 @@
             category: 'faults',
             highlight: 'ANY · fault: MALFORMED_RESPONSE_CHUNK',
             content: {
-                response: { fault: 'MALFORMED_RESPONSE_CHUNK' }
+                request: { method: 'GET', urlPath: '/api/corrupt' },
+                response: { status: 200, fault: 'MALFORMED_RESPONSE_CHUNK' }
             }
         },
         {
@@ -306,20 +311,20 @@
                         scenarioName: 'Order Status',
                         requiredScenarioState: 'Started',
                         newScenarioState: 'Processing',
-                        request: { urlPath: '/orders/123/status' },
+                        request: { method: 'GET', urlPath: '/orders/123/status' },
                         response: { jsonBody: { status: 'pending' } }
                     },
                     {
                         scenarioName: 'Order Status',
                         requiredScenarioState: 'Processing',
                         newScenarioState: 'Shipped',
-                        request: { urlPath: '/orders/123/status' },
+                        request: { method: 'GET', urlPath: '/orders/123/status' },
                         response: { jsonBody: { status: 'processing' } }
                     },
                     {
                         scenarioName: 'Order Status',
                         requiredScenarioState: 'Shipped',
-                        request: { urlPath: '/orders/123/status' },
+                        request: { method: 'GET', urlPath: '/orders/123/status' },
                         response: { jsonBody: { status: 'shipped' } }
                     }
                 ]
@@ -334,7 +339,7 @@
             feature: { path: ['response', 'jsonBody', 'path'], label: 'response.jsonBody.*' },
             popular: true,
             content: {
-                request: { urlPathPattern: '/api/echo/.*' },
+                request: { method: 'ANY', urlPathPattern: '/api/echo/.*' },
                 response: {
                     jsonBody: {
                         path: '{{request.path}}',
@@ -367,12 +372,14 @@
             category: 'dynamic',
             highlight: 'ANY · response-template random values',
             content: {
+                request: { method: 'GET', urlPath: '/api/generate' },
                 response: {
                     jsonBody: {
                         uuid: "{{randomValue type='UUID'}}",
                         code: "{{randomValue length=8 type='ALPHANUMERIC'}}",
                         number: "{{randomInt lower=1 upper=100}}"
                     },
+                    body: "{\"type\": \"ORDER_ACCEPTED\", \"orderId\": \"{{jsonPath request.body '$.orderId'}}\", \"occurredAt\": \"{{now offset='0' pattern=\\\"yyyy-MM-dd'T'HH:mm:ssXXX\\\"}}\"}",
                     transformers: ['response-template']
                 }
             }
@@ -399,13 +406,15 @@
             popular: true,
             content: {
                 request: {
+                    method: 'GET',
                     urlPath: '/api/search',
                     queryParameters: {
                         q: { matches: '.+' },
                         page: { equalTo: '1' },
                         limit: { or: [{ equalTo: '10' }, { equalTo: '20' }] }
                     }
-                }
+                },
+                response: { status: 200 }
             }
         },
         {
@@ -416,11 +425,14 @@
             highlight: 'ANY · header matchers',
             content: {
                 request: {
+                    method: 'ANY',
+                    urlPath: '/api/data',
                     headers: {
                         'Accept': { contains: 'application/json' },
                         'Authorization': { matches: 'Bearer .+' }
                     }
-                }
+                },
+                response: { status: 200 }
             }
         },
         {
@@ -432,6 +444,7 @@
             content: {
                 request: {
                     method: 'POST',
+                    urlPath: '/api/orders',
                     bodyPatterns: [{
                         equalToJson: {
                             customerId: '${json-unit.any-string}',
@@ -440,7 +453,8 @@
                         ignoreArrayOrder: true,
                         ignoreExtraElements: true
                     }]
-                }
+                },
+                response: { status: 201 }
             }
         },
         {
@@ -452,12 +466,14 @@
             content: {
                 request: {
                     method: 'POST',
+                    urlPath: '/api/events',
                     bodyPatterns: [
                         { matchesJsonPath: '$.type' },
                         { matchesJsonPath: "$[?(@.priority > 5)]" },
                         { matchesJsonPath: { expression: '$.email', contains: '@example.com' } }
                     ]
-                }
+                },
+                response: { status: 200 }
             }
         },
         {
@@ -468,11 +484,14 @@
             highlight: 'ANY · basicAuthCredentials',
             content: {
                 request: {
+                    method: 'GET',
+                    urlPath: '/api/secure',
                     basicAuthCredentials: {
                         username: 'admin',
                         password: 'secret'
                     }
-                }
+                },
+                response: { status: 200 }
             }
         },
         {
@@ -503,6 +522,8 @@
             category: 'webhooks',
             highlight: 'POST · templated callback',
             content: {
+                request: { method: 'POST', urlPath: '/api/orders' },
+                response: { status: 202 },
                 serveEventListeners: [{
                     name: 'webhook',
                     parameters: {
@@ -519,6 +540,8 @@
             category: 'webhooks',
             highlight: 'POST · delay → webhook',
             content: {
+                request: { method: 'POST', urlPath: '/api/async-job' },
+                response: { status: 202 },
                 serveEventListeners: [{
                     name: 'webhook',
                     parameters: {
