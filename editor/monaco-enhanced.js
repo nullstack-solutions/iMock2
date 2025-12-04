@@ -2590,7 +2590,7 @@ class MonacoInitializer {
     }
 
     getDefaultStub() {
-        return JSON.stringify({
+        const fallback = () => JSON.stringify({
             'name': 'Example WireMock Mapping',
             'request': {
                 'method': 'GET',
@@ -2607,6 +2607,17 @@ class MonacoInitializer {
                 }
             }
         }, null, 2);
+
+        try {
+            if (window.TemplateManager?.getEmptyMappingContent) {
+                const emptyMapping = window.TemplateManager.getEmptyMappingContent();
+                return JSON.stringify(emptyMapping, null, 2);
+            }
+        } catch (error) {
+            console.warn('Unable to get empty mapping content from TemplateManager, falling back to default stub', error);
+        }
+
+        return fallback();
     }
 
     // JSON operations
