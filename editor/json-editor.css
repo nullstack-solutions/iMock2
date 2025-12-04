@@ -53,14 +53,20 @@ body.modal-open {
 
 .toolbar-row {
     display: flex;
-    align-items: center;
+    flex-direction: row;
+    align-items: flex-start;
     gap: var(--space-4);
     flex-wrap: wrap;
+    width: 100%;
+    min-width: 0;
 }
 
 .toolbar-row--primary {
     justify-content: space-between;
+    align-items: flex-start;
     gap: var(--space-5);
+    min-width: 0;
+    flex-wrap: wrap;
 }
 
 .toolbar-side {
@@ -68,16 +74,32 @@ body.modal-open {
     align-items: center;
     gap: var(--toolbar-sides-gap);
     min-width: 0;
+    flex-wrap: wrap;
 }
 
 .toolbar-side--left {
-    flex: 1 1 auto;
+    flex: 1 1 520px;
+    min-width: min-content;
+    order: 0;
 }
 
 .toolbar-side--right {
-    flex: 0 0 auto;
+    flex: 1 1 320px;
+    min-width: 0;
+    order: 1;
     justify-content: flex-end;
     gap: var(--toolbar-sides-gap);
+    align-items: center;
+}
+
+@media (max-width: 1100px) {
+    .toolbar-side--left {
+        order: 1;
+    }
+
+    .toolbar-side--right {
+        order: 0;
+    }
 }
 
 .toolbar-side--left .toolbar-brand {
@@ -91,8 +113,16 @@ body.modal-open {
 
 .toolbar-side--right .btn-group {
     display: flex;
-    flex-wrap: wrap;
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: nowrap;
     gap: var(--space-3);
+    flex: 0 0 auto;
+    height: 100%;
+}
+
+.toolbar-side--right .btn-group .btn {
+    flex: 0 0 auto;
 }
 
 .toolbar-theme-toggle {
@@ -165,8 +195,12 @@ body.modal-open {
     box-shadow: var(--shadow-sm);
     padding: var(--space-4) var(--space-5);
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: stretch;
     gap: var(--space-4);
+    min-width: 0;
+    flex-grow: 1;
 }
 
 .btn-group {
