@@ -136,6 +136,164 @@
         console[type === 'error' ? 'error' : 'log'](`[TEMPLATES] ${message}`);
     }
 
+    function deepClone(value) {
+        try {
+            if (typeof structuredClone === 'function') {
+                return structuredClone(value);
+            }
+        } catch (cloneError) {
+            console.warn('Failed to structuredClone, falling back to JSON:', cloneError);
+        }
+
+        try {
+            return JSON.parse(JSON.stringify(value));
+        } catch (jsonError) {
+            console.warn('Failed to JSON clone value, returning shallow copy:', jsonError);
+            if (value && typeof value === 'object') {
+                return Array.isArray(value) ? [...value] : { ...value };
+            }
+        }
+
+        return value;
+    }
+
+    function stripMappingIdentifiers(mapping) {
+        ['id', 'uuid', 'stubMappingId', 'stubId', 'mappingId'].forEach((key) => delete mapping[key]);
+        if (mapping.metadata) {
+            delete mapping.metadata.id;
+        }
+    }
+
+    function prepareMappingForCreation(mapping, options = {}) {
+        if (!mapping || typeof mapping !== 'object') return null;
+
+        const { source = 'ui', seed = getEmptyTemplateSeed() } = options;
+        const nowIso = new Date().toISOString();
+        const normalized = deepClone(mapping);
+
+        stripMappingIdentifiers(normalized);
+        normalizeRequestAndResponse(normalized, seed);
+
+        normalized.metadata = {
+            ...(normalized.metadata || {}),
+            created: normalized.metadata?.created || nowIso,
+            edited: nowIso,
+            source: normalized.metadata?.source || source
+        };
+
+        return normalized;
+    }
+
+    async function createMappingsFromPayloads(rawPayloads, options = {}) {
+        const {
+            openMode = 'inline',
+            source = 'ui',
+            successMessageFactory,
+        } = options;
+
+        const payloadArray = Array.isArray(rawPayloads) ? rawPayloads : [rawPayloads];
+        const preparedPayloads = payloadArray
+            .map((payload) => prepareMappingForCreation(payload, { source }))
+            .filter(Boolean);
+
+        if (!preparedPayloads.length) {
+            notify('No valid mapping payloads to create', 'warning');
+            return { success: false, createdIds: [] };
+        }
+
+        const validationErrors = preparedPayloads
+            .map((entry, index) => ({ index, error: validateMapping(entry) }))
+            .filter((item) => Boolean(item.error));
+
+        if (validationErrors.length) {
+            const first = validationErrors[0];
+            notify(`Mapping payload is missing required fields (entry ${first.index + 1}): ${first.error}`, 'error');
+            return { success: false, createdIds: [] };
+        }
+
+        try {
+            const createdIds = [];
+            const errors = [];
+
+            for (let i = 0; i < preparedPayloads.length; i += 1) {
+                const entry = preparedPayloads[i];
+                try {
+                    const response = await apiFetch('/mappings', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(entry)
+                    });
+
+                    const createdMapping = response?.mapping || response;
+                    const createdId = createdMapping?.id;
+
+                    if (createdId && typeof updateOptimisticCache === 'function') {
+                        try {
+                            updateOptimisticCache(createdMapping, 'create');
+                        } catch (cacheError) {
+                            console.warn('Failed to update optimistic cache after create:', cacheError);
+                        }
+                    }
+
+                    if (createdId) {
+                        createdIds.push(createdId);
+                    }
+                } catch (error) {
+                    errors.push({ index: i, error });
+                    break;
+                }
+            }
+
+            if (errors.length) {
+                const rollbackErrors = [];
+                for (const id of createdIds) {
+                    try {
+                        await apiFetch(`/mappings/${id}`, { method: 'DELETE' });
+                        if (typeof updateOptimisticCache === 'function') {
+                            updateOptimisticCache({ id }, 'delete');
+                        }
+                    } catch (rollbackError) {
+                        rollbackErrors.push(rollbackError);
+                    }
+                }
+
+                const failure = errors[0];
+                const rollbackNote = rollbackErrors.length
+                    ? ` Rollback issues: ${rollbackErrors.length} delete${rollbackErrors.length === 1 ? '' : 's'} failed.`
+                    : '';
+
+                notify(
+                    `Failed to create mapping ${failure.index + 1}/${preparedPayloads.length}: ${failure.error.message}.${rollbackNote}`,
+                    'error'
+                );
+                console.error('Mapping create failed', { errors, rollbackErrors });
+                return { success: false, createdIds: [] };
+            }
+
+            const createdCount = createdIds.length || preparedPayloads.length;
+            const successMessage = typeof successMessageFactory === 'function'
+                ? successMessageFactory(createdCount)
+                : `Created ${createdCount} mapping${createdCount === 1 ? '' : 's'}`;
+
+            notify(successMessage, 'success');
+
+            const targetId = createdIds[0];
+            if (targetId) {
+                if (openMode === 'studio' && typeof global.editMapping === 'function') {
+                    global.editMapping(targetId);
+                } else if (typeof global.openEditModal === 'function') {
+                    global.openEditModal(targetId);
+                }
+            }
+
+            return { success: true, createdIds };
+        } catch (error) {
+            notify(`Failed to create mapping: ${error.message}`, 'error');
+            console.error('Failed to create mapping from payloads', error);
+            return { success: false, createdIds: [] };
+        }
+    }
+
     function ensureTemplateNameModal() {
         let modal = document.getElementById('template-name-modal');
         if (modal) return modal;
@@ -525,75 +683,11 @@
         }
 
         try {
-            const createdIds = [];
-            const errors = [];
-
-            for (let i = 0; i < payloads.length; i += 1) {
-                const entry = payloads[i];
-                try {
-                    const response = await apiFetch('/mappings', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(entry)
-                    });
-
-                    const createdMapping = response?.mapping || response;
-                    const createdId = createdMapping?.id;
-
-                    if (createdId && typeof updateOptimisticCache === 'function') {
-                        try {
-                            updateOptimisticCache(createdMapping, 'create');
-                        } catch (cacheError) {
-                            console.warn('Failed to update optimistic cache after template create:', cacheError);
-                        }
-                    }
-
-                    if (createdId) {
-                        createdIds.push(createdId);
-                    }
-                } catch (error) {
-                    errors.push({ index: i, error });
-                    break;
-                }
-            }
-
-            if (errors.length) {
-                const rollbackErrors = [];
-                for (const id of createdIds) {
-                    try {
-                        await apiFetch(`/mappings/${id}`, { method: 'DELETE' });
-                        if (typeof updateOptimisticCache === 'function') {
-                            updateOptimisticCache({ id }, 'delete');
-                        }
-                    } catch (rollbackError) {
-                        rollbackErrors.push(rollbackError);
-                    }
-                }
-
-                const failure = errors[0];
-                const rollbackNote = rollbackErrors.length
-                    ? ` Rollback issues: ${rollbackErrors.length} delete${rollbackErrors.length === 1 ? '' : 's'} failed.`
-                    : '';
-
-                notify(
-                    `Failed to create mapping ${failure.index + 1}/${payloads.length}: ${failure.error.message}.${rollbackNote}`,
-                    'error'
-                );
-                console.error('Template create failed', { errors, rollbackErrors });
-                return;
-            }
-
-            const createdCount = createdIds.length || payloads.length;
-            notify(`Created ${createdCount} mapping${createdCount === 1 ? '' : 's'} from template`, 'success');
-
-            const targetId = createdIds[0];
-            if (targetId) {
-                if (openMode === 'studio' && typeof global.editMapping === 'function') {
-                    global.editMapping(targetId);
-                } else if (typeof global.openEditModal === 'function') {
-                    global.openEditModal(targetId);
-                }
-            }
+            await createMappingsFromPayloads(payloads, {
+                openMode,
+                source: 'template',
+                successMessageFactory: (count) => `Created ${count} mapping${count === 1 ? '' : 's'} from template`
+            });
         } catch (error) {
             notify(`Failed to create mapping: ${error.message}`, 'error');
             console.error('Failed to create mapping from template', error);
@@ -1303,6 +1397,8 @@
         applyTemplateToForm,
         applyTemplateToEditor,
         createMappingFromTemplate,
+        createMappingsFromPayloads,
+        prepareMappingForCreation,
         createEmptyMapping,
         saveFormAsTemplate,
         saveEditorAsTemplate
