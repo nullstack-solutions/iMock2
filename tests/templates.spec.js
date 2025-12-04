@@ -126,7 +126,10 @@ runTest('all built-in templates create valid mapping payloads', async () => {
     assert.ok(Array.isArray(templates) && templates.length > 0, 'Templates should be available');
 
     for (const template of templates) {
+        const before = context.__apiCalls.length;
         await context.TemplateManager.createMappingFromTemplate(template, { openMode: 'inline' });
+        const created = context.__apiCalls.length - before;
+        assert.ok(created > 0, `Template ${template.id || template.title} should produce at least one create request`);
     }
 
     assert.ok(context.__apiCalls.length > 0, 'Template creation should post mappings');
@@ -134,6 +137,23 @@ runTest('all built-in templates create valid mapping payloads', async () => {
         assert.strictEqual(url, '/mappings');
         assertValidCreatePayload(payload);
     });
+});
+
+runTest('empty mapping skeleton is shared and seedable', () => {
+    const context = createTemplatesTestContext();
+
+    const defaultEmpty = context.TemplateManager.getEmptyMappingContent();
+    assert.strictEqual(defaultEmpty.name, 'Empty mapping');
+    assert.strictEqual(defaultEmpty.request.method, 'GET');
+    assert.strictEqual(defaultEmpty.request.urlPath, '/api/example');
+    assert.strictEqual(defaultEmpty.response.status, 200);
+
+    const seededEmpty = context.TemplateManager.getEmptyMappingContent({ method: 'post', urlPath: '/seeded' });
+    assert.strictEqual(seededEmpty.request.method, 'POST');
+    assert.strictEqual(seededEmpty.request.urlPath, '/seeded');
+
+    const emptyTemplate = context.TemplateManager.getTemplates().find((template) => template.id === 'empty-mapping-skeleton');
+    assert.deepStrictEqual(emptyTemplate.content, defaultEmpty);
 });
 
 async function run() {
