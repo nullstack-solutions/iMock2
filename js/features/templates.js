@@ -75,6 +75,14 @@
             color: '#14b8a6',
             description: 'Working against real APIs',
         },
+        {
+            id: 'custom',
+            icon: '★',
+            title: 'My templates',
+            subtitle: 'Saved by you',
+            color: '#0ea5e9',
+            description: 'Personal templates you created',
+        },
     ];
     const EMPTY_TEMPLATE_ID = 'empty-mapping-skeleton';
     const wizardState = {
@@ -104,27 +112,43 @@
         };
     }
 
+    function buildEmptyMapping(seed = getEmptyTemplateSeed()) {
+        const normalizedSeed = {
+            method: (seed?.method || 'GET').toUpperCase(),
+            urlPath: seed?.urlPath || '/api/example'
+        };
+
+        return {
+            name: 'Empty mapping',
+            request: {
+                method: normalizedSeed.method,
+                urlPath: normalizedSeed.urlPath
+            },
+            response: {
+                status: 200
+            }
+        };
+    }
+
+    function getEmptyMappingContent(seed) {
+        return deepClone(buildEmptyMapping(seed));
+    }
+
     function getEmptyTemplate() {
         const seed = getEmptyTemplateSeed();
+        const emptyContent = getEmptyMappingContent(seed);
+
         return {
             id: EMPTY_TEMPLATE_ID,
             title: 'Empty mapping',
             description: 'Create a minimal stub and fill in the request/response yourself.',
             category: 'happy-path',
-            highlight: `${seed.method} · ${seed.urlPath}`,
+            highlight: `${emptyContent.request.method} · ${emptyContent.request.urlPath}`,
             feature: {
                 path: ['response', 'status'],
                 label: 'response.status'
             },
-            content: {
-                request: {
-                    method: seed.method,
-                    urlPath: seed.urlPath
-                },
-                response: {
-                    status: 200
-                }
-            }
+            content: emptyContent
         };
     }
 
@@ -134,6 +158,164 @@
             return;
         }
         console[type === 'error' ? 'error' : 'log'](`[TEMPLATES] ${message}`);
+    }
+
+    function deepClone(value) {
+        try {
+            if (typeof structuredClone === 'function') {
+                return structuredClone(value);
+            }
+        } catch (cloneError) {
+            console.warn('Failed to structuredClone, falling back to JSON:', cloneError);
+        }
+
+        try {
+            return JSON.parse(JSON.stringify(value));
+        } catch (jsonError) {
+            console.warn('Failed to JSON clone value, returning shallow copy:', jsonError);
+            if (value && typeof value === 'object') {
+                return Array.isArray(value) ? [...value] : { ...value };
+            }
+        }
+
+        return value;
+    }
+
+    function stripMappingIdentifiers(mapping) {
+        ['id', 'uuid', 'stubMappingId', 'stubId', 'mappingId'].forEach((key) => delete mapping[key]);
+        if (mapping.metadata) {
+            delete mapping.metadata.id;
+        }
+    }
+
+    function prepareMappingForCreation(mapping, options = {}) {
+        if (!mapping || typeof mapping !== 'object') return null;
+
+        const { source = 'ui', seed = getEmptyTemplateSeed() } = options;
+        const nowIso = new Date().toISOString();
+        const normalized = deepClone(mapping);
+
+        stripMappingIdentifiers(normalized);
+        normalizeRequestAndResponse(normalized, seed);
+
+        normalized.metadata = {
+            ...(normalized.metadata || {}),
+            created: normalized.metadata?.created || nowIso,
+            edited: nowIso,
+            source: normalized.metadata?.source || source
+        };
+
+        return normalized;
+    }
+
+    async function createMappingsFromPayloads(rawPayloads, options = {}) {
+        const {
+            openMode = 'inline',
+            source = 'ui',
+            successMessageFactory,
+        } = options;
+
+        const payloadArray = Array.isArray(rawPayloads) ? rawPayloads : [rawPayloads];
+        const preparedPayloads = payloadArray
+            .map((payload) => prepareMappingForCreation(payload, { source }))
+            .filter(Boolean);
+
+        if (!preparedPayloads.length) {
+            notify('No valid mapping payloads to create', 'warning');
+            return { success: false, createdIds: [] };
+        }
+
+        const validationErrors = preparedPayloads
+            .map((entry, index) => ({ index, error: validateMapping(entry) }))
+            .filter((item) => Boolean(item.error));
+
+        if (validationErrors.length) {
+            const first = validationErrors[0];
+            notify(`Mapping payload is missing required fields (entry ${first.index + 1}): ${first.error}`, 'error');
+            return { success: false, createdIds: [] };
+        }
+
+        try {
+            const createdIds = [];
+            const errors = [];
+
+            for (let i = 0; i < preparedPayloads.length; i += 1) {
+                const entry = preparedPayloads[i];
+                try {
+                    const response = await apiFetch('/mappings', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(entry)
+                    });
+
+                    const createdMapping = response?.mapping || response;
+                    const createdId = createdMapping?.id;
+
+                    if (createdId && typeof updateOptimisticCache === 'function') {
+                        try {
+                            updateOptimisticCache(createdMapping, 'create');
+                        } catch (cacheError) {
+                            console.warn('Failed to update optimistic cache after create:', cacheError);
+                        }
+                    }
+
+                    if (createdId) {
+                        createdIds.push(createdId);
+                    }
+                } catch (error) {
+                    errors.push({ index: i, error });
+                    break;
+                }
+            }
+
+            if (errors.length) {
+                const rollbackErrors = [];
+                for (const id of createdIds) {
+                    try {
+                        await apiFetch(`/mappings/${id}`, { method: 'DELETE' });
+                        if (typeof updateOptimisticCache === 'function') {
+                            updateOptimisticCache({ id }, 'delete');
+                        }
+                    } catch (rollbackError) {
+                        rollbackErrors.push(rollbackError);
+                    }
+                }
+
+                const failure = errors[0];
+                const rollbackNote = rollbackErrors.length
+                    ? ` Rollback issues: ${rollbackErrors.length} delete${rollbackErrors.length === 1 ? '' : 's'} failed.`
+                    : '';
+
+                notify(
+                    `Failed to create mapping ${failure.index + 1}/${preparedPayloads.length}: ${failure.error.message}.${rollbackNote}`,
+                    'error'
+                );
+                console.error('Mapping create failed', { errors, rollbackErrors });
+                return { success: false, createdIds: [] };
+            }
+
+            const createdCount = createdIds.length || preparedPayloads.length;
+            const successMessage = typeof successMessageFactory === 'function'
+                ? successMessageFactory(createdCount)
+                : `Created ${createdCount} mapping${createdCount === 1 ? '' : 's'}`;
+
+            notify(successMessage, 'success');
+
+            const targetId = createdIds[0];
+            if (targetId) {
+                if (openMode === 'studio' && typeof global.editMapping === 'function') {
+                    global.editMapping(targetId);
+                } else if (typeof global.openEditModal === 'function') {
+                    global.openEditModal(targetId);
+                }
+            }
+
+            return { success: true, createdIds };
+        } catch (error) {
+            notify(`Failed to create mapping: ${error.message}`, 'error');
+            console.error('Failed to create mapping from payloads', error);
+            return { success: false, createdIds: [] };
+        }
     }
 
     function ensureTemplateNameModal() {
@@ -225,6 +407,7 @@
     const templateCache = {
         builtIn: null,
         user: null,
+        userSignature: '',
         merged: null,
         mergedSignature: '',
         enriched: null,
@@ -255,11 +438,14 @@
     }
 
     function readUserTemplates() {
-        if (templateCache.user) return [...templateCache.user];
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (templateCache.user && templateCache.userSignature === raw) return [...templateCache.user];
         try {
-            const raw = localStorage.getItem(STORAGE_KEY);
             const parsed = raw ? JSON.parse(raw) : [];
-            templateCache.user = Array.isArray(parsed) ? parsed : [];
+            templateCache.user = Array.isArray(parsed)
+                ? parsed.map((template) => normalizeUserTemplate(template))
+                : [];
+            templateCache.userSignature = raw || '';
             return [...templateCache.user];
         } catch (e) {
             console.warn('Failed to read user templates from storage:', e);
@@ -267,10 +453,23 @@
         }
     }
 
+    function normalizeUserTemplate(template) {
+        return {
+            category: 'custom',
+            source: 'user',
+            ...template,
+            category: template?.category || 'custom',
+            source: template?.source || 'user'
+        };
+    }
+
     function persistUserTemplates(templates) {
         try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(templates));
-            templateCache.user = [...templates];
+            const sanitized = (templates || []).filter(Boolean).map((template) => normalizeUserTemplate(template));
+            const serialized = JSON.stringify(sanitized);
+            localStorage.setItem(STORAGE_KEY, serialized);
+            templateCache.user = [...sanitized];
+            templateCache.userSignature = serialized;
             invalidateTemplateCache('user');
         } catch (e) {
             console.warn('Failed to persist user templates:', e);
@@ -525,75 +724,11 @@
         }
 
         try {
-            const createdIds = [];
-            const errors = [];
-
-            for (let i = 0; i < payloads.length; i += 1) {
-                const entry = payloads[i];
-                try {
-                    const response = await apiFetch('/mappings', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(entry)
-                    });
-
-                    const createdMapping = response?.mapping || response;
-                    const createdId = createdMapping?.id;
-
-                    if (createdId && typeof updateOptimisticCache === 'function') {
-                        try {
-                            updateOptimisticCache(createdMapping, 'create');
-                        } catch (cacheError) {
-                            console.warn('Failed to update optimistic cache after template create:', cacheError);
-                        }
-                    }
-
-                    if (createdId) {
-                        createdIds.push(createdId);
-                    }
-                } catch (error) {
-                    errors.push({ index: i, error });
-                    break;
-                }
-            }
-
-            if (errors.length) {
-                const rollbackErrors = [];
-                for (const id of createdIds) {
-                    try {
-                        await apiFetch(`/mappings/${id}`, { method: 'DELETE' });
-                        if (typeof updateOptimisticCache === 'function') {
-                            updateOptimisticCache({ id }, 'delete');
-                        }
-                    } catch (rollbackError) {
-                        rollbackErrors.push(rollbackError);
-                    }
-                }
-
-                const failure = errors[0];
-                const rollbackNote = rollbackErrors.length
-                    ? ` Rollback issues: ${rollbackErrors.length} delete${rollbackErrors.length === 1 ? '' : 's'} failed.`
-                    : '';
-
-                notify(
-                    `Failed to create mapping ${failure.index + 1}/${payloads.length}: ${failure.error.message}.${rollbackNote}`,
-                    'error'
-                );
-                console.error('Template create failed', { errors, rollbackErrors });
-                return;
-            }
-
-            const createdCount = createdIds.length || payloads.length;
-            notify(`Created ${createdCount} mapping${createdCount === 1 ? '' : 's'} from template`, 'success');
-
-            const targetId = createdIds[0];
-            if (targetId) {
-                if (openMode === 'studio' && typeof global.editMapping === 'function') {
-                    global.editMapping(targetId);
-                } else if (typeof global.openEditModal === 'function') {
-                    global.openEditModal(targetId);
-                }
-            }
+            await createMappingsFromPayloads(payloads, {
+                openMode,
+                source: 'template',
+                successMessageFactory: (count) => `Created ${count} mapping${count === 1 ? '' : 's'} from template`
+            });
         } catch (error) {
             notify(`Failed to create mapping: ${error.message}`, 'error');
             console.error('Failed to create mapping from template', error);
@@ -630,6 +765,7 @@
             id: `user-${Date.now()}`,
             title: title.trim(),
             description: 'User template saved from mapping form',
+            category: 'custom',
             source: 'user',
             content: {
                 name: title.trim(),
@@ -677,6 +813,7 @@
             id: `user-${Date.now()}`,
             title: title.trim(),
             description: 'User template saved from JSON editor',
+            category: 'custom',
             source: 'user',
             content: parsed
         };
@@ -687,6 +824,102 @@
         renderTemplateWizard({ force: true });
         populateSelectors();
         notify(`Template "${title.trim()}" saved`, 'success');
+    }
+
+    function updateUserTemplate(templateId, updates = {}) {
+        if (!templateId) return null;
+
+        const templates = readUserTemplates();
+        const index = templates.findIndex((template) => template.id === templateId);
+        if (index === -1) return null;
+
+        const existing = templates[index];
+        const updated = normalizeUserTemplate({
+            ...existing,
+            ...(updates.title ? { title: updates.title } : {}),
+            ...(updates.description ? { description: updates.description } : {}),
+            ...(updates.content ? { content: updates.content } : {}),
+        });
+
+        templates[index] = updated;
+        persistUserTemplates(templates);
+        renderTemplateWizard({ force: true });
+        populateSelectors();
+
+        return updated;
+    }
+
+    async function editUserTemplate(templateId, options = {}) {
+        const template = readUserTemplates().find((entry) => entry.id === templateId);
+        if (!template) {
+            notify('Template not found', 'warning');
+            return false;
+        }
+
+        const interactive = options.interactive !== false;
+        const baseTitle = template.title || template.name || template.id || 'User template';
+        const baseDescription = template.description || 'User template';
+        let title = options.title ?? baseTitle;
+        let description = options.description ?? baseDescription;
+        let content = options.content ?? template.content;
+
+        if (interactive && typeof global.prompt === 'function') {
+            const providedTitle = global.prompt('Template name', baseTitle);
+            if (providedTitle === null) return false;
+            title = providedTitle.trim() || baseTitle;
+
+            const providedDesc = global.prompt('Template description', baseDescription);
+            if (providedDesc === null) return false;
+            description = providedDesc.trim();
+
+            const jsonInput = global.prompt('Template JSON', JSON.stringify(content, null, 2));
+            if (jsonInput === null) return false;
+            try {
+                content = JSON.parse(jsonInput);
+            } catch (e) {
+                notify('Template JSON is invalid', 'error');
+                return false;
+            }
+        }
+
+        if (!title) {
+            notify('Template name is required', 'warning');
+            return false;
+        }
+
+        const updated = updateUserTemplate(templateId, {
+            title,
+            description,
+            content,
+        });
+
+        if (updated) {
+            notify(`Template "${updated.title}" updated`, 'success');
+            return true;
+        }
+
+        return false;
+    }
+
+    function deleteUserTemplate(templateId, options = {}) {
+        const { skipConfirm = false } = options;
+        if (!templateId) return false;
+
+        const templates = readUserTemplates();
+        const template = templates.find((entry) => entry.id === templateId);
+        if (!template) return false;
+
+        if (!skipConfirm && typeof global.confirm === 'function') {
+            const confirmed = global.confirm(`Delete template "${template.title || template.id}"? This cannot be undone.`);
+            if (!confirmed) return false;
+        }
+
+        const remaining = templates.filter((entry) => entry.id !== templateId);
+        persistUserTemplates(remaining);
+        renderTemplateWizard({ force: true });
+        populateSelectors();
+        notify(`Template "${template.title || template.id}" deleted`, 'info');
+        return true;
     }
 
     function resolveTemplatePath(value, path) {
@@ -748,7 +981,7 @@
             const pretty = JSON.stringify(payload, null, 2);
             const lines = pretty.split('\n').slice(0, 16);
             const preview = lines.join('\n');
-            return preview.length > 640 ? `${preview.slice(0, 639)}…` : preview;
+            return preview.length > 896 ? `${preview.slice(0, 895)}…` : preview;
         } catch (error) {
             return '[unavailable template preview]';
         }
@@ -929,6 +1162,7 @@
         if (goalId === 'matching') return template.tags.includes('matching') || template.tags.includes('pattern') || template.tags.includes('jsonpath');
         if (goalId === 'webhooks') return template.tags.includes('webhook');
         if (goalId === 'proxy') return template.tags.includes('proxy');
+        if (goalId === 'custom') return template.source === 'user';
         return true;
     }
 
@@ -1162,6 +1396,12 @@
                     ${creationMode ? '<button class="btn btn-secondary btn-sm" type="button" data-template-action="create-studio">Create in JSON Studio</button>' : ''}
                     <button class="btn btn-secondary btn-sm" type="button" data-template-action="copy">Copy JSON</button>
                 </div>
+                ${template.source === 'user'
+        ? `<div class="template-preview-actions__secondary">
+                        <button class="btn btn-ghost btn-sm" type="button" data-template-action="edit-template">Edit template</button>
+                        <button class="btn btn-ghost btn-sm" type="button" data-template-action="delete-template">Delete</button>
+                    </div>`
+        : ''}
             </div>
         `;
 
@@ -1190,6 +1430,13 @@
                     : JSON.stringify(template.content, null, 2);
                 const success = await copyTextToClipboard(json);
                 notify(success ? `Template "${template.title}" copied` : 'Clipboard copy failed', success ? 'success' : 'error');
+            }
+            if (action === 'edit-template') {
+                await editUserTemplate(template.id);
+                return;
+            }
+            if (action === 'delete-template') {
+                deleteUserTemplate(template.id);
             }
         });
     }
@@ -1300,12 +1547,20 @@
         refresh: populateSelectors,
         openGallery: renderTemplateWizard,
         openGalleryForTarget,
+        getTemplatesWithMeta,
+        getEmptyTemplateSeed,
+        getEmptyMappingContent,
         applyTemplateToForm,
         applyTemplateToEditor,
         createMappingFromTemplate,
+        createMappingsFromPayloads,
+        prepareMappingForCreation,
         createEmptyMapping,
         saveFormAsTemplate,
-        saveEditorAsTemplate
+        saveEditorAsTemplate,
+        updateUserTemplate,
+        editUserTemplate,
+        deleteUserTemplate
     };
 
     if (document.readyState === 'loading') {
