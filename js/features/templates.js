@@ -10,14 +10,6 @@
         GALLERY: 'template-gallery-modal',
         PREVIEW: 'template-preview-modal'
     };
-    const TEMPLATE_CATEGORY_LABELS = {
-        basic: 'Starter',
-        advanced: 'Advanced',
-        integration: 'Integration',
-        testing: 'Testing',
-        custom: 'Custom',
-        user: 'Custom'
-    };
     const GOAL_GROUPS = [
         {
             id: 'happy-path',
@@ -95,22 +87,39 @@
     };
     let activeTarget = 'form';
     let lastRenderSignature = '';
+    let templateNameResolver = null;
+
+    function getEmptyTemplateSeed() {
+        const methodInput = document.getElementById('method');
+        const urlInput = document.getElementById('url-pattern');
+        const editorMethod = document.getElementById('editor-method');
+        const editorUrl = document.getElementById('editor-url');
+
+        const methodSource = methodInput?.value || editorMethod?.value;
+        const urlSource = urlInput?.value || editorUrl?.value;
+
+        return {
+            method: (methodSource || 'GET').toUpperCase(),
+            urlPath: urlSource || '/api/example'
+        };
+    }
 
     function getEmptyTemplate() {
+        const seed = getEmptyTemplateSeed();
         return {
             id: EMPTY_TEMPLATE_ID,
             title: 'Empty mapping',
             description: 'Create a minimal stub and fill in the request/response yourself.',
             category: 'happy-path',
-            highlight: 'ANY · /example',
+            highlight: `${seed.method} · ${seed.urlPath}`,
             feature: {
                 path: ['response', 'status'],
                 label: 'response.status'
             },
             content: {
                 request: {
-                    method: 'ANY',
-                    urlPath: '/example'
+                    method: seed.method,
+                    urlPath: seed.urlPath
                 },
                 response: {
                     status: 200
@@ -127,11 +136,118 @@
         console[type === 'error' ? 'error' : 'log'](`[TEMPLATES] ${message}`);
     }
 
+    function ensureTemplateNameModal() {
+        let modal = document.getElementById('template-name-modal');
+        if (modal) return modal;
+
+        modal = document.createElement('div');
+        modal.id = 'template-name-modal';
+        modal.className = 'modal hidden';
+        modal.innerHTML = `
+            <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="template-name-title">
+                <div class="modal-header">
+                    <div class="modal-header-main">
+                        <h3 id="template-name-title" class="modal-title">Save as template</h3>
+                        <p class="modal-subtitle">Name your template to reuse it later.</p>
+                    </div>
+                    <button type="button" class="modal-close" aria-label="Close" data-action="close-template-name">×</button>
+                </div>
+                <div class="modal-body">
+                    <label class="form-label" for="template-name-input">Template name</label>
+                    <input id="template-name-input" class="form-control" type="text" name="template-name" placeholder="My template" />
+                    <p class="form-hint">Titles help you find templates quickly in the gallery.</p>
+                </div>
+                <div class="modal-footer">
+                    <div class="modal-actions">
+                        <button type="button" class="btn btn-secondary" data-action="cancel-template-name">Cancel</button>
+                        <button type="button" class="btn btn-primary" data-action="confirm-template-name">Save template</button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+
+        modal.addEventListener('click', (event) => {
+            if (event.target === modal) {
+                resolveTemplateName(null);
+            }
+        });
+
+        const closeButtons = modal.querySelectorAll('[data-action="close-template-name"], [data-action="cancel-template-name"]');
+        closeButtons.forEach((button) => button.addEventListener('click', () => resolveTemplateName(null)));
+
+        modal.querySelector('[data-action="confirm-template-name"]').addEventListener('click', () => {
+            const input = modal.querySelector('#template-name-input');
+            const value = input?.value?.trim();
+            resolveTemplateName(value || null);
+        });
+
+        const input = modal.querySelector('#template-name-input');
+        input?.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                resolveTemplateName(input.value.trim() || null);
+            }
+        });
+
+        return modal;
+    }
+
+    function resolveTemplateName(value) {
+        const modal = document.getElementById('template-name-modal');
+        modal?.classList.add('hidden');
+        if (typeof templateNameResolver === 'function') {
+            templateNameResolver(value);
+            templateNameResolver = null;
+        }
+    }
+
+    function requestTemplateName(defaultValue = '') {
+        const modal = ensureTemplateNameModal();
+        const input = modal.querySelector('#template-name-input');
+        if (input) {
+            input.value = defaultValue || '';
+            setTimeout(() => input.focus(), 0);
+        }
+
+        modal.classList.remove('hidden');
+
+        if (templateNameResolver) {
+            resolveTemplateName(null);
+        }
+
+        return new Promise((resolve) => {
+            templateNameResolver = resolve;
+        });
+    }
+
+    const templateCache = {
+        builtIn: null,
+        user: null,
+        merged: null,
+        mergedSignature: '',
+        enriched: null,
+        enrichedSignature: ''
+    };
+
+    function invalidateTemplateCache(scope = 'all') {
+        if (scope === 'all' || scope === 'user') {
+            templateCache.user = null;
+        }
+        templateCache.merged = null;
+        templateCache.mergedSignature = '';
+        templateCache.enriched = null;
+        templateCache.enrichedSignature = '';
+    }
+
     function getBuiltInTemplates() {
+        if (templateCache.builtIn) return [...templateCache.builtIn];
         try {
             const templates = global.MonacoTemplateLibrary?.getAll?.();
             if (!Array.isArray(templates)) return [];
-            return templates.map(template => ({ ...template, source: 'built-in' }));
+            templateCache.builtIn = templates.map(template => ({ ...template, source: 'built-in' }));
+            return [...templateCache.builtIn];
         } catch (e) {
             console.warn('Unable to read Monaco template library:', e);
             return [];
@@ -139,10 +255,12 @@
     }
 
     function readUserTemplates() {
+        if (templateCache.user) return [...templateCache.user];
         try {
             const raw = localStorage.getItem(STORAGE_KEY);
             const parsed = raw ? JSON.parse(raw) : [];
-            return Array.isArray(parsed) ? parsed : [];
+            templateCache.user = Array.isArray(parsed) ? parsed : [];
+            return [...templateCache.user];
         } catch (e) {
             console.warn('Failed to read user templates from storage:', e);
             return [];
@@ -152,18 +270,34 @@
     function persistUserTemplates(templates) {
         try {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(templates));
+            templateCache.user = [...templates];
+            invalidateTemplateCache('user');
         } catch (e) {
             console.warn('Failed to persist user templates:', e);
         }
     }
 
-    function getAllTemplates() {
-        const templates = [...getBuiltInTemplates(), ...readUserTemplates()];
+    function mergeTemplates() {
+        const merged = [...getBuiltInTemplates(), ...readUserTemplates()];
         const emptyTemplate = getEmptyTemplate();
-        if (!templates.some((template) => template.id === emptyTemplate.id)) {
-            templates.unshift(emptyTemplate);
+        if (!merged.some((template) => template.id === emptyTemplate.id)) {
+            merged.unshift(emptyTemplate);
         }
-        return templates;
+        const signature = merged.map((template) => `${template.id}:${template.source || ''}:${template.title || ''}`).join('|');
+
+        if (templateCache.merged && templateCache.mergedSignature === signature) {
+            return templateCache.merged;
+        }
+
+        templateCache.merged = merged;
+        templateCache.mergedSignature = signature;
+        templateCache.enriched = null;
+        templateCache.enrichedSignature = '';
+        return merged;
+    }
+
+    function getAllTemplates() {
+        return mergeTemplates();
     }
 
     function findTemplateById(templateId) {
@@ -239,7 +373,14 @@
     }
 
     function getTemplatesWithMeta() {
-        return getAllTemplates().map(enrichTemplate);
+        const merged = mergeTemplates();
+        if (templateCache.enriched && templateCache.enrichedSignature === templateCache.mergedSignature) {
+            return templateCache.enriched;
+        }
+
+        templateCache.enriched = merged.map(enrichTemplate);
+        templateCache.enrichedSignature = templateCache.mergedSignature;
+        return templateCache.enriched;
     }
 
     function createOption(template) {
@@ -372,32 +513,74 @@
             return;
         }
 
+        const payloads = Array.isArray(payload) ? payload : [payload];
+        const validationErrors = payloads
+            .map((entry, index) => ({ index, error: validateMapping(entry) }))
+            .filter((item) => Boolean(item.error));
+
+        if (validationErrors.length) {
+            const first = validationErrors[0];
+            notify(`Template is missing required fields (entry ${first.index + 1}): ${first.error}`, 'error');
+            return;
+        }
+
         try {
-            const payloads = Array.isArray(payload) ? payload : [payload];
             const createdIds = [];
+            const errors = [];
 
             for (let i = 0; i < payloads.length; i += 1) {
                 const entry = payloads[i];
-                const response = await apiFetch('/mappings', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(entry)
-                });
+                try {
+                    const response = await apiFetch('/mappings', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(entry)
+                    });
 
-                const createdMapping = response?.mapping || response;
-                const createdId = createdMapping?.id;
+                    const createdMapping = response?.mapping || response;
+                    const createdId = createdMapping?.id;
 
-                if (createdId && typeof updateOptimisticCache === 'function') {
+                    if (createdId && typeof updateOptimisticCache === 'function') {
+                        try {
+                            updateOptimisticCache(createdMapping, 'create');
+                        } catch (cacheError) {
+                            console.warn('Failed to update optimistic cache after template create:', cacheError);
+                        }
+                    }
+
+                    if (createdId) {
+                        createdIds.push(createdId);
+                    }
+                } catch (error) {
+                    errors.push({ index: i, error });
+                    break;
+                }
+            }
+
+            if (errors.length) {
+                const rollbackErrors = [];
+                for (const id of createdIds) {
                     try {
-                        updateOptimisticCache(createdMapping, 'create');
-                    } catch (cacheError) {
-                        console.warn('Failed to update optimistic cache after template create:', cacheError);
+                        await apiFetch(`/mappings/${id}`, { method: 'DELETE' });
+                        if (typeof updateOptimisticCache === 'function') {
+                            updateOptimisticCache({ id }, 'delete');
+                        }
+                    } catch (rollbackError) {
+                        rollbackErrors.push(rollbackError);
                     }
                 }
 
-                if (createdId) {
-                    createdIds.push(createdId);
-                }
+                const failure = errors[0];
+                const rollbackNote = rollbackErrors.length
+                    ? ` Rollback issues: ${rollbackErrors.length} delete${rollbackErrors.length === 1 ? '' : 's'} failed.`
+                    : '';
+
+                notify(
+                    `Failed to create mapping ${failure.index + 1}/${payloads.length}: ${failure.error.message}.${rollbackNote}`,
+                    'error'
+                );
+                console.error('Template create failed', { errors, rollbackErrors });
+                return;
             }
 
             const createdCount = createdIds.length || payloads.length;
@@ -431,9 +614,9 @@
         applyTemplateForTarget(template, activeTarget);
     }
 
-    function saveFormAsTemplate() {
-        const title = (prompt('Template name', document.getElementById('mapping-name')?.value || '') || '').trim();
-        if (!title) {
+    async function saveFormAsTemplate() {
+        const title = (await requestTemplateName(document.getElementById('mapping-name')?.value || '')) || '';
+        if (!title.trim()) {
             notify('Template name is required', 'warning');
             return;
         }
@@ -445,11 +628,11 @@
 
         const userTemplate = {
             id: `user-${Date.now()}`,
-            title,
+            title: title.trim(),
             description: 'User template saved from mapping form',
             source: 'user',
             content: {
-                name: title,
+                name: title.trim(),
                 request: {
                     method,
                     urlPath: url
@@ -466,18 +649,18 @@
         persistUserTemplates(nextTemplates);
         renderTemplateWizard({ force: true });
         populateSelectors();
-        notify(`Template "${title}" saved`, 'success');
+        notify(`Template "${title.trim()}" saved`, 'success');
     }
 
-    function saveEditorAsTemplate() {
+    async function saveEditorAsTemplate() {
         const editor = document.getElementById('json-editor');
         if (!editor) {
             notify('Editor not available', 'warning');
             return;
         }
 
-        const title = (prompt('Template name', '') || '').trim();
-        if (!title) {
+        const title = (await requestTemplateName()) || '';
+        if (!title.trim()) {
             notify('Template name is required', 'warning');
             return;
         }
@@ -492,7 +675,7 @@
 
         const userTemplate = {
             id: `user-${Date.now()}`,
-            title,
+            title: title.trim(),
             description: 'User template saved from JSON editor',
             source: 'user',
             content: parsed
@@ -503,7 +686,7 @@
         persistUserTemplates(nextTemplates);
         renderTemplateWizard({ force: true });
         populateSelectors();
-        notify(`Template "${title}" saved`, 'success');
+        notify(`Template "${title.trim()}" saved`, 'success');
     }
 
     function resolveTemplatePath(value, path) {
@@ -560,7 +743,7 @@
 
     function buildTemplatePreview(template) {
         try {
-            const payload = template && template.content ? template.content : {};
+            const payload = template.content ? template.content : {};
             if (typeof payload === 'string') return payload;
             const pretty = JSON.stringify(payload, null, 2);
             const lines = pretty.split('\n').slice(0, 16);
@@ -597,14 +780,33 @@
         }
     }
 
-    function templateCategory(template) {
-        if (template.source === 'user') return 'custom';
-        if (template.source === 'built-in') return template.category || 'basic';
-        return template.category || 'basic';
-    }
-
     function isCreationTarget(target = activeTarget) {
         return typeof target === 'string' && target.startsWith('create');
+    }
+
+    function normalizeRequestAndResponse(mapping, seed) {
+        if (!mapping.request) mapping.request = {};
+        if (!mapping.response) mapping.response = {};
+
+        if (!mapping.request.method) {
+            mapping.request.method = seed.method || 'ANY';
+        }
+
+        const hasPath = Boolean(
+            mapping.request.url
+            || mapping.request.urlPath
+            || mapping.request.urlPattern
+            || mapping.request.urlPathPattern
+            || mapping.request.urlPathTemplate
+        );
+
+        if (!hasPath) {
+            mapping.request.urlPath = seed.urlPath || seed.url || '/api/example';
+        }
+
+        if (typeof mapping.response.status !== 'number' && !('fault' in mapping.response)) {
+            mapping.response.status = 200;
+        }
     }
 
     function normalizeTemplatePayload(template) {
@@ -625,6 +827,8 @@
             ['id', 'uuid', 'stubMappingId', 'stubId', 'mappingId'].forEach((key) => delete obj[key]);
         };
 
+        const seed = getEmptyTemplateSeed();
+
         if (Array.isArray(payload?.mappings)) {
             return payload.mappings.map((mapping, index) => {
                 const normalized = JSON.parse(JSON.stringify(mapping || {}));
@@ -632,8 +836,7 @@
                 normalized.name =
                     normalized.name
                     || `${template.title || template.id || 'Scenario mapping'} #${index + 1}`;
-                if (!normalized.request) normalized.request = {};
-                if (!normalized.response) normalized.response = {};
+                normalizeRequestAndResponse(normalized, seed);
                 normalized.metadata = {
                     ...(normalized.metadata || {}),
                     created: normalized.metadata?.created || nowIso,
@@ -648,8 +851,7 @@
         stripIds(normalized);
 
         if (!normalized.name) normalized.name = template.title || template.id || 'New mapping';
-        if (!normalized.request) normalized.request = {};
-        if (!normalized.response) normalized.response = {};
+        normalizeRequestAndResponse(normalized, seed);
 
         normalized.metadata = {
             ...(normalized.metadata || {}),
@@ -659,6 +861,29 @@
         };
 
         return normalized;
+    }
+
+    function validateMapping(mapping) {
+        if (!mapping || typeof mapping !== 'object') return 'Mapping payload is empty';
+        const request = mapping.request || {};
+        const response = mapping.response || {};
+
+        if (!request.method) return 'request.method is required';
+
+        const hasPath = Boolean(
+            request.url
+            || request.urlPath
+            || request.urlPattern
+            || request.urlPathPattern
+            || request.urlPathTemplate
+        );
+
+        if (!hasPath) return 'request URL or pattern is required';
+        const hasStatus = typeof response.status === 'number';
+        const hasFault = Boolean(response.fault);
+        if (!hasStatus && !hasFault) return 'response.status is required';
+
+        return null;
     }
 
     function applyTemplateForTarget(template, target = activeTarget) {
@@ -680,86 +905,6 @@
         }
         global.hideModal?.(MODALS.GALLERY);
         global.hideModal?.(MODALS.PREVIEW);
-    }
-
-    function openTemplatePreview(template) {
-        if (!template || !template.id) return;
-
-        const modal = document.getElementById(MODALS.PREVIEW);
-        if (!modal) return;
-
-        modal.dataset.templateId = template.id;
-        modal.dataset.templateTarget = activeTarget;
-
-        const title = modal.querySelector('#template-preview-title');
-        if (title) title.textContent = template.title || 'Template preview';
-
-        const description = modal.querySelector('#template-preview-description');
-        if (description) {
-            description.textContent = template.description || '';
-            description.style.display = template.description ? '' : 'none';
-        }
-
-        const meta = modal.querySelector('#template-preview-meta');
-        if (meta) {
-            const headline = getTemplateHeadline(template) || '—';
-            const feature = getTemplateFeature(template);
-
-            meta.innerHTML = '';
-
-            const endpointRow = document.createElement('div');
-            endpointRow.className = 'template-preview-meta__row';
-
-            const endpointLabel = document.createElement('span');
-            endpointLabel.className = 'template-preview-meta__label';
-            endpointLabel.textContent = 'Endpoint';
-
-            const endpointValue = document.createElement('span');
-            endpointValue.className = 'template-preview-meta__value';
-            endpointValue.textContent = headline;
-
-            endpointRow.appendChild(endpointLabel);
-            endpointRow.appendChild(endpointValue);
-            meta.appendChild(endpointRow);
-
-            if (feature) {
-                const featureRow = document.createElement('div');
-                featureRow.className = 'template-preview-meta__row';
-
-                const featureLabel = document.createElement('span');
-                featureLabel.className = 'template-preview-meta__label';
-                featureLabel.textContent = 'Highlight';
-
-                const featureCode = document.createElement('code');
-                featureCode.className = 'template-preview-meta__code';
-                featureCode.textContent = `${feature.label} = ${feature.value}`;
-
-                featureRow.appendChild(featureLabel);
-                featureRow.appendChild(featureCode);
-                meta.appendChild(featureRow);
-            }
-        }
-
-        const code = modal.querySelector('#template-preview-code');
-        if (code) {
-            const payload = template && template.content ? template.content : {};
-            const json = typeof payload === 'string' ? payload : JSON.stringify(payload, null, 2);
-            code.textContent = json;
-        }
-
-        const creationMode = isCreationTarget(modal.dataset.templateTarget);
-        const applyButton = modal.querySelector('[data-template-action="apply"]');
-        if (applyButton) {
-            applyButton.textContent = creationMode ? 'Create & open editor' : 'Use template';
-        }
-
-        const studioButton = modal.querySelector('[data-template-action="create-studio"]');
-        if (studioButton) {
-            studioButton.style.display = creationMode ? '' : 'none';
-        }
-
-        ensurePreviewHandlers();
-        global.showModal?.(MODALS.PREVIEW);
     }
 
     function buildGallerySignature(templates) {
@@ -1114,14 +1259,6 @@
                 renderTemplateWizard({ force: true });
             });
         }
-    }
-
-    function handleTemplateApply(event, targetSelector, applyFn) {
-        event?.preventDefault?.();
-        const select = document.getElementById(targetSelector);
-        if (!select) return;
-        const template = findTemplateById(select.value);
-        applyFn(template);
     }
 
     function openGalleryForTarget(target = 'form') {
