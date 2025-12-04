@@ -69,6 +69,8 @@ function createTemplatesTestContext() {
     sandbox.openEditModal = () => {};
     sandbox.editMapping = () => {};
     sandbox.updateOptimisticCache = () => {};
+    sandbox.prompt = () => '';
+    sandbox.confirm = () => true;
 
     sandbox.__apiCalls = [];
     sandbox.apiFetch = async (url, options = {}) => {
@@ -154,6 +156,57 @@ runTest('empty mapping skeleton is shared and seedable', () => {
 
     const emptyTemplate = context.TemplateManager.getTemplates().find((template) => template.id === 'empty-mapping-skeleton');
     assert.deepStrictEqual(emptyTemplate.content, defaultEmpty);
+});
+
+runTest('user templates are categorized and maintainable', async () => {
+    const context = createTemplatesTestContext();
+    const userTemplate = {
+        id: 'user-test',
+        title: 'Custom template',
+        description: 'Mine',
+        content: {
+            request: {
+                method: 'GET',
+                urlPath: '/mine'
+            },
+            response: {
+                status: 200
+            }
+        }
+    };
+
+    context.localStorage.setItem('imock-custom-templates', JSON.stringify([userTemplate]));
+
+    let templates = context.TemplateManager.getTemplatesWithMeta();
+    const custom = templates.find((template) => template.id === 'user-test');
+    assert.strictEqual(custom.category, 'custom');
+    assert.ok(custom.tags.includes('custom'));
+
+    const updated = context.TemplateManager.updateUserTemplate('user-test', {
+        title: 'Updated custom',
+        description: 'Updated description',
+        content: {
+            request: {
+                method: 'POST',
+                urlPath: '/updated'
+            },
+            response: {
+                status: 201
+            }
+        }
+    });
+
+    assert.ok(updated);
+
+    templates = context.TemplateManager.getTemplatesWithMeta();
+    const afterUpdate = templates.find((template) => template.id === 'user-test');
+    assert.strictEqual(afterUpdate.title, 'Updated custom');
+    assert.strictEqual(afterUpdate.content.request.method, 'POST');
+    assert.strictEqual(afterUpdate.content.response.status, 201);
+
+    const deleted = context.TemplateManager.deleteUserTemplate('user-test', { skipConfirm: true });
+    assert.ok(deleted);
+    assert.ok(!context.TemplateManager.getTemplates().some((template) => template.id === 'user-test'));
 });
 
 async function run() {
