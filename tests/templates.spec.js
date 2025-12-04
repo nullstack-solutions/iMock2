@@ -9,6 +9,7 @@ function createElementStub() {
         dataset: {},
         innerHTML: '',
         value: '',
+        focused: false,
         classList: {
             add() {},
             remove() {},
@@ -21,6 +22,7 @@ function createElementStub() {
         querySelectorAll() { return []; },
         appendChild() {},
         setAttribute() {},
+        focus() { this.focused = true; },
     };
 }
 
@@ -34,10 +36,16 @@ function createTemplatesTestContext() {
     };
 
     const element = createElementStub();
+    const elements = Object.create(null);
     sandbox.document = {
         readyState: 'complete',
         body: element,
-        getElementById() { return createElementStub(); },
+        getElementById(id) {
+            if (!elements[id]) {
+                elements[id] = createElementStub();
+            }
+            return elements[id];
+        },
         querySelectorAll() { return []; },
         createElement: () => createElementStub(),
         addEventListener() {},
@@ -90,6 +98,7 @@ function createTemplatesTestContext() {
         vm.runInContext(code, context, { filename: script });
     }
 
+    context.__elements = elements;
     return context;
 }
 
@@ -207,6 +216,48 @@ runTest('user templates are categorized and maintainable', async () => {
     const deleted = context.TemplateManager.deleteUserTemplate('user-test', { skipConfirm: true });
     assert.ok(deleted);
     assert.ok(!context.TemplateManager.getTemplates().some((template) => template.id === 'user-test'));
+});
+
+runTest('editing a user template reuses existing editors', async () => {
+    const context = createTemplatesTestContext();
+    const userTemplate = {
+        id: 'user-edit',
+        title: 'Editable template',
+        description: 'Original',
+        content: {
+            request: {
+                method: 'GET',
+                urlPath: '/editable'
+            },
+            response: { status: 200 }
+        }
+    };
+
+    context.localStorage.setItem('imock-custom-templates', JSON.stringify([userTemplate]));
+
+    const editor = context.document.getElementById('json-editor');
+    editor.value = JSON.stringify(userTemplate.content);
+    const saveButton = context.document.getElementById('editor-save-template');
+
+    const loaded = await context.TemplateManager.editUserTemplate('user-edit');
+    assert.ok(loaded, 'Template should load for editing');
+    assert.ok(saveButton.focused, 'Edit flow should focus the editor save control when present');
+
+    const updatedContent = {
+        request: {
+            method: 'POST',
+            urlPath: '/editable'
+        },
+        response: { status: 201 }
+    };
+    editor.value = JSON.stringify(updatedContent);
+
+    await context.TemplateManager.saveEditorAsTemplate();
+
+    const templates = context.TemplateManager.getTemplatesWithMeta();
+    const updated = templates.find((template) => template.id === 'user-edit');
+    assert.strictEqual(updated.content.request.method, 'POST');
+    assert.strictEqual(updated.content.response.status, 201);
 });
 
 async function run() {
