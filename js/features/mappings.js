@@ -1103,7 +1103,6 @@ window.renderMappingCard = function(mapping) {
     }
 
     const actions = [
-        { class: 'secondary', handler: 'duplicateMapping', title: 'Duplicate', icon: 'clipboard' },
         { class: 'secondary', handler: 'editMapping', title: 'Edit in Editor', icon: 'open-external' },
         { class: 'primary', handler: 'openEditModal', title: 'Edit', icon: 'pencil' },
         { class: 'secondary', handler: 'duplicateMapping', title: 'Duplicate', icon: 'copy' },

@@ -442,8 +442,15 @@ function ensureDuplicateName(clone, original) {
  */
 window.duplicateMapping = async (mappingId) => {
     try {
-        // Fetch original mapping
-        const original = await window.getMappingById(mappingId);
+        // Fetch original mapping with explicit error handling
+        let original;
+        try {
+            original = await window.getMappingById(mappingId);
+        } catch (fetchError) {
+            console.error('Failed to fetch mapping for duplication:', fetchError);
+            throw new Error(`Could not load mapping: ${fetchError.message}`);
+        }
+
         if (!original) {
             throw new Error('Mapping not found');
         }
