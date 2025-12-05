@@ -22,6 +22,7 @@ function createElementStub() {
         querySelectorAll() { return []; },
         appendChild() {},
         setAttribute() {},
+        removeAttribute() {},
         focus() { this.focused = true; },
     };
 }
@@ -74,6 +75,7 @@ function createTemplatesTestContext() {
     };
 
     sandbox.hideModal = () => {};
+    sandbox.showModal = () => {};
     sandbox.openEditModal = () => {};
     sandbox.editMapping = () => {};
     sandbox.updateOptimisticCache = () => {};
@@ -218,6 +220,32 @@ runTest('user templates are categorized and maintainable', async () => {
     assert.ok(!context.TemplateManager.getTemplates().some((template) => template.id === 'user-test'));
 });
 
+runTest('editing a user template opens the editor modal and populates JSON', async () => {
+    const context = createTemplatesTestContext();
+    const userTemplate = {
+        id: 'user-editable',
+        title: 'Editable template',
+        description: 'Editable',
+        content: {
+            request: { method: 'POST', urlPath: '/editable' },
+            response: { status: 202 }
+        }
+    };
+
+    context.localStorage.setItem('imock-custom-templates', JSON.stringify([userTemplate]));
+
+    let openedModalId = null;
+    context.showModal = (id) => { openedModalId = id; };
+
+    const editor = context.document.getElementById('json-editor');
+    editor.value = '';
+
+    await context.TemplateManager.editUserTemplate('user-editable');
+
+    assert.strictEqual(openedModalId, 'edit-mapping-modal');
+    assert.ok(editor.value.includes('/editable'), 'Editor should receive template content');
+});
+
 runTest('editing a user template reuses existing editors', async () => {
     const context = createTemplatesTestContext();
     const userTemplate = {
@@ -237,11 +265,10 @@ runTest('editing a user template reuses existing editors', async () => {
 
     const editor = context.document.getElementById('json-editor');
     editor.value = JSON.stringify(userTemplate.content);
-    const saveButton = context.document.getElementById('editor-save-template');
-
     const loaded = await context.TemplateManager.editUserTemplate('user-edit');
     assert.ok(loaded, 'Template should load for editing');
-    assert.ok(saveButton.focused, 'Edit flow should focus the editor save control when present');
+    const updateButton = context.document.getElementById('update-mapping-btn');
+    assert.ok(updateButton.focused, 'Edit flow should focus the primary save control when present');
 
     const updatedContent = {
         request: {
@@ -258,6 +285,49 @@ runTest('editing a user template reuses existing editors', async () => {
     const updated = templates.find((template) => template.id === 'user-edit');
     assert.strictEqual(updated.content.request.method, 'POST');
     assert.strictEqual(updated.content.response.status, 201);
+});
+
+runTest('editing a template repurposes the update action to save the template', async () => {
+    const context = createTemplatesTestContext();
+    const userTemplate = {
+        id: 'user-custom',
+        title: 'Custom template',
+        description: 'Editable',
+        content: {
+            request: { method: 'GET', urlPath: '/custom' },
+            response: { status: 200 }
+        }
+    };
+
+    context.localStorage.setItem('imock-custom-templates', JSON.stringify([userTemplate]));
+
+    const updateButton = context.document.getElementById('update-mapping-btn');
+    const label = context.document.createElement('span');
+    label.textContent = 'Update Mapping';
+    updateButton.querySelector = (selector) => (selector === '.btn-label' ? label : null);
+    context.updateMapping = () => { context.__updateCalled = true; };
+    updateButton.onclick = context.updateMapping;
+
+    await context.TemplateManager.editUserTemplate('user-custom');
+
+    assert.strictEqual(label.textContent, 'Save template', 'Update control should indicate template save');
+
+    const editor = context.document.getElementById('json-editor');
+    editor.value = JSON.stringify({
+        request: { method: 'POST', urlPath: '/custom' },
+        response: { status: 204 }
+    });
+
+    await updateButton.onclick({ preventDefault() {} });
+
+    const templates = context.TemplateManager.getTemplatesWithMeta();
+    const saved = templates.find((template) => template.id === 'user-custom');
+
+    assert.ok(saved, 'Edited template should remain persisted');
+    assert.strictEqual(saved.title, 'Custom template');
+    assert.strictEqual(saved.content.response.status, 204);
+    assert.ok(!context.__updateCalled, 'Template edit should not trigger mapping update');
+    assert.strictEqual(label.textContent, 'Update Mapping', 'Update control should reset after save');
 });
 
 async function run() {
