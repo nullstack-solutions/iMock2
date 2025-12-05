@@ -258,12 +258,17 @@
     function prepareMappingForCreation(mapping, options = {}) {
         if (!mapping || typeof mapping !== 'object') return null;
 
-        const { source = 'ui', seed = getEmptyTemplateSeed() } = options;
+        const { source = 'ui', seed } = options;
         const nowIso = new Date().toISOString();
         const normalized = deepClone(mapping);
 
         stripMappingIdentifiers(normalized);
-        normalizeRequestAndResponse(normalized, seed);
+
+        // Нормализация только если seed явно передан (для шаблонов)
+        // Для дублирования существующих мапингов пропускаем нормализацию
+        if (seed) {
+            normalizeRequestAndResponse(normalized, seed);
+        }
 
         normalized.metadata = {
             ...(normalized.metadata || {}),
