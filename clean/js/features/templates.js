@@ -162,8 +162,9 @@
     }
 
     function notify(message, type = 'info') {
-        if (global.NotificationManager && typeof NotificationManager[type] === 'function') {
-            NotificationManager[type](message);
+        const manager = global.NotificationManager;
+        if (manager && typeof manager[type] === 'function') {
+            manager[type](message);
             return;
         }
         console[type === 'error' ? 'error' : 'log'](`[TEMPLATES] ${message}`);
@@ -1587,54 +1588,59 @@
         const shell = document.getElementById('template-gallery-shell');
         if (!shell) return;
 
-        const templates = getTemplatesWithMeta();
-        const signature = buildGallerySignature(templates);
-        if (!force && signature === lastRenderSignature) return;
-        lastRenderSignature = signature;
+        try {
+            const templates = getTemplatesWithMeta();
+            const signature = buildGallerySignature(templates);
+            if (!force && signature === lastRenderSignature) return;
+            lastRenderSignature = signature;
 
-        const stepIndex = wizardState.step === 'goals' ? 1 : wizardState.step === 'templates' ? 2 : 3;
-        const selectedGoal = GOAL_GROUPS.find(goal => goal.id === wizardState.goalId);
-        const canGoBack = wizardState.step !== 'goals';
+            const stepIndex = wizardState.step === 'goals' ? 1 : wizardState.step === 'templates' ? 2 : 3;
+            const selectedGoal = GOAL_GROUPS.find(goal => goal.id === wizardState.goalId);
+            const canGoBack = wizardState.step !== 'goals';
 
-        shell.innerHTML = `
-            <div class="template-wizard">
-                <div class="template-wizard__header">
-                    <div>
-                        <p class="template-wizard__eyebrow">Step ${stepIndex}/3</p>
-                        <h3 class="template-wizard__title">${wizardState.step === 'goals' ? 'Create a mapping' : selectedGoal?.title || 'Pick a template'}</h3>
-                        <p class="template-wizard__subtitle">${wizardState.step === 'goals' ? 'Choose the scenario that fits your testing goal' : selectedGoal?.description || ''}</p>
-                    </div>
-                    <div class="template-wizard__header-actions">
-                        <div class="template-wizard__progress" role="progressbar" aria-label="Wizard progress" aria-valuemin="1" aria-valuemax="3" aria-valuenow="${stepIndex}">
-                            <span class="sr-only">Step ${stepIndex} of 3</span>
-                            ${[1, 2, 3].map((i) => `<span class="template-wizard__dot ${i <= stepIndex ? 'is-active' : ''}" aria-current="${i === stepIndex ? 'step' : 'false'}" aria-label="Step ${i}"></span>`).join('')}
+            shell.innerHTML = `
+                <div class="template-wizard">
+                    <div class="template-wizard__header">
+                        <div>
+                            <p class="template-wizard__eyebrow">Step ${stepIndex}/3</p>
+                            <h3 class="template-wizard__title">${wizardState.step === 'goals' ? 'Create a mapping' : selectedGoal?.title || 'Pick a template'}</h3>
+                            <p class="template-wizard__subtitle">${wizardState.step === 'goals' ? 'Choose the scenario that fits your testing goal' : selectedGoal?.description || ''}</p>
                         </div>
-                        ${canGoBack ? '<button type="button" class="btn btn-ghost btn-sm" id="template-wizard-back">← Back</button>' : ''}
+                        <div class="template-wizard__header-actions">
+                            <div class="template-wizard__progress" role="progressbar" aria-label="Wizard progress" aria-valuemin="1" aria-valuemax="3" aria-valuenow="${stepIndex}">
+                                <span class="sr-only">Step ${stepIndex} of 3</span>
+                                ${[1, 2, 3].map((i) => `<span class="template-wizard__dot ${i <= stepIndex ? 'is-active' : ''}" aria-current="${i === stepIndex ? 'step' : 'false'}" aria-label="Step ${i}"></span>`).join('')}
+                            </div>
+                            ${canGoBack ? '<button type="button" class="btn btn-ghost btn-sm" id="template-wizard-back">← Back</button>' : ''}
+                        </div>
                     </div>
+                    <div class="template-wizard__body" id="template-wizard-body"></div>
                 </div>
-                <div class="template-wizard__body" id="template-wizard-body"></div>
-            </div>
-        `;
+            `;
 
-        const body = shell.querySelector('#template-wizard-body');
-        if (!body) return;
+            const body = shell.querySelector('#template-wizard-body');
+            if (!body) return;
 
-        if (!templates.length) {
-            body.innerHTML = '<div class="history-empty"><p>No templates available</p><small>Add or import templates to populate this view.</small></div>';
-        } else if (wizardState.step === 'goals') {
-            renderGoalStep(body, templates);
-        } else if (wizardState.step === 'templates') {
-            renderTemplateStep(body, templates);
-        } else {
-            renderPreviewStep(body, templates);
-        }
+            if (!templates.length) {
+                body.innerHTML = '<div class="history-empty"><p>No templates available</p><small>Add or import templates to populate this view.</small></div>';
+            } else if (wizardState.step === 'goals') {
+                renderGoalStep(body, templates);
+            } else if (wizardState.step === 'templates') {
+                renderTemplateStep(body, templates);
+            } else {
+                renderPreviewStep(body, templates);
+            }
 
-        const backButton = shell.querySelector('#template-wizard-back');
-        if (backButton) {
-            backButton.addEventListener('click', () => {
-                goBackFromWizard();
-                renderTemplateWizard({ force: true });
-            });
+            const backButton = shell.querySelector('#template-wizard-back');
+            if (backButton) {
+                backButton.addEventListener('click', () => {
+                    goBackFromWizard();
+                    renderTemplateWizard({ force: true });
+                });
+            }
+        } catch (error) {
+            console.error('Failed to render template wizard', error);
+            shell.innerHTML = '<div class="history-empty"><p>Templates unavailable</p><small>Reload the page or try again later.</small></div>';
         }
     }
 
@@ -1646,20 +1652,52 @@
         wizardState.searchQuery = '';
         wizardState.activeTags = [];
         wizardState.showPopularOnly = false;
-        renderTemplateWizard({ force: true });
-        global.showModal?.(MODALS.GALLERY);
+
+        try {
+            renderTemplateWizard({ force: true });
+        } catch (error) {
+            console.error('Unable to prepare template gallery', error);
+            const shell = document.getElementById('template-gallery-shell');
+            if (shell) {
+                shell.innerHTML = '<div class="history-empty"><p>Templates unavailable</p><small>Reload the page or try again later.</small></div>';
+            }
+        }
+
+        const hasShowModal = typeof global.showModal === 'function';
+        if (hasShowModal) {
+            global.showModal(MODALS.GALLERY);
+            return;
+        }
+
+        const modal = document.getElementById(MODALS.GALLERY);
+        if (modal) {
+            modal.classList.remove('hidden');
+            modal.style.display = 'flex';
+        }
     }
 
-    function init() {
-        populateSelectors();
-        renderTemplateWizard();
-
+    function attachTemplateTriggers() {
         document.querySelectorAll('[data-template-trigger]').forEach((button) => {
             button.addEventListener('click', (event) => {
                 event.preventDefault();
                 openGalleryForTarget(button.dataset.templateTarget || 'form');
             });
         });
+    }
+
+    function init() {
+        try {
+            populateSelectors();
+            renderTemplateWizard();
+        } catch (error) {
+            console.error('Template manager failed to initialize', error);
+            const shell = document.getElementById('template-gallery-shell');
+            if (shell) {
+                shell.innerHTML = '<div class="history-empty"><p>Templates unavailable</p><small>Reload the page or try again later.</small></div>';
+            }
+        }
+
+        attachTemplateTriggers();
 
         document.getElementById('save-template-btn')?.addEventListener('click', (event) => {
             event.preventDefault();
