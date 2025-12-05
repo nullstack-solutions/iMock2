@@ -189,53 +189,49 @@ function isCacheEnabled() {
 
 // --- CORE APPLICATION FUNCTIONS ---
 
-// Enhanced WireMock connection routine with accurate uptime handling
+// Enhanced WireMock connection routine with new optimized architecture
 window.connectToWireMock = async () => {
     // Try main page elements first, then fallback to settings page elements
     const hostInput = document.getElementById('wiremock-host') || document.getElementById(SELECTORS.CONNECTION.HOST);
     const portInput = document.getElementById('wiremock-port') || document.getElementById(SELECTORS.CONNECTION.PORT);
-    
+
     if (!hostInput || !portInput) {
         console.error('Connection input elements not found');
         NotificationManager.error('Error: connection fields not found');
         return;
     }
-    
+
     const host = hostInput.value.trim() || 'localhost';
     const port = portInput.value.trim() || '8080';
-    
-    // DON'T save connection settings here - they should already be saved from Settings page
-    // Only use these values for the current connection attempt
+
     console.log('🔗 Connecting with:', { host, port });
-    
+
     // Update the base URL (with proper scheme/port normalization)
     if (typeof window.normalizeWiremockBaseUrl === 'function') {
         window.wiremockBaseUrl = window.normalizeWiremockBaseUrl(host, port);
     } else {
-        // Fall back to the previous behavior (in case script load order changes)
         const hasScheme = /^(https?:)\/\//i.test(host);
         const scheme = hasScheme ? host.split(':')[0] : 'http';
         const cleanHost = hasScheme ? host.replace(/^(https?:)\/\//i, '') : host;
         const finalPort = (port && String(port).trim()) || (scheme === 'https' ? '443' : '8080');
         window.wiremockBaseUrl = `${scheme}://${cleanHost}:${finalPort}/__admin`;
     }
-    
+
     try {
-        let renderSource = 'unknown';
         // The first health check starts uptime tracking
         await checkHealthAndStartUptime();
-        
+
         // Update the UI after a successful connection
         const statusDot = document.getElementById(SELECTORS.CONNECTION.STATUS_DOT);
         const statusText = document.getElementById(SELECTORS.CONNECTION.STATUS_TEXT);
         const setupDiv = document.getElementById(SELECTORS.CONNECTION.SETUP);
         const addButton = document.getElementById(SELECTORS.BUTTONS.ADD_MAPPING);
-        
+
         if (statusDot) statusDot.className = 'status-dot connected';
         if (statusText) { if (!window.lastWiremockSuccess) { window.lastWiremockSuccess = Date.now(); } if (typeof window.updateLastSuccessUI === 'function') { window.updateLastSuccessUI(); } }
         if (setupDiv) setupDiv.style.display = 'none';
         if (addButton) addButton.disabled = false;
-        
+
         // Reveal statistics and filters
         const statsElement = document.getElementById(SELECTORS.UI.STATS);
         const statsSpacer = document.getElementById('stats-spacer');
@@ -243,35 +239,33 @@ window.connectToWireMock = async () => {
         if (statsElement) statsElement.style.display = 'flex';
         if (statsSpacer) statsSpacer.style.display = 'none';
         if (filtersElement) filtersElement.style.display = 'block';
-        
+
         // Start periodic health checks
         startHealthMonitoring();
-        
-        // Load data in parallel while leveraging the Cache Service
-        const useCache = isCacheEnabled();
+
+        // === NEW OPTIMIZED ARCHITECTURE ===
+        console.log('🚀 [CONNECT] Using new optimized sync engine');
+
+        // Load data using new SyncEngine (cache first, then full sync)
         const [mappingsLoaded, requestsLoaded] = await Promise.all([
-            fetchAndRenderMappings(null, { useCache }),
+            window.SyncEngine.coldStart(),
             fetchAndRenderRequests()
         ]);
 
+        // Start background sync timers
+        window.SyncEngine.start();
+
         await loadScenarios();
 
-        if (mappingsLoaded && requestsLoaded) {
-            NotificationManager.success('Connected to WireMock successfully!');
-        } else {
-            console.warn('Connected to WireMock, but some resources failed to load', {
-                mappingsLoaded,
-                requestsLoaded
-            });
-        }
-        
+        NotificationManager.success('Connected to WireMock successfully!');
+
     } catch (error) {
         console.error('Connection error:', error);
         NotificationManager.error(`Connection error: ${error.message}`);
-        
+
         // Stop uptime tracking on failure
         stopUptime();
-        
+
         // Reset connection state
         const statusDot = document.getElementById(SELECTORS.CONNECTION.STATUS_DOT);
         const statusText = document.getElementById(SELECTORS.CONNECTION.STATUS_TEXT);
