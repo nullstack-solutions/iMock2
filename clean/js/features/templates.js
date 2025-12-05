@@ -100,6 +100,11 @@
     };
     let lastRenderSignature = '';
     let templateNameResolver = null;
+    const editorActionDefaults = {
+        handler: null,
+        label: null,
+        mode: 'mapping'
+    };
 
     function getEmptyTemplateSeed() {
         const methodInput = document.getElementById('method');
@@ -188,6 +193,58 @@
     function setEditContext(templateId, target) {
         editContext.templateId = templateId || null;
         editContext.target = templateId ? target : null;
+        syncEditorActionForContext();
+    }
+
+    function isTemplateEditorContext() {
+        return Boolean(editContext.templateId) && (!editContext.target || editContext.target === 'editor');
+    }
+
+    function syncEditorActionForContext() {
+        setEditorActionMode(isTemplateEditorContext());
+    }
+
+    function setEditorActionMode(useTemplateSave) {
+        const updateButton = document.getElementById('update-mapping-btn');
+        if (!updateButton) return;
+
+        const labelEl = updateButton.querySelector?.('.btn-label') || updateButton;
+
+        if (useTemplateSave) {
+            if (editorActionDefaults.mode === 'template-save') return;
+
+            if (!editorActionDefaults.handler) {
+                editorActionDefaults.handler = updateButton.onclick
+                    || (typeof global.updateMapping === 'function' ? (event) => global.updateMapping(event) : null);
+            }
+
+            if (!editorActionDefaults.label && labelEl) {
+                editorActionDefaults.label = labelEl.textContent || 'Update Mapping';
+            }
+
+            updateButton.onclick = (event) => {
+                event?.preventDefault?.();
+                return saveEditorAsTemplate({ skipNamePrompt: true, reuseExistingMetadata: true });
+            };
+
+            if (labelEl) {
+                labelEl.textContent = 'Save template';
+            }
+
+            updateButton.setAttribute('data-template-edit-mode', 'true');
+            editorActionDefaults.mode = 'template-save';
+            return;
+        }
+
+        if (editorActionDefaults.mode === 'template-save') {
+            updateButton.onclick = editorActionDefaults.handler || updateButton.onclick;
+            if (labelEl && editorActionDefaults.label) {
+                labelEl.textContent = editorActionDefaults.label;
+            }
+
+            updateButton.removeAttribute('data-template-edit-mode');
+            editorActionDefaults.mode = 'mapping';
+        }
     }
 
     function stripMappingIdentifiers(mapping) {
@@ -822,14 +879,26 @@
         }
     }
 
-    async function saveEditorAsTemplate() {
+    async function saveEditorAsTemplate(options = {}) {
+        const { skipNamePrompt = false, reuseExistingMetadata = false } = options;
         const editor = document.getElementById('json-editor');
         if (!editor) {
             notify('Editor not available', 'warning');
             return;
         }
 
-        const title = (await requestTemplateName()) || '';
+        const isEditing = Boolean(editContext.templateId) && (!editContext.target || editContext.target === 'editor');
+        const existing = isEditing
+            ? readUserTemplates().find((template) => template.id === editContext.templateId)
+            : null;
+
+        let title = '';
+        if (isEditing && existing && (skipNamePrompt || reuseExistingMetadata)) {
+            title = existing.title || '';
+        } else {
+            title = (await requestTemplateName(existing?.title || '')) || '';
+        }
+
         if (!title.trim()) {
             notify('Template name is required', 'warning');
             return;
@@ -851,7 +920,7 @@
         const userTemplate = {
             id: isEditing && existing ? existing.id : `user-${Date.now()}`,
             title: title.trim(),
-            description: existing?.description || 'User template saved from JSON editor',
+            description: (reuseExistingMetadata && existing?.description) || existing?.description || 'User template saved from JSON editor',
             category: 'custom',
             source: 'user',
             content: parsed
@@ -910,8 +979,8 @@
 
         if (preferredTarget === 'editor') {
             applyTemplateForTarget(template, 'editor');
-            notify('Template loaded into JSON Studio. Update and save to keep changes.', 'info');
-            document.getElementById('editor-save-template')?.focus?.();
+            notify('Template loaded into JSON Studio. Save to keep changes.', 'info');
+            document.getElementById('update-mapping-btn')?.focus?.();
         } else {
             applyTemplateForTarget(template, 'form');
             notify('Template loaded into mapping form. Update and save to keep changes.', 'info');
@@ -1002,7 +1071,7 @@
             const payload = template.content ? template.content : {};
             if (typeof payload === 'string') return payload;
             const pretty = JSON.stringify(payload, null, 2);
-            const lines = pretty.split('\n').slice(0, 48);
+            const lines = pretty.split('\n').slice(0, 24);
             const preview = lines.join('\n');
             return preview.length > 1280 ? `${preview.slice(0, 1279)}…` : preview;
         } catch (error) {
@@ -1142,6 +1211,20 @@
         return null;
     }
 
+    function ensureEditorModalVisible() {
+        const modal = document.getElementById('edit-mapping-modal');
+        if (!modal) return false;
+
+        if (typeof global.showModal === 'function') {
+            global.showModal('edit-mapping-modal');
+        } else {
+            modal.classList.remove?.('hidden');
+            modal.style.display = 'flex';
+        }
+
+        return true;
+    }
+
     function applyTemplateForTarget(template, target = activeTarget) {
         if (!template) return;
         if (target === 'create-inline') {
@@ -1155,6 +1238,7 @@
         }
 
         if (target === 'editor') {
+            ensureEditorModalVisible();
             applyTemplateToEditor(template);
         } else {
             applyTemplateToForm(template);
