@@ -370,17 +370,18 @@ window.connectToWireMock = async () => {
         // Start unified background health check
         startHealthCheck();
 
-        // Load data in parallel while leveraging the Cache Service
-        const useCache = isCacheEnabled();
-        const mappingsLoaded = await fetchAndRenderMappings(null, { useCache });
+        // === NEW OPTIMIZED ARCHITECTURE ===
+        console.log('🚀 [CONNECT] Using new optimized sync engine');
+
+        // Load data using new SyncEngine (cache first, then full sync)
+        await window.SyncEngine.coldStart();
+
+        // Start background sync timers
+        window.SyncEngine.start();
 
         await loadScenarios();
 
-        if (mappingsLoaded) {
-            NotificationManager.success('Connected to WireMock successfully!');
-        } else {
-            console.warn('Connected to WireMock, but mappings failed to load');
-        }
+        NotificationManager.success('Connected to WireMock successfully!');
 
     } catch (error) {
         console.error('Connection error - entering offline mode:', error);
