@@ -912,6 +912,11 @@
             return;
         }
 
+        const isEditing = Boolean(editContext.templateId) && (!editContext.target || editContext.target === 'editor');
+        const existing = isEditing
+            ? readUserTemplates().find((template) => template.id === editContext.templateId)
+            : null;
+
         const userTemplate = {
             id: isEditing && existing ? existing.id : `user-${Date.now()}`,
             title: title.trim(),
