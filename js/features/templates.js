@@ -75,6 +75,14 @@
             color: '#14b8a6',
             description: 'Working against real APIs',
         },
+        {
+            id: 'custom',
+            icon: '★',
+            title: 'My templates',
+            subtitle: 'Saved by you',
+            color: '#0ea5e9',
+            description: 'Personal templates you created',
+        },
     ];
     const EMPTY_TEMPLATE_ID = 'empty-mapping-skeleton';
     const wizardState = {
@@ -86,8 +94,17 @@
         showPopularOnly: false,
     };
     let activeTarget = 'form';
+    const editContext = {
+        templateId: null,
+        target: null,
+    };
     let lastRenderSignature = '';
     let templateNameResolver = null;
+    const editorActionDefaults = {
+        handler: null,
+        label: null,
+        mode: 'mapping'
+    };
 
     function getEmptyTemplateSeed() {
         const methodInput = document.getElementById('method');
@@ -104,36 +121,268 @@
         };
     }
 
+    function buildEmptyMapping(seed = getEmptyTemplateSeed()) {
+        const normalizedSeed = {
+            method: (seed?.method || 'GET').toUpperCase(),
+            urlPath: seed?.urlPath || '/api/example'
+        };
+
+        return {
+            name: 'Empty mapping',
+            request: {
+                method: normalizedSeed.method,
+                urlPath: normalizedSeed.urlPath
+            },
+            response: {
+                status: 200
+            }
+        };
+    }
+
+    function getEmptyMappingContent(seed) {
+        return deepClone(buildEmptyMapping(seed));
+    }
+
     function getEmptyTemplate() {
         const seed = getEmptyTemplateSeed();
+        const emptyContent = getEmptyMappingContent(seed);
+
         return {
             id: EMPTY_TEMPLATE_ID,
             title: 'Empty mapping',
             description: 'Create a minimal stub and fill in the request/response yourself.',
             category: 'happy-path',
-            highlight: `${seed.method} · ${seed.urlPath}`,
+            highlight: `${emptyContent.request.method} · ${emptyContent.request.urlPath}`,
             feature: {
                 path: ['response', 'status'],
                 label: 'response.status'
             },
-            content: {
-                request: {
-                    method: seed.method,
-                    urlPath: seed.urlPath
-                },
-                response: {
-                    status: 200
-                }
-            }
+            content: emptyContent
         };
     }
 
     function notify(message, type = 'info') {
-        if (global.NotificationManager && typeof NotificationManager[type] === 'function') {
-            NotificationManager[type](message);
+        const manager = global.NotificationManager;
+        if (manager && typeof manager[type] === 'function') {
+            manager[type](message);
             return;
         }
         console[type === 'error' ? 'error' : 'log'](`[TEMPLATES] ${message}`);
+    }
+
+    function deepClone(value) {
+        try {
+            if (typeof structuredClone === 'function') {
+                return structuredClone(value);
+            }
+        } catch (cloneError) {
+            console.warn('Failed to structuredClone, falling back to JSON:', cloneError);
+        }
+
+        try {
+            return JSON.parse(JSON.stringify(value));
+        } catch (jsonError) {
+            console.warn('Failed to JSON clone value, returning shallow copy:', jsonError);
+            if (value && typeof value === 'object') {
+                return Array.isArray(value) ? [...value] : { ...value };
+            }
+        }
+
+        return value;
+    }
+
+    function setEditContext(templateId, target) {
+        editContext.templateId = templateId || null;
+        editContext.target = templateId ? target : null;
+        syncEditorActionForContext();
+    }
+
+    function isTemplateEditorContext() {
+        return Boolean(editContext.templateId) && (!editContext.target || editContext.target === 'editor');
+    }
+
+    function syncEditorActionForContext() {
+        setEditorActionMode(isTemplateEditorContext());
+    }
+
+    function setEditorActionMode(useTemplateSave) {
+        const updateButton = document.getElementById('update-mapping-btn');
+        if (!updateButton) return;
+
+        const labelEl = updateButton.querySelector?.('.btn-label') || updateButton;
+
+        if (useTemplateSave) {
+            if (editorActionDefaults.mode === 'template-save') return;
+
+            if (!editorActionDefaults.handler) {
+                editorActionDefaults.handler = updateButton.onclick
+                    || (typeof global.updateMapping === 'function' ? (event) => global.updateMapping(event) : null);
+            }
+
+            if (!editorActionDefaults.label && labelEl) {
+                editorActionDefaults.label = labelEl.textContent || 'Update Mapping';
+            }
+
+            updateButton.onclick = (event) => {
+                event?.preventDefault?.();
+                return saveEditorAsTemplate({ skipNamePrompt: true, reuseExistingMetadata: true });
+            };
+
+            if (labelEl) {
+                labelEl.textContent = 'Save template';
+            }
+
+            updateButton.setAttribute('data-template-edit-mode', 'true');
+            editorActionDefaults.mode = 'template-save';
+            return;
+        }
+
+        if (editorActionDefaults.mode === 'template-save') {
+            updateButton.onclick = editorActionDefaults.handler || updateButton.onclick;
+            if (labelEl && editorActionDefaults.label) {
+                labelEl.textContent = editorActionDefaults.label;
+            }
+
+            updateButton.removeAttribute('data-template-edit-mode');
+            editorActionDefaults.mode = 'mapping';
+        }
+    }
+
+    function stripMappingIdentifiers(mapping) {
+        ['id', 'uuid', 'stubMappingId', 'stubId', 'mappingId'].forEach((key) => delete mapping[key]);
+        if (mapping.metadata) {
+            delete mapping.metadata.id;
+        }
+    }
+
+    function prepareMappingForCreation(mapping, options = {}) {
+        if (!mapping || typeof mapping !== 'object') return null;
+
+        const { source = 'ui', seed = getEmptyTemplateSeed() } = options;
+        const nowIso = new Date().toISOString();
+        const normalized = deepClone(mapping);
+
+        stripMappingIdentifiers(normalized);
+        normalizeRequestAndResponse(normalized, seed);
+
+        normalized.metadata = {
+            ...(normalized.metadata || {}),
+            created: normalized.metadata?.created || nowIso,
+            edited: nowIso,
+            source: normalized.metadata?.source || source
+        };
+
+        return normalized;
+    }
+
+    async function createMappingsFromPayloads(rawPayloads, options = {}) {
+        const {
+            openMode = 'inline',
+            source = 'ui',
+            successMessageFactory,
+        } = options;
+
+        const payloadArray = Array.isArray(rawPayloads) ? rawPayloads : [rawPayloads];
+        const preparedPayloads = payloadArray
+            .map((payload) => prepareMappingForCreation(payload, { source }))
+            .filter(Boolean);
+
+        if (!preparedPayloads.length) {
+            notify('No valid mapping payloads to create', 'warning');
+            return { success: false, createdIds: [] };
+        }
+
+        const validationErrors = preparedPayloads
+            .map((entry, index) => ({ index, error: validateMapping(entry) }))
+            .filter((item) => Boolean(item.error));
+
+        if (validationErrors.length) {
+            const first = validationErrors[0];
+            notify(`Mapping payload is missing required fields (entry ${first.index + 1}): ${first.error}`, 'error');
+            return { success: false, createdIds: [] };
+        }
+
+        try {
+            const createdIds = [];
+            const errors = [];
+
+            for (let i = 0; i < preparedPayloads.length; i += 1) {
+                const entry = preparedPayloads[i];
+                try {
+                    const response = await apiFetch('/mappings', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(entry)
+                    });
+
+                    const createdMapping = response?.mapping || response;
+                    const createdId = createdMapping?.id;
+
+                    if (createdId && typeof updateOptimisticCache === 'function') {
+                        try {
+                            updateOptimisticCache(createdMapping, 'create');
+                        } catch (cacheError) {
+                            console.warn('Failed to update optimistic cache after create:', cacheError);
+                        }
+                    }
+
+                    if (createdId) {
+                        createdIds.push(createdId);
+                    }
+                } catch (error) {
+                    errors.push({ index: i, error });
+                    break;
+                }
+            }
+
+            if (errors.length) {
+                const rollbackErrors = [];
+                for (const id of createdIds) {
+                    try {
+                        await apiFetch(`/mappings/${id}`, { method: 'DELETE' });
+                        if (typeof updateOptimisticCache === 'function') {
+                            updateOptimisticCache({ id }, 'delete');
+                        }
+                    } catch (rollbackError) {
+                        rollbackErrors.push(rollbackError);
+                    }
+                }
+
+                const failure = errors[0];
+                const rollbackNote = rollbackErrors.length
+                    ? ` Rollback issues: ${rollbackErrors.length} delete${rollbackErrors.length === 1 ? '' : 's'} failed.`
+                    : '';
+
+                notify(
+                    `Failed to create mapping ${failure.index + 1}/${preparedPayloads.length}: ${failure.error.message}.${rollbackNote}`,
+                    'error'
+                );
+                console.error('Mapping create failed', { errors, rollbackErrors });
+                return { success: false, createdIds: [] };
+            }
+
+            const createdCount = createdIds.length || preparedPayloads.length;
+            const successMessage = typeof successMessageFactory === 'function'
+                ? successMessageFactory(createdCount)
+                : `Created ${createdCount} mapping${createdCount === 1 ? '' : 's'}`;
+
+            notify(successMessage, 'success');
+
+            const targetId = createdIds[0];
+            if (targetId) {
+                if (openMode === 'studio' && typeof global.editMapping === 'function') {
+                    global.editMapping(targetId);
+                } else if (typeof global.openEditModal === 'function') {
+                    global.openEditModal(targetId);
+                }
+            }
+
+            return { success: true, createdIds };
+        } catch (error) {
+            notify(`Failed to create mapping: ${error.message}`, 'error');
+            console.error('Failed to create mapping from payloads', error);
+            return { success: false, createdIds: [] };
+        }
     }
 
     function ensureTemplateNameModal() {
@@ -225,6 +474,7 @@
     const templateCache = {
         builtIn: null,
         user: null,
+        userSignature: '',
         merged: null,
         mergedSignature: '',
         enriched: null,
@@ -255,11 +505,14 @@
     }
 
     function readUserTemplates() {
-        if (templateCache.user) return [...templateCache.user];
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (templateCache.user && templateCache.userSignature === raw) return [...templateCache.user];
         try {
-            const raw = localStorage.getItem(STORAGE_KEY);
             const parsed = raw ? JSON.parse(raw) : [];
-            templateCache.user = Array.isArray(parsed) ? parsed : [];
+            templateCache.user = Array.isArray(parsed)
+                ? parsed.map((template) => normalizeUserTemplate(template))
+                : [];
+            templateCache.userSignature = raw || '';
             return [...templateCache.user];
         } catch (e) {
             console.warn('Failed to read user templates from storage:', e);
@@ -267,10 +520,23 @@
         }
     }
 
+    function normalizeUserTemplate(template) {
+        return {
+            category: 'custom',
+            source: 'user',
+            ...template,
+            category: template?.category || 'custom',
+            source: template?.source || 'user'
+        };
+    }
+
     function persistUserTemplates(templates) {
         try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(templates));
-            templateCache.user = [...templates];
+            const sanitized = (templates || []).filter(Boolean).map((template) => normalizeUserTemplate(template));
+            const serialized = JSON.stringify(sanitized);
+            localStorage.setItem(STORAGE_KEY, serialized);
+            templateCache.user = [...sanitized];
+            templateCache.userSignature = serialized;
             invalidateTemplateCache('user');
         } catch (e) {
             console.warn('Failed to persist user templates:', e);
@@ -451,14 +717,27 @@
         notify(`Template "${template.title || template.id}" applied to form`, 'success');
     }
 
-    function applyTemplateToEditor(template) {
+    async function waitForEditorInitializer() {
+        if (global.monacoInitializer?.isInitialized) return global.monacoInitializer;
+        if (global.monacoInitializationPromise?.then) {
+            try {
+                await global.monacoInitializationPromise;
+                if (global.monacoInitializer?.isInitialized) return global.monacoInitializer;
+            } catch (error) {
+                console.warn('Monaco initializer failed to load in time', error);
+            }
+        }
+        return global.monacoInitializer;
+    }
+
+    async function applyTemplateToEditor(template) {
         if (!template) {
             notify('Select a template first', 'warning');
             return;
         }
 
         const payload = template.content ?? {};
-        const initializer = global.monacoInitializer;
+        const initializer = await waitForEditorInitializer();
 
         if (initializer && (typeof initializer.applyTemplate === 'function' || typeof initializer.applyTemplateById === 'function')) {
             let applied = false;
@@ -525,75 +804,11 @@
         }
 
         try {
-            const createdIds = [];
-            const errors = [];
-
-            for (let i = 0; i < payloads.length; i += 1) {
-                const entry = payloads[i];
-                try {
-                    const response = await apiFetch('/mappings', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(entry)
-                    });
-
-                    const createdMapping = response?.mapping || response;
-                    const createdId = createdMapping?.id;
-
-                    if (createdId && typeof updateOptimisticCache === 'function') {
-                        try {
-                            updateOptimisticCache(createdMapping, 'create');
-                        } catch (cacheError) {
-                            console.warn('Failed to update optimistic cache after template create:', cacheError);
-                        }
-                    }
-
-                    if (createdId) {
-                        createdIds.push(createdId);
-                    }
-                } catch (error) {
-                    errors.push({ index: i, error });
-                    break;
-                }
-            }
-
-            if (errors.length) {
-                const rollbackErrors = [];
-                for (const id of createdIds) {
-                    try {
-                        await apiFetch(`/mappings/${id}`, { method: 'DELETE' });
-                        if (typeof updateOptimisticCache === 'function') {
-                            updateOptimisticCache({ id }, 'delete');
-                        }
-                    } catch (rollbackError) {
-                        rollbackErrors.push(rollbackError);
-                    }
-                }
-
-                const failure = errors[0];
-                const rollbackNote = rollbackErrors.length
-                    ? ` Rollback issues: ${rollbackErrors.length} delete${rollbackErrors.length === 1 ? '' : 's'} failed.`
-                    : '';
-
-                notify(
-                    `Failed to create mapping ${failure.index + 1}/${payloads.length}: ${failure.error.message}.${rollbackNote}`,
-                    'error'
-                );
-                console.error('Template create failed', { errors, rollbackErrors });
-                return;
-            }
-
-            const createdCount = createdIds.length || payloads.length;
-            notify(`Created ${createdCount} mapping${createdCount === 1 ? '' : 's'} from template`, 'success');
-
-            const targetId = createdIds[0];
-            if (targetId) {
-                if (openMode === 'studio' && typeof global.editMapping === 'function') {
-                    global.editMapping(targetId);
-                } else if (typeof global.openEditModal === 'function') {
-                    global.openEditModal(targetId);
-                }
-            }
+            await createMappingsFromPayloads(payloads, {
+                openMode,
+                source: 'template',
+                successMessageFactory: (count) => `Created ${count} mapping${count === 1 ? '' : 's'} from template`
+            });
         } catch (error) {
             notify(`Failed to create mapping: ${error.message}`, 'error');
             console.error('Failed to create mapping from template', error);
@@ -626,10 +841,16 @@
         const status = parseInt(document.getElementById('response-status')?.value, 10) || 200;
         const rawBody = document.getElementById('response-body')?.value || '';
 
+        const isEditing = Boolean(editContext.templateId) && (!editContext.target || editContext.target === 'form');
+        const existing = isEditing
+            ? readUserTemplates().find((template) => template.id === editContext.templateId)
+            : null;
+
         const userTemplate = {
-            id: `user-${Date.now()}`,
+            id: isEditing && existing ? existing.id : `user-${Date.now()}`,
             title: title.trim(),
-            description: 'User template saved from mapping form',
+            description: existing?.description || 'User template saved from mapping form',
+            category: 'custom',
             source: 'user',
             content: {
                 name: title.trim(),
@@ -644,22 +865,41 @@
             }
         };
 
-        const nextTemplates = readUserTemplates();
-        nextTemplates.push(userTemplate);
-        persistUserTemplates(nextTemplates);
-        renderTemplateWizard({ force: true });
-        populateSelectors();
-        notify(`Template "${title.trim()}" saved`, 'success');
+        if (isEditing && existing) {
+            updateUserTemplate(existing.id, userTemplate);
+            setEditContext(null);
+            notify(`Template "${title.trim()}" updated`, 'success');
+        } else {
+            const nextTemplates = readUserTemplates();
+            nextTemplates.push(userTemplate);
+            persistUserTemplates(nextTemplates);
+            renderTemplateWizard({ force: true });
+            populateSelectors();
+            notify(`Template "${title.trim()}" saved`, 'success');
+            setEditContext(null);
+        }
     }
 
-    async function saveEditorAsTemplate() {
+    async function saveEditorAsTemplate(options = {}) {
+        const { skipNamePrompt = false, reuseExistingMetadata = false } = options;
         const editor = document.getElementById('json-editor');
         if (!editor) {
             notify('Editor not available', 'warning');
             return;
         }
 
-        const title = (await requestTemplateName()) || '';
+        const isEditing = Boolean(editContext.templateId) && (!editContext.target || editContext.target === 'editor');
+        const existing = isEditing
+            ? readUserTemplates().find((template) => template.id === editContext.templateId)
+            : null;
+
+        let title = '';
+        if (isEditing && existing && (skipNamePrompt || reuseExistingMetadata)) {
+            title = existing.title || '';
+        } else {
+            title = (await requestTemplateName(existing?.title || '')) || '';
+        }
+
         if (!title.trim()) {
             notify('Template name is required', 'warning');
             return;
@@ -674,19 +914,100 @@
         }
 
         const userTemplate = {
-            id: `user-${Date.now()}`,
+            id: isEditing && existing ? existing.id : `user-${Date.now()}`,
             title: title.trim(),
-            description: 'User template saved from JSON editor',
+            description: (reuseExistingMetadata && existing?.description) || existing?.description || 'User template saved from JSON editor',
+            category: 'custom',
             source: 'user',
             content: parsed
         };
 
-        const nextTemplates = readUserTemplates();
-        nextTemplates.push(userTemplate);
-        persistUserTemplates(nextTemplates);
+        if (isEditing && existing) {
+            updateUserTemplate(existing.id, userTemplate);
+            setEditContext(null);
+            notify(`Template "${title.trim()}" updated`, 'success');
+        } else {
+            const nextTemplates = readUserTemplates();
+            nextTemplates.push(userTemplate);
+            persistUserTemplates(nextTemplates);
+            renderTemplateWizard({ force: true });
+            populateSelectors();
+            notify(`Template "${title.trim()}" saved`, 'success');
+            setEditContext(null);
+        }
+    }
+
+    function updateUserTemplate(templateId, updates = {}) {
+        if (!templateId) return null;
+
+        const templates = readUserTemplates();
+        const index = templates.findIndex((template) => template.id === templateId);
+        if (index === -1) return null;
+
+        const existing = templates[index];
+        const updated = normalizeUserTemplate({
+            ...existing,
+            ...(updates.title ? { title: updates.title } : {}),
+            ...(updates.description ? { description: updates.description } : {}),
+            ...(updates.content ? { content: updates.content } : {}),
+        });
+
+        templates[index] = updated;
+        persistUserTemplates(templates);
         renderTemplateWizard({ force: true });
         populateSelectors();
-        notify(`Template "${title.trim()}" saved`, 'success');
+
+        return updated;
+    }
+
+    async function editUserTemplate(templateId, options = {}) {
+        const template = readUserTemplates().find((entry) => entry.id === templateId);
+        if (!template) {
+            notify('Template not found', 'warning');
+            return false;
+        }
+
+        const preferredTarget = options.target
+            || (document.getElementById('json-editor') ? 'editor'
+                : 'form');
+
+        setEditContext(templateId, preferredTarget);
+
+        if (preferredTarget === 'editor') {
+            applyTemplateForTarget(template, 'editor');
+            notify('Template loaded into JSON Studio. Save to keep changes.', 'info');
+            document.getElementById('update-mapping-btn')?.focus?.();
+        } else {
+            applyTemplateForTarget(template, 'form');
+            notify('Template loaded into mapping form. Update and save to keep changes.', 'info');
+            document.getElementById('save-template-btn')?.focus?.();
+        }
+
+        return true;
+    }
+
+    function deleteUserTemplate(templateId, options = {}) {
+        const { skipConfirm = false } = options;
+        if (!templateId) return false;
+
+        const templates = readUserTemplates();
+        const template = templates.find((entry) => entry.id === templateId);
+        if (!template) return false;
+
+        if (!skipConfirm && typeof global.confirm === 'function') {
+            const confirmed = global.confirm(`Delete template "${template.title || template.id}"? This cannot be undone.`);
+            if (!confirmed) return false;
+        }
+
+        const remaining = templates.filter((entry) => entry.id !== templateId);
+        persistUserTemplates(remaining);
+        renderTemplateWizard({ force: true });
+        populateSelectors();
+        notify(`Template "${template.title || template.id}" deleted`, 'info');
+        if (editContext.templateId === templateId) {
+            setEditContext(null);
+        }
+        return true;
     }
 
     function resolveTemplatePath(value, path) {
@@ -746,9 +1067,9 @@
             const payload = template.content ? template.content : {};
             if (typeof payload === 'string') return payload;
             const pretty = JSON.stringify(payload, null, 2);
-            const lines = pretty.split('\n').slice(0, 16);
+            const lines = pretty.split('\n').slice(0, 24);
             const preview = lines.join('\n');
-            return preview.length > 640 ? `${preview.slice(0, 639)}…` : preview;
+            return preview.length > 1280 ? `${preview.slice(0, 1279)}…` : preview;
         } catch (error) {
             return '[unavailable template preview]';
         }
@@ -886,6 +1207,20 @@
         return null;
     }
 
+    function ensureEditorModalVisible() {
+        const modal = document.getElementById('edit-mapping-modal');
+        if (!modal) return false;
+
+        if (typeof global.showModal === 'function') {
+            global.showModal('edit-mapping-modal');
+        } else {
+            modal.classList.remove?.('hidden');
+            modal.style.display = 'flex';
+        }
+
+        return true;
+    }
+
     function applyTemplateForTarget(template, target = activeTarget) {
         if (!template) return;
         if (target === 'create-inline') {
@@ -899,6 +1234,7 @@
         }
 
         if (target === 'editor') {
+            ensureEditorModalVisible();
             applyTemplateToEditor(template);
         } else {
             applyTemplateToForm(template);
@@ -929,6 +1265,7 @@
         if (goalId === 'matching') return template.tags.includes('matching') || template.tags.includes('pattern') || template.tags.includes('jsonpath');
         if (goalId === 'webhooks') return template.tags.includes('webhook');
         if (goalId === 'proxy') return template.tags.includes('proxy');
+        if (goalId === 'custom') return template.source === 'user';
         return true;
     }
 
@@ -995,10 +1332,11 @@
                 ? 'fault'
                 : template.outcome;
         const creationMode = isCreationTarget(activeTarget);
-        const card = document.createElement('button');
-        card.type = 'button';
+        const card = document.createElement('div');
         card.className = 'template-card template-card--wizard';
         card.dataset.templateId = template.id;
+        card.setAttribute('role', 'button');
+        card.tabIndex = 0;
         card.innerHTML = `
             <div class="template-card__header">
                 <span class="badge badge-soft" data-method="${template.method}">${template.method}</span>
@@ -1013,12 +1351,34 @@
                 ${template.tags.slice(0, 4).map(tag => `<span class="chip">${tag}</span>`).join('')}
             </div>
             <div class="template-card__actions">
-                <span class="btn btn-primary btn-sm">${creationMode ? 'Create' : 'Select'}</span>
-                <span class="btn btn-secondary btn-sm" aria-hidden="true">Details</span>
+                <button class="btn btn-primary btn-sm" type="button" data-card-action="select">${creationMode ? 'Create' : 'Select'}</button>
+                <button class="btn btn-secondary btn-sm" type="button" data-card-action="details">Details</button>
+                ${template.source === 'user'
+        ? '<button class="btn btn-ghost btn-sm" type="button" data-card-action="edit-template">Edit</button>'
+        : ''}
+                ${template.source === 'user'
+        ? '<button class="btn btn-ghost btn-sm" type="button" data-card-action="delete-template">Delete</button>'
+        : ''}
             </div>
         `;
 
-        card.addEventListener('click', () => onSelect(template));
+        card.addEventListener('click', (event) => {
+            const button = event.target instanceof HTMLElement ? event.target.closest('[data-card-action]') : null;
+            if (button) {
+                event.stopPropagation();
+                const action = button.dataset.cardAction;
+                if (action === 'edit-template') {
+                    editUserTemplate(template.id);
+                    return;
+                }
+                if (action === 'delete-template') {
+                    deleteUserTemplate(template.id);
+                    return;
+                }
+            }
+
+            onSelect(template);
+        });
         card.addEventListener('keydown', (event) => {
             if (event.key === 'Enter' || event.key === ' ') {
                 event.preventDefault();
@@ -1162,6 +1522,12 @@
                     ${creationMode ? '<button class="btn btn-secondary btn-sm" type="button" data-template-action="create-studio">Create in JSON Studio</button>' : ''}
                     <button class="btn btn-secondary btn-sm" type="button" data-template-action="copy">Copy JSON</button>
                 </div>
+                ${template.source === 'user'
+        ? `<div class="template-preview-actions__secondary">
+                        <button class="btn btn-ghost btn-sm" type="button" data-template-action="edit-template">Edit template</button>
+                        <button class="btn btn-ghost btn-sm" type="button" data-template-action="delete-template">Delete</button>
+                    </div>`
+        : ''}
             </div>
         `;
 
@@ -1191,6 +1557,13 @@
                 const success = await copyTextToClipboard(json);
                 notify(success ? `Template "${template.title}" copied` : 'Clipboard copy failed', success ? 'success' : 'error');
             }
+            if (action === 'edit-template') {
+                await editUserTemplate(template.id);
+                return;
+            }
+            if (action === 'delete-template') {
+                deleteUserTemplate(template.id);
+            }
         });
     }
 
@@ -1210,54 +1583,59 @@
         const shell = document.getElementById('template-gallery-shell');
         if (!shell) return;
 
-        const templates = getTemplatesWithMeta();
-        const signature = buildGallerySignature(templates);
-        if (!force && signature === lastRenderSignature) return;
-        lastRenderSignature = signature;
+        try {
+            const templates = getTemplatesWithMeta();
+            const signature = buildGallerySignature(templates);
+            if (!force && signature === lastRenderSignature) return;
+            lastRenderSignature = signature;
 
-        const stepIndex = wizardState.step === 'goals' ? 1 : wizardState.step === 'templates' ? 2 : 3;
-        const selectedGoal = GOAL_GROUPS.find(goal => goal.id === wizardState.goalId);
-        const canGoBack = wizardState.step !== 'goals';
+            const stepIndex = wizardState.step === 'goals' ? 1 : wizardState.step === 'templates' ? 2 : 3;
+            const selectedGoal = GOAL_GROUPS.find(goal => goal.id === wizardState.goalId);
+            const canGoBack = wizardState.step !== 'goals';
 
-        shell.innerHTML = `
-            <div class="template-wizard">
-                <div class="template-wizard__header">
-                    <div>
-                        <p class="template-wizard__eyebrow">Step ${stepIndex}/3</p>
-                        <h3 class="template-wizard__title">${wizardState.step === 'goals' ? 'Create a mapping' : selectedGoal?.title || 'Pick a template'}</h3>
-                        <p class="template-wizard__subtitle">${wizardState.step === 'goals' ? 'Choose the scenario that fits your testing goal' : selectedGoal?.description || ''}</p>
-                    </div>
-                    <div class="template-wizard__header-actions">
-                        <div class="template-wizard__progress" role="progressbar" aria-label="Wizard progress" aria-valuemin="1" aria-valuemax="3" aria-valuenow="${stepIndex}">
-                            <span class="sr-only">Step ${stepIndex} of 3</span>
-                            ${[1, 2, 3].map((i) => `<span class="template-wizard__dot ${i <= stepIndex ? 'is-active' : ''}" aria-current="${i === stepIndex ? 'step' : 'false'}" aria-label="Step ${i}"></span>`).join('')}
+            shell.innerHTML = `
+                <div class="template-wizard">
+                    <div class="template-wizard__header">
+                        <div>
+                            <p class="template-wizard__eyebrow">Step ${stepIndex}/3</p>
+                            <h3 class="template-wizard__title">${wizardState.step === 'goals' ? 'Create a mapping' : selectedGoal?.title || 'Pick a template'}</h3>
+                            <p class="template-wizard__subtitle">${wizardState.step === 'goals' ? 'Choose the scenario that fits your testing goal' : selectedGoal?.description || ''}</p>
                         </div>
-                        ${canGoBack ? '<button type="button" class="btn btn-ghost btn-sm" id="template-wizard-back">← Back</button>' : ''}
+                        <div class="template-wizard__header-actions">
+                            <div class="template-wizard__progress" role="progressbar" aria-label="Wizard progress" aria-valuemin="1" aria-valuemax="3" aria-valuenow="${stepIndex}">
+                                <span class="sr-only">Step ${stepIndex} of 3</span>
+                                ${[1, 2, 3].map((i) => `<span class="template-wizard__dot ${i <= stepIndex ? 'is-active' : ''}" aria-current="${i === stepIndex ? 'step' : 'false'}" aria-label="Step ${i}"></span>`).join('')}
+                            </div>
+                            ${canGoBack ? '<button type="button" class="btn btn-ghost btn-sm" id="template-wizard-back">← Back</button>' : ''}
+                        </div>
                     </div>
+                    <div class="template-wizard__body" id="template-wizard-body"></div>
                 </div>
-                <div class="template-wizard__body" id="template-wizard-body"></div>
-            </div>
-        `;
+            `;
 
-        const body = shell.querySelector('#template-wizard-body');
-        if (!body) return;
+            const body = shell.querySelector('#template-wizard-body');
+            if (!body) return;
 
-        if (!templates.length) {
-            body.innerHTML = '<div class="history-empty"><p>No templates available</p><small>Add or import templates to populate this view.</small></div>';
-        } else if (wizardState.step === 'goals') {
-            renderGoalStep(body, templates);
-        } else if (wizardState.step === 'templates') {
-            renderTemplateStep(body, templates);
-        } else {
-            renderPreviewStep(body, templates);
-        }
+            if (!templates.length) {
+                body.innerHTML = '<div class="history-empty"><p>No templates available</p><small>Add or import templates to populate this view.</small></div>';
+            } else if (wizardState.step === 'goals') {
+                renderGoalStep(body, templates);
+            } else if (wizardState.step === 'templates') {
+                renderTemplateStep(body, templates);
+            } else {
+                renderPreviewStep(body, templates);
+            }
 
-        const backButton = shell.querySelector('#template-wizard-back');
-        if (backButton) {
-            backButton.addEventListener('click', () => {
-                goBackFromWizard();
-                renderTemplateWizard({ force: true });
-            });
+            const backButton = shell.querySelector('#template-wizard-back');
+            if (backButton) {
+                backButton.addEventListener('click', () => {
+                    goBackFromWizard();
+                    renderTemplateWizard({ force: true });
+                });
+            }
+        } catch (error) {
+            console.error('Failed to render template wizard', error);
+            shell.innerHTML = '<div class="history-empty"><p>Templates unavailable</p><small>Reload the page or try again later.</small></div>';
         }
     }
 
@@ -1269,20 +1647,52 @@
         wizardState.searchQuery = '';
         wizardState.activeTags = [];
         wizardState.showPopularOnly = false;
-        renderTemplateWizard({ force: true });
-        global.showModal?.(MODALS.GALLERY);
+
+        try {
+            renderTemplateWizard({ force: true });
+        } catch (error) {
+            console.error('Unable to prepare template gallery', error);
+            const shell = document.getElementById('template-gallery-shell');
+            if (shell) {
+                shell.innerHTML = '<div class="history-empty"><p>Templates unavailable</p><small>Reload the page or try again later.</small></div>';
+            }
+        }
+
+        const hasShowModal = typeof global.showModal === 'function';
+        if (hasShowModal) {
+            global.showModal(MODALS.GALLERY);
+            return;
+        }
+
+        const modal = document.getElementById(MODALS.GALLERY);
+        if (modal) {
+            modal.classList.remove('hidden');
+            modal.style.display = 'flex';
+        }
     }
 
-    function init() {
-        populateSelectors();
-        renderTemplateWizard();
-
+    function attachTemplateTriggers() {
         document.querySelectorAll('[data-template-trigger]').forEach((button) => {
             button.addEventListener('click', (event) => {
                 event.preventDefault();
                 openGalleryForTarget(button.dataset.templateTarget || 'form');
             });
         });
+    }
+
+    function init() {
+        try {
+            populateSelectors();
+            renderTemplateWizard();
+        } catch (error) {
+            console.error('Template manager failed to initialize', error);
+            const shell = document.getElementById('template-gallery-shell');
+            if (shell) {
+                shell.innerHTML = '<div class="history-empty"><p>Templates unavailable</p><small>Reload the page or try again later.</small></div>';
+            }
+        }
+
+        attachTemplateTriggers();
 
         document.getElementById('save-template-btn')?.addEventListener('click', (event) => {
             event.preventDefault();
@@ -1300,12 +1710,20 @@
         refresh: populateSelectors,
         openGallery: renderTemplateWizard,
         openGalleryForTarget,
+        getTemplatesWithMeta,
+        getEmptyTemplateSeed,
+        getEmptyMappingContent,
         applyTemplateToForm,
         applyTemplateToEditor,
         createMappingFromTemplate,
+        createMappingsFromPayloads,
+        prepareMappingForCreation,
         createEmptyMapping,
         saveFormAsTemplate,
-        saveEditorAsTemplate
+        saveEditorAsTemplate,
+        updateUserTemplate,
+        editUserTemplate,
+        deleteUserTemplate
     };
 
     if (document.readyState === 'loading') {
