@@ -259,60 +259,59 @@ window.openEditModal = async (identifier) => {
             return;
         }
 
-    // Clear previous editing states
-    if (typeof UIComponents?.clearCardState === 'function') {
-        UIComponents.clearCardState('mapping', 'is-editing');
-    }
-    if (targetIdentifier && typeof UIComponents?.setCardState === 'function') {
-        UIComponents.setCardState('mapping', targetIdentifier, 'is-editing', true);
-    }
+        // Clear previous editing states
+        if (typeof UIComponents?.clearCardState === 'function') {
+            UIComponents.clearCardState('mapping', 'is-editing');
+        }
+        if (targetIdentifier && typeof UIComponents?.setCardState === 'function') {
+            UIComponents.setCardState('mapping', targetIdentifier, 'is-editing', true);
+        }
 
-    // Show modal with loading state immediately
-    if (typeof window.showModal === 'function') {
-        window.showModal('edit-mapping-modal');
-    } else {
-        console.warn('showModal function not found');
-        return;
-    }
+        // Show modal with loading state immediately
+        if (typeof window.showModal === 'function') {
+            window.showModal('edit-mapping-modal');
+        } else {
+            console.warn('showModal function not found');
+            return;
+        }
 
-    if (typeof window.setMappingEditorBusyState === 'function') {
-        window.setMappingEditorBusyState(true, 'Loading…');
-    }
+        if (typeof window.setMappingEditorBusyState === 'function') {
+            window.setMappingEditorBusyState(true, 'Loading…');
+        }
 
-    // Update the modal title
-    const modalTitleElement = document.getElementById(SELECTORS.MODAL.TITLE);
-    if (modalTitleElement) modalTitleElement.textContent = 'Edit Mapping';
+        // Update the modal title
+        const modalTitleElement = document.getElementById(SELECTORS.MODAL.TITLE);
+        if (modalTitleElement) modalTitleElement.textContent = 'Edit Mapping';
 
-    console.log('🔴 [OPEN MODAL DEBUG] openEditModal called for mapping identifier:', identifier);
+        console.log('🔴 [OPEN MODAL DEBUG] openEditModal called for mapping identifier:', identifier);
 
-    // PERFORMANCE OPTIMIZATION: Smart loading strategy
-    // For small mappings: instant load from cache
-    // For large mappings: show modal fast, then load data
-    const LARGE_MAPPING_THRESHOLD = 500 * 1024; // 500 KB
+        // PERFORMANCE OPTIMIZATION: Smart loading strategy
+        // For small mappings: instant load from cache
+        // For large mappings: show modal fast, then load data
+        const LARGE_MAPPING_THRESHOLD = 500 * 1024; // 500 KB
 
-    let cachedMapping = null;
-    let estimatedSize = 0;
+        let cachedMapping = null;
+        let estimatedSize = 0;
 
-    // Try to get mapping from cache first
-    if (typeof window.cacheManager !== 'undefined' && window.cacheManager.cache) {
-        cachedMapping = window.cacheManager.cache.get(targetIdentifier);
-        if (cachedMapping) {
-            try {
-                estimatedSize = JSON.stringify(cachedMapping).length;
-            } catch {
-                estimatedSize = 0;
+        // Try to get mapping from cache first
+        if (typeof window.cacheManager !== 'undefined' && window.cacheManager.cache) {
+            cachedMapping = window.cacheManager.cache.get(targetIdentifier);
+            if (cachedMapping) {
+                try {
+                    estimatedSize = JSON.stringify(cachedMapping).length;
+                } catch {
+                    estimatedSize = 0;
+                }
             }
         }
-    }
 
-    const isLargeMapping = estimatedSize > LARGE_MAPPING_THRESHOLD;
+        const isLargeMapping = estimatedSize > LARGE_MAPPING_THRESHOLD;
 
-    if (isLargeMapping) {
-        console.log(`📦 [Modal Performance] Large mapping detected (${(estimatedSize / 1024).toFixed(2)} KB) - using optimized loading`);
-    }
+        if (isLargeMapping) {
+            console.log(`📦 [Modal Performance] Large mapping detected (${(estimatedSize / 1024).toFixed(2)} KB) - using optimized loading`);
+        }
 
-    // Fetch fresh data from server (single source of truth)
-    try {
+        // Fetch fresh data from server (single source of truth)
         const latest = await apiFetch(`/mappings/${encodeURIComponent(targetIdentifier)}`);
         const latestMapping = latest?.mapping || latest;
 
