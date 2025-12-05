@@ -763,13 +763,17 @@ window.showModal = (modalId) => {
 };
 
 window.openAddMappingModal = () => {
-    const formElement = document.getElementById(SELECTORS.MODAL.FORM);
-    const idElement = document.getElementById(SELECTORS.MODAL.ID);
-    const titleElement = document.getElementById(SELECTORS.MODAL.TITLE);
-    if (formElement) formElement.reset();
-    if (idElement) idElement.value = '';
-    if (titleElement) titleElement.textContent = 'Add New Mapping';
-    window.showModal('add-mapping-modal');
+    if (window.TemplateManager?.openGalleryForTarget) {
+        window.TemplateManager.openGalleryForTarget('create-inline');
+        return;
+    }
+
+    const trigger = document.querySelector('[data-template-trigger][data-template-target="create-inline"]');
+    if (trigger) {
+        trigger.click();
+    } else {
+        window.showModal('template-gallery-modal');
+    }
 };
 
 window.hideModal = (modal) => {

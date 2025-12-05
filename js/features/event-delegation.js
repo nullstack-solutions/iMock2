@@ -67,6 +67,17 @@ class EventDelegationManager {
             return;
         }
 
+        // Duplicate mapping button
+        const duplicateBtn = e.target.closest('[data-action="duplicate-mapping"]');
+        if (duplicateBtn) {
+            e.stopPropagation();
+            const mappingId = duplicateBtn.dataset.mappingId;
+            if (mappingId && typeof window.duplicateMapping === 'function') {
+                window.duplicateMapping(mappingId);
+            }
+            return;
+        }
+
         // Delete mapping button
         const deleteBtn = e.target.closest('[data-action="delete-mapping"]');
         if (deleteBtn) {

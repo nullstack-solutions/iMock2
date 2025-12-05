@@ -97,6 +97,7 @@ const UIComponents = {
             'editMapping': 'edit-external',
             'openEditModal': 'edit-mapping',
             'deleteMapping': 'delete-mapping',
+            'duplicateMapping': 'duplicate-mapping',
             'viewRequestDetails': 'view-request'
         };
 
@@ -939,6 +940,36 @@ window.getMappingById = async (mappingId) => {
     }
 };
 
+window.duplicateMapping = async (identifier) => {
+    const mappingId = (identifier ?? '').toString().trim();
+
+    if (!mappingId) {
+        NotificationManager.error('Invalid mapping identifier');
+        return;
+    }
+
+    if (!window.TemplateManager?.createMappingsFromPayloads) {
+        NotificationManager.error('Mapping duplication is not available');
+        return;
+    }
+
+    try {
+        const mapping = await window.getMappingById(mappingId);
+        if (!mapping) {
+            throw new Error('Mapping not found');
+        }
+
+        await window.TemplateManager.createMappingsFromPayloads([mapping], {
+            openMode: 'inline',
+            source: 'duplicate',
+            successMessageFactory: (count) => `Duplicated ${count} mapping${count === 1 ? '' : 's'}`
+        });
+    } catch (error) {
+        console.error('Failed to duplicate mapping:', error);
+        NotificationManager.error(`Failed to duplicate mapping: ${error.message}`);
+    }
+};
+
 // Updated applyOptimisticMappingUpdate helper
 window.applyOptimisticMappingUpdate = (mappingLike) => {
     try {
@@ -1072,6 +1103,7 @@ window.renderMappingCard = function(mapping) {
     }
 
     const actions = [
+        { class: 'secondary', handler: 'duplicateMapping', title: 'Duplicate', icon: 'clipboard' },
         { class: 'secondary', handler: 'editMapping', title: 'Edit in Editor', icon: 'open-external' },
         { class: 'primary', handler: 'openEditModal', title: 'Edit', icon: 'pencil' },
         { class: 'secondary', handler: 'duplicateMapping', title: 'Duplicate', icon: 'copy' },
