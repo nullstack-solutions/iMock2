@@ -19,23 +19,11 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Run business logic tests
-        run: node tests/business-logic.spec.js
+      - name: Install dependencies
+        run: npm ci || npm install
 
-      - name: Run cache workflow tests
-        run: node tests/cache-workflow.spec.js
-
-      - name: Run recording tests
-        run: node tests/recording.spec.js
-
-      - name: Run mappings tests
-        run: node tests/mappings.spec.js
-
-      - name: Run scenarios tests
-        run: node tests/scenarios.spec.js
-
-      - name: Run requests tests
-        run: node tests/requests.spec.js
+      - name: Run tests
+        run: npm test
 
       - name: Test summary
         if: always()
