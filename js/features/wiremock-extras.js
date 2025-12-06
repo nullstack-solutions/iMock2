@@ -372,12 +372,12 @@ function seedCacheFromGlobals(cache) {
 
 function syncCacheWithMappings(mappings) {
     try {
-        const manager = window.cacheManager;
-        if (!manager || !(manager.cache instanceof Map) || !Array.isArray(mappings)) {
+        const store = window.MappingsStore;
+        if (!store || !(store.items instanceof Map) || !Array.isArray(mappings)) {
             return;
         }
 
-        const cache = manager.cache;
+        const cache = store.items;
         const seenIds = new Set();
 
         mappings.forEach(mapping => {
@@ -400,10 +400,10 @@ function syncCacheWithMappings(mappings) {
             }
         });
 
-        const optimisticQueue = Array.isArray(manager.optimisticQueue) ? manager.optimisticQueue : [];
+        const pendingOps = store.pending instanceof Map ? Array.from(store.pending.values()) : [];
         const optimisticIds = new Set();
-        for (const item of optimisticQueue) {
-            if (!item || item.op === 'delete') {
+        for (const item of pendingOps) {
+            if (!item || item.type === 'delete') {
                 continue;
             }
             if (item.id) {
@@ -424,14 +424,14 @@ function syncCacheWithMappings(mappings) {
 }
 
 function buildCacheSnapshot() {
-    const manager = window.cacheManager;
-    if (!manager || !(manager.cache instanceof Map)) {
+    const store = window.MappingsStore;
+    if (!store || !(store.items instanceof Map)) {
         return [];
     }
 
     try {
         const snapshot = [];
-        for (const mapping of manager.cache.values()) {
+        for (const mapping of store.items.values()) {
             if (!mapping || isImockCacheMapping(mapping)) {
                 continue;
             }

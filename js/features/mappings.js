@@ -217,10 +217,7 @@ window.toggleFullContent = UIComponents.toggleFullContent;
 window.toggleDetails = UIComponents.toggleDetails;
 
 function getOptimisticShadowTtl() {
-    const ttl = Number(window.cacheManager?.optimisticTTL);
-    if (Number.isFinite(ttl) && ttl > 0) {
-        return Math.max(ttl, 45000);
-    }
+    // Use DEFAULT_SETTINGS for TTL configuration
     const fallback = Number(window.DEFAULT_SETTINGS?.optimisticCacheAgeLimit);
     if (Number.isFinite(fallback) && fallback > 0) {
         return Math.max(fallback, 45000);
@@ -505,8 +502,8 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                                     const serverId = serverMapping.id || serverMapping.uuid;
 
                                     // Check if this server mapping was optimistically deleted
-                                    const optimisticItem = window.cacheManager.optimisticQueue.find(x => x.id === serverId);
-                                    const isOptimisticallyDeleted = optimisticItem && optimisticItem.op === 'delete';
+                                    const optimisticItem = window.MappingsStore?.pending?.get(serverId);
+                                    const isOptimisticallyDeleted = optimisticItem && optimisticItem.type === 'delete';
 
                                     if (!isOptimisticallyDeleted) {
                                         mergedMappings.push(serverMapping);
@@ -586,28 +583,30 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
             let incoming = data.mappings || [];
 
             // Server data is now authoritative - optimistic updates are handled through UI updates only
-            if (window.cacheManager.optimisticQueue.length > 0) {
-                console.log('🎯 [OPTIMISTIC] Applying optimistic updates to incoming data:', window.cacheManager.optimisticQueue.length, 'updates');
+            const pendingOps = window.MappingsStore?.pending ? Array.from(window.MappingsStore.pending.values()) : [];
+            if (pendingOps.length > 0) {
+                console.log('🎯 [OPTIMISTIC] Applying optimistic updates to incoming data:', pendingOps.length, 'updates');
 
                 incoming = incoming.map(serverMapping => {
-                    const optimisticItem = window.cacheManager.optimisticQueue.find(x => x.id === (serverMapping.id || serverMapping.uuid));
+                    const serverId = serverMapping.id || serverMapping.uuid;
+                    const optimisticItem = window.MappingsStore.pending.get(serverId);
                     if (optimisticItem) {
-                        if (optimisticItem.op === 'delete') {
+                        if (optimisticItem.type === 'delete') {
                             console.log('🎯 [OPTIMISTIC] Removing deleted mapping from results:', serverMapping.id);
                             return null; // Mark for removal
                         }
                         // Use optimistic version
                         console.log('🎯 [OPTIMISTIC] Using optimistic version for:', serverMapping.id);
-                        return optimisticItem.payload;
+                        return optimisticItem.optimisticMapping;
                     }
                     return serverMapping;
                 }).filter(m => m !== null); // Remove deleted mappings
 
                 // Add any new optimistic mappings that weren't on server
-                window.cacheManager.optimisticQueue.forEach(item => {
-                    if (item.op !== 'delete' && !incoming.some(m => (m.id || m.uuid) === item.id)) {
+                pendingOps.forEach(item => {
+                    if (item.type !== 'delete' && !incoming.some(m => (m.id || m.uuid) === item.id)) {
                         console.log('🎯 [OPTIMISTIC] Adding new optimistic mapping:', item.id);
-                        incoming.unshift(item.payload);
+                        incoming.unshift(item.optimisticMapping);
                     }
                 });
             }
@@ -915,28 +914,35 @@ window.applyOptimisticMappingUpdate = (mappingLike) => {
             return;
         }
 
-        const cacheAvailable = window.cacheManager && window.cacheManager.cache instanceof Map;
-        const optimisticOperation = cacheAvailable && window.cacheManager.cache.has(mappingId) ? 'update' : 'create';
+        const storeAvailable = window.MappingsStore && window.MappingsStore.items instanceof Map;
+        const optimisticOperation = storeAvailable && window.MappingsStore.items.has(mappingId) ? 'update' : 'create';
 
         rememberOptimisticShadowMapping(mapping, optimisticOperation);
 
-        // Use updateOptimisticCache if available, otherwise fallback to legacy/manual logic
+        // Use updateOptimisticCache if available, otherwise fallback to MappingsStore
         if (typeof updateOptimisticCache === 'function') {
             updateOptimisticCache(mapping, optimisticOperation, { queueMode: 'add' });
         } else {
-            // Fallback to legacy direct mutation if the new helper is unavailable
-            if (cacheAvailable) {
-                if (typeof window.cacheManager?.addOptimisticUpdate === 'function') {
+            // Use new MappingsStore architecture
+            if (storeAvailable) {
+                // Add to pending operations for optimistic UI
+                if (typeof window.MappingsStore?.addPending === 'function') {
                     try {
-                        window.cacheManager.addOptimisticUpdate(mapping, optimisticOperation);
+                        window.MappingsStore.addPending({
+                            id: mappingId,
+                            type: optimisticOperation,
+                            payload: mapping,
+                            optimisticMapping: mapping
+                        });
                     } catch (queueError) {
                         console.warn('🎯 [OPTIMISTIC] Failed to enqueue optimistic update:', queueError);
                     }
                 }
-                seedCacheFromGlobals(window.cacheManager.cache);
+
+                // Update store directly for immediate UI response
                 const incoming = cloneMappingForCache(mapping);
                 if (!incoming) {
-                    console.warn('🎯 [OPTIMISTIC] Failed to clone mapping for cache:', mappingId);
+                    console.warn('🎯 [OPTIMISTIC] Failed to clone mapping for store:', mappingId);
                 } else {
                     if (!incoming.id && mappingId) {
                         incoming.id = mappingId;
@@ -945,11 +951,16 @@ window.applyOptimisticMappingUpdate = (mappingLike) => {
                         incoming.uuid = mapping.uuid || mappingId;
                     }
 
-                    if (window.cacheManager.cache.has(mappingId)) {
-                        const merged = mergeMappingData(window.cacheManager.cache.get(mappingId), incoming);
-                        window.cacheManager.cache.set(mappingId, merged);
+                    if (window.MappingsStore.items.has(mappingId)) {
+                        const merged = mergeMappingData(window.MappingsStore.items.get(mappingId), incoming);
+                        window.MappingsStore.items.set(mappingId, merged);
                     } else {
-                        window.cacheManager.cache.set(mappingId, incoming);
+                        window.MappingsStore.items.set(mappingId, incoming);
+                    }
+
+                    // Update indexes
+                    if (typeof window.MappingsStore.rebuildIndexes === 'function') {
+                        window.MappingsStore.rebuildIndexes();
                     }
                 }
             }
