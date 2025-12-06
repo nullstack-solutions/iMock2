@@ -141,7 +141,7 @@ const UIComponents = {
                                 </div>`;
                             }
                             return `<div class="preview-value"><strong>${key}:</strong><pre>${Utils.formatJson(parsedJson)}</pre></div>`;
-                        } catch (e) {
+                        } catch {
                             // If JSON parsing fails, fall back to original string rendering
                         }
                     }
@@ -576,7 +576,7 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                 if (dataSource === 'demo') {
                     markDemoModeActive('mappings-fallback');
                 }
-                try { delete data.__source; } catch (_) {}
+                try { delete data.__source; } catch {}
             }
 
             // If we fetched a full admin list, strip service cache mapping from UI

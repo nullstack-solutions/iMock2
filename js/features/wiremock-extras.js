@@ -28,7 +28,7 @@ window.updateLastSuccessUI = () => {
         const time = new Date(ts).toLocaleTimeString();
         el.textContent = `Last OK: ${time}`;
         console.log('[HEALTH] last success UI updated:', { ts, time });
-    } catch (e) {
+    } catch {
         // noop
     }
 };
@@ -162,7 +162,7 @@ async function getCacheByMetadata() {
                 const list = res?.mappings || res?.items || [];
                 const found = list.find(isImockCacheMapping);
                 if (found) { console.log('🧩 [CACHE] Metadata hit'); return found; }
-            } catch (e) {
+            } catch {
                 // try next body shape
             }
         }
@@ -209,7 +209,7 @@ async function upsertImockCacheMapping(slim) {
         });
         console.log('🧩 [CACHE] Upsert done (PUT)');
         return response;
-    } catch (e) {
+    } catch {
         console.log('🧩 [CACHE] PUT failed, POST /mappings');
         const response = await apiFetch('/mappings', {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(stub),
@@ -259,30 +259,6 @@ async function loadImockCacheBestOf3() {
     console.log('🧩 [CACHE] No cache found');
     return null;
 }
-
-// Resolve conflicts by querying the server for the authoritative version of a specific mapping
-async function resolveConflictWithServer(mappingId) {
-    try {
-        console.log('🔍 [CONFLICT] Resolving conflict for', mappingId, 'with server query');
-
-        // Query the specific mapping from server
-        const serverResponse = await apiFetch(`/mappings/${mappingId}`);
-        const serverMapping = serverResponse?.mapping || serverResponse;
-
-        if (!serverMapping) {
-            console.warn('🔍 [CONFLICT] Server returned no mapping for', mappingId);
-            return null; // No authoritative data available
-        }
-
-        console.log('🔍 [CONFLICT] Server returned authoritative data for', mappingId);
-        return serverMapping;
-
-    } catch (error) {
-        console.warn('🔍 [CONFLICT] Server query failed for', mappingId, error);
-        return null; // Fall back to no resolution
-    }
-}
-
 function cloneMappingForCache(mapping) {
     if (!mapping) return null;
 
@@ -314,60 +290,6 @@ function mergeMappingData(existing, incoming) {
         response: { ...existing.response, ...incoming.response },
         metadata: { ...existing.metadata, ...incoming.metadata }
     };
-}
-function seedCacheFromGlobals(cache) {
-    try {
-        if (!(cache instanceof Map)) {
-            return;
-        }
-
-        const sources = [
-            Array.isArray(window.originalMappings) ? window.originalMappings : null,
-            Array.isArray(window.allMappings) ? window.allMappings : null,
-        ];
-
-        let seededFrom;
-        for (const source of sources) {
-            if (!source || source.length === 0) {
-                continue;
-            }
-
-            let inserted = 0;
-            for (const mapping of source) {
-                if (!mapping || isImockCacheMapping(mapping)) {
-                    continue;
-                }
-
-                const existingId = mapping.id || mapping.uuid;
-                if (!existingId || cache.has(existingId)) {
-                    continue;
-                }
-
-                const cloned = cloneMappingForCache(mapping) || { ...mapping };
-                if (!cloned.id) {
-                    cloned.id = existingId;
-                }
-                if (!cloned.uuid && (mapping.uuid || existingId)) {
-                    cloned.uuid = mapping.uuid || existingId;
-                }
-
-                cache.set(existingId, cloned);
-                inserted++;
-            }
-
-            if (inserted > 0) {
-                seededFrom = source === window.originalMappings ? 'originalMappings' : 'allMappings';
-                console.log(`🧩 [CACHE] Seeded ${inserted} mappings into cache from ${seededFrom}`);
-                break;
-            }
-        }
-
-        if (!seededFrom && cache.size === 0) {
-            console.log('🧩 [CACHE] Nothing available to seed cache from globals');
-        }
-    } catch (error) {
-        console.warn('seedCacheFromGlobals failed:', error);
-    }
 }
 
 function syncCacheWithMappings(mappings) {
@@ -423,31 +345,6 @@ function syncCacheWithMappings(mappings) {
     }
 }
 
-function buildCacheSnapshot() {
-    const store = window.MappingsStore;
-    if (!store || !(store.items instanceof Map)) {
-        return [];
-    }
-
-    try {
-        const snapshot = [];
-        for (const mapping of store.items.values()) {
-            if (!mapping || isImockCacheMapping(mapping)) {
-                continue;
-            }
-
-            // Cache entries are stored as clones, but clone again defensively before
-            // exposing them to global arrays to prevent accidental mutation leaks.
-            const cloned = cloneMappingForCache(mapping) || { ...mapping };
-            snapshot.push(cloned);
-        }
-        return snapshot;
-    } catch (error) {
-        console.warn('buildCacheSnapshot failed:', error);
-        return [];
-    }
-}
-
 function extractCacheJsonBody(payload) {
     try {
         if (!payload || typeof payload !== 'object') {
@@ -475,110 +372,3 @@ function extractCacheJsonBody(payload) {
     }
     return null;
 }
-
-function cloneSlimMappingsList(source) {
-    if (!Array.isArray(source)) {
-        return [];
-    }
-    return source.map(item => ({ ...item }));
-}
-
-function buildUpdatedCachePayload(existingPayload, mapping, operation) {
-    try {
-        const normalizedOp = (operation || 'update').toLowerCase();
-        const mappingId = mapping?.id || mapping?.uuid;
-        const incoming = normalizedOp === 'delete' ? null : mapping;
-
-        if (!mappingId) {
-            return existingPayload ? { mappings: cloneSlimMappingsList(existingPayload.mappings) } : { mappings: [] };
-        }
-
-        const base = existingPayload && Array.isArray(existingPayload.mappings)
-            ? cloneSlimMappingsList(existingPayload.mappings)
-            : [];
-
-        const index = base.findIndex(item => (item?.id || item?.uuid) === mappingId);
-
-        if (normalizedOp === 'delete') {
-            if (index !== -1) {
-                base.splice(index, 1);
-            }
-            return { mappings: base };
-        }
-
-        if (!incoming) {
-            return { mappings: base };
-        }
-
-        const slim = slimMapping(incoming);
-
-        if (index !== -1) {
-            base[index] = { ...base[index], ...slim };
-        } else {
-            base.push(slim);
-        }
-
-        return { mappings: base };
-    } catch (error) {
-        console.warn('buildUpdatedCachePayload failed:', error);
-        return null;
-    }
-}
-
-async function fetchExistingCacheMapping() {
-    try {
-        let cacheMapping = await getCacheByFixedId();
-        if (cacheMapping) {
-            return cacheMapping;
-        }
-        cacheMapping = await getCacheByMetadata();
-        if (cacheMapping) {
-            return cacheMapping;
-        }
-    } catch (error) {
-        console.warn('fetchExistingCacheMapping failed:', error);
-    }
-    return null;
-}
-
-async function syncCacheMappingWithServer(mapping, operation) {
-    try {
-        if (!isCacheEnabled()) {
-            console.log('🧩 [CACHE] Remote cache sync skipped - cache disabled');
-            return;
-        }
-
-        const existingMapping = await fetchExistingCacheMapping();
-        if (!existingMapping || !existingMapping.response) {
-            console.log('🧩 [CACHE] Remote cache sync skipped - cache mapping missing');
-            return;
-        }
-
-        const currentPayload = extractCacheJsonBody(existingMapping) || { mappings: [] };
-        const updatedPayload = buildUpdatedCachePayload(currentPayload, mapping, operation);
-        if (!updatedPayload) {
-            console.log('🧩 [CACHE] Remote cache sync skipped - unable to build payload');
-            return;
-        }
-
-        const response = await upsertImockCacheMapping(updatedPayload);
-        const finalPayload = extractCacheJsonBody(response) || updatedPayload;
-        window.imockCacheSnapshot = finalPayload;
-        window.cacheLastUpdate = Date.now();
-        console.log('🧩 [CACHE] Remote cache mapping updated via optimistic sync');
-    } catch (error) {
-        console.warn('🧩 [CACHE] syncCacheMappingWithServer failed:', error);
-    }
-}
-
-let cacheSyncQueue = Promise.resolve();
-function enqueueCacheSync(mapping, operation) {
-    try {
-        cacheSyncQueue = cacheSyncQueue
-            .catch(() => { })
-            .then(() => syncCacheMappingWithServer(mapping, operation));
-    } catch (error) {
-        console.warn('🧩 [CACHE] enqueueCacheSync failed:', error);
-    }
-}
-
