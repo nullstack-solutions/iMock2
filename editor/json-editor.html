@@ -402,6 +402,7 @@
     <script src="../js/features/templates.js"></script>
     <script src="../js/features/filters.js"></script>
     <script src="../js/features/cache.js"></script>
+    <script src="../js/features/operations.js"></script>
     <script src="../js/features/mappings.js"></script>
     <script src="../js/features/requests.js"></script>
     <script src="../js/features/scenarios.js"></script>
@@ -1280,39 +1281,64 @@
             const serialized = JSON.stringify(mapping, null, 2);
 
             try {
-                if (!window.apiFetch || !window.wiremockBaseUrl) {
+                // Check if MappingsOperations is available
+                if (!window.MappingsOperations) {
+                    throw new Error('MappingsOperations not available');
+                }
+
+                if (!window.wiremockBaseUrl) {
                     throw new Error('WireMock is not connected');
                 }
 
-                const endpoint = mode === 'update' ? `/mappings/${encodeURIComponent(targetId)}` : '/mappings';
-                const method = mode === 'update' ? 'PUT' : 'POST';
-                const response = await window.apiFetch(endpoint, {
-                    method,
-                    headers: { 'Content-Type': 'application/json' },
-                    body: serialized
-                });
+                let result;
 
-                const payload = response?.mapping || response;
-                const successMessage = mode === 'update'
-                    ? `Mapping ${targetId || payload?.id} updated successfully`
-                    : `Mapping ${payload?.id || mapping.name || 'new mapping'} created successfully`;
+                // Use MappingsOperations for optimistic CRUD
+                if (mode === 'update') {
+                    console.log(`✏️ [EDITOR] Updating mapping via MappingsOperations: ${targetId}`);
+                    result = await window.MappingsOperations.update(targetId, mapping);
+                } else {
+                    console.log(`➕ [EDITOR] Creating mapping via MappingsOperations`);
+                    result = await window.MappingsOperations.create(mapping);
+                }
 
-                showNotification(successMessage, 'success');
-                propagateMappingUpdate(payload || mapping);
-
-                const rememberedId = resolveMappingIdentifier(payload) || resolveMappingIdentifier(mapping);
+                // Remember the ID for future operations
+                const rememberedId = resolveMappingIdentifier(result) || resolveMappingIdentifier(mapping);
                 if (rememberedId) {
                     editorMappingContext.remember(rememberedId);
                 }
 
-                return payload;
+                // Notify parent window (if in iframe/popup)
+                if (window.opener || window.parent !== window) {
+                    const message = {
+                        type: 'imock-mapping-changed',
+                        operation: mode,
+                        mapping: result,
+                        source: 'json-editor',
+                        timestamp: Date.now()
+                    };
+
+                    if (window.opener) {
+                        window.opener.postMessage(message, '*');
+                    } else if (window.parent !== window) {
+                        window.parent.postMessage(message, '*');
+                    }
+                }
+
+                console.log(`✅ [EDITOR] ${mode} operation completed successfully`);
+                return result;
+
             } catch (error) {
-                console.error('WireMock operation failed:', error);
+                console.error(`❌ [EDITOR] ${mode} operation failed:`, error);
+
+                // Fallback: download the mapping as a file
                 const filename = buildDownloadFilename(mapping, mode === 'update' ? 'wiremock-update' : 'wiremock-create');
                 downloadFile(serialized, filename, 'application/json');
                 saveToHistory(serialized, mode === 'update' ? 'Saved as download (update fallback)' : 'Saved as download (create fallback)');
-                showNotification('WireMock unavailable, mapping downloaded instead', 'warning');
-                return null;
+
+                // Note: Don't show notification here - MappingsOperations already shows error notifications
+                console.warn('WireMock operation failed, mapping downloaded as fallback');
+
+                throw error; // Re-throw to let caller handle
             } finally {
                 if (editor) {
                     editor.updateOptions({ readOnly: false });
