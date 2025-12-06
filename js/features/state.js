@@ -130,6 +130,122 @@
         return requestPromise;
     }
 
+    function updateOptimisticCache(mapping, operation, options = {}) {
+        try {
+            if (!mapping) {
+                console.warn('updateOptimisticCache: no mapping provided');
+                return;
+            }
+
+            const mappingId = mapping.id || mapping.uuid;
+
+            // For delete operations, we only need the ID
+            if (operation === 'delete') {
+                if (!mappingId) {
+                    console.warn('updateOptimisticCache: delete operation requires mapping ID');
+                    return;
+                }
+
+                // Remove from MappingsStore
+                if (window.MappingsStore?.items instanceof Map) {
+                    window.MappingsStore.items.delete(mappingId);
+
+                    // Add to pending deletions
+                    if (typeof window.MappingsStore?.addPending === 'function') {
+                        window.MappingsStore.addPending({
+                            id: mappingId,
+                            type: 'delete',
+                            payload: null,
+                            optimisticMapping: null
+                        });
+                    }
+
+                    // Rebuild indexes
+                    if (typeof window.MappingsStore.rebuildIndexes === 'function') {
+                        window.MappingsStore.rebuildIndexes();
+                    }
+                }
+
+                // Update legacy arrays for backward compatibility
+                if (Array.isArray(window.allMappings)) {
+                    window.allMappings = window.allMappings.filter(m =>
+                        (m.id || m.uuid) !== mappingId
+                    );
+                }
+
+                // Refresh UI
+                window.cacheLastUpdate = Date.now();
+                if (typeof window.refreshMappingsFromCache === 'function') {
+                    window.refreshMappingsFromCache();
+                }
+
+                console.log('🎯 [updateOptimisticCache] Deleted mapping:', mappingId);
+                return;
+            }
+
+            // For create/update operations
+            if (!mappingId) {
+                console.warn('updateOptimisticCache: mapping must have an id or uuid');
+                return;
+            }
+
+            // Update MappingsStore
+            if (window.MappingsStore?.items instanceof Map) {
+                const existingMapping = window.MappingsStore.items.get(mappingId);
+
+                // Merge with existing data if updating
+                const finalMapping = existingMapping && operation === 'update'
+                    ? { ...existingMapping, ...mapping }
+                    : mapping;
+
+                window.MappingsStore.items.set(mappingId, finalMapping);
+
+                // Add to pending operations if queueMode is 'add'
+                if (options.queueMode === 'add' && typeof window.MappingsStore?.addPending === 'function') {
+                    window.MappingsStore.addPending({
+                        id: mappingId,
+                        type: operation,
+                        payload: mapping,
+                        optimisticMapping: finalMapping
+                    });
+                }
+                // Confirm operation if queueMode is 'confirm'
+                else if (options.queueMode === 'confirm' && typeof window.MappingsStore?.confirmPending === 'function') {
+                    window.MappingsStore.confirmPending(mappingId);
+                }
+
+                // Rebuild indexes
+                if (typeof window.MappingsStore.rebuildIndexes === 'function') {
+                    window.MappingsStore.rebuildIndexes();
+                }
+            }
+
+            // Update legacy arrays for backward compatibility
+            if (Array.isArray(window.allMappings)) {
+                const existingIndex = window.allMappings.findIndex(m =>
+                    (m.id || m.uuid) === mappingId
+                );
+
+                if (existingIndex >= 0) {
+                    window.allMappings[existingIndex] = mapping;
+                } else {
+                    window.allMappings.push(mapping);
+                }
+            }
+
+            // Refresh UI
+            window.cacheLastUpdate = Date.now();
+            if (typeof window.refreshMappingsFromCache === 'function') {
+                window.refreshMappingsFromCache();
+            }
+
+            console.log(`🎯 [updateOptimisticCache] ${operation} mapping:`, mappingId);
+
+        } catch (error) {
+            console.error('updateOptimisticCache failed:', error);
+        }
+    }
+
     state.markDemoModeActive = markDemoModeActive;
     state.addMappingToIndex = addMappingToIndex;
     state.rebuildMappingIndex = rebuildMappingIndex;
@@ -139,6 +255,7 @@
     state.refreshRequestTabSnapshot = refreshRequestTabSnapshot;
     state.removeMappingFromIndex = removeMappingFromIndex;
     state.fetchMappingsFromServer = fetchMappingsFromServer;
+    state.updateOptimisticCache = updateOptimisticCache;
 
     window.markDemoModeActive = markDemoModeActive;
     window.addMappingToIndex = addMappingToIndex;
@@ -149,6 +266,7 @@
     window.refreshRequestTabSnapshot = refreshRequestTabSnapshot;
     window.removeMappingFromIndex = removeMappingFromIndex;
     window.fetchMappingsFromServer = fetchMappingsFromServer;
+    window.updateOptimisticCache = updateOptimisticCache;
 
     window.FeaturesState = state;
 

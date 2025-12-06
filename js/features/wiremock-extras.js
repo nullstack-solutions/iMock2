@@ -249,6 +249,27 @@ async function regenerateImockCache(existingData = null) {
     return finalPayload;
 }
 
+async function refreshImockCache() {
+    console.log('🔄 [CACHE] Refresh cache requested');
+    try {
+        // Regenerate the cache from current server state
+        const result = await regenerateImockCache();
+
+        // Refresh the UI to show latest data
+        if (typeof window.refreshMappingsFromCache === 'function') {
+            window.refreshMappingsFromCache();
+        }
+
+        console.log('🔄 [CACHE] Refresh cache completed');
+        return result;
+    } catch (error) {
+        console.error('🔄 [CACHE] Refresh cache failed:', error);
+        throw error;
+    }
+}
+
+window.refreshImockCache = refreshImockCache;
+
 async function loadImockCacheBestOf3() {
     // Preferred order: fixed ID, then find-by-metadata (JSONPath), else none
     console.log('🧩 [CACHE] loadImockCacheBestOf3 start');
