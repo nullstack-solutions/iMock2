@@ -355,9 +355,41 @@ window.MappingsOperations = {
 
   _refreshUI() {
     // Refresh UI with current store state
-    if (typeof window.fetchAndRenderMappings === 'function') {
-      const mappings = window.MappingsStore.getAll();
-      window.fetchAndRenderMappings(mappings, { source: 'optimistic' });
+    if (!window.MappingsStore) {
+      console.warn('⚠️ [OPS] MappingsStore not available for UI refresh');
+      return;
+    }
+
+    // Get current mappings from store (includes optimistic updates)
+    const mappings = window.MappingsStore.getAll();
+
+    // Update global arrays for backward compatibility
+    window.originalMappings = mappings;
+    window.allMappings = mappings;
+
+    // Rebuild indexes
+    if (typeof window.rebuildMappingIndex === 'function') {
+      window.rebuildMappingIndex(mappings);
+    }
+
+    // Update tab counters
+    if (typeof window.refreshMappingTabSnapshot === 'function') {
+      window.refreshMappingTabSnapshot();
+    }
+
+    // Apply filters (this will update window.allMappings with filtered results and re-render)
+    if (window.FilterManager && typeof window.FilterManager.applyMappingFilters === 'function') {
+      window.FilterManager.applyMappingFilters();
+      // Flush to execute immediately (FilterManager uses debounce)
+      if (typeof window.FilterManager.flushMappingFilters === 'function') {
+        window.FilterManager.flushMappingFilters();
+      }
+    } else {
+      // Fallback: render without filters
+      console.warn('⚠️ [OPS] FilterManager not available, rendering without filters');
+      if (typeof window.fetchAndRenderMappings === 'function') {
+        window.fetchAndRenderMappings(mappings, { source: 'optimistic' });
+      }
     }
   },
 };
