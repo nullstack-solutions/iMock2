@@ -360,24 +360,15 @@ window.MappingsOperations = {
       return;
     }
 
-    // Get current mappings from store (includes optimistic updates)
-    const mappings = window.MappingsStore.getAll();
+    // Note: window.originalMappings and window.allMappings are now getters from MappingsStore
+    // No need to manually update them - they automatically reflect store state
 
-    // Update global arrays for backward compatibility
-    window.originalMappings = mappings;
-    window.allMappings = mappings;
-
-    // Rebuild indexes
-    if (typeof window.rebuildMappingIndex === 'function') {
-      window.rebuildMappingIndex(mappings);
-    }
-
-    // Update tab counters
+    // Update backward compatibility helpers
     if (typeof window.refreshMappingTabSnapshot === 'function') {
       window.refreshMappingTabSnapshot();
     }
 
-    // Apply filters (this will update window.allMappings with filtered results and re-render)
+    // Apply filters and render (this will read from MappingsStore via getters and render)
     if (window.FilterManager && typeof window.FilterManager.applyMappingFilters === 'function') {
       window.FilterManager.applyMappingFilters();
       // Flush to execute immediately (FilterManager uses debounce)
@@ -387,6 +378,7 @@ window.MappingsOperations = {
     } else {
       // Fallback: render without filters
       console.warn('⚠️ [OPS] FilterManager not available, rendering without filters');
+      const mappings = window.MappingsStore.getAll();
       if (typeof window.fetchAndRenderMappings === 'function') {
         window.fetchAndRenderMappings(mappings, { source: 'optimistic' });
       }

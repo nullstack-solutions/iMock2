@@ -521,8 +521,10 @@ function executeMappingFilters() {
     // Update URL with filter query for sharing
     updateURLFilterParams(query, 'mappings');
 
-    if (!Array.isArray(window.originalMappings) || window.originalMappings.length === 0) {
-        window.allMappings = [];
+    // Get all mappings from store (window.originalMappings is a getter to MappingsStore)
+    const allMappingsFromStore = window.originalMappings;
+
+    if (!Array.isArray(allMappingsFromStore) || allMappingsFromStore.length === 0) {
         const emptyState = document.getElementById(SELECTORS.EMPTY.MAPPINGS);
         const container = document.getElementById(SELECTORS.LISTS.MAPPINGS);
         if (emptyState) emptyState.classList.remove('hidden');
@@ -537,16 +539,17 @@ function executeMappingFilters() {
     let filteredMappings;
     if (query) {
         if (window.QueryParser && typeof window.QueryParser.filterMappingsByQuery === 'function') {
-            filteredMappings = window.QueryParser.filterMappingsByQuery(window.originalMappings, query);
+            filteredMappings = window.QueryParser.filterMappingsByQuery(allMappingsFromStore, query);
         } else {
             console.warn('[Mapping Filter] QueryParser or filterMappingsByQuery is not available. Showing all mappings.');
-            filteredMappings = window.originalMappings;
+            filteredMappings = allMappingsFromStore;
         }
     } else {
-        filteredMappings = window.originalMappings;
+        filteredMappings = allMappingsFromStore;
     }
 
-    window.allMappings = filteredMappings;
+    // Store filtered result in a separate variable (don't assign to window.allMappings - it's a getter!)
+    window._filteredMappings = filteredMappings;
 
     const container = document.getElementById(SELECTORS.LISTS.MAPPINGS);
     const emptyState = document.getElementById(SELECTORS.EMPTY.MAPPINGS);
@@ -556,7 +559,7 @@ function executeMappingFilters() {
         return;
     }
 
-    const sortedMappings = [...window.allMappings].sort((a, b) => {
+    const sortedMappings = [...filteredMappings].sort((a, b) => {
         const priorityA = a?.priority ?? 1;
         const priorityB = b?.priority ?? 1;
         if (priorityA !== priorityB) return priorityA - priorityB;
