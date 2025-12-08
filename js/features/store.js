@@ -50,13 +50,13 @@ window.MappingsStore = {
    * Initialize the store
    */
   init() {
-    console.log('🏪 [STORE] Initializing MappingsStore');
+    Logger.info('STORE', 'Initializing MappingsStore');
     this.clear();
 
     // Backward compatibility - expose as global arrays for existing code
     this._setupBackwardCompatibility();
 
-    console.log('✅ [STORE] MappingsStore initialized');
+    Logger.info('STORE', 'MappingsStore initialized');
   },
 
   /**
@@ -110,7 +110,7 @@ window.MappingsStore = {
    * Set mappings from server (full sync)
    */
   setFromServer(mappings, metadata = {}) {
-    console.log(`🔄 [STORE] Setting ${mappings.length} mappings from server`);
+    Logger.info('STORE', `Setting ${mappings.length} mappings from server`);
 
     this.items.clear();
 
@@ -134,14 +134,14 @@ window.MappingsStore = {
     // Update stats
     this._updateStats();
 
-    console.log(`✅ [STORE] Loaded ${this.items.size} mappings`);
+    Logger.info('STORE', `Loaded ${this.items.size} mappings`);
   },
 
   /**
    * Apply incremental changes from server
    */
   applyChanges({ added = [], updated = [], deleted = [] }) {
-    console.log(`🔄 [STORE] Applying changes: +${added.length} ~${updated.length} -${deleted.length}`);
+    Logger.info('STORE', `Applying changes: +${added.length} ~${updated.length} -${deleted.length}`);
 
     const conflicts = [];
 
@@ -217,7 +217,7 @@ window.MappingsStore = {
       retries: 0,
     });
 
-    console.log(`⏳ [STORE] Added pending ${type}: ${id}`);
+    Logger.debug('STORE', `Added pending ${type}: ${id}`);
 
     // Update backward compatibility immediately
     this._updateBackwardCompatibility();
@@ -232,7 +232,7 @@ window.MappingsStore = {
     const pending = this.pending.get(id);
     if (!pending) return;
 
-    console.log(`✅ [STORE] Confirmed pending ${pending.type}: ${id}`);
+    Logger.info('STORE', `Confirmed pending ${pending.type}: ${id}`);
 
     if (pending.type === 'create' && serverMapping) {
       // Replace temp ID with real ID
@@ -262,7 +262,7 @@ window.MappingsStore = {
     const pending = this.pending.get(id);
     if (!pending) return;
 
-    console.log(`↩️ [STORE] Rolling back pending ${pending.type}: ${id}`);
+    Logger.warn('STORE', `Rolling back pending ${pending.type}: ${id}`);
 
     if (pending.type === 'create') {
       // Remove optimistic create
@@ -297,7 +297,7 @@ window.MappingsStore = {
       this._addToIndexes(id, mapping);
     });
 
-    console.log(`📇 [STORE] Rebuilt indexes for ${this.items.size} mappings`);
+    Logger.debug('STORE', `Rebuilt indexes for ${this.items.size} mappings`);
   },
 
   /**
@@ -372,7 +372,7 @@ window.MappingsStore = {
 
     this._updateStats();
 
-    console.log('🧹 [STORE] Cleared all data');
+    Logger.info('STORE', 'Cleared all data');
   },
 
   // === PRIVATE METHODS ===
@@ -458,7 +458,7 @@ window.MappingsStore = {
     Object.defineProperty(window, 'allMappings', {
       get: () => this.getAll(),
       set: (value) => {
-        console.warn('[STORE] Direct assignment to window.allMappings is deprecated. Use MappingsStore.setFromServer()');
+        Logger.warn('STORE', 'Direct assignment to window.allMappings is deprecated. Use MappingsStore.setFromServer()');
       },
       configurable: true,
     });
@@ -466,12 +466,12 @@ window.MappingsStore = {
     Object.defineProperty(window, 'originalMappings', {
       get: () => Array.from(this.items.values()),
       set: (value) => {
-        console.warn('[STORE] Direct assignment to window.originalMappings is deprecated');
+        Logger.warn('STORE', 'Direct assignment to window.originalMappings is deprecated');
       },
       configurable: true,
     });
 
-    console.log('🔗 [STORE] Backward compatibility layer active');
+    Logger.debug('STORE', 'Backward compatibility layer active');
   },
 
   _updateBackwardCompatibility() {

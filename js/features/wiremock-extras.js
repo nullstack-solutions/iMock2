@@ -12,12 +12,12 @@ window.findMappingsByMetadata = async (metadata) => {
         });
         return response.mappings || [];
     } catch (error) {
-        console.error('Find mappings by metadata error:', error);
+        Logger.error('METADATA', 'Find mappings by metadata error:', error);
         return [];
     }
 };
 
-console.log('✅ Features.js loaded - Business functions for mappings, requests, scenarios + WireMock 3.9.1+ API fixes');
+Logger.info('UI', 'Features.js loaded - Business functions for mappings, requests, scenarios + WireMock 3.9.1+ API fixes');
 
 // Update connection status text with last successful request time
 window.updateLastSuccessUI = () => {
@@ -27,7 +27,7 @@ window.updateLastSuccessUI = () => {
         const ts = window.lastWiremockSuccess || Date.now();
         const time = new Date(ts).toLocaleTimeString();
         el.textContent = `Last OK: ${time}`;
-        console.log('[HEALTH] last success UI updated:', { ts, time });
+        Logger.info('HEALTH', 'last success UI updated:', { ts, time });
     } catch {
         // noop
     }
@@ -66,7 +66,7 @@ window.applyHealthUI = (isHealthy, responseTime) => {
             if (typeof window.updateLastSuccessUI === 'function') window.updateLastSuccessUI();
         }
     } catch (e) {
-        console.warn('applyHealthUI failed:', e);
+        Logger.warn('HEALTH', 'applyHealthUI failed:', e);
     }
 };
 
@@ -85,7 +85,7 @@ window.toggleMetaTimestamps = () => {
         if (Array.isArray(window.allMappings)) {
             fetchAndRenderMappings(window.allMappings);
         }
-    } catch (e) { console.warn('toggleMetaTimestamps failed:', e); }
+    } catch (e) { Logger.warn('METADATA', 'toggleMetaTimestamps failed:', e); }
 };
 
 // --- iMock cache mapping helpers (best-of-3 discovery) ---
@@ -136,10 +136,10 @@ function buildSlimList(arr) {
 
 async function getCacheByFixedId() {
     try {
-        console.log('🧩 [CACHE] Trying fixed ID lookup...');
+        Logger.cache('Trying fixed ID lookup...');
         const m = await apiFetch(`/mappings/${IMOCK_CACHE_ID}`);
         if (m && isImockCacheMapping(m)) return m;
-        console.log('🧩 [CACHE] Fixed ID miss');
+        Logger.cache('Fixed ID miss');
     } catch {}
     return null;
 }
@@ -151,7 +151,7 @@ async function getCacheByMetadata() {
             { matchesJsonPath: "$[?(@.metadata.imock.type == 'cache')]" },
             { matchesJsonPath: { expression: "$[?(@.metadata.imock.type == 'cache')]" } },
         ];
-        console.log('🧩 [CACHE] Trying metadata lookup (JSONPath)...');
+        Logger.cache('Trying metadata lookup (JSONPath)...');
         for (const body of tryBodies) {
             try {
                 const res = await apiFetch(ENDPOINTS.MAPPINGS_FIND_BY_METADATA, {
@@ -161,18 +161,18 @@ async function getCacheByMetadata() {
                 });
                 const list = res?.mappings || res?.items || [];
                 const found = list.find(isImockCacheMapping);
-                if (found) { console.log('🧩 [CACHE] Metadata hit'); return found; }
+                if (found) { Logger.cache('Metadata hit'); return found; }
             } catch {
                 // try next body shape
             }
         }
-        console.log('🧩 [CACHE] Metadata miss');
+        Logger.cache('Metadata miss');
     } catch {}
     return null;
 }
 
 async function upsertImockCacheMapping(slim) {
-    console.log('🧩 [CACHE] Upsert cache mapping start');
+    Logger.cache('Upsert cache mapping start');
     // Simple hash for cache validation
     const slimStr = JSON.stringify(slim || {});
     let h = 0;
@@ -203,24 +203,24 @@ async function upsertImockCacheMapping(slim) {
     };
     try {
         // Try update first; if 404, create
-        console.log('🧩 [CACHE] PUT /mappings/{id}');
+        Logger.cache('PUT /mappings/{id}');
         const response = await apiFetch(`/mappings/${IMOCK_CACHE_ID}`, {
             method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(stub),
         });
-        console.log('🧩 [CACHE] Upsert done (PUT)');
+        Logger.cache('Upsert done (PUT)');
         return response;
     } catch {
-        console.log('🧩 [CACHE] PUT failed, POST /mappings');
+        Logger.cache('PUT failed, POST /mappings');
         const response = await apiFetch('/mappings', {
             method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(stub),
         });
-        console.log('🧩 [CACHE] Upsert done (POST)');
+        Logger.cache('Upsert done (POST)');
         return response;
     }
 }
 
 async function regenerateImockCache(existingData = null) {
-    console.log('🧩 [CACHE] Regenerate cache start');
+    Logger.cache('Regenerate cache start');
     const t0 = performance.now();
 
     // Get fresh data from server - server is now the source of truth
@@ -231,7 +231,7 @@ async function regenerateImockCache(existingData = null) {
 
     const mappings = all?.mappings || [];
 
-    console.log('🧩 [CACHE] Using fresh server data for cache regeneration');
+    Logger.cache('Using fresh server data for cache regeneration');
 
     const slim = buildSlimList(mappings);
     let finalPayload = slim;
@@ -242,15 +242,15 @@ async function regenerateImockCache(existingData = null) {
             finalPayload = serverPayload;
         }
     } catch (e) {
-        console.warn('🧩 [CACHE] Upsert cache failed:', e);
+        Logger.warn('CACHE', 'Upsert cache failed:', e);
     }
     const dt = Math.round(performance.now() - t0);
-    console.log(`🧩 [CACHE] Regenerate cache done (${(finalPayload?.mappings||[]).length} items) in ${dt}ms`);
+    Logger.cache(`Regenerate cache done (${(finalPayload?.mappings||[]).length} items) in ${dt}ms`);
     return finalPayload;
 }
 
 async function refreshImockCache() {
-    console.log('🔄 [CACHE] Refresh cache requested');
+    Logger.cache('Refresh cache requested');
     try {
         // Regenerate the cache from current server state
         const result = await regenerateImockCache();
@@ -260,10 +260,10 @@ async function refreshImockCache() {
             window.refreshMappingsFromCache();
         }
 
-        console.log('🔄 [CACHE] Refresh cache completed');
+        Logger.cache('Refresh cache completed');
         return result;
     } catch (error) {
-        console.error('🔄 [CACHE] Refresh cache failed:', error);
+        Logger.error('CACHE', 'Refresh cache failed:', error);
         throw error;
     }
 }
@@ -272,12 +272,12 @@ window.refreshImockCache = refreshImockCache;
 
 async function loadImockCacheBestOf3() {
     // Preferred order: fixed ID, then find-by-metadata (JSONPath), else none
-    console.log('🧩 [CACHE] loadImockCacheBestOf3 start');
+    Logger.cache('loadImockCacheBestOf3 start');
     const b = await getCacheByFixedId();
-    if (b && b.response?.jsonBody) { console.log('🧩 [CACHE] Using cache: fixed id'); return { source: 'cache', data: b.response.jsonBody }; }
+    if (b && b.response?.jsonBody) { Logger.cache('Using cache: fixed id'); return { source: 'cache', data: b.response.jsonBody }; }
     const c = await getCacheByMetadata();
-    if (c && c.response?.jsonBody) { console.log('🧩 [CACHE] Using cache: metadata'); return { source: 'cache', data: c.response.jsonBody }; }
-    console.log('🧩 [CACHE] No cache found');
+    if (c && c.response?.jsonBody) { Logger.cache('Using cache: metadata'); return { source: 'cache', data: c.response.jsonBody }; }
+    Logger.cache('No cache found');
     return null;
 }
 function cloneMappingForCache(mapping) {
@@ -288,13 +288,13 @@ function cloneMappingForCache(mapping) {
             return structuredClone(mapping);
         }
     } catch (error) {
-        console.warn('structuredClone failed for mapping cache clone:', error);
+        Logger.warn('CACHE', 'structuredClone failed for mapping cache clone:', error);
     }
 
     try {
         return JSON.parse(JSON.stringify(mapping));
     } catch (error) {
-        console.warn('JSON clone failed for mapping cache clone:', error);
+        Logger.warn('CACHE', 'JSON clone failed for mapping cache clone:', error);
     }
 
     return { ...mapping };
@@ -362,7 +362,7 @@ function syncCacheWithMappings(mappings) {
 
         window.cacheLastUpdate = Date.now();
     } catch (error) {
-        console.warn('syncCacheWithMappings failed:', error);
+        Logger.warn('CACHE', 'syncCacheWithMappings failed:', error);
     }
 }
 
@@ -389,7 +389,7 @@ function extractCacheJsonBody(payload) {
             return { mappings: mappings.map(item => ({ ...item })) };
         }
     } catch (error) {
-        console.warn('extractCacheJsonBody failed:', error);
+        Logger.warn('CACHE', 'extractCacheJsonBody failed:', error);
     }
     return null;
 }

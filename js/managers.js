@@ -480,33 +480,33 @@ window.TabManager = {
 
     async refresh(tabName) {
         const config = this.configs[tabName];
-        if (!config) { console.warn(`Tab config not found: ${tabName}`); return; }
+        if (!config) { Logger.warn('MANAGERS', `Tab config not found: ${tabName}`); return; }
         try {
             const loadFn = window[config.loadFunction];
             if (typeof loadFn === 'function') {
                 await loadFn();
-                console.log(`✅ ${config.name} refreshed`);
+                Logger.info('MANAGERS', `${config.name} refreshed`);
             } else {
-                console.warn(`Load function not found: ${config.loadFunction}`);
+                Logger.warn('MANAGERS', `Load function not found: ${config.loadFunction}`);
             }
         } catch (error) {
-            console.error(`Error refreshing ${config.name}:`, error);
+            Logger.error('MANAGERS', `Error refreshing ${config.name}:`, error);
             NotificationManager.error(`Failed to refresh ${config.name}: ${error.message}`);
         }
     },
-    
+
     clearFilters(tabName) {
         const config = this.configs[tabName];
         if (!config || !config.clearFunction) return;
-        
+
         try {
             const clearFn = window[config.clearFunction];
             if (typeof clearFn === 'function') {
                 clearFn();
-                console.log(`🧹 ${config.name} filters cleared`);
+                Logger.info('MANAGERS', `${config.name} filters cleared`);
             }
         } catch (error) {
-            console.error(`Error clearing ${config.name} filters:`, error);
+            Logger.error('MANAGERS', `Error clearing ${config.name} filters:`, error);
         }
     }
 };
@@ -541,7 +541,7 @@ function executeMappingFilters() {
         if (window.QueryParser && typeof window.QueryParser.filterMappingsByQuery === 'function') {
             filteredMappings = window.QueryParser.filterMappingsByQuery(allMappingsFromStore, query);
         } else {
-            console.warn('[Mapping Filter] QueryParser or filterMappingsByQuery is not available. Showing all mappings.');
+            Logger.warn('MANAGERS', '[Mapping Filter] QueryParser or filterMappingsByQuery is not available. Showing all mappings.');
             filteredMappings = allMappingsFromStore;
         }
     } else {
@@ -708,7 +708,7 @@ function executeRequestFilters() {
         updateRequestsCounter();
     }
 
-    console.log(`🔍 Filtered requests: ${window.allRequests.length} items`);
+    Logger.debug('MANAGERS', `Filtered requests: ${window.allRequests.length} items`);
 }
 
 // --- FILTER MANAGER ---
@@ -784,7 +784,7 @@ window.FilterManager = {
             const key = `imock-filters-${tabName}`;
             localStorage.setItem(key, JSON.stringify(filters));
         } catch (e) {
-            console.warn('Failed to save filter state:', e);
+            Logger.warn('MANAGERS', 'Failed to save filter state:', e);
         }
     },
     
@@ -795,7 +795,7 @@ window.FilterManager = {
             const saved = localStorage.getItem(key);
             return saved ? JSON.parse(saved) : {};
         } catch (e) {
-            console.warn('Failed to load filter state:', e);
+            Logger.warn('MANAGERS', 'Failed to load filter state:', e);
             return {};
         }
     },
@@ -907,7 +907,7 @@ window.FilterPresetsManager = {
             const customPresets = localStorage.getItem('imock-filter-presets-custom');
             return customPresets ? JSON.parse(customPresets) : {};
         } catch (error) {
-            console.warn('Failed to load custom presets:', error);
+            Logger.warn('MANAGERS', 'Failed to load custom presets:', error);
             return {};
         }
     },
@@ -922,7 +922,7 @@ window.FilterPresetsManager = {
         const preset = presets[presetId];
 
         if (!preset) {
-            console.warn(`Preset not found: ${presetId}`);
+            Logger.warn('MANAGERS', `Preset not found: ${presetId}`);
             return;
         }
 
@@ -972,7 +972,7 @@ window.FilterPresetsManager = {
                 window.renderFilterPresets();
             }
         } catch (error) {
-            console.error('Failed to save preset:', error);
+            Logger.error('MANAGERS', 'Failed to save preset:', error);
             if (typeof NotificationManager !== 'undefined') {
                 NotificationManager.error('Failed to save preset');
             }
@@ -988,7 +988,7 @@ window.FilterPresetsManager = {
             const customPresets = localStorage.getItem('imock-filter-presets-custom');
             return customPresets ? JSON.parse(customPresets) : {};
         } catch (error) {
-            console.warn('Failed to load custom presets:', error);
+            Logger.warn('MANAGERS', 'Failed to load custom presets:', error);
             return {};
         }
     },
@@ -1012,7 +1012,7 @@ window.FilterPresetsManager = {
                 window.renderFilterPresets();
             }
         } catch (error) {
-            console.error('Failed to delete preset:', error);
+            Logger.error('MANAGERS', 'Failed to delete preset:', error);
             if (typeof NotificationManager !== 'undefined') {
                 NotificationManager.error('Failed to delete preset');
             }
@@ -1090,4 +1090,4 @@ window.updateURLFilterParams = updateURLFilterParams;
 window.getFilterFromURL = getFilterFromURL;
 window.getActiveTabFromURL = getActiveTabFromURL;
 
-console.log('✅ Managers.js loaded - NotificationManager, TabManager, FilterManager');
+Logger.info('MANAGERS', 'Managers.js loaded - NotificationManager, TabManager, FilterManager');

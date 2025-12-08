@@ -47,19 +47,19 @@ window.SyncEngine = {
    * Initialize sync engine
    */
   init() {
-    console.log('🔄 [SYNC] Initializing SyncEngine');
+    Logger.info('SYNC', 'Initializing SyncEngine');
 
     // Stop any existing timers
     this.stop();
 
-    console.log('✅ [SYNC] SyncEngine initialized');
+    Logger.info('SYNC', 'SyncEngine initialized');
   },
 
   /**
    * Start sync engine
    */
   start() {
-    console.log('▶️ [SYNC] Starting sync timers');
+    Logger.info('SYNC', 'Starting sync timers');
 
     // Incremental sync every 10 seconds
     this.timers.incremental = window.LifecycleManager.setInterval(
@@ -79,14 +79,14 @@ window.SyncEngine = {
       this.config.cacheRebuildInterval
     );
 
-    console.log('✅ [SYNC] Sync timers started');
+    Logger.info('SYNC', 'Sync timers started');
   },
 
   /**
    * Stop sync engine
    */
   stop() {
-    console.log('⏹️ [SYNC] Stopping sync timers');
+    Logger.info('SYNC', 'Stopping sync timers');
 
     Object.keys(this.timers).forEach(key => {
       if (this.timers[key]) {
@@ -100,7 +100,7 @@ window.SyncEngine = {
    * Initial load - try cache first, then full sync
    */
   async coldStart() {
-    console.log('🥶 [SYNC] Cold start - loading from cache or server');
+    Logger.info('SYNC', 'Cold start - loading from cache or server');
 
     // Show loading state
     if (typeof window.showLoadingState === 'function') {
@@ -112,7 +112,7 @@ window.SyncEngine = {
       const cached = await this.loadFromServiceCache();
 
       if (cached && cached.items && cached.items.length > 0) {
-        console.log(`📦 [SYNC] Loaded ${cached.items.length} mappings from cache`);
+        Logger.info('SYNC', `Loaded ${cached.items.length} mappings from cache`);
 
         // Load cached data into store
         window.MappingsStore.setFromServer(cached.items, {
@@ -129,21 +129,21 @@ window.SyncEngine = {
           window.updateDataSourceIndicator('cache');
         }
 
-        console.log('✅ [SYNC] Initial UI rendered from cache');
+        Logger.info('SYNC', 'Initial UI rendered from cache');
       }
 
       // Full sync in background to get latest data
-      console.log('🔄 [SYNC] Starting background full sync for latest data');
+      Logger.info('SYNC', 'Starting background full sync for latest data');
       await this.fullSync({ background: true });
 
     } catch (error) {
-      console.error('❌ [SYNC] Cold start failed:', error);
+      Logger.error('SYNC', 'Cold start failed:', error);
 
       // Fallback to direct full sync
       try {
         await this.fullSync({ background: false });
       } catch (fallbackError) {
-        console.error('❌ [SYNC] Fallback full sync also failed:', fallbackError);
+        Logger.error('SYNC', 'Fallback full sync also failed:', fallbackError);
         throw fallbackError;
       }
     }
@@ -154,11 +154,11 @@ window.SyncEngine = {
    */
   async fullSync({ background = false } = {}) {
     if (window.MappingsStore.metadata.isSyncing) {
-      console.log('⏳ [SYNC] Already syncing, skipping full sync');
+      Logger.debug('SYNC', 'Already syncing, skipping full sync');
       return;
     }
 
-    console.log(`🔄 [SYNC] Starting full sync (background: ${background})`);
+    Logger.info('SYNC', `Starting full sync (background: ${background})`);
 
     window.MappingsStore.metadata.isSyncing = true;
     const startTime = Date.now();
@@ -175,7 +175,7 @@ window.SyncEngine = {
       const mappings = response.mappings || [];
       const serverVersion = response.meta?.version || response.meta?.etag || null;
 
-      console.log(`📥 [SYNC] Received ${mappings.length} mappings from server`);
+      Logger.info('SYNC', `Received ${mappings.length} mappings from server`);
 
       // Filter out service cache mapping
       const filteredMappings = mappings.filter(m => {
@@ -201,10 +201,10 @@ window.SyncEngine = {
       const duration = Date.now() - startTime;
       window.MappingsStore.stats.lastSyncDuration = duration;
 
-      console.log(`✅ [SYNC] Full sync completed in ${duration}ms`);
+      Logger.info('SYNC', `Full sync completed in ${duration}ms`);
 
     } catch (error) {
-      console.error('❌ [SYNC] Full sync failed:', error);
+      Logger.error('SYNC', 'Full sync failed:', error);
       window.MappingsStore.metadata.syncError = error.message;
 
       if (!background) {
@@ -220,17 +220,17 @@ window.SyncEngine = {
    */
   async incrementalSync() {
     if (window.MappingsStore.metadata.isSyncing) {
-      console.log('⏳ [SYNC] Already syncing, skipping incremental sync');
+      Logger.debug('SYNC', 'Already syncing, skipping incremental sync');
       return;
     }
 
     // Skip if no last sync (means we haven't done full sync yet)
     if (!window.MappingsStore.metadata.lastFullSync) {
-      console.log('⏭️ [SYNC] No full sync yet, skipping incremental');
+      Logger.debug('SYNC', 'No full sync yet, skipping incremental');
       return;
     }
 
-    console.log('🔄 [SYNC] Starting incremental sync');
+    Logger.info('SYNC', 'Starting incremental sync');
 
     try {
       // Fetch current mappings from server
@@ -247,7 +247,7 @@ window.SyncEngine = {
       const changes = this._detectChanges(serverMappings);
 
       if (changes.hasChanges) {
-        console.log(`📥 [SYNC] Detected changes: +${changes.added.length} ~${changes.updated.length} -${changes.deleted.length}`);
+        Logger.info('SYNC', `Detected changes: +${changes.added.length} ~${changes.updated.length} -${changes.deleted.length}`);
 
         // Apply changes to store
         const conflicts = window.MappingsStore.applyChanges(changes);
@@ -270,13 +270,13 @@ window.SyncEngine = {
           }
         }
 
-        console.log('✅ [SYNC] Incremental sync completed with changes');
+        Logger.info('SYNC', 'Incremental sync completed with changes');
       } else {
-        console.log('✅ [SYNC] Incremental sync completed - no changes');
+        Logger.info('SYNC', 'Incremental sync completed - no changes');
       }
 
     } catch (error) {
-      console.warn('⚠️ [SYNC] Incremental sync failed:', error);
+      Logger.warn('SYNC', 'Incremental sync failed:', error);
       // Don't throw - incremental sync failures are not critical
     }
   },
@@ -286,13 +286,13 @@ window.SyncEngine = {
    */
   async loadFromServiceCache() {
     try {
-      console.log('📦 [SYNC] Attempting to load from Service Cache');
+      Logger.debug('SYNC', 'Attempting to load from Service Cache');
 
       // Try to fetch the cache mapping
       const response = await fetch(`${window.wiremockBaseUrl}/mappings/__imock_cache_v2__`);
 
       if (!response.ok) {
-        console.log('📦 [SYNC] Service Cache not found');
+        Logger.debug('SYNC', 'Service Cache not found');
         return null;
       }
 
@@ -303,23 +303,23 @@ window.SyncEngine = {
 
       // Validate cache
       if (!cached.items || !Array.isArray(cached.items)) {
-        console.warn('📦 [SYNC] Invalid cache format');
+        Logger.warn('SYNC', 'Invalid cache format');
         return null;
       }
 
       // Check cache age
       const age = Date.now() - (cached.timestamp || 0);
       if (age > this.config.cacheMaxAge) {
-        console.log(`📦 [SYNC] Cache is stale (${Math.round(age / 1000)}s old), skipping`);
+        Logger.info('SYNC', `Cache is stale (${Math.round(age / 1000)}s old), skipping`);
         return null;
       }
 
-      console.log(`✅ [SYNC] Service Cache loaded (${cached.items.length} items, ${Math.round(age / 1000)}s old)`);
+      Logger.info('SYNC', `Service Cache loaded (${cached.items.length} items, ${Math.round(age / 1000)}s old)`);
 
       return cached;
 
     } catch (error) {
-      console.warn('⚠️ [SYNC] Failed to load Service Cache:', error);
+      Logger.warn('SYNC', 'Failed to load Service Cache:', error);
       return null;
     }
   },
@@ -330,18 +330,18 @@ window.SyncEngine = {
   async rebuildServiceCache() {
     // Only rebuild if no pending operations
     if (window.MappingsStore.pending.size > 0) {
-      console.log('⏳ [SYNC] Skipping cache rebuild - pending operations exist');
+      Logger.debug('SYNC', 'Skipping cache rebuild - pending operations exist');
       return;
     }
 
     // Only rebuild if data changed
     const currentHash = this._hashMappings(window.MappingsStore.items);
     if (currentHash === this.lastCacheHash) {
-      console.log('⏭️ [SYNC] Skipping cache rebuild - no changes');
+      Logger.debug('SYNC', 'Skipping cache rebuild - no changes');
       return;
     }
 
-    console.log('💾 [SYNC] Rebuilding Service Cache');
+    Logger.info('SYNC', 'Rebuilding Service Cache');
 
     try {
       const snapshot = {
@@ -371,10 +371,10 @@ window.SyncEngine = {
 
       this.lastCacheHash = currentHash;
 
-      console.log(`✅ [SYNC] Service Cache saved (${snapshot.count} mappings)`);
+      Logger.info('SYNC', `Service Cache saved (${snapshot.count} mappings)`);
 
     } catch (error) {
-      console.warn('⚠️ [SYNC] Failed to rebuild Service Cache:', error);
+      Logger.warn('SYNC', 'Failed to rebuild Service Cache:', error);
     }
   },
 
@@ -429,12 +429,12 @@ window.SyncEngine = {
   },
 
   _handleConflicts(conflicts) {
-    console.log(`⚠️ [SYNC] Handling ${conflicts.length} conflicts`);
+    Logger.warn('SYNC', `Handling ${conflicts.length} conflicts`);
 
     conflicts.forEach(conflict => {
       if (conflict.type === 'delete') {
         // Server deleted - always wins
-        console.log(`⚠️ [SYNC] Conflict: mapping ${conflict.id} was deleted on server`);
+        Logger.warn('SYNC', `Conflict: mapping ${conflict.id} was deleted on server`);
 
         if (window.NotificationManager && typeof window.NotificationManager.warning === 'function') {
           const name = conflict.local?.name || conflict.id;
@@ -451,7 +451,7 @@ window.SyncEngine = {
 
         if (serverTimestamp > localTimestamp) {
           // Server is newer - apply server version
-          console.log(`⚠️ [SYNC] Conflict: server version is newer for ${conflict.id}`);
+          Logger.warn('SYNC', `Conflict: server version is newer for ${conflict.id}`);
 
           if (window.NotificationManager && typeof window.NotificationManager.warning === 'function') {
             const name = conflict.server?.name || conflict.id;
@@ -463,7 +463,7 @@ window.SyncEngine = {
 
         } else {
           // Local is newer - keep local, retry later
-          console.log(`⚠️ [SYNC] Conflict: local version is newer for ${conflict.id}, keeping local`);
+          Logger.warn('SYNC', `Conflict: local version is newer for ${conflict.id}, keeping local`);
         }
       }
     });

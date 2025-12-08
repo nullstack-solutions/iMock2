@@ -195,4 +195,4 @@ if (document.readyState === 'loading') {
     }
 }
 
-console.log('✅ Filter Presets and Pills UI loaded');
+Logger.info('FILTERS', 'Filter Presets and Pills UI loaded');

@@ -29,7 +29,7 @@ function isCacheEnabled() {
         const settings = (typeof window.readWiremockSettings === 'function') ? window.readWiremockSettings() : {};
         return (settings.cacheEnabled !== false) && (checkbox ? checkbox.checked : true);
     } catch (error) {
-        console.warn('Failed to resolve cache enabled state:', error);
+        Logger.warn('CACHE', 'Failed to resolve cache enabled state:', error);
         return false;
     }
 }
@@ -49,18 +49,18 @@ window.connectToWireMock = async () => {
         port = portInput.value.trim() || '8080';
     } else {
         if (window.wiremockBaseUrl) {
-            console.log('🔗 Using existing wiremockBaseUrl for connection');
+            Logger.api('Using existing wiremockBaseUrl for connection');
             host = 'localhost';
             port = '8080';
         } else {
             const settings = (typeof window.readWiremockSettings === 'function') ? window.readWiremockSettings() : {};
             host = settings.host || 'localhost';
             port = settings.port || '8080';
-            console.log('🔗 Using settings for connection:', { host, port });
+            Logger.api('Using settings for connection:', { host, port });
         }
     }
 
-    console.log('🔗 Connecting with:', { host, port });
+    Logger.api('Connecting with:', { host, port });
 
     // Update base URL
     if (!window.wiremockBaseUrl || hostInput) {
@@ -73,15 +73,15 @@ window.connectToWireMock = async () => {
             const finalPort = (port && String(port).trim()) || (scheme === 'https' ? '443' : '8080');
             window.wiremockBaseUrl = `${scheme}://${cleanHost}:${finalPort}/__admin`;
         }
-        console.log('🔗 Updated wiremockBaseUrl:', window.wiremockBaseUrl);
+        Logger.api('Updated wiremockBaseUrl:', window.wiremockBaseUrl);
     } else {
-        console.log('🔗 Using pre-configured wiremockBaseUrl:', window.wiremockBaseUrl);
+        Logger.api('Using pre-configured wiremockBaseUrl:', window.wiremockBaseUrl);
     }
 
     try {
         await checkHealthAndStartUptime();
 
-        console.log('✅ Online mode - proceeding with data loading');
+        Logger.info('API', 'Online mode - proceeding with data loading');
 
         // Update UI
         const statusDot = document.getElementById(SELECTORS.CONNECTION.STATUS_DOT);
@@ -105,7 +105,7 @@ window.connectToWireMock = async () => {
         startHealthCheck();
 
         // === NEW OPTIMIZED ARCHITECTURE ===
-        console.log('🚀 [CONNECT] Using new optimized sync engine');
+        Logger.info('API', 'Using new optimized sync engine');
 
         // Load data using new SyncEngine (cache first, then full sync)
         await window.SyncEngine.coldStart();
@@ -118,8 +118,8 @@ window.connectToWireMock = async () => {
         NotificationManager.success('Connected to WireMock successfully!');
 
     } catch (error) {
-        console.error('Connection error - entering offline mode:', error);
-        console.log('⚠️ Offline mode - no server requests will be made');
+        Logger.error('API', 'Connection error - entering offline mode:', error);
+        Logger.warn('API', 'Offline mode - no server requests will be made');
 
         stopUptime();
 
@@ -155,7 +155,7 @@ window.startHealthCheck = () => {
         delay = Math.min(baseDelay * Math.pow(2, healthCheckFailureCount), maxDelay);
     }
 
-    console.log(`🔄 [HEALTH] Scheduling next check in ${delay}ms (${window.isOnline ? 'online' : `offline, attempt ${healthCheckFailureCount + 1}`})`);
+    Logger.info('HEALTH', `Scheduling next check in ${delay}ms (${window.isOnline ? 'online' : `offline, attempt ${healthCheckFailureCount + 1}`})`);
 
     healthCheckTimeout = setTimeout(async () => {
         try {
@@ -174,7 +174,7 @@ window.startHealthCheck = () => {
                 const is404 = primaryError?.message?.includes('404') || primaryError?.status === 404;
 
                 if (is404) {
-                    console.log('[HEALTH] /health not found (404), trying /mappings fallback for older WireMock');
+                    Logger.warn('HEALTH', '/health not found (404), trying /mappings fallback for older WireMock');
                     try {
                         const fallbackResponse = await window.apiFetch(window.ENDPOINTS.MAPPINGS);
                         responseTime = Math.round(performance.now() - startTime);
@@ -199,11 +199,11 @@ window.startHealthCheck = () => {
                 }
 
                 if (!wasOnline) {
-                    console.log(`✅ [HEALTH] Server is back online (${responseTime}ms)`);
+                    Logger.info('HEALTH', `Server is back online (${responseTime}ms)`);
                     NotificationManager.success('WireMock server is back online! Reconnecting...');
                     await window.connectToWireMock();
                 } else {
-                    console.log(`✅ [HEALTH] Server is healthy (${responseTime}ms)`);
+                    Logger.info('HEALTH', `Server is healthy (${responseTime}ms)`);
                 }
             } else {
                 healthCheckFailureCount++;
@@ -214,7 +214,7 @@ window.startHealthCheck = () => {
                 }
 
                 if (wasOnline) {
-                    console.log(`⚠️ [HEALTH] Server went offline`);
+                    Logger.warn('HEALTH', 'Server went offline');
                     stopUptime();
 
                     const statusDot = document.getElementById(SELECTORS.CONNECTION.STATUS_DOT);
@@ -224,14 +224,14 @@ window.startHealthCheck = () => {
 
                     NotificationManager.warning('WireMock server went offline. Retrying in background...');
                 } else {
-                    console.log(`⚠️ [HEALTH] Server still offline (attempt ${healthCheckFailureCount})`);
+                    Logger.warn('HEALTH', `Server still offline (attempt ${healthCheckFailureCount})`);
                 }
             }
 
             startHealthCheck();
 
         } catch (error) {
-            console.error('[HEALTH] Check error:', error);
+            Logger.error('HEALTH', 'Check error:', error);
             window.isOnline = false;
             healthCheckFailureCount++;
             startHealthCheck();
@@ -244,7 +244,7 @@ window.stopHealthCheck = () => {
         clearTimeout(healthCheckTimeout);
         healthCheckTimeout = null;
         healthCheckFailureCount = 0;
-        console.log('🛑 [HEALTH] Health check stopped');
+        Logger.info('HEALTH', 'Health check stopped');
     }
 };
 
@@ -261,23 +261,23 @@ window.checkHealthAndStartUptime = async () => {
                 (typeof response.status === 'string' && ['up','healthy','ok'].includes(response.status.toLowerCase())) ||
                 response.healthy === true
             );
-            console.log('[HEALTH] initial check:', { rawStatus: response?.status, healthyFlag: response?.healthy, isHealthy });
+            Logger.info('HEALTH', 'initial check:', { rawStatus: response?.status, healthyFlag: response?.healthy, isHealthy });
         } catch (primaryError) {
             const is404 = primaryError?.message?.includes('404') || primaryError?.status === 404;
 
             if (is404) {
-                console.log('[HEALTH] /health not found (404), trying /mappings fallback for older WireMock');
+                Logger.warn('HEALTH', '/health not found (404), trying /mappings fallback for older WireMock');
                 try {
                     const fallbackResponse = await window.apiFetch(window.ENDPOINTS.MAPPINGS);
                     responseTime = Math.round(performance.now() - startTime);
                     isHealthy = typeof fallbackResponse === 'object' && fallbackResponse !== null && !fallbackResponse.__isDemo;
-                    console.log('[HEALTH] fallback check (mappings):', { isHealthy, responseTime });
+                    Logger.info('HEALTH', 'fallback check (mappings):', { isHealthy, responseTime });
                 } catch (fallbackError) {
-                    console.log('[HEALTH] fallback failed - offline mode');
+                    Logger.warn('HEALTH', 'fallback failed - offline mode');
                     isHealthy = false;
                 }
             } else {
-                console.log('[HEALTH] connection failed - offline mode');
+                Logger.warn('HEALTH', 'connection failed - offline mode');
                 isHealthy = false;
             }
         }
@@ -287,10 +287,10 @@ window.checkHealthAndStartUptime = async () => {
 
             window.startTime = Date.now();
             if (window.uptimeInterval) window.LifecycleManager.clearInterval(window.uptimeInterval);
-            window.uptimeInterval = window.LifecycleManager.setInterval(updateUptime, 1000);
+            window.uptimeInterval = window.LifecycleManager.setNamedInterval('uptime-display', updateUptime, 1000);
 
             if (typeof window.applyHealthUI === 'function') {
-                try { window.applyHealthUI(true, responseTime); } catch (e) { console.warn('applyHealthUI failed:', e); }
+                try { window.applyHealthUI(true, responseTime); } catch (e) { Logger.warn('HEALTH', 'applyHealthUI failed:', e); }
             }
 
             const healthIndicator = document.getElementById(SELECTORS.HEALTH.INDICATOR);
@@ -299,14 +299,14 @@ window.checkHealthAndStartUptime = async () => {
                 healthIndicator.innerHTML = `<span>Response Time: </span><span class="healthy">${responseTime}ms</span>`;
             }
 
-            console.log(`✅ WireMock health check passed (${responseTime}ms), uptime started, online mode`);
+            Logger.info('HEALTH', `WireMock health check passed (${responseTime}ms), uptime started, online mode`);
         } else {
             window.isOnline = false;
             throw new Error('WireMock is not reachable - offline mode');
         }
     } catch (error) {
         window.isOnline = false;
-        console.error('Health check failed - entering offline mode:', error);
+        Logger.error('HEALTH', 'Health check failed - entering offline mode:', error);
         throw error;
     }
 };

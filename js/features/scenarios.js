@@ -26,7 +26,7 @@ function safeDecode(value) {
     try {
         return decodeURIComponent(trimmed);
     } catch (e) {
-        console.warn('safeDecode failed, returning original value', { value, error: e });
+        Logger.warn('SCENARIOS', 'safeDecode failed, returning original value', { value, error: e });
         return trimmed;
     }
 }
@@ -41,7 +41,7 @@ function normalizeScenarioLink(link) {
             const url = new URL(value);
             value = url.pathname;
         } catch (e) {
-            console.warn('normalizeScenarioLink failed to parse absolute URL', { link, error: e });
+            Logger.warn('SCENARIOS', 'normalizeScenarioLink failed to parse absolute URL', { link, error: e });
         }
     }
 
@@ -179,7 +179,7 @@ window.loadScenarios = async () => {
     } catch (e) {
         allScenarios = [];
         window.allScenarios = allScenarios;
-        console.error('Load scenarios error:', e);
+        Logger.error('SCENARIOS', 'Load scenarios error:', e);
         NotificationManager.error(`Failed to load scenarios: ${e.message}`);
     } finally {
         setScenariosLoading(false);
@@ -344,7 +344,7 @@ window.setScenarioState = async (scenarioIdentifier, newState) => {
         await loadScenarios();
         return true;
     } catch (error) {
-        console.error('Change scenario state error:', error);
+        Logger.error('SCENARIOS', 'Change scenario state error:', error);
         const notFound = /HTTP\s+404/.test(error?.message || '');
         const notSupported = /does not support state/i.test(error?.message || '');
         if (notFound && !scenarioExists) {
@@ -420,7 +420,7 @@ async function resetScenarioState(scenarioIdentifier) {
         await loadScenarios();
         return true;
     } catch (error) {
-        console.error('Reset scenario state error:', error);
+        Logger.error('SCENARIOS', 'Reset scenario state error:', error);
         NotificationManager.error(`Scenario reset failed: ${error.message}`);
         setScenariosLoading(false);
         return false;

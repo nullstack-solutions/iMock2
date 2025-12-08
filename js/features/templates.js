@@ -176,13 +176,13 @@
                 return structuredClone(value);
             }
         } catch (cloneError) {
-            console.warn('Failed to structuredClone, falling back to JSON:', cloneError);
+            Logger.warn('TEMPLATES', 'Failed to structuredClone, falling back to JSON:', cloneError);
         }
 
         try {
             return JSON.parse(JSON.stringify(value));
         } catch (jsonError) {
-            console.warn('Failed to JSON clone value, returning shallow copy:', jsonError);
+            Logger.warn('TEMPLATES', 'Failed to JSON clone value, returning shallow copy:', jsonError);
             if (value && typeof value === 'object') {
                 return Array.isArray(value) ? [...value] : { ...value };
             }
@@ -322,7 +322,7 @@
                         try {
                             updateOptimisticCache(createdMapping, 'create');
                         } catch (cacheError) {
-                            console.warn('Failed to update optimistic cache after create:', cacheError);
+                            Logger.warn('TEMPLATES', 'Failed to update optimistic cache after create:', cacheError);
                         }
                     }
 
@@ -357,7 +357,7 @@
                     `Failed to create mapping ${failure.index + 1}/${preparedPayloads.length}: ${failure.error.message}.${rollbackNote}`,
                     'error'
                 );
-                console.error('Mapping create failed', { errors, rollbackErrors });
+                Logger.error('TEMPLATES', 'Mapping create failed', { errors, rollbackErrors });
                 return { success: false, createdIds: [] };
             }
 
@@ -380,7 +380,7 @@
             return { success: true, createdIds };
         } catch (error) {
             notify(`Failed to create mapping: ${error.message}`, 'error');
-            console.error('Failed to create mapping from payloads', error);
+            Logger.error('TEMPLATES', 'Failed to create mapping from payloads', error);
             return { success: false, createdIds: [] };
         }
     }
@@ -499,7 +499,7 @@
             templateCache.builtIn = templates.map(template => ({ ...template, source: 'built-in' }));
             return [...templateCache.builtIn];
         } catch (e) {
-            console.warn('Unable to read Monaco template library:', e);
+            Logger.warn('TEMPLATES', 'Unable to read Monaco template library:', e);
             return [];
         }
     }
@@ -515,7 +515,7 @@
             templateCache.userSignature = raw || '';
             return [...templateCache.user];
         } catch (e) {
-            console.warn('Failed to read user templates from storage:', e);
+            Logger.warn('TEMPLATES', 'Failed to read user templates from storage:', e);
             return [];
         }
     }
@@ -539,7 +539,7 @@
             templateCache.userSignature = serialized;
             invalidateTemplateCache('user');
         } catch (e) {
-            console.warn('Failed to persist user templates:', e);
+            Logger.warn('TEMPLATES', 'Failed to persist user templates:', e);
         }
     }
 
@@ -724,7 +724,7 @@
                 await global.monacoInitializationPromise;
                 if (global.monacoInitializer?.isInitialized) return global.monacoInitializer;
             } catch (error) {
-                console.warn('Monaco initializer failed to load in time', error);
+                Logger.warn('TEMPLATES', 'Monaco initializer failed to load in time', error);
             }
         }
         return global.monacoInitializer;
@@ -769,7 +769,7 @@
                     global.editorState.isDirty = true;
                 }
             } catch (e) {
-                console.warn('Failed to parse template content into editorState:', e);
+                Logger.warn('TEMPLATES', 'Failed to parse template content into editorState:', e);
             }
             const indicator = document.getElementById('editor-dirty-indicator');
             if (indicator) indicator.style.display = 'inline';
@@ -811,7 +811,7 @@
             });
         } catch (error) {
             notify(`Failed to create mapping: ${error.message}`, 'error');
-            console.error('Failed to create mapping from template', error);
+            Logger.error('TEMPLATES', 'Failed to create mapping from template', error);
         } finally {
             global.hideModal?.(MODALS.GALLERY);
             global.hideModal?.(MODALS.PREVIEW);
@@ -1029,7 +1029,7 @@
             const serialized = JSON.stringify(value);
             return serialized.length > 80 ? `${serialized.slice(0, 77)}…` : serialized;
         } catch (error) {
-            console.warn('Failed to serialise feature value', error);
+            Logger.warn('TEMPLATES', 'Failed to serialise feature value', error);
             return '';
         }
     }
@@ -1095,7 +1095,7 @@
                 document.body.removeChild(textarea);
                 return true;
             } catch (error) {
-                console.warn('Clipboard fallback failed:', error);
+                Logger.warn('TEMPLATES', 'Clipboard fallback failed:', error);
                 return false;
             }
         }
@@ -1138,7 +1138,7 @@
             try {
                 payload = JSON.parse(payload);
             } catch (e) {
-                console.warn('Failed to parse string template content:', e);
+                Logger.warn('TEMPLATES', 'Failed to parse string template content:', e);
                 payload = {};
             }
         }
@@ -1634,7 +1634,7 @@
                 });
             }
         } catch (error) {
-            console.error('Failed to render template wizard', error);
+            Logger.error('TEMPLATES', 'Failed to render template wizard', error);
             shell.innerHTML = '<div class="history-empty"><p>Templates unavailable</p><small>Reload the page or try again later.</small></div>';
         }
     }
@@ -1651,7 +1651,7 @@
         try {
             renderTemplateWizard({ force: true });
         } catch (error) {
-            console.error('Unable to prepare template gallery', error);
+            Logger.error('TEMPLATES', 'Unable to prepare template gallery', error);
             const shell = document.getElementById('template-gallery-shell');
             if (shell) {
                 shell.innerHTML = '<div class="history-empty"><p>Templates unavailable</p><small>Reload the page or try again later.</small></div>';
@@ -1685,7 +1685,7 @@
             populateSelectors();
             renderTemplateWizard();
         } catch (error) {
-            console.error('Template manager failed to initialize', error);
+            Logger.error('TEMPLATES', 'Template manager failed to initialize', error);
             const shell = document.getElementById('template-gallery-shell');
             if (shell) {
                 shell.innerHTML = '<div class="history-empty"><p>Templates unavailable</p><small>Reload the page or try again later.</small></div>';
