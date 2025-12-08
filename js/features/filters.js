@@ -477,7 +477,7 @@ function getSavedFilters(tab) {
         const stored = localStorage.getItem(key);
         return stored ? JSON.parse(stored) : [];
     } catch (error) {
-        console.warn(`Failed to load saved filters for ${tab}:`, error);
+        Logger.warn('FILTERS', `Failed to load saved filters for ${tab}:`, error);
         return [];
     }
 }
@@ -488,7 +488,7 @@ function setSavedFilters(tab, filters) {
     try {
         localStorage.setItem(key, JSON.stringify(filters));
     } catch (error) {
-        console.error(`Failed to save filters for ${tab}:`, error);
+        Logger.error('FILTERS', `Failed to save filters for ${tab}:`, error);
     }
 }
 
@@ -578,7 +578,7 @@ window.applySavedFilter = (tab, name) => {
     const filter = savedFilters.find(f => f.name === name);
 
     if (!filter) {
-        console.warn(`Saved filter "${name}" not found`);
+        Logger.warn('FILTERS', `Saved filter "${name}" not found`);
         return;
     }
 

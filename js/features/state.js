@@ -104,7 +104,7 @@
             try {
                 await mappingsFetchPromise;
             } catch (error) {
-                console.warn('fetchMappingsFromServer: previous request failed, starting a new one', error);
+                Logger.warn('STATE', 'fetchMappingsFromServer: previous request failed, starting a new one', error);
             }
         }
 
@@ -113,7 +113,7 @@
                 return await window.apiFetch(window.ENDPOINTS.MAPPINGS);
             } catch (error) {
                 if (window.DemoData?.isAvailable?.() && window.DemoData?.getMappingsPayload) {
-                    console.warn('⚠️ Falling back to demo mappings because the WireMock API request failed.', error);
+                    Logger.warn('STATE', 'Falling back to demo mappings because the WireMock API request failed.', error);
                     window.demoModeLastError = error;
                     markDemoModeActive('mappings-fallback');
                     return window.DemoData.getMappingsPayload();
@@ -133,7 +133,7 @@
     function updateOptimisticCache(mapping, operation, options = {}) {
         try {
             if (!mapping) {
-                console.warn('updateOptimisticCache: no mapping provided');
+                Logger.warn('STATE', 'updateOptimisticCache: no mapping provided');
                 return;
             }
 
@@ -142,7 +142,7 @@
             // For delete operations, we only need the ID
             if (operation === 'delete') {
                 if (!mappingId) {
-                    console.warn('updateOptimisticCache: delete operation requires mapping ID');
+                    Logger.warn('STATE', 'updateOptimisticCache: delete operation requires mapping ID');
                     return;
                 }
 
@@ -166,26 +166,19 @@
                     }
                 }
 
-                // Update legacy arrays for backward compatibility
-                if (Array.isArray(window.allMappings)) {
-                    window.allMappings = window.allMappings.filter(m =>
-                        (m.id || m.uuid) !== mappingId
-                    );
-                }
-
                 // Refresh UI
                 window.cacheLastUpdate = Date.now();
                 if (typeof window.refreshMappingsFromCache === 'function') {
                     window.refreshMappingsFromCache();
                 }
 
-                console.log('🎯 [updateOptimisticCache] Deleted mapping:', mappingId);
+                Logger.info('STATE', 'Deleted mapping from optimistic cache:', mappingId);
                 return;
             }
 
             // For create/update operations
             if (!mappingId) {
-                console.warn('updateOptimisticCache: mapping must have an id or uuid');
+                Logger.warn('STATE', 'updateOptimisticCache: mapping must have an id or uuid');
                 return;
             }
 
@@ -220,29 +213,16 @@
                 }
             }
 
-            // Update legacy arrays for backward compatibility
-            if (Array.isArray(window.allMappings)) {
-                const existingIndex = window.allMappings.findIndex(m =>
-                    (m.id || m.uuid) === mappingId
-                );
-
-                if (existingIndex >= 0) {
-                    window.allMappings[existingIndex] = mapping;
-                } else {
-                    window.allMappings.push(mapping);
-                }
-            }
-
             // Refresh UI
             window.cacheLastUpdate = Date.now();
             if (typeof window.refreshMappingsFromCache === 'function') {
                 window.refreshMappingsFromCache();
             }
 
-            console.log(`🎯 [updateOptimisticCache] ${operation} mapping:`, mappingId);
+            Logger.info('STATE', `[updateOptimisticCache] ${operation} mapping:`, mappingId);
 
         } catch (error) {
-            console.error('updateOptimisticCache failed:', error);
+            Logger.error('STATE', 'updateOptimisticCache failed:', error);
         }
     }
 
@@ -270,7 +250,7 @@
 
     window.FeaturesState = state;
 
-    console.log('✅ state.js loaded - State management functions registered');
+    Logger.info('STATE', 'state.js loaded - State management functions registered');
 
     if (typeof window.dispatchEvent === 'function') {
         let readyEvent;

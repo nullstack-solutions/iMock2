@@ -19,7 +19,7 @@ class EventDelegationManager {
      */
     init() {
         if (this.initialized) {
-            console.log('EventDelegation already initialized');
+        Logger.debug('EVENTS', 'EventDelegation already initialized');
             return;
         }
 
@@ -27,14 +27,14 @@ class EventDelegationManager {
         const mappingsContainer = document.getElementById(SELECTORS.LISTS.MAPPINGS);
         if (mappingsContainer) {
             mappingsContainer.addEventListener('click', (e) => this.handleMappingClick(e));
-            console.log('✅ Event delegation initialized for mappings');
+        Logger.info('EVENTS', 'Event delegation initialized for mappings');
         }
 
         // Delegate events for requests list
         const requestsContainer = document.getElementById(SELECTORS.LISTS.REQUESTS);
         if (requestsContainer) {
             requestsContainer.addEventListener('click', (e) => this.handleRequestClick(e));
-            console.log('✅ Event delegation initialized for requests');
+        Logger.info('EVENTS', 'Event delegation initialized for requests');
         }
 
         this.initialized = true;
@@ -216,7 +216,7 @@ class EventDelegationManager {
                 const previewHTML = this.generateMappingPreview(mapping);
                 preview.innerHTML = previewHTML;
 
-                console.log(`📦 Lazy loaded preview for mapping: ${id}`);
+                Logger.debug('EVENTS', `Lazy loaded preview for mapping: ${id}`);
             } else if (type === 'request') {
                 // Get request from data
                 const request = window.allRequests?.find(r =>
@@ -232,10 +232,10 @@ class EventDelegationManager {
                 const previewHTML = this.generateRequestPreview(request);
                 preview.innerHTML = previewHTML;
 
-                console.log(`📦 Lazy loaded preview for request: ${id}`);
+                Logger.debug('EVENTS', `Lazy loaded preview for request: ${id}`);
             }
         } catch (error) {
-            console.error(`Failed to load preview for ${type} ${id}:`, error);
+            Logger.error('EVENTS', `Failed to load preview for ${type} ${id}:`, error);
             preview.innerHTML = '<div class="preview-section"><p>Error loading preview</p></div>';
         }
     }
@@ -349,7 +349,7 @@ class EventDelegationManager {
         // Event listeners are on containers that persist,
         // so we don't need explicit cleanup in most cases
         this.initialized = false;
-        console.log('Event delegation destroyed');
+        Logger.info('EVENTS', 'Event delegation destroyed');
     }
 }
 
@@ -369,4 +369,4 @@ if (document.readyState === 'loading') {
 // Export to window for manual control if needed
 window.EventDelegation = eventDelegation;
 
-console.log('✅ Event delegation module loaded');
+Logger.info('EVENTS', 'Event delegation module loaded');

@@ -22,7 +22,7 @@ window.MappingsOperations = {
   async create(mappingData) {
     const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-    console.log(`➕ [OPS] Creating mapping with temp ID: ${tempId}`);
+    Logger.info('OPS', `Creating mapping with temp ID: ${tempId}`);
 
     // Build optimistic mapping
     const optimisticMapping = {
@@ -60,7 +60,7 @@ window.MappingsOperations = {
 
       // 4. Confirm pending operation
       const realId = created.id || created.uuid;
-      console.log(`✅ [OPS] Mapping created on server with ID: ${realId}`);
+      Logger.info('OPS', `Mapping created on server with ID: ${realId}`);
 
       window.MappingsStore.confirmPending(tempId, created);
 
@@ -76,7 +76,7 @@ window.MappingsOperations = {
       return created;
 
     } catch (error) {
-      console.error(`❌ [OPS] Failed to create mapping:`, error);
+      Logger.error('OPS', 'Failed to create mapping:', error);
 
       // Rollback
       window.MappingsStore.rollbackPending(tempId, null);
@@ -96,7 +96,7 @@ window.MappingsOperations = {
    * Update an existing mapping (optimistic)
    */
   async update(id, changes) {
-    console.log(`✏️ [OPS] Updating mapping: ${id}`);
+    Logger.info('OPS', `Updating mapping: ${id}`);
 
     const original = window.MappingsStore.get(id);
 
@@ -106,7 +106,7 @@ window.MappingsOperations = {
 
     // Don't update if already pending
     if (window.MappingsStore.pending.has(id)) {
-      console.warn(`⚠️ [OPS] Mapping ${id} already has pending operation`);
+      Logger.warn('OPS', `Mapping ${id} already has pending operation`);
       throw new Error('Mapping has pending changes');
     }
 
@@ -145,7 +145,7 @@ window.MappingsOperations = {
       const updated = await this._sendUpdateRequest(id, optimisticMapping);
 
       // 4. Confirm pending operation
-      console.log(`✅ [OPS] Mapping updated on server: ${id}`);
+      Logger.info('OPS', `Mapping updated on server: ${id}`);
 
       window.MappingsStore.confirmPending(id, updated);
 
@@ -161,7 +161,7 @@ window.MappingsOperations = {
       return updated;
 
     } catch (error) {
-      console.error(`❌ [OPS] Failed to update mapping:`, error);
+      Logger.error('OPS', 'Failed to update mapping:', error);
 
       // Rollback to original
       window.MappingsStore.rollbackPending(id, original);
@@ -181,12 +181,12 @@ window.MappingsOperations = {
    * Delete a mapping (optimistic)
    */
   async delete(id) {
-    console.log(`🗑️ [OPS] Deleting mapping: ${id}`);
+    Logger.info('OPS', `Deleting mapping: ${id}`);
 
     const original = window.MappingsStore.get(id);
 
     if (!original) {
-      console.warn(`⚠️ [OPS] Mapping ${id} not found, skipping delete`);
+      Logger.warn('OPS', `Mapping ${id} not found, skipping delete`);
       return;
     }
 
@@ -221,7 +221,7 @@ window.MappingsOperations = {
       await this._sendDeleteRequest(id);
 
       // 4. Confirm deletion
-      console.log(`✅ [OPS] Mapping deleted on server: ${id}`);
+      Logger.info('OPS', `Mapping deleted on server: ${id}`);
 
       window.MappingsStore.confirmPending(id, null);
 
@@ -235,7 +235,7 @@ window.MappingsOperations = {
       }
 
     } catch (error) {
-      console.error(`❌ [OPS] Failed to delete mapping:`, error);
+      Logger.error('OPS', 'Failed to delete mapping:', error);
 
       // Rollback - restore the mapping
       window.MappingsStore.rollbackPending(id, original);
@@ -255,7 +255,7 @@ window.MappingsOperations = {
    * Batch delete multiple mappings
    */
   async batchDelete(ids) {
-    console.log(`🗑️ [OPS] Batch deleting ${ids.length} mappings`);
+    Logger.info('OPS', `Batch deleting ${ids.length} mappings`);
 
     const results = {
       success: [],
@@ -268,12 +268,12 @@ window.MappingsOperations = {
         await this.delete(id);
         results.success.push(id);
       } catch (error) {
-        console.error(`❌ [OPS] Failed to delete ${id}:`, error);
+        Logger.error('OPS', `Failed to delete ${id}:`, error);
         results.failed.push({ id, error: error.message });
       }
     }
 
-    console.log(`✅ [OPS] Batch delete complete: ${results.success.length} succeeded, ${results.failed.length} failed`);
+    Logger.info('OPS', `Batch delete complete: ${results.success.length} succeeded, ${results.failed.length} failed`);
 
     // Show summary
     if (window.NotificationManager) {
@@ -356,7 +356,7 @@ window.MappingsOperations = {
   _refreshUI() {
     // Refresh UI with current store state
     if (!window.MappingsStore) {
-      console.warn('⚠️ [OPS] MappingsStore not available for UI refresh');
+      Logger.warn('OPS', 'MappingsStore not available for UI refresh');
       return;
     }
 
@@ -377,7 +377,7 @@ window.MappingsOperations = {
       }
     } else {
       // Fallback: render without filters
-      console.warn('⚠️ [OPS] FilterManager not available, rendering without filters');
+      Logger.warn('OPS', 'FilterManager not available, rendering without filters');
       const mappings = window.MappingsStore.getAll();
       if (typeof window.fetchAndRenderMappings === 'function') {
         window.fetchAndRenderMappings(mappings, { source: 'optimistic' });

@@ -6,7 +6,7 @@ window.fetchAndRenderRequests = async (requestsToRender = null, options = {}) =>
     const loadingState = document.getElementById(SELECTORS.LOADING.REQUESTS);
 
     if (!container || !emptyState || !loadingState) {
-        console.error('Required DOM elements not found for requests rendering');
+        Logger.error('REQUESTS', 'Required DOM elements not found for requests rendering');
         return false;
     }
     
@@ -22,7 +22,7 @@ window.fetchAndRenderRequests = async (requestsToRender = null, options = {}) =>
                 data = await apiFetch(ENDPOINTS.REQUESTS);
             } catch (error) {
                 if (window.DemoData?.isAvailable?.() && window.DemoData?.getRequestsPayload) {
-                    console.warn('⚠️ Falling back to demo requests because the WireMock API request failed.', error);
+                    Logger.warn('REQUESTS', 'Falling back to demo requests because the WireMock API request failed.', error);
                     window.demoModeLastError = error;
                     markDemoModeActive('requests-fallback');
                     data = window.DemoData.getRequestsPayload();
@@ -76,11 +76,11 @@ window.fetchAndRenderRequests = async (requestsToRender = null, options = {}) =>
         updateRequestsCounter();
         // Source indicator + log, mirroring mappings
         if (typeof updateRequestsSourceIndicator === 'function') updateRequestsSourceIndicator(reqSource);
-        console.log(`📦 Requests render from: ${reqSource} — ${window.allRequests.length} items`);
+        Logger.info('REQUESTS', `Requests render from: ${reqSource} — ${window.allRequests.length} items`);
 
         return true;
     } catch (error) {
-        console.error('Error in fetchAndRenderRequests:', error);
+        Logger.error('REQUESTS', 'Error in fetchAndRenderRequests:', error);
         NotificationManager.error(`Failed to load requests: ${error.message}`);
         loadingState.classList.add('hidden');
         emptyState.classList.remove('hidden');
@@ -92,7 +92,7 @@ window.fetchAndRenderRequests = async (requestsToRender = null, options = {}) =>
 // Compact request renderer through UIComponents (shortened from ~62 to 18 lines)
 window.renderRequestCard = function(request) {
     if (!request) {
-        console.warn('Invalid request data:', request);
+        Logger.warn('REQUESTS', 'Invalid request data:', request);
         return '';
     }
     
@@ -252,7 +252,7 @@ window.openEditModal = async (identifier) => {
     if (typeof window.showModal === 'function') {
         window.showModal('edit-mapping-modal');
     } else {
-        console.warn('showModal function not found');
+        Logger.warn('REQUESTS', 'showModal function not found');
         return;
     }
 
@@ -264,7 +264,7 @@ window.openEditModal = async (identifier) => {
     const modalTitleElement = document.getElementById(SELECTORS.MODAL.TITLE);
     if (modalTitleElement) modalTitleElement.textContent = 'Edit Mapping';
 
-    console.log('🔴 [OPEN MODAL DEBUG] openEditModal called for mapping identifier:', identifier);
+    Logger.debug('REQUESTS', 'openEditModal called for mapping identifier:', identifier);
 
     // Fetch fresh data from server (single source of truth)
     try {
@@ -275,13 +275,13 @@ window.openEditModal = async (identifier) => {
             throw new Error('Invalid mapping response from server');
         }
 
-        console.log('🔵 [OPEN MODAL DEBUG] Loaded mapping from server:', latestMapping);
+        Logger.debug('REQUESTS', 'Loaded mapping from server:', latestMapping);
 
         // Populate form once with fresh data
         if (typeof window.populateEditMappingForm === 'function') {
             window.populateEditMappingForm(latestMapping);
         } else {
-            console.error('populateEditMappingForm function not found!');
+            Logger.error('REQUESTS', 'populateEditMappingForm function not found!');
             return;
         }
 
@@ -309,9 +309,9 @@ window.openEditModal = async (identifier) => {
             }
         }
 
-        console.log('🔴 [OPEN MODAL DEBUG] openEditModal completed successfully');
+        Logger.debug('REQUESTS', 'openEditModal completed successfully');
     } catch (e) {
-        console.error('Failed to load mapping:', e);
+        Logger.error('REQUESTS', 'Failed to load mapping:', e);
         NotificationManager.show('Failed to load mapping: ' + e.message, NotificationManager.TYPES.ERROR);
         // Close modal on error
         if (typeof window.hideModal === 'function') {
@@ -340,7 +340,7 @@ window.deleteMapping = async (id) => {
     } catch (e) {
         // Handle 404: mapping already deleted
         if (e.message.includes('404')) {
-            console.log('🗑️ [DELETE] Mapping already deleted from server (404), updating cache locally');
+            Logger.info('REQUESTS', 'Mapping already deleted from server (404), updating cache locally');
             removeMappingFromIndex(id);
             updateOptimisticCache({ id }, 'delete');
             NotificationManager.success('Mapping was already deleted');
