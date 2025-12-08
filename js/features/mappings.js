@@ -735,6 +735,44 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
     }
 };
 
+// Normalize cache-driven refreshes onto the new MappingsStore pipeline
+// Used by legacy callers (state.js, wiremock-extras.js) after optimistic/cache updates
+window.refreshMappingsFromCache = async (sourceOverride = 'cache') => {
+    try {
+        const mappings = typeof window.MappingsStore?.getAll === 'function'
+            ? window.MappingsStore.getAll()
+            : Array.isArray(window.allMappings)
+                ? window.allMappings
+                : [];
+
+        // Filter out synthetic cache service mappings
+        const normalized = Array.isArray(mappings)
+            ? mappings.filter(mapping => !isImockCacheMapping(mapping))
+            : [];
+
+        window.originalMappings = normalized;
+        window.allMappings = [...normalized];
+
+        if (typeof refreshMappingTabSnapshot === 'function') {
+            refreshMappingTabSnapshot();
+        }
+        if (typeof rebuildMappingIndex === 'function') {
+            rebuildMappingIndex(window.allMappings);
+        }
+        if (typeof pruneOptimisticShadowMappings === 'function') {
+            pruneOptimisticShadowMappings(window.allMappings);
+        }
+        if (typeof updateDataSourceIndicator === 'function') {
+            updateDataSourceIndicator(sourceOverride || 'cache');
+        }
+
+        return await fetchAndRenderMappings(window.allMappings, { source: sourceOverride || 'cache' });
+    } catch (error) {
+        Logger.warn('CACHE', 'refreshMappingsFromCache failed:', error);
+        return false;
+    }
+};
+
 // Initialize pagination
 window.initMappingPagination = function() {
     if (!window.PaginationManager) {
