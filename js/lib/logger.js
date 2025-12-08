@@ -36,7 +36,7 @@ const Logger = (function() {
         RECORDING: '⏺️',
         REQUESTS: '📡',
         SCENARIOS: '🎬',
-        STATE: '🧭',
+        STATE: '🌐',
         STORE: '🗂️',
         SYNC: '🔄',
         TEMPLATES: '🧾',
