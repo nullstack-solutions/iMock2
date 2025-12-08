@@ -1,11 +1,11 @@
 'use strict';
 
 /**
- * Централизованный логгер с уровнями и форматированием
+ * Centralized logger with levels and category-based formatting
  * @namespace Logger
  */
 const Logger = (function() {
-    // Уровни логирования
+    // Log levels
     const LEVELS = {
         DEBUG: 0,
         INFO: 1,
@@ -14,23 +14,38 @@ const Logger = (function() {
         SILENT: 4
     };
 
-    // Текущий уровень (из localStorage или default)
+    // Current level (from localStorage or default)
     let currentLevel = LEVELS.WARN;
-    
-    // Префиксы для категорий
+
+    // Category prefixes (covers all known Logger categories)
     const PREFIXES = {
         API: '🔗',
         CACHE: '🧩',
+        DEMO: '🧪',
         EDITOR: '📝',
+        EVENTS: '📢',
+        FEATURES: '🧠',
+        FILTERS: '🔍',
         HEALTH: '💓',
+        MANAGERS: '🧭',
         METADATA: '📅',
+        OPS: '🛠️',
         OPTIMISTIC: '🎯',
+        PAGINATION: '↔️',
+        QUERY: '❓',
+        RECORDING: '⏺️',
+        REQUESTS: '📡',
+        SCENARIOS: '🎬',
+        STATE: '🧭',
+        STORE: '🗂️',
+        SYNC: '🔄',
+        TEMPLATES: '🧾',
         UI: '🖥️',
         DEFAULT: '📋'
     };
 
     /**
-     * Инициализация из localStorage
+     * Initialize log level from localStorage
      */
     function init() {
         try {
@@ -42,16 +57,16 @@ const Logger = (function() {
     }
 
     /**
-     * Форматирование сообщения
+     * Format the log message
      */
     function format(category, ...args) {
         const prefix = PREFIXES[category] || PREFIXES.DEFAULT;
-        const timestamp = new Date().toISOString().substr(11, 12);
+        const timestamp = new Date().toISOString().substring(11, 23);
         return [`[${timestamp}] ${prefix} [${category}]`, ...args];
     }
 
     /**
-     * Установка уровня логирования
+     * Update log level
      */
     function setLevel(level) {
         const upperLevel = (level || '').toUpperCase();
@@ -64,7 +79,7 @@ const Logger = (function() {
     }
 
     /**
-     * Публичные методы логирования
+     * Public logging API
      */
     const api = {
         LEVELS,
@@ -94,7 +109,7 @@ const Logger = (function() {
             }
         },
 
-        // Сокращённые версии для частых категорий
+        // Shortcuts for frequently used categories
         api: (...args) => api.debug('API', ...args),
         cache: (...args) => api.debug('CACHE', ...args),
         ui: (...args) => api.debug('UI', ...args)
