@@ -82,7 +82,7 @@ window.toggleMetaTimestamps = () => {
         window.showMetaTimestamps = window.showMetaTimestamps === false ? true : false;
         localStorage.setItem('imock-show-meta-timestamps', window.showMetaTimestamps ? '1' : '0');
 // Re-render current list without refetch
-        const currentMappings = window.MappingsStore?.getAll ? window.MappingsStore.getAll() : window.allMappings || [];
+        const currentMappings = window.MappingsStore.getAll();
         if (Array.isArray(currentMappings)) {
             fetchAndRenderMappings(currentMappings);
         }

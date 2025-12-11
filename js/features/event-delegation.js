@@ -203,9 +203,9 @@ class EventDelegationManager {
     loadPreviewContent(id, type, card, preview) {
         try {
             if (type === 'mapping') {
-                // Get mapping from index
-                const mapping = window.mappingIndex?.get(id) ||
-                               window.allMappings?.find(m => (m.id || m.uuid) === id);
+                // Get mapping from store or index
+                const mapping = window.MappingsStore.get(id) ||
+                               window.mappingIndex?.get(id);
 
                 if (!mapping) {
                     preview.innerHTML = '<div class="preview-section"><p>Mapping data not found</p></div>';

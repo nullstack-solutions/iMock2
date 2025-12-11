@@ -795,7 +795,7 @@ window.addEventListener('message', (event) => {
 // Also trigger UI refresh to show changes immediately
             if (typeof window.fetchAndRenderMappings === 'function') {
                 Logger.info('UI', '🎯 [main.js] Triggering UI refresh after optimistic update');
-                const mappingsToRender = window.MappingsStore?.getAll ? window.MappingsStore.getAll() : window.allMappings || [];
+                const mappingsToRender = window.MappingsStore.getAll();
                 window.fetchAndRenderMappings(mappingsToRender);
             }
         }
@@ -830,7 +830,7 @@ window.addEventListener('storage', (e) => {
 // Trigger UI refresh
                 if (typeof window.fetchAndRenderMappings === 'function') {
                     Logger.info('UI', '🎯 [main.js] Triggering UI refresh after localStorage optimistic update');
-                    const mappingsToRender = window.MappingsStore?.getAll ? window.MappingsStore.getAll() : window.allMappings || [];
+                    const mappingsToRender = window.MappingsStore.getAll();
                     window.fetchAndRenderMappings(mappingsToRender);
                 }
                 // Update counter if available
@@ -870,7 +870,7 @@ if (typeof BroadcastChannel !== 'undefined') {
 // Also trigger UI refresh to show changes immediately
                     if (typeof window.fetchAndRenderMappings === 'function') {
                         Logger.info('UI', '🎯 [main.js] Triggering UI refresh after BroadcastChannel optimistic update');
-                        const mappingsToRender = window.MappingsStore?.getAll ? window.MappingsStore.getAll() : window.allMappings || [];
+                        const mappingsToRender = window.MappingsStore.getAll();
                         window.fetchAndRenderMappings(mappingsToRender);
                     }
                 }

@@ -285,39 +285,8 @@ window.openEditModal = async (identifier) => {
             return;
         }
 
-        // Update cache if mappings are loaded
-        if (window.allMappings && Array.isArray(window.allMappings)) {
-            const collectCandidateIdentifiers = (mapping) => {
-                if (!mapping || typeof mapping !== 'object') return [];
-                return [
-                    mapping.id,
-                    mapping.uuid,
-                    mapping.stubMappingId,
-                    mapping.stubId,
-                    mapping.mappingId,
-                    mapping.metadata?.id
-                ].map(normalizeIdentifier).filter(Boolean);
-            };
-
-            // Use MappingsStore if available (PRIMARY)
-            if (window.MappingsStore && typeof window.MappingsStore.update === 'function') {
-                window.MappingsStore.update(latestMapping.id || latestMapping.uuid, latestMapping);
-            } else {
-                // Fallback to legacy direct array modification
-                const allMappings = window.MappingsStore?.getAll ? window.MappingsStore.getAll() : (window.allMappings || []);
-                const idx = allMappings.findIndex((candidate) =>
-                    collectCandidateIdentifiers(candidate).includes(targetIdentifier)
-                );
-
-                if (idx !== -1) {
-                    // Update through MappingsStore if possible
-                    if (window.MappingsStore && typeof window.MappingsStore.update === 'function') {
-                        window.MappingsStore.update(allMappings[idx].id || allMappings[idx].uuid, latestMapping);
-                    }
-                    addMappingToIndex(latestMapping);
-                }
-            }
-        }
+        // Update cache and index
+        addMappingToIndex(latestMapping);
 
         Logger.debug('REQUESTS', 'openEditModal completed successfully');
     } catch (e) {

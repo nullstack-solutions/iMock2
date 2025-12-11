@@ -59,7 +59,7 @@ window.stopRecording = async () => {
         NotificationManager.success(`Recording stopped! Captured ${count} mappings`);
         
 // Refresh the mappings list
-            const mappingsToRender = window.MappingsStore?.getAll ? window.MappingsStore.getAll() : window.allMappings || [];
+            const mappingsToRender = window.MappingsStore.getAll();
             await fetchAndRenderMappings(mappingsToRender);
 
         return response.mappings || [];
