@@ -482,7 +482,8 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                             const freshData = await fetchMappingsFromServer({ force: true });
                             if (freshData && freshData.mappings) {
                                 const serverMappings = freshData.mappings.filter(x => !isImockCacheMapping(x));
-                                const cachedMappings = cached.data.mappings || [];
+                                // Filter cache mappings too to exclude iMock service mappings from comparison
+                                const cachedMappings = (cached.data.mappings || []).filter(x => !isImockCacheMapping(x));
 
                                 // Apply optimistic updates to server mappings before comparison
                                 const serverMappingsWithOptimistic = serverMappings.map(serverMapping => {
