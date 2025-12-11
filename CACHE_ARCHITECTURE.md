@@ -41,7 +41,7 @@ The previous implementation had several over-engineering problems:
 2. **Pending-until-confirm** - Optimistic updates with explicit confirmation/rollback
 3. **Incremental Sync** - 10-second incremental updates instead of 60-second full sync
 4. **Conflict Resolution** - Last-write-wins with user notifications
-5. **Service Cache** - Fast startup from persisted snapshot
+5. **Service Cache** - Fast startup from persisted snapshot (format: { mappings: [...], timestamp: Date.now() })
 
 ### Components
 
@@ -166,9 +166,8 @@ if (localPending && serverUpdate) {
   request: { method: 'GET', url: '/__imock/cache/v2' },
   response: {
     jsonBody: {
-      timestamp: Date.now(),
-      items: [...mappings],
-      count: mappings.length
+      mappings: [...mappings],  // Array of mapping objects
+      timestamp: Date.now()
     }
   }
 }

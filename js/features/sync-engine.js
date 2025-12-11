@@ -180,7 +180,7 @@ window.SyncEngine = {
       // Filter out service cache mapping
       const filteredMappings = mappings.filter(m => {
         const id = m.id || m.uuid;
-        return id !== '__imock_cache_v2__' && !this._isServiceCacheMapping(m);
+        return id !== '00000000-0000-0000-0000-00000000cace' && !this._isServiceCacheMapping(m);
       });
 
       // Update store
@@ -289,7 +289,7 @@ window.SyncEngine = {
       Logger.debug('SYNC', 'Attempting to load from Service Cache');
 
       // Try to fetch the cache mapping
-      const response = await fetch(`${window.wiremockBaseUrl}/mappings/__imock_cache_v2__`);
+      const response = await fetch(`${window.wiremockBaseUrl}/mappings/00000000-0000-0000-0000-00000000cace`);
 
       if (!response.ok) {
         Logger.debug('SYNC', 'Service Cache not found');
@@ -301,22 +301,29 @@ window.SyncEngine = {
       // Extract cached data from response body
       const cached = cacheMapping.response?.jsonBody || cacheMapping;
 
-      // Validate cache
-      if (!cached.items || !Array.isArray(cached.items)) {
+      // Validate cache - check for both old format (mappings) and new format (items)
+      const mappingsArray = cached.items || cached.mappings;
+      if (!mappingsArray || !Array.isArray(mappingsArray)) {
         Logger.warn('SYNC', 'Invalid cache format');
         return null;
       }
 
+      // For backward compatibility, normalize to use items property
+      const normalizedCached = {
+        ...cached,
+        items: mappingsArray
+      };
+
       // Check cache age
-      const age = Date.now() - (cached.timestamp || 0);
+      const age = Date.now() - (normalizedCached.timestamp || 0);
       if (age > this.config.cacheMaxAge) {
         Logger.info('SYNC', `Cache is stale (${Math.round(age / 1000)}s old), skipping`);
         return null;
       }
 
-      Logger.info('SYNC', `Service Cache loaded (${cached.items.length} items, ${Math.round(age / 1000)}s old)`);
+      Logger.info('SYNC', `Service Cache loaded (${normalizedCached.items.length} items, ${Math.round(age / 1000)}s old)`);
 
-      return cached;
+      return normalizedCached;
 
     } catch (error) {
       Logger.warn('SYNC', 'Failed to load Service Cache:', error);
@@ -356,7 +363,7 @@ window.SyncEngine = {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          id: '__imock_cache_v2__',
+          id: '00000000-0000-0000-0000-00000000cace',
           priority: 1000,
           request: {
             method: 'GET',
@@ -489,7 +496,7 @@ window.SyncEngine = {
 
   _isServiceCacheMapping(mapping) {
     const id = mapping.id || mapping.uuid;
-    return id === '__imock_cache_v2__' || mapping.request?.url?.includes('/__imock/cache');
+    return id === '00000000-0000-0000-0000-00000000cace' || mapping.request?.url?.includes('/__imock/cache');
   },
 
   _fetchWithTimeout(promise, timeout) {

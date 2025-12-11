@@ -67,9 +67,12 @@ window.MappingsOperations = {
       // 5. Update UI with server data
       this._refreshUI();
 
+      // 6. Broadcast update to other tabs/windows
+      this._broadcastUpdate('created', created);
+
       // Show success
       if (window.NotificationManager && typeof window.NotificationManager.success === 'function') {
-        const name = created.name || realId.substring(0, 8);
+        const name = created.name || created.id.substring(0, 8);
         window.NotificationManager.success(`Mapping "${name}" created successfully`);
       }
 
@@ -152,6 +155,9 @@ window.MappingsOperations = {
       // 5. Update UI with server data
       this._refreshUI();
 
+      // 6. Broadcast update to other tabs/windows
+      this._broadcastUpdate('updated', updated);
+
       // Show success
       if (window.NotificationManager && typeof window.NotificationManager.success === 'function') {
         const name = updated.name || id.substring(0, 8);
@@ -227,6 +233,9 @@ window.MappingsOperations = {
 
       // 5. Update UI
       this._refreshUI();
+
+      // 6. Broadcast update to other tabs/windows
+      this._broadcastUpdate('deleted', original);
 
       // Show success
       if (window.NotificationManager && typeof window.NotificationManager.success === 'function') {
@@ -384,27 +393,49 @@ window.MappingsOperations = {
       }
     }
   },
+
+  _broadcastUpdate(operation, mapping) {
+    // Broadcast update to other tabs/windows via BroadcastChannel
+    if (typeof BroadcastChannel !== 'undefined') {
+      try {
+        const channel = new BroadcastChannel('imock-optimistic-updates');
+        channel.postMessage({
+          type: 'mapping-' + operation,
+          operation: operation,
+          mapping: mapping,
+          source: 'mappings-operations',
+          timestamp: Date.now()
+        });
+        Logger.debug('OPS', `Broadcasted ${operation} update:`, mapping.id);
+      } catch (error) {
+        Logger.warn('OPS', 'Failed to broadcast update:', error);
+      }
+    }
+
+    // Also update localStorage for cross-tab communication (fallback)
+    try {
+      const key = 'imock-optimistic-update';
+      const data = {
+        type: 'mapping-' + operation,
+        operation: operation,
+        mapping: mapping,
+        source: 'mappings-operations',
+        timestamp: Date.now()
+      };
+      localStorage.setItem(key, JSON.stringify(data));
+      // Remove after short delay to prevent stale data
+      setTimeout(() => {
+        try {
+          localStorage.removeItem(key);
+        } catch (e) {
+          // Ignore cleanup errors
+        }
+      }, 1000);
+    } catch (error) {
+      Logger.warn('OPS', 'Failed to update localStorage:', error);
+    }
+  },
+
 };
 
-// === BACKWARD COMPATIBILITY WRAPPERS ===
 
-/**
- * Legacy createMapping function - wraps new operations API
- */
-window.createMappingOptimistic = async function(mappingData) {
-  return await window.MappingsOperations.create(mappingData);
-};
-
-/**
- * Legacy updateMapping function - wraps new operations API
- */
-window.updateMappingOptimistic = async function(id, changes) {
-  return await window.MappingsOperations.update(id, changes);
-};
-
-/**
- * Legacy deleteMapping function - wraps new operations API
- */
-window.deleteMappingOptimistic = async function(id) {
-  return await window.MappingsOperations.delete(id);
-};

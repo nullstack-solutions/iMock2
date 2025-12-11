@@ -521,7 +521,7 @@ function executeMappingFilters() {
     // Update URL with filter query for sharing
     updateURLFilterParams(query, 'mappings');
 
-    // Get all mappings from store (window.originalMappings is a getter to MappingsStore)
+    // Get all mappings from MappingsStore (window.originalMappings is a getter to MappingsStore)
     const allMappingsFromStore = window.originalMappings;
 
     if (!Array.isArray(allMappingsFromStore) || allMappingsFromStore.length === 0) {
@@ -548,7 +548,7 @@ function executeMappingFilters() {
         filteredMappings = allMappingsFromStore;
     }
 
-    // Store filtered result in a separate variable (don't assign to window.allMappings - it's a getter!)
+    // Store filtered result in a separate variable (don't assign to window.allMappings - it's a getter to MappingsStore!)
     window._filteredMappings = filteredMappings;
 
     const container = document.getElementById(SELECTORS.LISTS.MAPPINGS);

@@ -543,7 +543,6 @@ window.uptimeInterval = null; // Make globally accessible for uptime tracking
 let autoRefreshInterval = null;
 
 // Global feature-level state
-window.allMappings = [];
 window.allRequests = [];
 window.allScenarios = [];
 window.isRecording = false;

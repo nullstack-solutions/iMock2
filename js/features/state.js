@@ -4,10 +4,6 @@
     const window = global;
     const state = window.FeaturesState || {};
 
-    if (!Array.isArray(window.originalMappings)) window.originalMappings = [];
-    if (!Array.isArray(window.allMappings)) window.allMappings = [];
-    if (!Array.isArray(window.originalRequests)) window.originalRequests = [];
-    if (!Array.isArray(window.allRequests)) window.allRequests = [];
     if (!(window.mappingIndex instanceof Map)) window.mappingIndex = new Map();
     window.mappingTabTotals ??= { all: 0, get: 0, post: 0, put: 0, patch: 0, delete: 0 };
     window.requestTabTotals ??= { all: 0, matched: 0, unmatched: 0 };
@@ -43,16 +39,24 @@
         if (Array.isArray(mappings)) mappings.forEach(addMappingToIndex);
     }
 
-    function computeMappingTabTotals(source = []) {
+function computeMappingTabTotals(source = []) {
         const totals = { all: 0, get: 0, post: 0, put: 0, patch: 0, delete: 0 };
+        
+        // If no source provided, use MappingsStore
+        if (!Array.isArray(source) || source.length === 0) {
+            source = window.MappingsStore?.getAll ? window.MappingsStore.getAll() : [];
+        }
+        
         if (!Array.isArray(source) || source.length === 0) return totals;
         totals.all = source.length;
         source.forEach(mapping => { const method = (mapping?.request?.method || '').toLowerCase(); if (Object.prototype.hasOwnProperty.call(totals, method)) totals[method] += 1; });
         return totals;
     }
 
-    function refreshMappingTabSnapshot() {
-        window.mappingTabTotals = computeMappingTabTotals(window.originalMappings);
+function refreshMappingTabSnapshot() {
+        // Use MappingsStore instead of legacy window.originalMappings
+        const mappings = window.MappingsStore?.getAll ? window.MappingsStore.getAll() : [];
+        window.mappingTabTotals = computeMappingTabTotals(mappings);
     }
 
     function computeRequestTabTotals(source = []) {
@@ -73,8 +77,10 @@
         return totals;
     }
 
-    function refreshRequestTabSnapshot() {
-        window.requestTabTotals = computeRequestTabTotals(window.originalRequests);
+function refreshRequestTabSnapshot() {
+        // Use RequestsStore if available, fallback to legacy window.originalRequests
+        const requests = window.RequestsStore?.getAll ? window.RequestsStore.getAll() : window.originalRequests || [];
+        window.requestTabTotals = computeRequestTabTotals(requests);
         if (typeof window.updateRequestTabCounts === 'function') {
             window.updateRequestTabCounts();
         }

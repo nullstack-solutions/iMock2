@@ -792,10 +792,11 @@ window.addEventListener('message', (event) => {
         Logger.info('UI', '🎯 [main.js] Received optimistic mapping update from:', event.data.source, event.data.mapping.id);
         if (typeof window.applyOptimisticMappingUpdate === 'function') {
             window.applyOptimisticMappingUpdate(event.data.mapping);
-            // Also trigger UI refresh to show changes immediately
+// Also trigger UI refresh to show changes immediately
             if (typeof window.fetchAndRenderMappings === 'function') {
                 Logger.info('UI', '🎯 [main.js] Triggering UI refresh after optimistic update');
-                window.fetchAndRenderMappings(window.allMappings);
+                const mappingsToRender = window.MappingsStore?.getAll ? window.MappingsStore.getAll() : window.allMappings || [];
+                window.fetchAndRenderMappings(mappingsToRender);
             }
         }
     }
@@ -826,10 +827,11 @@ window.addEventListener('storage', (e) => {
             Logger.info('UI', '🎯 [main.js] Received localStorage optimistic update from:', data.source, 'for mapping:', data.mapping?.id);
             if (data.mapping && typeof window.applyOptimisticMappingUpdate === 'function') {
                 window.applyOptimisticMappingUpdate(data.mapping);
-                // Trigger UI refresh
-                if (typeof window.fetchAndRenderMappings === 'function' && window.allMappings) {
+// Trigger UI refresh
+                if (typeof window.fetchAndRenderMappings === 'function') {
                     Logger.info('UI', '🎯 [main.js] Triggering UI refresh after localStorage optimistic update');
-                    window.fetchAndRenderMappings(window.allMappings);
+                    const mappingsToRender = window.MappingsStore?.getAll ? window.MappingsStore.getAll() : window.allMappings || [];
+                    window.fetchAndRenderMappings(mappingsToRender);
                 }
                 // Update counter if available
                 if (typeof window.updateMappingsCounter === 'function') {
@@ -865,10 +867,11 @@ if (typeof BroadcastChannel !== 'undefined') {
                 Logger.info('UI', '🎯 [main.js] Received BroadcastChannel optimistic update from:', event.data.source, event.data.mapping.id);
                 if (typeof window.applyOptimisticMappingUpdate === 'function') {
                     window.applyOptimisticMappingUpdate(event.data.mapping);
-                    // Also trigger UI refresh to show changes immediately
+// Also trigger UI refresh to show changes immediately
                     if (typeof window.fetchAndRenderMappings === 'function') {
                         Logger.info('UI', '🎯 [main.js] Triggering UI refresh after BroadcastChannel optimistic update');
-                        window.fetchAndRenderMappings(window.allMappings);
+                        const mappingsToRender = window.MappingsStore?.getAll ? window.MappingsStore.getAll() : window.allMappings || [];
+                        window.fetchAndRenderMappings(mappingsToRender);
                     }
                 }
             }

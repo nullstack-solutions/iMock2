@@ -299,13 +299,23 @@ window.openEditModal = async (identifier) => {
                 ].map(normalizeIdentifier).filter(Boolean);
             };
 
-            const idx = window.allMappings.findIndex((candidate) =>
-                collectCandidateIdentifiers(candidate).includes(targetIdentifier)
-            );
+            // Use MappingsStore if available (PRIMARY)
+            if (window.MappingsStore && typeof window.MappingsStore.update === 'function') {
+                window.MappingsStore.update(latestMapping.id || latestMapping.uuid, latestMapping);
+            } else {
+                // Fallback to legacy direct array modification
+                const allMappings = window.MappingsStore?.getAll ? window.MappingsStore.getAll() : (window.allMappings || []);
+                const idx = allMappings.findIndex((candidate) =>
+                    collectCandidateIdentifiers(candidate).includes(targetIdentifier)
+                );
 
-            if (idx !== -1) {
-                window.allMappings[idx] = latestMapping;
-                addMappingToIndex(latestMapping);
+                if (idx !== -1) {
+                    // Update through MappingsStore if possible
+                    if (window.MappingsStore && typeof window.MappingsStore.update === 'function') {
+                        window.MappingsStore.update(allMappings[idx].id || allMappings[idx].uuid, latestMapping);
+                    }
+                    addMappingToIndex(latestMapping);
+                }
             }
         }
 

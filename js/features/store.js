@@ -53,9 +53,6 @@ window.MappingsStore = {
     Logger.info('STORE', 'Initializing MappingsStore');
     this.clear();
 
-    // Backward compatibility - expose as global arrays for existing code
-    this._setupBackwardCompatibility();
-
     Logger.info('STORE', 'MappingsStore initialized');
   },
 
@@ -128,8 +125,6 @@ window.MappingsStore = {
     // Rebuild indexes
     this.rebuildIndexes();
 
-    // Update backward compatibility arrays
-    this._updateBackwardCompatibility();
 
     // Update stats
     this._updateStats();
@@ -192,9 +187,6 @@ window.MappingsStore = {
 
     this.metadata.lastIncrementalSync = Date.now();
 
-    // Update backward compatibility
-    this._updateBackwardCompatibility();
-
     // Update stats
     this._updateStats();
 
@@ -218,9 +210,6 @@ window.MappingsStore = {
     });
 
     Logger.debug('STORE', `Added pending ${type}: ${id}`);
-
-    // Update backward compatibility immediately
-    this._updateBackwardCompatibility();
 
     this._updateStats();
   },
@@ -249,8 +238,6 @@ window.MappingsStore = {
 
     this.pending.delete(id);
 
-    // Update backward compatibility
-    this._updateBackwardCompatibility();
 
     this._updateStats();
   },
@@ -279,8 +266,6 @@ window.MappingsStore = {
 
     this.pending.delete(id);
 
-    // Update backward compatibility
-    this._updateBackwardCompatibility();
 
     this._updateStats();
   },
@@ -450,40 +435,6 @@ window.MappingsStore = {
     this.stats.pendingOperations = this.pending.size;
   },
 
-  /**
-   * Backward compatibility with existing code that uses window.allMappings
-   */
-  _setupBackwardCompatibility() {
-    // Define reactive properties that auto-update from store
-    Object.defineProperty(window, 'allMappings', {
-      get: () => this.getAll(),
-      set: (value) => {
-        Logger.warn('STORE', 'Direct assignment to window.allMappings is deprecated. Use MappingsStore.setFromServer()');
-      },
-      configurable: true,
-    });
-
-    Object.defineProperty(window, 'originalMappings', {
-      get: () => Array.from(this.items.values()),
-      set: (value) => {
-        Logger.warn('STORE', 'Direct assignment to window.originalMappings is deprecated');
-      },
-      configurable: true,
-    });
-
-    Logger.debug('STORE', 'Backward compatibility layer active');
-  },
-
-  _updateBackwardCompatibility() {
-    // Trigger any listeners on the old arrays
-    if (typeof window.rebuildMappingIndex === 'function') {
-      window.rebuildMappingIndex(this.getAll());
-    }
-
-    if (typeof window.refreshMappingTabSnapshot === 'function') {
-      window.refreshMappingTabSnapshot();
-    }
-  },
 };
 
 // Initialize on load

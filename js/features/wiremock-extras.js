@@ -81,9 +81,10 @@ window.toggleMetaTimestamps = () => {
     try {
         window.showMetaTimestamps = window.showMetaTimestamps === false ? true : false;
         localStorage.setItem('imock-show-meta-timestamps', window.showMetaTimestamps ? '1' : '0');
-        // Re-render current list without refetch
-        if (Array.isArray(window.allMappings)) {
-            fetchAndRenderMappings(window.allMappings);
+// Re-render current list without refetch
+        const currentMappings = window.MappingsStore?.getAll ? window.MappingsStore.getAll() : window.allMappings || [];
+        if (Array.isArray(currentMappings)) {
+            fetchAndRenderMappings(currentMappings);
         }
     } catch (e) { Logger.warn('METADATA', 'toggleMetaTimestamps failed:', e); }
 };

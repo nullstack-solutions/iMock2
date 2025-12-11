@@ -510,8 +510,9 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                                     }
                                 });
 
-                                // Add optimistic creations (mappings that exist locally but not on server)
-                                window.allMappings.forEach(currentMapping => {
+// Add optimistic creations (mappings that exist locally but not on server)
+                                const currentMappings = window.MappingsStore?.getAll ? window.MappingsStore.getAll() : window.allMappings || [];
+                                currentMappings.forEach(currentMapping => {
                                     const currentId = currentMapping.id || currentMapping.uuid;
 
                                     // If this mapping doesn't exist on server, it's an optimistic creation
@@ -521,12 +522,16 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                                     }
                                 });
 
-                                // Update data stores silently (no UI re-render)
-                                window.allMappings = mergedMappings;
-                                window.originalMappings = mergedMappings;
+// Update data stores silently (no UI re-render)
+                                if (window.MappingsStore?.setFromServer) {
+                                    window.MappingsStore.setFromServer(mergedMappings);
+                                } else {
+                                    // No fallback needed as MappingsStore is always available
+                                    window.MappingsStore.setFromServer(mergedMappings);
+                                }
                                 refreshMappingTabSnapshot();
-                                syncCacheWithMappings(window.originalMappings);
-                                rebuildMappingIndex(window.originalMappings);
+                                syncCacheWithMappings(mergedMappings);
+                                rebuildMappingIndex(mergedMappings);
 
                                 // Show toast notification based on comparison
                                 if (typeof NotificationManager !== 'undefined') {
@@ -621,21 +626,32 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                     if (before !== incoming.length) Logger.cache('filtered pending-deleted from render:', before - incoming.length);
                 }
             } catch {}
-            window.originalMappings = Array.isArray(incoming) ? incoming.filter(m => !isImockCacheMapping(m)) : [];
+const filteredMappings = Array.isArray(incoming) ? incoming.filter(m => !isImockCacheMapping(m)) : [];
+            
+            // Update MappingsStore if available
+            if (window.MappingsStore?.setFromServer) {
+                window.MappingsStore.setFromServer(filteredMappings);
+            } else {
+                // Fallback to legacy arrays
+                window.MappingsStore.setFromServer(filteredMappings);
+            }
+            
             refreshMappingTabSnapshot();
-            syncCacheWithMappings(window.originalMappings);
-            window.allMappings = window.originalMappings;
-            rebuildMappingIndex(window.originalMappings);
-            pruneOptimisticShadowMappings(window.originalMappings);
+            syncCacheWithMappings(filteredMappings);
+            rebuildMappingIndex(filteredMappings);
+            pruneOptimisticShadowMappings(filteredMappings);
             // Update data source indicator in UI
             renderSource = dataSource;
-        } else {
+} else {
             const sourceOverride = typeof options?.source === 'string' ? options.source : null;
-            window.allMappings = Array.isArray(mappingsToRender) ? [...mappingsToRender] : [];
-            window.originalMappings = [...window.allMappings];
+            const mappingsArray = Array.isArray(mappingsToRender) ? [...mappingsToRender] : [];
+            
+            // Update MappingsStore
+            window.MappingsStore.setFromServer(mappingsArray);
+            
             refreshMappingTabSnapshot();
-            rebuildMappingIndex(window.originalMappings);
-            pruneOptimisticShadowMappings(window.originalMappings);
+            rebuildMappingIndex(mappingsArray);
+            pruneOptimisticShadowMappings(mappingsArray);
             renderSource = sourceOverride;
             if (renderSource === 'demo') {
                 markDemoModeActive('manual-mappings');
@@ -644,7 +660,8 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
 
         loadingState.classList.add('hidden');
         
-        if (window.allMappings.length === 0) {
+        const currentMappings = window.MappingsStore?.getAll ? window.MappingsStore.getAll() : window.allMappings || [];
+        if (currentMappings.length === 0) {
             emptyState.classList.remove('hidden');
             container.style.display = 'none';
             updateMappingsCounter();
@@ -657,8 +674,9 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
         // Invalidate cache before re-rendering to ensure fresh DOM references
         window.invalidateElementCache(SELECTORS.LISTS.MAPPINGS);
 
-        // Sort mappings
-        const sortedMappings = [...window.allMappings].sort((a, b) => {
+// Sort mappings
+        const mappingsToSort = window.MappingsStore?.getAll ? window.MappingsStore.getAll() : window.allMappings || [];
+        const sortedMappings = [...mappingsToSort].sort((a, b) => {
             const priorityA = a.priority || 1;
             const priorityB = b.priority || 1;
             if (priorityA !== priorityB) return priorityA - priorityB;
@@ -750,23 +768,29 @@ window.refreshMappingsFromCache = async (sourceOverride = 'cache') => {
             ? mappings.filter(mapping => !isImockCacheMapping(mapping))
             : [];
 
-        window.originalMappings = normalized;
-        window.allMappings = [...normalized];
+// Update MappingsStore if available
+        if (window.MappingsStore?.setFromServer) {
+            window.MappingsStore.setFromServer(normalized);
+        } else {
+            // Fallback to legacy arrays
+            window.MappingsStore.setFromServer(normalized);
+        }
 
         if (typeof refreshMappingTabSnapshot === 'function') {
             refreshMappingTabSnapshot();
         }
         if (typeof rebuildMappingIndex === 'function') {
-            rebuildMappingIndex(window.allMappings);
+            rebuildMappingIndex(normalized);
         }
         if (typeof pruneOptimisticShadowMappings === 'function') {
-            pruneOptimisticShadowMappings(window.allMappings);
+            pruneOptimisticShadowMappings(normalized);
         }
         if (typeof updateDataSourceIndicator === 'function') {
             updateDataSourceIndicator(sourceOverride || 'cache');
         }
 
-        return await fetchAndRenderMappings(window.allMappings, { source: sourceOverride || 'cache' });
+        const mappingsToRender = window.MappingsStore?.getAll ? window.MappingsStore.getAll() : window.allMappings || [];
+        return await fetchAndRenderMappings(mappingsToRender, { source: sourceOverride || 'cache' });
     } catch (error) {
         Logger.warn('CACHE', 'refreshMappingsFromCache failed:', error);
         return false;
@@ -787,15 +811,16 @@ window.initMappingPagination = function() {
     window.PaginationManager.attachListeners((newPage) => {
         Logger.debug('UI', `Page changed to: ${newPage}`);
 
-        // Re-render mappings with new page
+// Re-render mappings with new page
         const container = document.getElementById(SELECTORS.LISTS.MAPPINGS);
-        if (!container || !Array.isArray(window.allMappings)) {
+        const currentMappings = window.MappingsStore?.getAll ? window.MappingsStore.getAll() : window.allMappings || [];
+        if (!container || !Array.isArray(currentMappings)) {
             Logger.warn('UI', 'Cannot render page: container or data not available');
             return;
         }
 
         // Sort mappings (same logic as fetchAndRenderMappings)
-        const sortedMappings = [...window.allMappings].sort((a, b) => {
+        const sortedMappings = [...currentMappings].sort((a, b) => {
             const priorityA = a.priority || 1;
             const priorityB = b.priority || 1;
             if (priorityA !== priorityB) return priorityA - priorityB;
@@ -850,16 +875,20 @@ window.getMappingById = async (mappingId) => {
 
         Logger.debug('CACHE', `Fetching mapping with ID: ${mappingId}`);
         Logger.debug('CACHE', 'Current wiremockBaseUrl:', window.wiremockBaseUrl);
-        Logger.debug('CACHE', 'window.allMappings available:', Array.isArray(window.allMappings));
-        Logger.debug('CACHE', 'Cache size:', window.allMappings?.length || 0);
+const currentMappings = window.MappingsStore?.getAll ? window.MappingsStore.getAll() : window.allMappings || [];
+        Logger.debug('CACHE', 'MappingsStore available:', !!window.MappingsStore);
+        Logger.debug('CACHE', 'Cache size:', currentMappings?.length || 0);
 
         // Try to get from cache first
         let cachedMapping = null;
-        if (window.mappingIndex instanceof Map) {
+        if (window.MappingsStore?.get) {
+            cachedMapping = window.MappingsStore.get(mappingId) || null;
+        }
+        if (!cachedMapping && window.mappingIndex instanceof Map) {
             cachedMapping = window.mappingIndex.get(mappingId) || null;
         }
         if (!cachedMapping) {
-            cachedMapping = window.allMappings?.find(m => m.id === mappingId) || null;
+            cachedMapping = currentMappings?.find(m => m.id === mappingId) || null;
         }
         if (cachedMapping) {
             Logger.cache(`Found mapping in cache: ${mappingId}`, cachedMapping);
@@ -1054,12 +1083,15 @@ window.backgroundRefreshMappings = async (useCache = false) => {
         } catch (pendingError) {
         Logger.warn('CACHE', 'Failed to filter pending deletions during background refresh:', pendingError);
         }
-        window.originalMappings = Array.isArray(incoming) ? incoming.filter(m => !isImockCacheMapping(m)) : [];
+const filteredMappings = Array.isArray(incoming) ? incoming.filter(m => !isImockCacheMapping(m)) : [];
+        
+        // Update MappingsStore
+        window.MappingsStore.setFromServer(filteredMappings);
+        
         refreshMappingTabSnapshot();
-        syncCacheWithMappings(window.originalMappings);
-        window.allMappings = window.originalMappings;
-        rebuildMappingIndex(window.originalMappings);
-        pruneOptimisticShadowMappings(window.originalMappings);
+        syncCacheWithMappings(filteredMappings);
+        rebuildMappingIndex(filteredMappings);
+        pruneOptimisticShadowMappings(filteredMappings);
         updateDataSourceIndicator(source);
         // re-render without loading state
         fetchAndRenderMappings(window.allMappings);
@@ -1138,7 +1170,8 @@ window.renderMappingCard = function(mapping) {
 window.updateMappingsCounter = function() {
     const counter = document.getElementById(SELECTORS.COUNTERS.MAPPINGS);
     if (counter) {
-        counter.textContent = Array.isArray(window.allMappings) ? window.allMappings.length : 0;
+        const currentMappings = window.MappingsStore?.getAll ? window.MappingsStore.getAll() : window.allMappings || [];
+        counter.textContent = Array.isArray(currentMappings) ? currentMappings.length : 0;
     }
 };
 // Update the data-source indicator (cache/remote/direct)

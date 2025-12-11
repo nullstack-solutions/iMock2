@@ -193,26 +193,6 @@ test.describe('iMock2 Client Startup', () => {
     expect(cacheManagerErrors, 'Should not reference deleted cacheManager').toHaveLength(0);
   });
 
-  test('should have backward compatibility arrays', async ({ page }) => {
-    const indexPath = 'file://' + path.resolve(__dirname, '..', '..', 'index.html');
-    await page.goto(indexPath);
-    await page.waitForTimeout(2000);
-
-    const backwardCompat = await page.evaluate(() => {
-      return {
-        hasAllMappings: typeof window.allMappings !== 'undefined',
-        hasOriginalMappings: typeof window.originalMappings !== 'undefined',
-        allMappingsIsArray: Array.isArray(window.allMappings),
-        originalMappingsIsArray: Array.isArray(window.originalMappings),
-      };
-    });
-
-    expect(backwardCompat.hasAllMappings).toBe(true);
-    expect(backwardCompat.hasOriginalMappings).toBe(true);
-    expect(backwardCompat.allMappingsIsArray).toBe(true);
-    expect(backwardCompat.originalMappingsIsArray).toBe(true);
-  });
-
   test('should connect and load mappings with mocked API', async ({ page }) => {
     const indexPath = 'file://' + path.resolve(__dirname, '..', '..', 'index.html');
     await page.goto(indexPath);
