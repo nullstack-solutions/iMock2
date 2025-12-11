@@ -46,6 +46,31 @@ window.MappingsStore = {
     lastSyncDuration: 0,
   },
 
+  // === REQUESTS STORE (for backward compatibility) ===
+  requests: new Map(), // id → Request
+
+  /**
+   * Get all requests
+   */
+  getAllRequests() {
+    return Array.from(this.requests.values());
+  },
+
+  /**
+   * Set requests from server
+   */
+  setRequests(requests) {
+    this.requests.clear();
+    if (Array.isArray(requests)) {
+      requests.forEach(request => {
+        const id = request.id || request.uuid || (request.request && request.request.url) || Date.now().toString();
+        if (id) {
+          this.requests.set(id, request);
+        }
+      });
+    }
+  },
+
   /**
    * Initialize the store
    */
@@ -440,4 +465,43 @@ window.MappingsStore = {
 // Initialize on load
 if (typeof window !== 'undefined') {
   window.MappingsStore.init();
+
+  // Define backward compatibility getters to maintain existing API
+  // These getters return data from MappingsStore for legacy compatibility
+  Object.defineProperty(window, 'originalMappings', {
+    get: function() {
+      return window.MappingsStore ? window.MappingsStore.getAll() : [];
+    },
+    configurable: true,
+    enumerable: true
+  });
+
+  Object.defineProperty(window, 'allMappings', {
+    get: function() {
+      // Return filtered mappings if available, otherwise return all mappings
+      return window._filteredMappings ? window._filteredMappings :
+             (window.MappingsStore ? window.MappingsStore.getAll() : []);
+    },
+    configurable: true,
+    enumerable: true
+  });
+
+  // Add request-related getters for backward compatibility
+  Object.defineProperty(window, 'originalRequests', {
+    get: function() {
+      return window.MappingsStore ? window.MappingsStore.getAllRequests() : [];
+    },
+    configurable: true,
+    enumerable: true
+  });
+
+  Object.defineProperty(window, 'allRequests', {
+    get: function() {
+      // Return filtered requests if available, otherwise return all requests
+      return window._filteredRequests ? window._filteredRequests :
+             (window.MappingsStore ? window.MappingsStore.getAllRequests() : []);
+    },
+    configurable: true,
+    enumerable: true
+  });
 }

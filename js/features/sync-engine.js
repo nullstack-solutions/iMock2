@@ -358,23 +358,64 @@ window.SyncEngine = {
         count: window.MappingsStore.items.size,
       };
 
-      // Save as special mapping
-      await fetch(`${window.wiremockBaseUrl}/mappings`, {
-        method: 'POST',
+      // Clean snapshot data by removing internal fields before saving
+      const cleanSnapshot = {
+        ...snapshot,
+        items: snapshot.items.map(item => {
+          if (!item || typeof item !== 'object') return item;
+
+          // Remove internal optimistic UI fields
+          const cleaned = { ...item };
+          delete cleaned._pending;
+          delete cleaned._operation;
+          delete cleaned._deleted;
+          delete cleaned.__optimisticTs;
+
+          // Also clean nested objects in request/response
+          if (cleaned.request) {
+            delete cleaned.request._pending;
+            delete cleaned.request._operation;
+            delete cleaned.request._deleted;
+          }
+          if (cleaned.response) {
+            delete cleaned.response._pending;
+            delete cleaned.response._operation;
+            delete cleaned.response._deleted;
+          }
+
+          return cleaned;
+        })
+      };
+
+      // Save as special mapping (use PUT to update if exists)
+      const cacheMapping = {
+        id: '00000000-0000-0000-0000-00000000cace',
+        priority: 1000,
+        request: {
+          method: 'GET',
+          url: '/__imock/cache/v2',
+        },
+        response: {
+          status: 200,
+          jsonBody: cleanSnapshot,
+        },
+      };
+
+      // Try PUT first (update existing), fall back to POST (create new)
+      let response = await fetch(`${window.wiremockBaseUrl}/mappings/${cacheMapping.id}`, {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: '00000000-0000-0000-0000-00000000cace',
-          priority: 1000,
-          request: {
-            method: 'GET',
-            url: '/__imock/cache/v2',
-          },
-          response: {
-            status: 200,
-            jsonBody: snapshot,
-          },
-        }),
+        body: JSON.stringify(cacheMapping),
       });
+
+      if (!response.ok && response.status === 404) {
+        // Mapping doesn't exist, create it
+        response = await fetch(`${window.wiremockBaseUrl}/mappings`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(cacheMapping),
+        });
+      }
 
       this.lastCacheHash = currentHash;
 

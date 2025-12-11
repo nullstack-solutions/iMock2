@@ -163,18 +163,21 @@ class EventDelegationManager {
 
         const willShow = preview.style.display === 'none';
 
-        // Lazy load preview content if not loaded yet and preview is empty
-        if (willShow && !card.dataset.previewLoaded && preview.innerHTML.trim() === '') {
-            this.loadPreviewContent(id, type, card, preview);
-            card.dataset.previewLoaded = 'true';
-        }
-
-        // Toggle visibility
+        // Toggle visibility first for immediate UI feedback
         preview.style.display = willShow ? 'block' : 'none';
         if (arrow) {
             arrow.textContent = willShow ? '▼' : '▶';
         }
         card.classList.toggle('is-expanded', willShow);
+
+        // Lazy load preview content if not loaded yet and preview is empty
+        if (willShow && !card.dataset.previewLoaded && preview.innerHTML.trim() === '') {
+            // Use setTimeout to prevent blocking the UI thread
+            setTimeout(() => {
+                this.loadPreviewContent(id, type, card, preview);
+                card.dataset.previewLoaded = 'true';
+            }, 0);
+        }
 
         // Update state tracking
         if (type === 'mapping') {
@@ -201,6 +204,7 @@ class EventDelegationManager {
      * @param {HTMLElement} preview - Preview container
      */
     loadPreviewContent(id, type, card, preview) {
+        const startTime = performance.now();
         try {
             if (type === 'mapping') {
                 // Get mapping from store or index
@@ -216,7 +220,13 @@ class EventDelegationManager {
                 const previewHTML = this.generateMappingPreview(mapping);
                 preview.innerHTML = previewHTML;
 
-                Logger.debug('EVENTS', `Lazy loaded preview for mapping: ${id}`);
+                const duration = performance.now() - startTime;
+                Logger.debug('EVENTS', `Lazy loaded preview for mapping: ${id} (${Math.round(duration)}ms)`);
+
+                // Log slow operations for performance monitoring
+                if (duration > 100) {
+                    Logger.warn('EVENTS', `Slow preview load for mapping: ${id} (${Math.round(duration)}ms)`);
+                }
             } else if (type === 'request') {
                 // Get request from data
                 const request = window.allRequests?.find(r =>
@@ -232,7 +242,13 @@ class EventDelegationManager {
                 const previewHTML = this.generateRequestPreview(request);
                 preview.innerHTML = previewHTML;
 
-                Logger.debug('EVENTS', `Lazy loaded preview for request: ${id}`);
+                const duration = performance.now() - startTime;
+                Logger.debug('EVENTS', `Lazy loaded preview for request: ${id} (${Math.round(duration)}ms)`);
+
+                // Log slow operations for performance monitoring
+                if (duration > 100) {
+                    Logger.warn('EVENTS', `Slow preview load for request: ${id} (${Math.round(duration)}ms)`);
+                }
             }
         } catch (error) {
             Logger.error('EVENTS', `Failed to load preview for ${type} ${id}:`, error);
@@ -241,7 +257,7 @@ class EventDelegationManager {
     }
 
     /**
-     * Generate preview HTML for mapping
+     * Generate preview HTML for mapping with performance optimization
      * @param {Object} mapping - Mapping data
      * @returns {string} Preview HTML
      */
@@ -250,54 +266,96 @@ class EventDelegationManager {
             return '<div class="preview-section"><p>Preview generator not available</p></div>';
         }
 
+        // Use a simple, efficient approach for generating preview sections
         const sections = [];
 
-        // Request section
-        sections.push(window.UIComponents.createPreviewSection(
-            `${window.Icons?.render('request-in', { className: 'icon-inline' }) || ''} Request`,
-            {
-                'Method': mapping.request?.method || 'GET',
-                'URL': mapping.request?.url || mapping.request?.urlPattern ||
-                       mapping.request?.urlPath || mapping.request?.urlPathPattern,
-                'Headers': mapping.request?.headers,
-                'Body': mapping.request?.bodyPatterns || mapping.request?.body,
-                'Query Parameters': mapping.request?.queryParameters
-            }
-        ));
+        // Request section with basic HTML to avoid complex UIComponents operations
+        const requestSection = this._createSimplePreviewSection('Request', {
+            'Method': mapping.request?.method || 'GET',
+            'URL': mapping.request?.url || mapping.request?.urlPattern ||
+                   mapping.request?.urlPath || mapping.request?.urlPathPattern,
+            'Headers': mapping.request?.headers,
+            'Body': mapping.request?.bodyPatterns || mapping.request?.body,
+            'Query Parameters': mapping.request?.queryParameters
+        });
 
         // Response section
-        sections.push(window.UIComponents.createPreviewSection(
-            `${window.Icons?.render('response-out', { className: 'icon-inline' }) || ''} Response`,
-            {
-                'Status': mapping.response?.status,
-                'Headers': mapping.response?.headers,
-                'Body': mapping.response?.jsonBody || mapping.response?.body,
-                'Delay': mapping.response?.fixedDelayMilliseconds ?
-                        `${mapping.response.fixedDelayMilliseconds}ms` : null
-            }
-        ));
+        const responseSection = this._createSimplePreviewSection('Response', {
+            'Status': mapping.response?.status,
+            'Headers': mapping.response?.headers,
+            'Body': mapping.response?.jsonBody || mapping.response?.body,
+            'Delay': mapping.response?.fixedDelayMilliseconds ?
+                    `${mapping.response.fixedDelayMilliseconds}ms` : null
+        });
 
         // Overview section
-        sections.push(window.UIComponents.createPreviewSection(
-            `${window.Icons?.render('info', { className: 'icon-inline' }) || ''} Overview`,
-            {
-                'ID': mapping.id || mapping.uuid,
-                'Name': mapping.name || mapping.metadata?.name,
-                'Priority': mapping.priority,
-                'Persistent': mapping.persistent,
-                'Scenario': mapping.scenarioName,
-                'Required State': mapping.requiredScenarioState,
-                'New State': mapping.newScenarioState,
-                'Created': (window.showMetaTimestamps !== false && mapping.metadata?.created) ?
-                          new Date(mapping.metadata.created).toLocaleString() : null,
-                'Edited': (window.showMetaTimestamps !== false && mapping.metadata?.edited) ?
-                         new Date(mapping.metadata.edited).toLocaleString() : null,
-                'Source': mapping.metadata?.source ?
-                         `Edited from ${mapping.metadata.source}` : null
-            }
-        ));
+        const overviewSection = this._createSimplePreviewSection('Overview', {
+            'ID': mapping.id || mapping.uuid,
+            'Name': mapping.name || mapping.metadata?.name,
+            'Priority': mapping.priority,
+            'Persistent': mapping.persistent,
+            'Scenario': mapping.scenarioName,
+            'Required State': mapping.requiredScenarioState,
+            'New State': mapping.newScenarioState,
+            'Created': (window.showMetaTimestamps !== false && mapping.metadata?.created) ?
+                      new Date(mapping.metadata.created).toLocaleString() : null,
+            'Edited': (window.showMetaTimestamps !== false && mapping.metadata?.edited) ?
+                     new Date(mapping.metadata.edited).toLocaleString() : null,
+            'Source': mapping.metadata?.source ?
+                     `Edited from ${mapping.metadata.source}` : null
+        });
 
-        return sections.join('');
+        return `${requestSection}${responseSection}${overviewSection}`;
+    }
+
+    /**
+     * Create a simple preview section without heavy UIComponents
+     * @param {string} title - Section title
+     * @param {Object} items - Key-value pairs to display
+     * @returns {string} HTML for the preview section
+     */
+    _createSimplePreviewSection(title, items) {
+        const validItems = Object.entries(items).filter(([key, value]) => value !== undefined && value !== null);
+
+        if (validItems.length === 0) {
+            return '';
+        }
+
+        const content = validItems.map(([key, value]) => {
+            if (!value) return '';
+
+            if (typeof value === 'object') {
+                const jsonString = JSON.stringify(value);
+                // For large objects, show a summary to prevent performance issues
+                if (jsonString.length > 500) {
+                    const preview = jsonString.substring(0, 200) + '...';
+                    return `<div class="preview-value"><strong>${key}:</strong> <pre>${this._escapeHtml(preview)}</pre></div>`;
+                } else {
+                    return `<div class="preview-value"><strong>${key}:</strong> <pre>${this._escapeHtml(jsonString)}</pre></div>`;
+                }
+            } else {
+                const escapedValue = this._escapeHtml(String(value));
+                const formattedValue = escapedValue.includes('\n') ? `<pre>${escapedValue}</pre>` : escapedValue;
+                return `<div class="preview-value"><strong>${key}:</strong> ${formattedValue}</div>`;
+            }
+        }).join('');
+
+        return `<div class="preview-section"><h4>${title}</h4>${content}</div>`;
+    }
+
+    /**
+     * Simple HTML escaping utility
+     * @param {string} str - String to escape
+     * @returns {string} Escaped string
+     */
+    _escapeHtml(str) {
+        if (typeof str !== 'string') return String(str);
+        return str
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#x27;');
     }
 
     /**

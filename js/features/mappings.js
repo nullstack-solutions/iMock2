@@ -484,49 +484,52 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                                 const serverMappings = freshData.mappings.filter(x => !isImockCacheMapping(x));
                                 const cachedMappings = cached.data.mappings || [];
 
-                                // Silent comparison: detect discrepancies between cache and server
+                                // Apply optimistic updates to server mappings before comparison
+                                const serverMappingsWithOptimistic = serverMappings.map(serverMapping => {
+                                    const serverId = serverMapping.id || serverMapping.uuid;
+                                    const optimisticItem = window.MappingsStore.pending.get(serverId);
+
+                                    if (optimisticItem) {
+                                        if (optimisticItem.type === 'delete') {
+                                            // If optimistically deleted, don't include in comparison
+                                            return null;
+                                        } else if (optimisticItem.type === 'update') {
+                                            // Use optimistic version for comparison
+                                            return optimisticItem.optimisticMapping;
+                                        }
+                                    }
+                                    return serverMapping;
+                                }).filter(m => m !== null);
+
+                                // Add optimistic creations to server data
+                                const currentMappings = window.MappingsStore.getAll();
+                                const allMappingsWithOptimistic = [...serverMappingsWithOptimistic];
+
+                                currentMappings.forEach(currentMapping => {
+                                    if (currentMapping._operation === 'create') {
+                                        const currentId = currentMapping.id || currentMapping.uuid;
+                                        const existsInServer = serverMappings.some(s => (s.id || s.uuid) === currentId);
+                                        if (!existsInServer) {
+                                            allMappingsWithOptimistic.push(currentMapping);
+                                        }
+                                    }
+                                });
+
+                                // Silent comparison: detect discrepancies between cache and server (accounting for optimistic updates)
                                 const cachedIds = new Set(cachedMappings.map(m => m.id || m.uuid));
-                                const serverIds = new Set(serverMappings.map(m => m.id || m.uuid));
+                                const serverIds = new Set(allMappingsWithOptimistic.map(m => m.id || m.uuid));
 
                                 // Check for mismatches
-                                const hasCountMismatch = cachedMappings.length !== serverMappings.length;
+                                const hasCountMismatch = cachedMappings.length !== allMappingsWithOptimistic.length;
                                 const missingInCache = [...serverIds].filter(id => !cachedIds.has(id));
                                 const extraInCache = [...cachedIds].filter(id => !serverIds.has(id));
                                 const hasMismatch = hasCountMismatch || missingInCache.length > 0 || extraInCache.length > 0;
 
                                 // Update cache manager with fresh data (silent background sync)
-                                const mergedMappings = [];
-
-                                // Add all server mappings first (they have full data)
-                                serverMappings.forEach(serverMapping => {
-                                    const serverId = serverMapping.id || serverMapping.uuid;
-
-                                    // Check if this server mapping was optimistically deleted
-                                    const optimisticItem = window.MappingsStore.pending.get(serverId);
-                                    const isOptimisticallyDeleted = optimisticItem && optimisticItem.type === 'delete';
-
-                                    if (!isOptimisticallyDeleted) {
-                                        mergedMappings.push(serverMapping);
-                                    }
-                                });
-
-// Add optimistic creations (mappings that exist locally but not on server)
-                                const currentMappings = window.MappingsStore.getAll();
-                                currentMappings.forEach(currentMapping => {
-                                    const currentId = currentMapping.id || currentMapping.uuid;
-
-                                    // If this mapping doesn't exist on server, it's an optimistic creation
-                                    const existsOnServer = serverIds.has(currentId);
-                                    if (!existsOnServer) {
-                                        mergedMappings.push(currentMapping);
-                                    }
-                                });
-
-// Update data stores silently (no UI re-render)
-                                window.MappingsStore.setFromServer(mergedMappings);
+                                window.MappingsStore.setFromServer(allMappingsWithOptimistic);
                                 refreshMappingTabSnapshot();
-                                syncCacheWithMappings(mergedMappings);
-                                rebuildMappingIndex(mergedMappings);
+                                syncCacheWithMappings(allMappingsWithOptimistic);
+                                rebuildMappingIndex(allMappingsWithOptimistic);
 
                                 // Show toast notification based on comparison
                                 if (typeof NotificationManager !== 'undefined') {
@@ -543,7 +546,7 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                                             missingInCache,
                                             extraInCache,
                                             cachedCount: cachedMappings.length,
-                                            serverCount: serverMappings.length
+                                            serverCount: allMappingsWithOptimistic.length
                                         });
                                     } else {
                                         NotificationManager.success('Data synchronized with server', 3000);
