@@ -12,6 +12,27 @@ class EventDelegationManager {
     constructor() {
         this.initialized = false;
         this.handlers = new Map();
+        // Debounce functions to prevent excessive UI updates
+        this.debounceTimers = new Map();
+    }
+
+    /**
+     * Debounce function to prevent excessive UI updates
+     * @param {string} key - Unique key for the operation
+     * @param {Function} func - Function to debounce
+     * @param {number} delay - Delay in ms
+     */
+    debounce(key, func, delay = 100) {
+        if (this.debounceTimers.has(key)) {
+            clearTimeout(this.debounceTimers.get(key));
+        }
+
+        const timerId = setTimeout(() => {
+            func();
+            this.debounceTimers.delete(key);
+        }, delay);
+
+        this.debounceTimers.set(key, timerId);
     }
 
     /**
@@ -156,44 +177,48 @@ class EventDelegationManager {
      * @param {HTMLElement} card - Card element
      */
     handleToggleDetails(id, type, card) {
-        const preview = document.getElementById(`preview-${id}`);
-        const arrow = document.getElementById(`arrow-${id}`);
+        // Debounce the toggle operation to prevent excessive UI updates
+        const key = `toggle-${type}-${id}`;
+        this.debounce(key, () => {
+            const preview = document.getElementById(`preview-${id}`);
+            const arrow = document.getElementById(`arrow-${id}`);
 
-        if (!preview) return;
+            if (!preview) return;
 
-        const willShow = preview.style.display === 'none';
+            const willShow = preview.style.display === 'none';
 
-        // Toggle visibility first for immediate UI feedback
-        preview.style.display = willShow ? 'block' : 'none';
-        if (arrow) {
-            arrow.textContent = willShow ? '▼' : '▶';
-        }
-        card.classList.toggle('is-expanded', willShow);
+            // Toggle visibility first for immediate UI feedback
+            preview.style.display = willShow ? 'block' : 'none';
+            if (arrow) {
+                arrow.textContent = willShow ? '▼' : '▶';
+            }
+            card.classList.toggle('is-expanded', willShow);
 
-        // Lazy load preview content if not loaded yet and preview is empty
-        if (willShow && !card.dataset.previewLoaded && preview.innerHTML.trim() === '') {
-            // Use setTimeout to prevent blocking the UI thread
-            setTimeout(() => {
-                this.loadPreviewContent(id, type, card, preview);
-                card.dataset.previewLoaded = 'true';
-            }, 0);
-        }
+            // Lazy load preview content if not loaded yet and preview is empty
+            if (willShow && !card.dataset.previewLoaded && preview.innerHTML.trim() === '') {
+                // Use setTimeout to prevent blocking the UI thread
+                setTimeout(() => {
+                    this.loadPreviewContent(id, type, card, preview);
+                    card.dataset.previewLoaded = 'true';
+                }, 0);
+            }
 
-        // Update state tracking
-        if (type === 'mapping') {
-            if (window.mappingPreviewState instanceof Set) {
-                if (willShow) {
-                    window.mappingPreviewState.add(String(id));
-                } else {
-                    window.mappingPreviewState.delete(String(id));
+            // Update state tracking
+            if (type === 'mapping') {
+                if (window.mappingPreviewState instanceof Set) {
+                    if (willShow) {
+                        window.mappingPreviewState.add(String(id));
+                    } else {
+                        window.mappingPreviewState.delete(String(id));
+                    }
                 }
             }
-        }
 
-        // Call legacy handlers if they exist
-        if (typeof window.UIComponents?.setCardState === 'function') {
-            window.UIComponents.setCardState(type, id, 'is-expanded', willShow);
-        }
+            // Call legacy handlers if they exist
+            if (typeof window.UIComponents?.setCardState === 'function') {
+                window.UIComponents.setCardState(type, id, 'is-expanded', willShow);
+            }
+        }, 50); // Use a short delay for UI responsiveness
     }
 
     /**
@@ -204,56 +229,64 @@ class EventDelegationManager {
      * @param {HTMLElement} preview - Preview container
      */
     loadPreviewContent(id, type, card, preview) {
-        const startTime = performance.now();
-        try {
-            if (type === 'mapping') {
-                // Get mapping from store or index
-                const mapping = window.MappingsStore.get(id) ||
-                               window.mappingIndex?.get(id);
+        // Debounce preview loading to prevent multiple simultaneous requests
+        const key = `preview-${type}-${id}`;
+        this.debounce(key, () => {
+            const startTime = performance.now();
+            try {
+                if (type === 'mapping') {
+                    // Get mapping from store or index
+                    const mapping = window.MappingsStore.get(id) ||
+                                   window.mappingIndex?.get(id);
 
-                if (!mapping) {
-                    preview.innerHTML = '<div class="preview-section"><p>Mapping data not found</p></div>';
-                    return;
+                    if (!mapping) {
+                        preview.innerHTML = '<div class="preview-section"><p>Mapping data not found</p></div>';
+                        return;
+                    }
+
+                    // Generate preview HTML using UIComponents
+                    const previewHTML = this.generateMappingPreview(mapping);
+
+                    // Batch DOM update
+                    preview.innerHTML = previewHTML;
+
+                    const duration = performance.now() - startTime;
+                    Logger.debug('EVENTS', `Lazy loaded preview for mapping: ${id} (${Math.round(duration)}ms)`);
+
+                    // Log slow operations for performance monitoring
+                    if (duration > 100) {
+                        Logger.warn('EVENTS', `Slow preview load for mapping: ${id} (${Math.round(duration)}ms)`);
+                    }
+                } else if (type === 'request') {
+                    // Get request from data
+                    const request = window.allRequests?.find(r =>
+                        (r.id || r.requestId || r.request?.id) === id
+                    );
+
+                    if (!request) {
+                        preview.innerHTML = '<div class="preview-section"><p>Request data not found</p></div>';
+                        return;
+                    }
+
+                    // Generate preview HTML
+                    const previewHTML = this.generateRequestPreview(request);
+
+                    // Batch DOM update
+                    preview.innerHTML = previewHTML;
+
+                    const duration = performance.now() - startTime;
+                    Logger.debug('EVENTS', `Lazy loaded preview for request: ${id} (${Math.round(duration)}ms)`);
+
+                    // Log slow operations for performance monitoring
+                    if (duration > 100) {
+                        Logger.warn('EVENTS', `Slow preview load for request: ${id} (${Math.round(duration)}ms)`);
+                    }
                 }
-
-                // Generate preview HTML using UIComponents
-                const previewHTML = this.generateMappingPreview(mapping);
-                preview.innerHTML = previewHTML;
-
-                const duration = performance.now() - startTime;
-                Logger.debug('EVENTS', `Lazy loaded preview for mapping: ${id} (${Math.round(duration)}ms)`);
-
-                // Log slow operations for performance monitoring
-                if (duration > 100) {
-                    Logger.warn('EVENTS', `Slow preview load for mapping: ${id} (${Math.round(duration)}ms)`);
-                }
-            } else if (type === 'request') {
-                // Get request from data
-                const request = window.allRequests?.find(r =>
-                    (r.id || r.requestId || r.request?.id) === id
-                );
-
-                if (!request) {
-                    preview.innerHTML = '<div class="preview-section"><p>Request data not found</p></div>';
-                    return;
-                }
-
-                // Generate preview HTML
-                const previewHTML = this.generateRequestPreview(request);
-                preview.innerHTML = previewHTML;
-
-                const duration = performance.now() - startTime;
-                Logger.debug('EVENTS', `Lazy loaded preview for request: ${id} (${Math.round(duration)}ms)`);
-
-                // Log slow operations for performance monitoring
-                if (duration > 100) {
-                    Logger.warn('EVENTS', `Slow preview load for request: ${id} (${Math.round(duration)}ms)`);
-                }
+            } catch (error) {
+                Logger.error('EVENTS', `Failed to load preview for ${type} ${id}:`, error);
+                preview.innerHTML = '<div class="preview-section"><p>Error loading preview</p></div>';
             }
-        } catch (error) {
-            Logger.error('EVENTS', `Failed to load preview for ${type} ${id}:`, error);
-            preview.innerHTML = '<div class="preview-section"><p>Error loading preview</p></div>';
-        }
+        }, 50);
     }
 
     /**

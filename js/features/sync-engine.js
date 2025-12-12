@@ -153,14 +153,15 @@ window.SyncEngine = {
    * Full sync - fetch all mappings from server
    */
   async fullSync({ background = false } = {}) {
-    if (window.MappingsStore.metadata.isSyncing) {
-      Logger.debug('SYNC', 'Already syncing, skipping full sync');
+    if (window.MappingsStore.metadata.isSyncing || window.MappingsStore.metadata.isOptimisticUpdate) {
+      Logger.debug('SYNC', 'Already syncing or optimistic update in progress, skipping full sync');
       return;
     }
 
     Logger.info('SYNC', `Starting full sync (background: ${background})`);
 
     window.MappingsStore.metadata.isSyncing = true;
+    window.MappingsStore.metadata.syncStartTime = Date.now();
     const startTime = Date.now();
 
     try {
@@ -212,6 +213,7 @@ window.SyncEngine = {
       }
     } finally {
       window.MappingsStore.metadata.isSyncing = false;
+      window.MappingsStore.metadata.syncStartTime = null;
     }
   },
 
@@ -219,8 +221,8 @@ window.SyncEngine = {
    * Incremental sync - check for changes from other users
    */
   async incrementalSync() {
-    if (window.MappingsStore.metadata.isSyncing) {
-      Logger.debug('SYNC', 'Already syncing, skipping incremental sync');
+    if (window.MappingsStore.metadata.isSyncing || window.MappingsStore.metadata.isOptimisticUpdate) {
+      Logger.debug('SYNC', 'Already syncing or optimistic update in progress, skipping incremental sync');
       return;
     }
 
@@ -231,6 +233,9 @@ window.SyncEngine = {
     }
 
     Logger.info('SYNC', 'Starting incremental sync');
+
+    window.MappingsStore.metadata.isSyncing = true;
+    window.MappingsStore.metadata.syncStartTime = Date.now();
 
     try {
       // Fetch current mappings from server
@@ -278,6 +283,9 @@ window.SyncEngine = {
     } catch (error) {
       Logger.warn('SYNC', 'Incremental sync failed:', error);
       // Don't throw - incremental sync failures are not critical
+    } finally {
+      window.MappingsStore.metadata.isSyncing = false;
+      window.MappingsStore.metadata.syncStartTime = null;
     }
   },
 
@@ -335,9 +343,9 @@ window.SyncEngine = {
    * Rebuild Service Cache (save current state)
    */
   async rebuildServiceCache() {
-    // Only rebuild if no pending operations
-    if (window.MappingsStore.pending.size > 0) {
-      Logger.debug('SYNC', 'Skipping cache rebuild - pending operations exist');
+    // Only rebuild if no pending operations and no optimistic updates in progress
+    if (window.MappingsStore.pending.size > 0 || window.MappingsStore.metadata.isOptimisticUpdate) {
+      Logger.debug('SYNC', 'Skipping cache rebuild - pending operations or optimistic updates exist');
       return;
     }
 
@@ -530,9 +538,36 @@ window.SyncEngine = {
   },
 
   _hashMappings(mappingsMap) {
-    // Simple hash based on count and IDs
-    const ids = Array.from(mappingsMap.keys()).sort().join(',');
-    return `${mappingsMap.size}:${ids}`;
+    // Optimized hash computation for large mapping sets
+    // Use only size and a quick checksum to avoid expensive operations on large sets
+    if (mappingsMap.size === 0) {
+      return '0:';
+    }
+
+    // For large sets, use size and hash of keys to avoid memory issues
+    const keys = Array.from(mappingsMap.keys());
+    if (keys.length > 1000) {
+      // For very large sets, just use count and sum of first few and last few hash chars
+      const startKeys = keys.slice(0, 50).sort().join('|').substring(0, 100);
+      const endKeys = keys.slice(-50).sort().join('|').substring(0, 100);
+      const keySignature = `${startKeys}...${endKeys}`;
+      return `${mappingsMap.size}:${this._simpleHash(keySignature)}`;
+    } else {
+      // For smaller sets, use full sorted list as before
+      const ids = keys.sort().join(',');
+      return `${mappingsMap.size}:${ids}`;
+    }
+  },
+
+  // Simple non-cryptographic hash function for performance
+  _simpleHash(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash |= 0; // Convert to 32bit integer
+    }
+    return Math.abs(hash).toString(36); // Convert to base-36 string for consistency
   },
 
   _isServiceCacheMapping(mapping) {

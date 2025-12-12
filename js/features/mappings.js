@@ -456,6 +456,14 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
         return false;
     }
 
+    // Prevent race conditions during sync operations and render operations
+    if (window.MappingsStore?.metadata?.isSyncing || window.MappingsStore?.metadata?.isRendering) {
+        Logger.debug('UI', 'Sync or render in progress, skipping render to avoid race condition');
+        return true; // Return true to indicate it's OK to skip
+    }
+
+    // Set render lock to prevent concurrent renders
+    window.MappingsStore.metadata.isRendering = true;
     let renderSource = null;
 
     try {
@@ -661,24 +669,25 @@ const filteredMappings = Array.isArray(incoming) ? incoming.filter(m => !isImock
             return true;
         }
         
+        // Batch DOM operations using document fragment to reduce layout thrashing
         emptyState.classList.add('hidden');
         container.style.display = 'block';
-        
+
         // Invalidate cache before re-rendering to ensure fresh DOM references
         window.invalidateElementCache(SELECTORS.LISTS.MAPPINGS);
 
-// Sort mappings
+        // Sort mappings
         const mappingsToSort = window.MappingsStore.getAll();
         const sortedMappings = [...mappingsToSort].sort((a, b) => {
             const priorityA = a.priority || 1;
             const priorityB = b.priority || 1;
             if (priorityA !== priorityB) return priorityA - priorityB;
-            
+
             const methodOrder = { 'GET': 1, 'POST': 2, 'PUT': 3, 'PATCH': 4, 'DELETE': 5 };
             const methodA = methodOrder[a.request?.method] || 999;
             const methodB = methodOrder[b.request?.method] || 999;
             if (methodA !== methodB) return methodA - methodB;
-            
+
             const urlA = a.request?.url || a.request?.urlPattern || a.request?.urlPath || '';
             const urlB = b.request?.url || b.request?.urlPattern || b.request?.urlPath || '';
             return urlA.localeCompare(urlB);
@@ -686,54 +695,99 @@ const filteredMappings = Array.isArray(incoming) ? incoming.filter(m => !isImock
         const logSource = renderSource || 'previous';
         Logger.info('UI', `Mappings render from: ${logSource} — ${sortedMappings.length} items`);
 
-        // Update pagination state
-        if (window.PaginationManager) {
-            window.PaginationManager.updateState(sortedMappings.length);
-
-            // Get items for current page
-            const pageItems = window.PaginationManager.getCurrentPageItems(sortedMappings);
-            Logger.debug('UI', `Rendering page ${window.PaginationManager.currentPage}/${window.PaginationManager.totalPages} (${pageItems.length} items)`);
-
-            // Render only current page items
-            renderList(container, pageItems, {
-                renderItem: renderMappingMarkup,
-                getKey: getMappingRenderKey,
-                getSignature: getMappingRenderSignature,
-                onItemChanged: handleMappingItemChanged,
-                onItemRemoved: handleMappingItemRemoved
-            });
-
-            // Render pagination controls
-            const paginationContainer = document.getElementById('mappings-pagination');
-            if (paginationContainer) {
-                paginationContainer.innerHTML = window.PaginationManager.renderControls();
-            }
-        } else {
-            // Fallback: render all items if pagination not available
-            renderList(container, sortedMappings, {
-                renderItem: renderMappingMarkup,
-                getKey: getMappingRenderKey,
-                getSignature: getMappingRenderSignature,
-                onItemChanged: handleMappingItemChanged,
-                onItemRemoved: handleMappingItemRemoved
-            });
-        }
-
-        updateMappingsCounter();
-        if (renderSource) {
-            updateDataSourceIndicator(renderSource);
-        }
-        // Reapply mapping filters if any are active, preserving user's view
+        // Batch UI updates to reduce DOM manipulation overhead
         try {
-            const filterQuery = document.getElementById(SELECTORS.MAPPING_FILTERS.QUERY)?.value?.trim() || '';
-            if (filterQuery && typeof FilterManager !== 'undefined' && FilterManager.applyMappingFilters) {
-                FilterManager.applyMappingFilters();
-                if (typeof FilterManager.flushMappingFilters === 'function') {
-                    FilterManager.flushMappingFilters();
+            // Temporarily disable transitions for smoother updates
+            container.style.willChange = 'contents';
+
+            // Update pagination state
+            if (window.PaginationManager) {
+                window.PaginationManager.updateState(sortedMappings.length);
+
+                // Get items for current page
+                const pageItems = window.PaginationManager.getCurrentPageItems(sortedMappings);
+                Logger.debug('UI', `Rendering page ${window.PaginationManager.currentPage}/${window.PaginationManager.totalPages} (${pageItems.length} items)`);
+
+                // Render only current page items
+                renderList(container, pageItems, {
+                    renderItem: renderMappingMarkup,
+                    getKey: getMappingRenderKey,
+                    getSignature: getMappingRenderSignature,
+                    onItemChanged: handleMappingItemChanged,
+                    onItemRemoved: handleMappingItemRemoved
+                });
+
+                // Render pagination controls
+                const paginationContainer = document.getElementById('mappings-pagination');
+                if (paginationContainer) {
+                    paginationContainer.innerHTML = window.PaginationManager.renderControls();
                 }
-                Logger.debug('UI', 'Mapping filters re-applied after refresh');
+            } else {
+                // Fallback: render all items if pagination not available
+                renderList(container, sortedMappings, {
+                    renderItem: renderMappingMarkup,
+                    getKey: getMappingRenderKey,
+                    getSignature: getMappingRenderSignature,
+                    onItemChanged: handleMappingItemChanged,
+                    onItemRemoved: handleMappingItemRemoved
+                });
             }
-        } catch {}
+
+            // Batch updates to counter, source indicator, and filters
+            requestAnimationFrame(() => {
+                updateMappingsCounter();
+                if (renderSource) {
+                    updateDataSourceIndicator(renderSource);
+                }
+
+                // Reapply mapping filters if any are active, preserving user's view
+                try {
+                    const filterQuery = document.getElementById(SELECTORS.MAPPING_FILTERS.QUERY)?.value?.trim() || '';
+                    if (filterQuery && typeof FilterManager !== 'undefined' && FilterManager.applyMappingFilters) {
+                        FilterManager.applyMappingFilters();
+                        if (typeof FilterManager.flushMappingFilters === 'function') {
+                            FilterManager.flushMappingFilters();
+                        }
+                        Logger.debug('UI', 'Mapping filters re-applied after refresh');
+                    }
+                } catch {}
+
+                // Reset willChange after update
+                container.style.willChange = 'auto';
+            });
+
+        } catch (domError) {
+            Logger.error('UI', 'DOM batch update failed:', domError);
+            // Fallback to regular updates if batch operation fails
+            if (window.PaginationManager) {
+                window.PaginationManager.updateState(sortedMappings.length);
+                const pageItems = window.PaginationManager.getCurrentPageItems(sortedMappings);
+                renderList(container, pageItems, {
+                    renderItem: renderMappingMarkup,
+                    getKey: getMappingRenderKey,
+                    getSignature: getMappingRenderSignature,
+                    onItemChanged: handleMappingItemChanged,
+                    onItemRemoved: handleMappingItemRemoved
+                });
+                const paginationContainer = document.getElementById('mappings-pagination');
+                if (paginationContainer) {
+                    paginationContainer.innerHTML = window.PaginationManager.renderControls();
+                }
+            } else {
+                renderList(container, sortedMappings, {
+                    renderItem: renderMappingMarkup,
+                    getKey: getMappingRenderKey,
+                    getSignature: getMappingRenderSignature,
+                    onItemChanged: handleMappingItemChanged,
+                    onItemRemoved: handleMappingItemRemoved
+                });
+            }
+
+            updateMappingsCounter();
+            if (renderSource) {
+                updateDataSourceIndicator(renderSource);
+            }
+        }
 
         return true;
     } catch (error) {
@@ -743,6 +797,11 @@ const filteredMappings = Array.isArray(incoming) ? incoming.filter(m => !isImock
         emptyState.classList.remove('hidden');
         container.style.display = 'none';
         return false;
+    } finally {
+        // Release render lock
+        if (window.MappingsStore?.metadata) {
+            window.MappingsStore.metadata.isRendering = false;
+        }
     }
 };
 
@@ -1007,6 +1066,15 @@ window.applyOptimisticMappingUpdate = (mappingLike) => {
             }
 
             window.cacheLastUpdate = Date.now();
+
+            // Ensure background sync doesn't override optimistic updates by temporarily setting a flag
+            if (!window.MappingsStore.metadata.isOptimisticUpdate) {
+                window.MappingsStore.metadata.isOptimisticUpdate = true;
+                setTimeout(() => {
+                    window.MappingsStore.metadata.isOptimisticUpdate = false;
+                }, 1000); // Clear flag after 1 second
+            }
+
             refreshMappingsFromCache();
         }
 
@@ -1067,8 +1135,10 @@ const filteredMappings = Array.isArray(incoming) ? incoming.filter(m => !isImock
         rebuildMappingIndex(filteredMappings);
         pruneOptimisticShadowMappings(filteredMappings);
         updateDataSourceIndicator(source);
-        // re-render without loading state
-        fetchAndRenderMappings(window.MappingsStore.getAll());
+        // re-render without loading state using batched DOM operations
+        setTimeout(() => {
+            fetchAndRenderMappings(window.MappingsStore.getAll());
+        }, 0); // Use setTimeout to batch the render operation
     } catch (e) {
         Logger.warn('CACHE', 'Background refresh failed:', e);
     }
