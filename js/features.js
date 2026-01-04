@@ -442,8 +442,18 @@
                     window.updateFileDisplay();
                 }
 
+                // Rebuild cache and refresh UI after import
+                // This follows the same pattern as forceRefreshCache for consistency
                 try {
-                    await window.refreshMappings();
+                    // First rebuild the cache from server to include newly imported mappings
+                    if (typeof window.cacheManager?.rebuildCache === 'function') {
+                        await window.cacheManager.rebuildCache();
+                    } else if (typeof window.refreshImockCache === 'function') {
+                        await window.refreshImockCache();
+                    }
+                    
+                    // Then refresh the UI with fresh data (bypass cache to ensure consistency)
+                    await fetchAndRenderMappings(null, { useCache: false });
                 } catch (refreshError) {
                     console.warn('Failed to refresh mappings after import:', refreshError);
                 }
