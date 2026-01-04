@@ -445,10 +445,8 @@
                 // Rebuild cache and refresh UI after import
                 // This follows the same pattern as forceRefreshCache for consistency
                 try {
-                    // First rebuild the cache from server to include newly imported mappings
-                    if (typeof window.cacheManager?.rebuildCache === 'function') {
-                        await window.cacheManager.rebuildCache();
-                    } else if (typeof window.refreshImockCache === 'function') {
+                    // Rebuild the cache from server to include newly imported mappings
+                    if (typeof window.refreshImockCache === 'function') {
                         await window.refreshImockCache();
                     }
                     
