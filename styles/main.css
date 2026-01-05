@@ -628,11 +628,15 @@ body.onboarding-active .container {
 
 .scenarios-header-actions {
     display: grid;
-    grid-template-columns: minmax(240px, 520px) auto auto auto;
+    grid-template-columns: minmax(240px, 1fr) max-content max-content max-content;
     gap: var(--space-2);
     align-items: center;
     justify-content: end;
     flex: 1;
+}
+
+.scenarios-header-actions > .btn {
+    white-space: nowrap;
 }
 
 .scenario-search {
@@ -1058,6 +1062,27 @@ button.scenario-state-pill:focus {
 }
 
 /* ===== RESPONSIVE DESIGN ===== */
+@media (max-width: 980px) {
+    .scenarios-header-actions {
+        grid-template-columns: 1fr 1fr;
+        justify-content: stretch;
+    }
+
+    .scenario-search {
+        grid-column: 1 / -1;
+        max-width: none;
+    }
+
+    .scenario-bulk-wrap {
+        grid-column: 1 / -1;
+    }
+
+    .scenarios-header-actions > .btn {
+        width: 100%;
+        justify-content: center;
+    }
+}
+
 @media (max-width: 768px) {
     .header {
         flex-direction: column;
