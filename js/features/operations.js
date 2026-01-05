@@ -1,5 +1,39 @@
 'use strict';
 
+function normalizeScenarioNameValue(value) {
+  if (value == null) {
+    return { original: value, normalized: value, changed: false, cleared: false, hadWhitespace: false };
+  }
+  const original = typeof value === 'string' ? value : String(value);
+  const hadWhitespace = /\s/.test(original);
+  const normalized = original.trim().replace(/\s+/g, '_');
+  const cleared = Boolean(original) && !normalized;
+  const changed = normalized !== original;
+  return { original, normalized, changed, cleared, hadWhitespace };
+}
+
+function normalizeScenarioNameField(mapping, { notify } = {}) {
+  if (!mapping || typeof mapping !== 'object') return { changed: false };
+  if (!Object.prototype.hasOwnProperty.call(mapping, 'scenarioName')) return { changed: false };
+
+  const normalizer = typeof window.Utils?.normalizeScenarioName === 'function'
+    ? window.Utils.normalizeScenarioName
+    : normalizeScenarioNameValue;
+
+  const result = normalizer(mapping.scenarioName);
+  if (!result?.changed || !result?.hadWhitespace) return { changed: false };
+
+  if (result.cleared) {
+    delete mapping.scenarioName;
+    notify?.('Scenario name contained only whitespace and was cleared');
+  } else {
+    mapping.scenarioName = result.normalized;
+    notify?.(`Scenario name cannot contain spaces. Replaced with "${result.normalized}"`);
+  }
+
+  return { changed: true, original: result.original, normalized: result.normalized, cleared: result.cleared };
+}
+
 /**
  * MappingsOperations - Optimistic CRUD operations for mappings
  *
@@ -20,13 +54,16 @@ window.MappingsOperations = {
    * Create a new mapping (optimistic)
    */
   async create(mappingData) {
+    const normalizedPayload = { ...(mappingData || {}) };
+    normalizeScenarioNameField(normalizedPayload, { notify: (msg) => window.NotificationManager?.warning?.(msg) });
+
     const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
     Logger.info('OPS', `Creating mapping with temp ID: ${tempId}`);
 
     // Build optimistic mapping
     const optimisticMapping = {
-      ...mappingData,
+      ...normalizedPayload,
       id: tempId,
       _pending: true,
       _operation: 'create',
@@ -43,7 +80,7 @@ window.MappingsOperations = {
       window.MappingsStore.addPending({
         id: tempId,
         type: 'create',
-        payload: mappingData,
+        payload: normalizedPayload,
         optimisticMapping,
       });
 
@@ -56,7 +93,7 @@ window.MappingsOperations = {
       }
 
       // 3. Send to server
-      const created = await this._sendCreateRequest(mappingData);
+      const created = await this._sendCreateRequest(normalizedPayload);
 
       // 4. Confirm pending operation
       const realId = created.id || created.uuid;
@@ -113,25 +150,29 @@ window.MappingsOperations = {
       throw new Error('Mapping has pending changes');
     }
 
+    const normalizedChanges = { ...(changes || {}) };
+
     // Build optimistic mapping
     const optimisticMapping = {
       ...original,
-      ...changes,
+      ...normalizedChanges,
       _pending: true,
       _operation: 'update',
       metadata: {
         ...original.metadata,
-        ...changes.metadata,
+        ...normalizedChanges.metadata,
         edited: Date.now(),
       },
     };
+
+    normalizeScenarioNameField(optimisticMapping, { notify: (msg) => window.NotificationManager?.warning?.(msg) });
 
     try {
       // 1. Apply update immediately (optimistic)
       window.MappingsStore.addPending({
         id,
         type: 'update',
-        payload: changes,
+        payload: normalizedChanges,
         optimisticMapping,
         original, // Store for rollback
       });

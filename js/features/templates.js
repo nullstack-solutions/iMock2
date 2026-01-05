@@ -255,15 +255,52 @@
         }
     }
 
+    function normalizeScenarioNameField(mapping) {
+        if (!mapping || typeof mapping !== 'object') return null;
+        if (!Object.prototype.hasOwnProperty.call(mapping, 'scenarioName')) return null;
+
+        const fallbackNormalize = (value) => {
+            if (value == null) {
+                return { original: value, normalized: value, changed: false, cleared: false, hadWhitespace: false };
+            }
+            const original = typeof value === 'string' ? value : String(value);
+            const hadWhitespace = /\s/.test(original);
+            const normalized = original.trim().replace(/\s+/g, '_');
+            const cleared = Boolean(original) && !normalized;
+            const changed = normalized !== original;
+            return { original, normalized, changed, cleared, hadWhitespace };
+        };
+
+        const normalizer = typeof global?.Utils?.normalizeScenarioName === 'function'
+            ? global.Utils.normalizeScenarioName
+            : fallbackNormalize;
+
+        const result = normalizer(mapping.scenarioName);
+        if (!result?.changed || !result?.hadWhitespace) return null;
+
+        if (result.cleared) {
+            delete mapping.scenarioName;
+        } else {
+            mapping.scenarioName = result.normalized;
+        }
+
+        return { original: result.original, normalized: result.normalized, cleared: result.cleared };
+    }
+
     function prepareMappingForCreation(mapping, options = {}) {
         if (!mapping || typeof mapping !== 'object') return null;
 
-        const { source = 'ui', seed = getEmptyTemplateSeed() } = options;
+        const { source = 'ui', seed = getEmptyTemplateSeed(), scenarioFixes } = options;
         const nowIso = new Date().toISOString();
         const normalized = deepClone(mapping);
 
         stripMappingIdentifiers(normalized);
         normalizeRequestAndResponse(normalized, seed);
+
+        const scenarioFix = normalizeScenarioNameField(normalized);
+        if (scenarioFix && scenarioFixes instanceof Map && !scenarioFixes.has(scenarioFix.original)) {
+            scenarioFixes.set(scenarioFix.original, scenarioFix);
+        }
 
         normalized.metadata = {
             ...(normalized.metadata || {}),
@@ -283,9 +320,18 @@
         } = options;
 
         const payloadArray = Array.isArray(rawPayloads) ? rawPayloads : [rawPayloads];
+        const scenarioFixes = new Map();
         const preparedPayloads = payloadArray
-            .map((payload) => prepareMappingForCreation(payload, { source }))
+            .map((payload) => prepareMappingForCreation(payload, { source, scenarioFixes }))
             .filter(Boolean);
+
+        if (scenarioFixes.size) {
+            const examples = Array.from(scenarioFixes.values())
+                .slice(0, 3)
+                .map((entry) => entry.cleared ? 'cleared' : `"${entry.original}" → "${entry.normalized}"`)
+                .join(', ');
+            notify(`Scenario name cannot contain spaces. Normalized: ${examples}`, 'warning');
+        }
 
         if (!preparedPayloads.length) {
             notify('No valid mapping payloads to create', 'warning');
@@ -1151,13 +1197,14 @@
         const seed = getEmptyTemplateSeed();
 
         if (Array.isArray(payload?.mappings)) {
-            return payload.mappings.map((mapping, index) => {
+            const normalizedMappings = payload.mappings.map((mapping, index) => {
                 const normalized = JSON.parse(JSON.stringify(mapping || {}));
                 stripIds(normalized);
                 normalized.name =
                     normalized.name
                     || `${template.title || template.id || 'Scenario mapping'} #${index + 1}`;
                 normalizeRequestAndResponse(normalized, seed);
+                normalizeScenarioNameField(normalized);
                 normalized.metadata = {
                     ...(normalized.metadata || {}),
                     created: normalized.metadata?.created || nowIso,
@@ -1166,6 +1213,8 @@
                 };
                 return normalized;
             });
+
+            return normalizedMappings;
         }
 
         const normalized = JSON.parse(JSON.stringify(payload || {}));
@@ -1173,6 +1222,7 @@
 
         if (!normalized.name) normalized.name = template.title || template.id || 'New mapping';
         normalizeRequestAndResponse(normalized, seed);
+        normalizeScenarioNameField(normalized);
 
         normalized.metadata = {
             ...(normalized.metadata || {}),

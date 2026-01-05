@@ -161,6 +161,35 @@ async function handleEditMappingSubmit(e) {
     await updateMapping();
 }
 
+function normalizeScenarioNameInMapping(mapping) {
+    if (!mapping || typeof mapping !== 'object') return;
+
+    if (!Object.prototype.hasOwnProperty.call(mapping, 'scenarioName')) {
+        return;
+    }
+
+    const normalizer = window.Utils?.normalizeScenarioName;
+    if (typeof normalizer !== 'function') return;
+
+    const result = normalizer(mapping.scenarioName);
+    if (!result?.changed || !result?.hadWhitespace) return;
+
+    if (result.cleared) {
+        delete mapping.scenarioName;
+        NotificationManager.warning('Scenario name contained only whitespace and was cleared');
+    } else {
+        mapping.scenarioName = result.normalized;
+        NotificationManager.warning(`Scenario name cannot contain spaces. Replaced with "${result.normalized}"`);
+    }
+
+    const jsonEditor = document.getElementById('json-editor');
+    if (jsonEditor) {
+        try {
+            jsonEditor.value = JSON.stringify(mapping, null, 2);
+        } catch {}
+    }
+}
+
 /**
  * Update an existing mapping through the edit mapping form
  */
@@ -180,6 +209,8 @@ window.updateMapping = async () => {
             NotificationManager.error('Mapping ID not found');
             return;
         }
+
+        normalizeScenarioNameInMapping(mappingData);
 
         // Add metadata timestamps
         if (typeof mappingData === 'object' && mappingData) {
