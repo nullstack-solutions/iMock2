@@ -418,7 +418,7 @@ window.SyncEngine = {
 
       if (!response.ok && response.status === 404) {
         // Mapping doesn't exist, create it
-        response = await fetch(`${window.wiremockBaseUrl}/mappings`, {
+        await fetch(`${window.wiremockBaseUrl}/mappings`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(cacheMapping),

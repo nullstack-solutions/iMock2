@@ -69,12 +69,6 @@ window.MappingsOperations = {
       _operation: 'create',
     };
 
-    // Store original for rollback
-    const rollbackData = {
-      id: tempId,
-      original: null, // No original for create
-    };
-
     try {
       // 1. Add to store immediately (optimistic)
       window.MappingsStore.addPending({
