@@ -1043,10 +1043,7 @@ window.renderScenarios = () => {
         const scenarioKey = typeof rawScenarioKey === 'string' && rawScenarioKey.trim()
             ? rawScenarioKey.trim()
             : `scenario-${index}`;
-        if (!Object.prototype.hasOwnProperty.call(scenarioExpansionState, scenarioKey)) {
-            scenarioExpansionState[scenarioKey] = true;
-        }
-        const isExpanded = scenarioExpansionState[scenarioKey] !== false;
+        const isExpanded = scenarioExpansionState[scenarioKey] === true;
         const scenarioKeyAttr = escapeHtml(scenarioKey);
 
         const canTargetScenario = typeof scenarioIdentifier === 'string' && scenarioIdentifier.trim().length > 0;
@@ -1204,7 +1201,7 @@ window.renderScenarios = () => {
             <div class="scenario-mapping-empty">No stub mappings are bound to this scenario yet.</div>
         `;
 
-        const toggleIcon = renderIcon(isExpanded ? 'sidebar-collapse' : 'sidebar-expand', { className: 'scenario-toggle-icon' }) || (isExpanded ? '▾' : '▸');
+        const toggleIcon = `<span class="collapse-arrow" aria-hidden="true">${isExpanded ? '▼' : '▶'}</span>`;
         const toggleAriaLabel = `${isExpanded ? 'Collapse' : 'Expand'} scenario ${displayLabel}`;
 
         return `
@@ -1255,7 +1252,7 @@ window.renderScenarios = () => {
                     return;
                 }
 
-                const currentlyExpanded = scenarioExpansionState[scenarioKeyValue] !== false;
+                const currentlyExpanded = scenarioExpansionState[scenarioKeyValue] === true;
                 scenarioExpansionState[scenarioKeyValue] = !currentlyExpanded;
                 renderScenarios();
             } else if (action === 'select') {

@@ -940,6 +940,10 @@ button.scenario-state-pill:focus {
     outline: none;
 }
 
+.scenario-toggle-btn .collapse-arrow {
+    margin-right: 0;
+}
+
 .scenario-toggle-icon {
     width: 18px;
     height: 18px;
