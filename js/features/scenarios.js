@@ -622,7 +622,7 @@ function updateScenarioHeaderUI(visibleScenarios, totalScenarios) {
     }
 
     if (bulkWrap) {
-        bulkWrap.style.display = selectionCount > 0 ? '' : 'none';
+        bulkWrap.classList.toggle('is-hidden', selectionCount === 0);
     }
 
     if (selectAllRow) {
