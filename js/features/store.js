@@ -491,6 +491,15 @@ if (typeof window !== 'undefined') {
     get: function() {
       return window.MappingsStore ? window.MappingsStore.getAllRequests() : [];
     },
+    set: function(value) {
+      if (window.MappingsStore && typeof window.MappingsStore.setRequests === 'function') {
+        window.MappingsStore.setRequests(value);
+      }
+      // Reset any request filtering snapshot to keep legacy flows consistent.
+      try {
+        delete window._filteredRequests;
+      } catch {}
+    },
     configurable: true,
     enumerable: true
   });
@@ -500,6 +509,9 @@ if (typeof window !== 'undefined') {
       // Return filtered requests if available, otherwise return all requests
       return window._filteredRequests ? window._filteredRequests :
              (window.MappingsStore ? window.MappingsStore.getAllRequests() : []);
+    },
+    set: function(value) {
+      window._filteredRequests = Array.isArray(value) ? value : [];
     },
     configurable: true,
     enumerable: true

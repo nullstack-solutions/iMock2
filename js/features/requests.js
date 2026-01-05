@@ -21,6 +21,15 @@ window.fetchAndRenderRequests = async (requestsToRender = null, options = {}) =>
             try {
                 data = await apiFetch(ENDPOINTS.REQUESTS);
             } catch (error) {
+                // WireMock may respond with an empty body when there are no requests (or journaling is disabled).
+                // Treat empty/parse errors and 404 as "no requests" to avoid noisy console errors.
+                const message = error?.message || '';
+                const isMissingRequests = /^HTTP\s+404\b/.test(message);
+                const isEmptyJson = error?.name === 'SyntaxError' || /Unexpected end of JSON input/i.test(message);
+                if (isMissingRequests || isEmptyJson) {
+                    Logger.warn('REQUESTS', 'Requests endpoint returned no payload; treating as empty list.', error);
+                    data = { requests: [], __source: 'empty' };
+                } else
                 if (window.DemoData?.isAvailable?.() && window.DemoData?.getRequestsPayload) {
                     Logger.warn('REQUESTS', 'Falling back to demo requests because the WireMock API request failed.', error);
                     window.demoModeLastError = error;
@@ -39,9 +48,15 @@ window.fetchAndRenderRequests = async (requestsToRender = null, options = {}) =>
                 try { delete data.__source; } catch (_) {}
             }
 
-            window.originalRequests = data.requests || [];
+            if (!data || typeof data !== 'object') {
+                data = { requests: [] };
+            }
+
+            const incomingRequests = Array.isArray(data.requests) ? data.requests : [];
+
+            window.originalRequests = incomingRequests;
             refreshRequestTabSnapshot();
-            window.allRequests = [...window.originalRequests];
+            window.allRequests = [...incomingRequests];
         } else {
             const sourceOverride = options?.source;
             window.allRequests = Array.isArray(requestsToRender) ? [...requestsToRender] : [];
