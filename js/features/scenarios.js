@@ -37,6 +37,18 @@ function renderIcon(name, options = {}) {
     return typeof window.Icons?.render === 'function' ? window.Icons.render(name, options) : '';
 }
 
+function downloadFile(filename, content, mimeType) {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
 function safeDecode(value) {
     if (typeof value !== 'string') return '';
     const trimmed = value.trim();
@@ -174,6 +186,53 @@ function getScenarioByIdentifier(identifier) {
     }) || null;
 }
 
+function resolveScenarioTarget(candidateIdentifier) {
+    const rawCandidate = typeof candidateIdentifier === 'string' ? candidateIdentifier.trim() : '';
+    const targetScenario = rawCandidate ? getScenarioByIdentifier(rawCandidate) : null;
+
+    const rawEndpointIdentifier = targetScenario?.identifier
+        || targetScenario?.decodedId
+        || targetScenario?.decodedName
+        || rawCandidate;
+    const endpointIdentifier = safeDecode(rawEndpointIdentifier) || rawEndpointIdentifier;
+
+    const displayName = targetScenario?.displayName
+        || targetScenario?.decodedName
+        || targetScenario?.name
+        || targetScenario?.decodedId
+        || targetScenario?.id
+        || safeDecode(rawCandidate)
+        || rawCandidate;
+
+    const directStateEndpoint = typeof targetScenario?.stateEndpoint === 'string'
+        ? targetScenario.stateEndpoint
+        : '';
+
+    const directResetEndpoint = typeof targetScenario?.resetEndpoint === 'string'
+        ? targetScenario.resetEndpoint
+        : '';
+
+    const stateEndpointBuilder = typeof window.buildScenarioStateEndpoint === 'function'
+        ? window.buildScenarioStateEndpoint
+        : (name) => `${ENDPOINTS.SCENARIOS}/${encodeURIComponent(name)}/state`;
+
+    const stateEndpoint = directStateEndpoint
+        || (endpointIdentifier ? stateEndpointBuilder(endpointIdentifier) : '');
+
+    const resetEndpoint = directResetEndpoint || stateEndpoint;
+    const resetMethod = directResetEndpoint ? 'POST' : 'PUT';
+
+    return {
+        rawCandidate,
+        targetScenario,
+        endpointIdentifier,
+        displayName,
+        stateEndpoint,
+        resetEndpoint,
+        resetMethod,
+    };
+}
+
 function setScenariosLoading(isLoading) {
     const loadingEl = document.getElementById('scenarios-loading');
     if (loadingEl) {
@@ -300,20 +359,9 @@ window.setScenarioState = async (scenarioIdentifier, newState, options = {}) => 
         candidateIdentifier = scenarioSelect.value || '';
     }
 
-    const targetScenario = getScenarioByIdentifier(candidateIdentifier);
-    const rawEndpointIdentifier = targetScenario?.identifier
-        || targetScenario?.decodedId
-        || targetScenario?.decodedName
-        || candidateIdentifier;
-    const endpointIdentifier = safeDecode(rawEndpointIdentifier) || rawEndpointIdentifier;
-
-    const displayName = targetScenario?.displayName
-        || targetScenario?.decodedName
-        || targetScenario?.name
-        || targetScenario?.decodedId
-        || targetScenario?.id
-        || safeDecode(candidateIdentifier)
-        || candidateIdentifier;
+    const resolvedTarget = resolveScenarioTarget(candidateIdentifier);
+    const endpointIdentifier = resolvedTarget.endpointIdentifier;
+    const displayName = resolvedTarget.displayName;
 
     const resolvedState = inlineState || scenarioStateInput?.value?.trim() || '';
 
@@ -324,16 +372,7 @@ window.setScenarioState = async (scenarioIdentifier, newState, options = {}) => 
         return false;
     }
 
-    const directStateEndpoint = typeof targetScenario?.stateEndpoint === 'string'
-        ? targetScenario.stateEndpoint
-        : '';
-
-    const stateEndpointBuilder = typeof window.buildScenarioStateEndpoint === 'function'
-        ? window.buildScenarioStateEndpoint
-        : (name) => `${ENDPOINTS.SCENARIOS}/${encodeURIComponent(name)}/state`;
-
-    const stateEndpoint = directStateEndpoint
-        || (endpointIdentifier ? stateEndpointBuilder(endpointIdentifier) : '');
+    const stateEndpoint = resolvedTarget.stateEndpoint;
 
     if (!stateEndpoint) {
         if (!silent) {
@@ -342,7 +381,7 @@ window.setScenarioState = async (scenarioIdentifier, newState, options = {}) => 
         return false;
     }
 
-    if (targetScenario && Array.isArray(targetScenario.possibleStates) && targetScenario.possibleStates.length === 0) {
+    if (resolvedTarget.targetScenario && Array.isArray(resolvedTarget.targetScenario.possibleStates) && resolvedTarget.targetScenario.possibleStates.length === 0) {
         if (!silent) {
             NotificationManager.warning(`Scenario "${displayName}" does not expose any states to switch to.`);
         }
@@ -351,9 +390,9 @@ window.setScenarioState = async (scenarioIdentifier, newState, options = {}) => 
 
     if (syncForm) {
         if (scenarioSelect) {
-            const selectValue = targetScenario?.identifier
-                || targetScenario?.decodedId
-                || targetScenario?.decodedName
+            const selectValue = resolvedTarget.targetScenario?.identifier
+                || resolvedTarget.targetScenario?.decodedId
+                || resolvedTarget.targetScenario?.decodedName
                 || endpointIdentifier;
             scenarioSelect.value = selectValue;
             updateScenarioStateSuggestions(selectValue);
@@ -366,7 +405,7 @@ window.setScenarioState = async (scenarioIdentifier, newState, options = {}) => 
         setScenariosLoading(true);
     }
 
-    const scenarioExists = !!targetScenario;
+    const scenarioExists = !!resolvedTarget.targetScenario;
 
     try {
         await apiFetch(stateEndpoint, {
@@ -423,45 +462,10 @@ async function resetScenarioState(scenarioIdentifier, options = {}) {
         return false;
     }
 
-    const candidateIdentifier = scenarioIdentifier.trim();
-    const targetScenario = getScenarioByIdentifier(candidateIdentifier);
-
-    if (!targetScenario) {
-        if (!silent) {
-            NotificationManager.error('Scenario not found. Please refresh the list.');
-        }
-        return false;
-    }
-
-    const rawEndpointIdentifier = targetScenario?.identifier
-        || targetScenario?.decodedId
-        || targetScenario?.decodedName
-        || candidateIdentifier;
-    const endpointIdentifier = safeDecode(rawEndpointIdentifier) || rawEndpointIdentifier;
-
-    const displayName = targetScenario?.displayName
-        || targetScenario?.decodedName
-        || targetScenario?.name
-        || targetScenario?.decodedId
-        || targetScenario?.id
-        || safeDecode(candidateIdentifier)
-        || candidateIdentifier;
-
-    const directResetEndpoint = typeof targetScenario?.resetEndpoint === 'string'
-        ? targetScenario.resetEndpoint
-        : '';
-
-    const directStateEndpoint = typeof targetScenario?.stateEndpoint === 'string'
-        ? targetScenario.stateEndpoint
-        : '';
-
-    const stateEndpointBuilder = typeof window.buildScenarioStateEndpoint === 'function'
-        ? window.buildScenarioStateEndpoint
-        : (name) => `${ENDPOINTS.SCENARIOS}/${encodeURIComponent(name)}/state`;
-
-    const resolvedEndpoint = directResetEndpoint
-        || directStateEndpoint
-        || (endpointIdentifier ? stateEndpointBuilder(endpointIdentifier) : '');
+    const resolvedTarget = resolveScenarioTarget(scenarioIdentifier);
+    const resolvedEndpoint = resolvedTarget.resetEndpoint;
+    const requestMethod = resolvedTarget.resetMethod;
+    const displayName = resolvedTarget.displayName;
 
     if (!resolvedEndpoint) {
         if (!silent) {
@@ -475,11 +479,8 @@ async function resetScenarioState(scenarioIdentifier, options = {}) {
     }
 
     try {
-        const requestOptions = directResetEndpoint
-            ? { method: 'POST' }
-            : { method: 'PUT' };
-
-        await apiFetch(resolvedEndpoint, requestOptions);
+        // WireMock Admin API: empty PUT to /__admin/scenarios/<name>/state resets to Started.
+        await apiFetch(resolvedEndpoint, { method: requestMethod });
         if (!silent) {
             NotificationManager.success(`Scenario "${displayName}" has been reset to its initial state.`);
         }
@@ -490,6 +491,34 @@ async function resetScenarioState(scenarioIdentifier, options = {}) {
         }
         return true;
     } catch (error) {
+        if (requestMethod === 'PUT' && resolvedTarget.stateEndpoint) {
+            try {
+                await apiFetch(resolvedTarget.stateEndpoint, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ state: 'Started' }),
+                });
+                if (!silent) {
+                    NotificationManager.success(`Scenario "${displayName}" has been reset to its initial state.`);
+                }
+                if (refresh) {
+                    await loadScenarios();
+                } else if (manageLoading) {
+                    setScenariosLoading(false);
+                }
+                return true;
+            } catch (fallbackError) {
+                Logger.error('SCENARIOS', 'Reset scenario state error:', fallbackError);
+                if (!silent) {
+                    NotificationManager.error(`Scenario reset failed: ${fallbackError.message}`);
+                }
+                if (manageLoading) {
+                    setScenariosLoading(false);
+                }
+                return false;
+            }
+        }
+
         Logger.error('SCENARIOS', 'Reset scenario state error:', error);
         if (!silent) {
             NotificationManager.error(`Scenario reset failed: ${error.message}`);
@@ -620,21 +649,37 @@ async function bulkResetSelectedScenarios() {
     setScenariosLoading(true);
 
     const failures = [];
-
     for (const scenarioIdentifier of selection) {
         try {
-            const ok = await resetScenarioState(scenarioIdentifier, { refresh: false, silent: true, manageLoading: false });
-            if (!ok) failures.push(scenarioIdentifier);
-        } catch {
-            failures.push(scenarioIdentifier);
+            const resolvedTarget = resolveScenarioTarget(scenarioIdentifier);
+            if (!resolvedTarget.resetEndpoint) {
+                failures.push({ id: scenarioIdentifier, name: resolvedTarget.displayName || scenarioIdentifier, error: 'No reset endpoint resolved' });
+                continue;
+            }
+            try {
+                await apiFetch(resolvedTarget.resetEndpoint, { method: resolvedTarget.resetMethod });
+            } catch (error) {
+                if (resolvedTarget.resetMethod === 'PUT' && resolvedTarget.stateEndpoint) {
+                    await apiFetch(resolvedTarget.stateEndpoint, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ state: 'Started' }),
+                    });
+                } else {
+                    throw error;
+                }
+            }
+        } catch (error) {
+            failures.push({ id: scenarioIdentifier, name: scenarioIdentifier, error: error?.message || String(error) });
         }
     }
 
-    scenarioUiState.selected.clear();
-
     if (failures.length > 0) {
-        NotificationManager.warning(`Bulk reset finished with ${failures.length} failures.`);
+        scenarioUiState.selected = new Set(failures.map((item) => item.id).filter(Boolean));
+        const sample = failures.slice(0, 3).map((item) => item.name || item.id).join(', ');
+        NotificationManager.warning(`Bulk reset: ${failures.length} failed${sample ? ` (e.g. ${sample})` : ''}.`);
     } else {
+        scenarioUiState.selected.clear();
         NotificationManager.success('Bulk reset complete.');
     }
 
@@ -657,22 +702,81 @@ async function bulkSetScenarioState() {
 
     for (const scenarioIdentifier of selection) {
         try {
-            const ok = await setScenarioState(scenarioIdentifier, resolvedState, { refresh: false, silent: true, manageLoading: false, syncForm: false });
-            if (!ok) failures.push(scenarioIdentifier);
-        } catch {
-            failures.push(scenarioIdentifier);
+            const resolvedTarget = resolveScenarioTarget(scenarioIdentifier);
+            if (!resolvedTarget.stateEndpoint) {
+                failures.push({ id: scenarioIdentifier, name: resolvedTarget.displayName || scenarioIdentifier, error: 'No state endpoint resolved' });
+                continue;
+            }
+            await apiFetch(resolvedTarget.stateEndpoint, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ state: resolvedState }),
+            });
+        } catch (error) {
+            failures.push({ id: scenarioIdentifier, name: scenarioIdentifier, error: error?.message || String(error) });
         }
     }
 
-    scenarioUiState.selected.clear();
-
     if (failures.length > 0) {
-        NotificationManager.warning(`Bulk state update finished with ${failures.length} failures.`);
+        scenarioUiState.selected = new Set(failures.map((item) => item.id).filter(Boolean));
+        const sample = failures.slice(0, 3).map((item) => item.name || item.id).join(', ');
+        NotificationManager.warning(`Bulk state update: ${failures.length} failed${sample ? ` (e.g. ${sample})` : ''}.`);
     } else {
+        scenarioUiState.selected.clear();
         NotificationManager.success(`Bulk state updated: "${resolvedState}"`);
     }
 
     await loadScenarios();
+}
+
+function bulkExportSelectedScenarios() {
+    const selection = scenarioUiState.selected instanceof Set ? Array.from(scenarioUiState.selected) : [];
+    if (selection.length === 0) return;
+
+    setScenarioBulkMenuOpen(false);
+
+    const scenarios = selection.map((identifier) => {
+        const scenario = getScenarioByIdentifier(identifier);
+        if (!scenario) {
+            return { identifier };
+        }
+
+        const mappingSummaries = Array.isArray(scenario.mappings) ? scenario.mappings : [];
+        const exportMappings = mappingSummaries.map((mapping) => {
+            const mappingId = mapping?.id || mapping?.uuid || mapping?.stubMappingId || mapping?.stubId || mapping?.mappingId || '';
+            const method = mapping?.request?.method || mapping?.method || mapping?.requestMethod || '';
+            const url = mapping?.request?.urlPattern || mapping?.request?.urlPath || mapping?.request?.url || mapping?.url || mapping?.requestUrl || '';
+            return {
+                id: mappingId || undefined,
+                name: mapping?.name || undefined,
+                request: {
+                    method: method || undefined,
+                    url: url || undefined,
+                },
+                requiredScenarioState: mapping?.requiredScenarioState || mapping?.requiredState || undefined,
+                newScenarioState: mapping?.newScenarioState || mapping?.newState || undefined,
+            };
+        });
+
+        return {
+            identifier: scenario.identifier || scenario.id || scenario.name,
+            name: scenario.displayName || scenario.name,
+            state: scenario.state,
+            possibleStates: Array.isArray(scenario.possibleStates) ? scenario.possibleStates : [],
+            mappings: exportMappings,
+        };
+    });
+
+    const payload = {
+        exportedAt: new Date().toISOString(),
+        scenarios,
+    };
+
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = `scenario-mappings-${stamp}.json`;
+    downloadFile(filename, `${JSON.stringify(payload, null, 2)}\n`, 'application/json');
+
+    NotificationManager.success(`Exported ${scenarios.length} scenario(s).`);
 }
 
 function clearScenarioSelection() {
@@ -709,6 +813,7 @@ window.renderScenarios = () => {
     const bulkBtn = document.getElementById('scenario-bulk-btn');
     const bulkResetBtn = document.getElementById('scenario-bulk-reset');
     const bulkSetStateBtn = document.getElementById('scenario-bulk-set-state');
+    const bulkExportBtn = document.getElementById('scenario-bulk-export');
     const bulkClearBtn = document.getElementById('scenario-bulk-clear');
     const selectAllBtn = document.getElementById('scenario-select-all-btn');
 
@@ -789,6 +894,10 @@ window.renderScenarios = () => {
             });
         }
 
+        if (bulkExportBtn) {
+            bulkExportBtn.addEventListener('click', bulkExportSelectedScenarios);
+        }
+
         if (bulkClearBtn) {
             bulkClearBtn.addEventListener('click', clearScenarioSelection);
         }
@@ -803,6 +912,13 @@ window.renderScenarios = () => {
             if (!scenarioUiState.bulkMenuOpen) return;
             if (typeof bulkWrap.contains === 'function' && bulkWrap.contains(event.target)) return;
             setScenarioBulkMenuOpen(false);
+        });
+
+        document.addEventListener('keydown', (event) => {
+            if (!scenarioUiState.bulkMenuOpen) return;
+            if (event.key === 'Escape') {
+                setScenarioBulkMenuOpen(false);
+            }
         });
 
         scenarioToolbarHandlersAttached = true;
@@ -1023,8 +1139,7 @@ window.renderScenarios = () => {
                                 data-mapping-id="${mappingIdAttr}"
                                 title="Edit mapping"
                             >
-                                ${editIcon || 'Edit'}
-                                ${editIcon ? '<span class="sr-only">Edit mapping</span>' : ''}
+                                ${editIcon || ''}<span>Edit</span>
                             </button>
                             <button
                                 class="btn btn-sm btn-secondary"
@@ -1032,8 +1147,7 @@ window.renderScenarios = () => {
                                 data-mapping-id="${mappingIdAttr}"
                                 title="Duplicate mapping"
                             >
-                                ${duplicateIcon || 'Duplicate'}
-                                ${duplicateIcon ? '<span class="sr-only">Duplicate mapping</span>' : ''}
+                                ${duplicateIcon || ''}<span>Duplicate</span>
                             </button>
                             <button
                                 class="btn btn-sm btn-danger"
@@ -1041,8 +1155,7 @@ window.renderScenarios = () => {
                                 data-mapping-id="${mappingIdAttr}"
                                 title="Delete mapping"
                             >
-                                ${deleteIcon || 'Delete'}
-                                ${deleteIcon ? '<span class="sr-only">Delete mapping</span>' : ''}
+                                ${deleteIcon || ''}<span>Delete</span>
                             </button>
                         </div>
                     ` : '';
