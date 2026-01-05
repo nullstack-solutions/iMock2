@@ -729,54 +729,82 @@ async function bulkSetScenarioState() {
     await loadScenarios();
 }
 
-function bulkExportSelectedScenarios() {
+async function fetchFullMappingById(mappingId) {
+    const normalizedId = (mappingId ?? '').toString().trim();
+    if (!normalizedId) return null;
+
+    if (typeof window.getMappingById === 'function') {
+        try {
+            const mapping = await window.getMappingById(normalizedId);
+            if (mapping && typeof mapping === 'object') {
+                return mapping;
+            }
+        } catch (error) {
+            Logger.warn('SCENARIOS', 'getMappingById failed, falling back to direct fetch', { mappingId: normalizedId, error });
+        }
+    }
+
+    const endpoint = `/mappings/${encodeURIComponent(normalizedId)}`;
+    const response = await apiFetch(endpoint);
+    const mapping = response && typeof response === 'object' && response.mapping ? response.mapping : response;
+    return mapping && typeof mapping === 'object' ? mapping : null;
+}
+
+async function bulkExportSelectedMappings() {
     const selection = scenarioUiState.selected instanceof Set ? Array.from(scenarioUiState.selected) : [];
     if (selection.length === 0) return;
 
     setScenarioBulkMenuOpen(false);
 
-    const scenarios = selection.map((identifier) => {
+    const mappingIds = [];
+    const seen = new Set();
+
+    selection.forEach((identifier) => {
         const scenario = getScenarioByIdentifier(identifier);
-        if (!scenario) {
-            return { identifier };
-        }
-
-        const mappingSummaries = Array.isArray(scenario.mappings) ? scenario.mappings : [];
-        const exportMappings = mappingSummaries.map((mapping) => {
-            const mappingId = mapping?.id || mapping?.uuid || mapping?.stubMappingId || mapping?.stubId || mapping?.mappingId || '';
-            const method = mapping?.request?.method || mapping?.method || mapping?.requestMethod || '';
-            const url = mapping?.request?.urlPattern || mapping?.request?.urlPath || mapping?.request?.url || mapping?.url || mapping?.requestUrl || '';
-            return {
-                id: mappingId || undefined,
-                name: mapping?.name || undefined,
-                request: {
-                    method: method || undefined,
-                    url: url || undefined,
-                },
-                requiredScenarioState: mapping?.requiredScenarioState || mapping?.requiredState || undefined,
-                newScenarioState: mapping?.newScenarioState || mapping?.newState || undefined,
-            };
+        const mappingSummaries = Array.isArray(scenario?.mappings) ? scenario.mappings : [];
+        mappingSummaries.forEach((mapping) => {
+            const mappingId = (mapping?.id || mapping?.uuid || mapping?.stubMappingId || mapping?.stubId || mapping?.mappingId || '').toString().trim();
+            if (!mappingId || seen.has(mappingId)) return;
+            seen.add(mappingId);
+            mappingIds.push(mappingId);
         });
-
-        return {
-            identifier: scenario.identifier || scenario.id || scenario.name,
-            name: scenario.displayName || scenario.name,
-            state: scenario.state,
-            possibleStates: Array.isArray(scenario.possibleStates) ? scenario.possibleStates : [],
-            mappings: exportMappings,
-        };
     });
 
-    const payload = {
-        exportedAt: new Date().toISOString(),
-        scenarios,
-    };
+    if (mappingIds.length === 0) {
+        NotificationManager.warning('No mappings found for selected scenarios.');
+        return;
+    }
 
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const filename = `scenario-mappings-${stamp}.json`;
-    downloadFile(filename, `${JSON.stringify(payload, null, 2)}\n`, 'application/json');
+    setScenariosLoading(true);
 
-    NotificationManager.success(`Exported ${scenarios.length} scenario(s).`);
+    const mappings = [];
+    const failures = [];
+
+    for (const mappingId of mappingIds) {
+        try {
+            const mapping = await fetchFullMappingById(mappingId);
+            if (!mapping) {
+                failures.push({ id: mappingId, error: 'Empty mapping payload' });
+                continue;
+            }
+            mappings.push(mapping);
+        } catch (error) {
+            failures.push({ id: mappingId, error: error?.message || String(error) });
+        }
+    }
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = `wiremock-mappings-${timestamp}.json`;
+    downloadFile(filename, `${JSON.stringify({ mappings }, null, 2)}\n`, 'application/json');
+
+    if (failures.length > 0) {
+        const sample = failures.slice(0, 3).map((item) => item.id).join(', ');
+        NotificationManager.warning(`Exported ${mappings.length}/${mappingIds.length} mapping(s). Failed: ${failures.length}${sample ? ` (e.g. ${sample})` : ''}.`);
+    } else {
+        NotificationManager.success(`Exported ${mappings.length} mapping(s).`);
+    }
+
+    setScenariosLoading(false);
 }
 
 function clearScenarioSelection() {
@@ -895,7 +923,9 @@ window.renderScenarios = () => {
         }
 
         if (bulkExportBtn) {
-            bulkExportBtn.addEventListener('click', bulkExportSelectedScenarios);
+            bulkExportBtn.addEventListener('click', () => {
+                void bulkExportSelectedMappings();
+            });
         }
 
         if (bulkClearBtn) {
