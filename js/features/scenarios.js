@@ -14,6 +14,29 @@ if (!window.scenarioExpansionState || typeof window.scenarioExpansionState !== '
 }
 let scenarioExpansionState = window.scenarioExpansionState;
 
+if (!window.scenarioUiState || typeof window.scenarioUiState !== 'object') {
+    window.scenarioUiState = {};
+}
+const scenarioUiState = window.scenarioUiState;
+if (typeof scenarioUiState.searchTerm !== 'string') {
+    scenarioUiState.searchTerm = '';
+}
+if (!(scenarioUiState.selected instanceof Set)) {
+    scenarioUiState.selected = new Set();
+}
+if (typeof scenarioUiState.bulkMenuOpen !== 'boolean') {
+    scenarioUiState.bulkMenuOpen = false;
+}
+if (!Array.isArray(scenarioUiState.lastVisibleSelectable)) {
+    scenarioUiState.lastVisibleSelectable = [];
+}
+
+let scenarioToolbarHandlersAttached = false;
+
+function renderIcon(name, options = {}) {
+    return typeof window.Icons?.render === 'function' ? window.Icons.render(name, options) : '';
+}
+
 function safeDecode(value) {
     if (typeof value !== 'string') return '';
     const trimmed = value.trim();
@@ -259,12 +282,18 @@ function updateScenarioStateSuggestions(selectedScenarioIdentifier) {
     }
 }
 
-window.setScenarioState = async (scenarioIdentifier, newState) => {
+window.setScenarioState = async (scenarioIdentifier, newState, options = {}) => {
     const scenarioSelect = document.getElementById('scenario-select');
     const scenarioStateInput = document.getElementById('scenario-state');
 
     const inlineScenarioIdentifier = typeof scenarioIdentifier === 'string' ? scenarioIdentifier : '';
     const inlineState = typeof newState === 'string' ? newState.trim() : '';
+
+    const normalizedOptions = options && typeof options === 'object' ? options : {};
+    const refresh = normalizedOptions.refresh !== false;
+    const silent = normalizedOptions.silent === true;
+    const manageLoading = normalizedOptions.manageLoading !== false;
+    const syncForm = normalizedOptions.syncForm !== false;
 
     let candidateIdentifier = inlineScenarioIdentifier;
     if (!candidateIdentifier && scenarioSelect) {
@@ -289,7 +318,9 @@ window.setScenarioState = async (scenarioIdentifier, newState) => {
     const resolvedState = inlineState || scenarioStateInput?.value?.trim() || '';
 
     if (!endpointIdentifier || !endpointIdentifier.trim() || !resolvedState) {
-        NotificationManager.warning('Please select scenario and enter state');
+        if (!silent) {
+            NotificationManager.warning('Please select scenario and enter state');
+        }
         return false;
     }
 
@@ -305,27 +336,35 @@ window.setScenarioState = async (scenarioIdentifier, newState) => {
         || (endpointIdentifier ? stateEndpointBuilder(endpointIdentifier) : '');
 
     if (!stateEndpoint) {
-        NotificationManager.error('Unable to determine the scenario state endpoint.');
+        if (!silent) {
+            NotificationManager.error('Unable to determine the scenario state endpoint.');
+        }
         return false;
     }
 
     if (targetScenario && Array.isArray(targetScenario.possibleStates) && targetScenario.possibleStates.length === 0) {
-        NotificationManager.warning(`Scenario "${displayName}" does not expose any states to switch to.`);
+        if (!silent) {
+            NotificationManager.warning(`Scenario "${displayName}" does not expose any states to switch to.`);
+        }
         return false;
     }
 
-    if (scenarioSelect) {
-        const selectValue = targetScenario?.identifier
-            || targetScenario?.decodedId
-            || targetScenario?.decodedName
-            || endpointIdentifier;
-        scenarioSelect.value = selectValue;
-        updateScenarioStateSuggestions(selectValue);
-    } else {
-        updateScenarioStateSuggestions(endpointIdentifier);
+    if (syncForm) {
+        if (scenarioSelect) {
+            const selectValue = targetScenario?.identifier
+                || targetScenario?.decodedId
+                || targetScenario?.decodedName
+                || endpointIdentifier;
+            scenarioSelect.value = selectValue;
+            updateScenarioStateSuggestions(selectValue);
+        } else {
+            updateScenarioStateSuggestions(endpointIdentifier);
+        }
     }
 
-    setScenariosLoading(true);
+    if (manageLoading) {
+        setScenariosLoading(true);
+    }
 
     const scenarioExists = !!targetScenario;
 
@@ -336,32 +375,51 @@ window.setScenarioState = async (scenarioIdentifier, newState) => {
             body: JSON.stringify({ state: resolvedState })
         });
 
-        NotificationManager.success(`Scenario "${displayName}" switched to state "${resolvedState}"`);
-        if (!inlineState && scenarioStateInput) {
+        if (!silent) {
+            NotificationManager.success(`Scenario "${displayName}" switched to state "${resolvedState}"`);
+        }
+        if (syncForm && !inlineState && scenarioStateInput) {
             scenarioStateInput.value = '';
         }
-        updateScenarioStateSuggestions(endpointIdentifier);
-        await loadScenarios();
+        if (syncForm) {
+            updateScenarioStateSuggestions(endpointIdentifier);
+        }
+        if (refresh) {
+            await loadScenarios();
+        } else if (manageLoading) {
+            setScenariosLoading(false);
+        }
         return true;
     } catch (error) {
         Logger.error('SCENARIOS', 'Change scenario state error:', error);
         const notFound = /HTTP\s+404/.test(error?.message || '');
         const notSupported = /does not support state/i.test(error?.message || '');
-        if (notFound && !scenarioExists) {
-            NotificationManager.error(`Scenario "${displayName}" was not found on the server.`);
-        } else if (notSupported) {
-            NotificationManager.error(`Scenario "${displayName}" does not allow state changes.`);
-        } else {
-            NotificationManager.error(`Scenario state change failed: ${error.message}`);
+        if (!silent) {
+            if (notFound && !scenarioExists) {
+                NotificationManager.error(`Scenario "${displayName}" was not found on the server.`);
+            } else if (notSupported) {
+                NotificationManager.error(`Scenario "${displayName}" does not allow state changes.`);
+            } else {
+                NotificationManager.error(`Scenario state change failed: ${error.message}`);
+            }
         }
-        setScenariosLoading(false);
+        if (manageLoading) {
+            setScenariosLoading(false);
+        }
         return false;
     }
 };
 
-async function resetScenarioState(scenarioIdentifier) {
+async function resetScenarioState(scenarioIdentifier, options = {}) {
+    const normalizedOptions = options && typeof options === 'object' ? options : {};
+    const refresh = normalizedOptions.refresh !== false;
+    const silent = normalizedOptions.silent === true;
+    const manageLoading = normalizedOptions.manageLoading !== false;
+
     if (typeof scenarioIdentifier !== 'string' || !scenarioIdentifier.trim()) {
-        NotificationManager.warning('Unable to determine which scenario to reset.');
+        if (!silent) {
+            NotificationManager.warning('Unable to determine which scenario to reset.');
+        }
         return false;
     }
 
@@ -369,7 +427,9 @@ async function resetScenarioState(scenarioIdentifier) {
     const targetScenario = getScenarioByIdentifier(candidateIdentifier);
 
     if (!targetScenario) {
-        NotificationManager.error('Scenario not found. Please refresh the list.');
+        if (!silent) {
+            NotificationManager.error('Scenario not found. Please refresh the list.');
+        }
         return false;
     }
 
@@ -404,11 +464,15 @@ async function resetScenarioState(scenarioIdentifier) {
         || (endpointIdentifier ? stateEndpointBuilder(endpointIdentifier) : '');
 
     if (!resolvedEndpoint) {
-        NotificationManager.error('Unable to determine the scenario reset endpoint.');
+        if (!silent) {
+            NotificationManager.error('Unable to determine the scenario reset endpoint.');
+        }
         return false;
     }
 
-    setScenariosLoading(true);
+    if (manageLoading) {
+        setScenariosLoading(true);
+    }
 
     try {
         const requestOptions = directResetEndpoint
@@ -416,15 +480,223 @@ async function resetScenarioState(scenarioIdentifier) {
             : { method: 'PUT' };
 
         await apiFetch(resolvedEndpoint, requestOptions);
-        NotificationManager.success(`Scenario "${displayName}" has been reset to its initial state.`);
-        await loadScenarios();
+        if (!silent) {
+            NotificationManager.success(`Scenario "${displayName}" has been reset to its initial state.`);
+        }
+        if (refresh) {
+            await loadScenarios();
+        } else if (manageLoading) {
+            setScenariosLoading(false);
+        }
         return true;
     } catch (error) {
         Logger.error('SCENARIOS', 'Reset scenario state error:', error);
-        NotificationManager.error(`Scenario reset failed: ${error.message}`);
-        setScenariosLoading(false);
+        if (!silent) {
+            NotificationManager.error(`Scenario reset failed: ${error.message}`);
+        }
+        if (manageLoading) {
+            setScenariosLoading(false);
+        }
         return false;
     }
+}
+
+function normalizeSearchTerm(value) {
+    if (typeof value !== 'string') return '';
+    return value.trim().toLowerCase();
+}
+
+function scenarioMatchesSearch(scenario, term) {
+    if (!term) return true;
+    if (!scenario || typeof scenario !== 'object') return false;
+
+    const haystacks = [
+        scenario.displayName,
+        scenario.name,
+        scenario.identifier,
+        scenario.id,
+        scenario.state,
+        scenario.description
+    ]
+        .filter((value) => typeof value === 'string' && value.trim())
+        .map((value) => value.toLowerCase());
+
+    if (haystacks.some((value) => value.includes(term))) {
+        return true;
+    }
+
+    const mappings = Array.isArray(scenario.mappings) ? scenario.mappings : [];
+    return mappings.some((mapping) => {
+        if (!mapping || typeof mapping !== 'object') return false;
+        const mappingValues = [
+            mapping.name,
+            mapping.id,
+            mapping.uuid,
+            mapping.stubId,
+            mapping.stubMappingId,
+            mapping.requiredScenarioState,
+            mapping.newScenarioState,
+            mapping.request?.method,
+            mapping.request?.url,
+            mapping.request?.urlPattern,
+            mapping.request?.urlPath,
+            mapping.request?.urlPathPattern
+        ]
+            .filter((value) => typeof value === 'string' && value.trim())
+            .map((value) => value.toLowerCase());
+        return mappingValues.some((value) => value.includes(term));
+    });
+}
+
+function setScenarioBulkMenuOpen(isOpen) {
+    scenarioUiState.bulkMenuOpen = Boolean(isOpen);
+    const menuEl = document.getElementById('scenario-bulk-menu');
+    if (menuEl) {
+        menuEl.classList.toggle('is-open', scenarioUiState.bulkMenuOpen);
+        menuEl.setAttribute('aria-hidden', scenarioUiState.bulkMenuOpen ? 'false' : 'true');
+    }
+}
+
+function updateScenarioHeaderUI(visibleScenarios, totalScenarios) {
+    const statsEl = document.getElementById('scenario-stats');
+    if (statsEl) {
+        const totalMappings = Array.isArray(visibleScenarios)
+            ? visibleScenarios.reduce((acc, scenario) => acc + (Array.isArray(scenario?.mappings) ? scenario.mappings.length : 0), 0)
+            : 0;
+        const visibleCount = Array.isArray(visibleScenarios) ? visibleScenarios.length : 0;
+        statsEl.textContent = `${visibleCount}/${totalScenarios} scenarios • ${totalMappings} mappings`;
+    }
+
+    const selectAllRow = document.getElementById('scenario-select-all-row');
+    const selectAllBtn = document.getElementById('scenario-select-all-btn');
+
+    const visibleSelectable = Array.isArray(visibleScenarios)
+        ? visibleScenarios
+            .map((scenario) => {
+                const scenarioIdentifier = typeof scenario?.identifier === 'string'
+                    ? scenario.identifier
+                    : (typeof scenario?.decodedId === 'string' ? scenario.decodedId : (typeof scenario?.id === 'string' ? scenario.id : ''));
+                const normalized = typeof scenarioIdentifier === 'string' ? scenarioIdentifier.trim() : '';
+                return normalized || '';
+            })
+            .filter(Boolean)
+        : [];
+
+    scenarioUiState.lastVisibleSelectable = visibleSelectable;
+
+    const selectionCount = scenarioUiState.selected instanceof Set ? scenarioUiState.selected.size : 0;
+    const bulkWrap = document.getElementById('scenario-bulk-wrap');
+    const bulkCount = document.getElementById('scenario-bulk-count');
+
+    if (bulkCount) {
+        bulkCount.textContent = String(selectionCount);
+    }
+
+    if (bulkWrap) {
+        bulkWrap.style.display = selectionCount > 0 ? '' : 'none';
+    }
+
+    if (selectAllRow) {
+        selectAllRow.style.display = visibleSelectable.length > 0 ? '' : 'none';
+    }
+
+    if (selectAllBtn) {
+        const allSelected = visibleSelectable.length > 0 && visibleSelectable.every((id) => scenarioUiState.selected.has(id));
+        selectAllBtn.classList.toggle('is-selected', allSelected);
+        selectAllBtn.setAttribute('aria-checked', allSelected ? 'true' : 'false');
+    }
+
+    if (selectionCount === 0 && scenarioUiState.bulkMenuOpen) {
+        setScenarioBulkMenuOpen(false);
+    }
+}
+
+async function bulkResetSelectedScenarios() {
+    const selection = scenarioUiState.selected instanceof Set ? Array.from(scenarioUiState.selected) : [];
+    if (selection.length === 0) return;
+    if (!confirm(`Reset ${selection.length} selected scenarios to their initial state?`)) return;
+
+    setScenarioBulkMenuOpen(false);
+    setScenariosLoading(true);
+
+    const failures = [];
+
+    for (const scenarioIdentifier of selection) {
+        try {
+            const ok = await resetScenarioState(scenarioIdentifier, { refresh: false, silent: true, manageLoading: false });
+            if (!ok) failures.push(scenarioIdentifier);
+        } catch {
+            failures.push(scenarioIdentifier);
+        }
+    }
+
+    scenarioUiState.selected.clear();
+
+    if (failures.length > 0) {
+        NotificationManager.warning(`Bulk reset finished with ${failures.length} failures.`);
+    } else {
+        NotificationManager.success('Bulk reset complete.');
+    }
+
+    await loadScenarios();
+}
+
+async function bulkSetScenarioState() {
+    const selection = scenarioUiState.selected instanceof Set ? Array.from(scenarioUiState.selected) : [];
+    if (selection.length === 0) return;
+
+    const suggested = selection.length === 1 ? (getScenarioByIdentifier(selection[0])?.state || 'Started') : 'Started';
+    const target = prompt(`Set state for ${selection.length} selected scenarios:`, suggested);
+    if (!target || !target.trim()) return;
+
+    setScenarioBulkMenuOpen(false);
+    setScenariosLoading(true);
+
+    const failures = [];
+    const resolvedState = target.trim();
+
+    for (const scenarioIdentifier of selection) {
+        try {
+            const ok = await setScenarioState(scenarioIdentifier, resolvedState, { refresh: false, silent: true, manageLoading: false, syncForm: false });
+            if (!ok) failures.push(scenarioIdentifier);
+        } catch {
+            failures.push(scenarioIdentifier);
+        }
+    }
+
+    scenarioUiState.selected.clear();
+
+    if (failures.length > 0) {
+        NotificationManager.warning(`Bulk state update finished with ${failures.length} failures.`);
+    } else {
+        NotificationManager.success(`Bulk state updated: "${resolvedState}"`);
+    }
+
+    await loadScenarios();
+}
+
+function clearScenarioSelection() {
+    if (scenarioUiState.selected instanceof Set) {
+        scenarioUiState.selected.clear();
+    }
+    setScenarioBulkMenuOpen(false);
+    renderScenarios();
+}
+
+function toggleSelectAllVisibleScenarios() {
+    const visible = Array.isArray(scenarioUiState.lastVisibleSelectable) ? scenarioUiState.lastVisibleSelectable : [];
+    if (!(scenarioUiState.selected instanceof Set)) {
+        scenarioUiState.selected = new Set();
+    }
+
+    const hasAll = visible.length > 0 && visible.every((id) => scenarioUiState.selected.has(id));
+    if (hasAll) {
+        visible.forEach((id) => scenarioUiState.selected.delete(id));
+    } else {
+        visible.forEach((id) => scenarioUiState.selected.add(id));
+    }
+
+    renderScenarios();
 }
 
 window.renderScenarios = () => {
@@ -433,6 +705,12 @@ window.renderScenarios = () => {
     const countEl = document.getElementById('scenarios-count');
     const selectEl = document.getElementById('scenario-select');
     const stateOptionsEl = document.getElementById('scenario-state-options');
+    const searchInput = document.getElementById('scenario-search');
+    const bulkBtn = document.getElementById('scenario-bulk-btn');
+    const bulkResetBtn = document.getElementById('scenario-bulk-reset');
+    const bulkSetStateBtn = document.getElementById('scenario-bulk-set-state');
+    const bulkClearBtn = document.getElementById('scenario-bulk-clear');
+    const selectAllBtn = document.getElementById('scenario-select-all-btn');
 
     if (!listEl) return;
 
@@ -453,10 +731,82 @@ window.renderScenarios = () => {
             stateOptionsEl.innerHTML = '';
         }
         updateScenarioStateSuggestions('');
+        updateScenarioHeaderUI([], 0);
         return;
     }
 
     if (emptyEl) emptyEl.classList.add('hidden');
+
+    if (scenarioUiState.selected instanceof Set && scenarioUiState.selected.size > 0) {
+        const knownIdentifiers = new Set(
+            normalizedScenarios
+                .map((scenario) => {
+                    const scenarioIdentifier = typeof scenario?.identifier === 'string'
+                        ? scenario.identifier
+                        : (typeof scenario?.decodedId === 'string' ? scenario.decodedId : (typeof scenario?.id === 'string' ? scenario.id : ''));
+                    return typeof scenarioIdentifier === 'string' ? scenarioIdentifier.trim() : '';
+                })
+                .filter(Boolean)
+        );
+        for (const selectedId of Array.from(scenarioUiState.selected)) {
+            if (!knownIdentifiers.has(selectedId)) {
+                scenarioUiState.selected.delete(selectedId);
+            }
+        }
+    }
+
+    if (searchInput) {
+        const currentValue = searchInput.value || '';
+        if (currentValue !== scenarioUiState.searchTerm) {
+            searchInput.value = scenarioUiState.searchTerm;
+        }
+    }
+
+    if (!scenarioToolbarHandlersAttached) {
+        if (searchInput) {
+            searchInput.addEventListener('input', (event) => {
+                scenarioUiState.searchTerm = typeof event.target?.value === 'string' ? event.target.value : '';
+                renderScenarios();
+            });
+        }
+
+        if (bulkBtn) {
+            bulkBtn.addEventListener('click', (event) => {
+                event.stopPropagation();
+                setScenarioBulkMenuOpen(!scenarioUiState.bulkMenuOpen);
+            });
+        }
+
+        if (bulkResetBtn) {
+            bulkResetBtn.addEventListener('click', () => {
+                void bulkResetSelectedScenarios();
+            });
+        }
+
+        if (bulkSetStateBtn) {
+            bulkSetStateBtn.addEventListener('click', () => {
+                void bulkSetScenarioState();
+            });
+        }
+
+        if (bulkClearBtn) {
+            bulkClearBtn.addEventListener('click', clearScenarioSelection);
+        }
+
+        if (selectAllBtn) {
+            selectAllBtn.addEventListener('click', toggleSelectAllVisibleScenarios);
+        }
+
+        document.addEventListener('click', (event) => {
+            const bulkWrap = document.getElementById('scenario-bulk-wrap');
+            if (!bulkWrap) return;
+            if (!scenarioUiState.bulkMenuOpen) return;
+            if (typeof bulkWrap.contains === 'function' && bulkWrap.contains(event.target)) return;
+            setScenarioBulkMenuOpen(false);
+        });
+
+        scenarioToolbarHandlersAttached = true;
+    }
 
     const previousSelection = selectEl?.value || '';
     if (selectEl) {
@@ -498,7 +848,35 @@ window.renderScenarios = () => {
     }
 
     listEl.style.display = '';
-    listEl.innerHTML = normalizedScenarios.map((scenario, index) => {
+
+    const term = normalizeSearchTerm(scenarioUiState.searchTerm);
+    const filteredScenarios = normalizedScenarios.filter((scenario) => scenarioMatchesSearch(scenario, term));
+
+    if (filteredScenarios.length === 0) {
+        listEl.innerHTML = '';
+        listEl.style.display = 'none';
+        if (emptyEl) {
+            emptyEl.classList.remove('hidden');
+            const titleEl = typeof emptyEl.querySelector === 'function' ? emptyEl.querySelector('h3') : null;
+            const bodyEl = typeof emptyEl.querySelector === 'function' ? emptyEl.querySelector('p') : null;
+            if (titleEl) titleEl.textContent = 'No scenarios match your filter';
+            if (bodyEl) bodyEl.textContent = 'Try clearing the filter or searching by mapping URL/state.';
+        }
+        updateScenarioHeaderUI([], normalizedScenarios.length);
+        return;
+    }
+
+    if (emptyEl) {
+        const titleEl = typeof emptyEl.querySelector === 'function' ? emptyEl.querySelector('h3') : null;
+        const bodyEl = typeof emptyEl.querySelector === 'function' ? emptyEl.querySelector('p') : null;
+        if (titleEl) titleEl.textContent = 'No scenarios found';
+        if (bodyEl) bodyEl.textContent = 'Create mappings with scenarios to manage state here.';
+        emptyEl.classList.add('hidden');
+    }
+
+    updateScenarioHeaderUI(filteredScenarios, normalizedScenarios.length);
+
+    listEl.innerHTML = filteredScenarios.map((scenario, index) => {
         const scenarioIdentifier = typeof scenario?.identifier === 'string'
             ? scenario.identifier
             : (typeof scenario?.decodedId === 'string' ? scenario.decodedId : (typeof scenario?.id === 'string' ? scenario.id : ''));
@@ -526,6 +904,28 @@ window.renderScenarios = () => {
         const scenarioKeyAttr = escapeHtml(scenarioKey);
 
         const canTargetScenario = typeof scenarioIdentifier === 'string' && scenarioIdentifier.trim().length > 0;
+        const selectionKey = canTargetScenario ? scenarioIdentifier.trim() : '';
+        const isSelected = selectionKey && scenarioUiState.selected instanceof Set
+            ? scenarioUiState.selected.has(selectionKey)
+            : false;
+
+        const selectButtonMarkup = canTargetScenario ? `
+            <button
+                type="button"
+                class="scenario-select-btn${isSelected ? ' is-selected' : ''}"
+                data-scenario-action="select"
+                data-scenario="${scenarioIdentifierAttr}"
+                role="checkbox"
+                aria-checked="${isSelected ? 'true' : 'false'}"
+                aria-label="Select scenario ${displayedName}"
+                title="Select"
+            >
+                <span class="scenario-select-box" aria-hidden="true"></span>
+            </button>
+        ` : `
+            <span style="width:18px;height:18px;display:inline-block;"></span>
+        `;
+
         const seenStates = new Set();
         const displayStates = [];
         const pushDisplayState = (state) => {
@@ -569,7 +969,7 @@ window.renderScenarios = () => {
                 data-scenario-action="reset"
                 data-scenario="${scenarioIdentifierAttr}"
             >
-                🔄 Reset
+                ${renderIcon('refresh', { className: 'icon-inline' })} Reset
             </button>
         ` : '';
 
@@ -611,14 +1011,38 @@ window.renderScenarios = () => {
                     const transitions = transitionMarkup ? `
                         <div class="scenario-mapping-states">${transitionMarkup}</div>
                     ` : '';
-                    const editButton = mappingId ? `
+                    const editIcon = renderIcon('pencil', { className: 'action-icon' });
+                    const duplicateIcon = renderIcon('clipboard', { className: 'action-icon' });
+                    const deleteIcon = renderIcon('trash', { className: 'action-icon' });
+
+                    const actionsMarkup = mappingId ? `
                         <div class="scenario-mapping-actions">
                             <button
                                 class="btn btn-sm btn-secondary"
                                 data-scenario-action="edit-mapping"
                                 data-mapping-id="${mappingIdAttr}"
+                                title="Edit mapping"
                             >
-                                📝 Edit mapping
+                                ${editIcon || 'Edit'}
+                                ${editIcon ? '<span class="sr-only">Edit mapping</span>' : ''}
+                            </button>
+                            <button
+                                class="btn btn-sm btn-secondary"
+                                data-scenario-action="duplicate-mapping"
+                                data-mapping-id="${mappingIdAttr}"
+                                title="Duplicate mapping"
+                            >
+                                ${duplicateIcon || 'Duplicate'}
+                                ${duplicateIcon ? '<span class="sr-only">Duplicate mapping</span>' : ''}
+                            </button>
+                            <button
+                                class="btn btn-sm btn-danger"
+                                data-scenario-action="delete-mapping"
+                                data-mapping-id="${mappingIdAttr}"
+                                title="Delete mapping"
+                            >
+                                ${deleteIcon || 'Delete'}
+                                ${deleteIcon ? '<span class="sr-only">Delete mapping</span>' : ''}
                             </button>
                         </div>
                     ` : '';
@@ -628,7 +1052,7 @@ window.renderScenarios = () => {
                             <div class="scenario-mapping-name">${mappingName}</div>
                             ${metaLabel}
                             ${transitions}
-                            ${editButton}
+                            ${actionsMarkup}
                         </li>
                     `;
                 }).join('')}
@@ -637,12 +1061,13 @@ window.renderScenarios = () => {
             <div class="scenario-mapping-empty">No stub mappings are bound to this scenario yet.</div>
         `;
 
-        const toggleIcon = isExpanded ? '▾' : '▸';
+        const toggleIcon = renderIcon(isExpanded ? 'sidebar-collapse' : 'sidebar-expand', { className: 'scenario-toggle-icon' }) || (isExpanded ? '▾' : '▸');
         const toggleAriaLabel = `${isExpanded ? 'Collapse' : 'Expand'} scenario ${displayLabel}`;
 
         return `
-            <div class="scenario-item ${isExpanded ? 'expanded' : 'collapsed'}" data-scenario="${scenarioIdentifierAttr}" data-scenario-key="${scenarioKeyAttr}">
+            <div class="scenario-item ${isExpanded ? 'expanded' : 'collapsed'}${isSelected ? ' is-selected' : ''}" data-scenario="${scenarioIdentifierAttr}" data-scenario-key="${scenarioKeyAttr}">
                 <div class="scenario-summary">
+                    ${selectButtonMarkup}
                     <button
                         type="button"
                         class="scenario-toggle-btn"
@@ -651,7 +1076,7 @@ window.renderScenarios = () => {
                         aria-expanded="${isExpanded ? 'true' : 'false'}"
                         aria-label="${escapeHtml(toggleAriaLabel)}"
                     >
-                        <span class="scenario-toggle-icon">${toggleIcon}</span>
+                        ${toggleIcon}
                     </button>
                     <div class="scenario-summary-main">
                         <div class="scenario-summary-header">
@@ -674,8 +1099,9 @@ window.renderScenarios = () => {
 
     if (!scenarioListHandlerAttached) {
         listEl.addEventListener('click', async (event) => {
-            const button = event.target.closest('button[data-scenario-action]');
+            const button = event.target.closest('[data-scenario-action]');
             if (!button) return;
+            if (typeof listEl.contains === 'function' && !listEl.contains(button)) return;
 
             const action = button.dataset.scenarioAction;
 
@@ -688,6 +1114,23 @@ window.renderScenarios = () => {
 
                 const currentlyExpanded = scenarioExpansionState[scenarioKeyValue] !== false;
                 scenarioExpansionState[scenarioKeyValue] = !currentlyExpanded;
+                renderScenarios();
+            } else if (action === 'select') {
+                event.preventDefault();
+                const scenarioIdentifierValue = button.dataset.scenario || '';
+                const normalized = typeof scenarioIdentifierValue === 'string' ? scenarioIdentifierValue.trim() : '';
+                if (!normalized) return;
+
+                if (!(scenarioUiState.selected instanceof Set)) {
+                    scenarioUiState.selected = new Set();
+                }
+
+                if (scenarioUiState.selected.has(normalized)) {
+                    scenarioUiState.selected.delete(normalized);
+                } else {
+                    scenarioUiState.selected.add(normalized);
+                }
+
                 renderScenarios();
             } else if (action === 'transition') {
                 const scenarioIdentifierValue = button.dataset.scenario || '';
@@ -718,6 +1161,28 @@ window.renderScenarios = () => {
                 const mappingIdValue = button.dataset.mappingId;
                 if (mappingIdValue && typeof window.openEditModal === 'function') {
                     window.openEditModal(mappingIdValue);
+                }
+            } else if (action === 'duplicate-mapping') {
+                const mappingIdValue = button.dataset.mappingId;
+                if (mappingIdValue && typeof window.duplicateMapping === 'function') {
+                    button.disabled = true;
+                    try {
+                        await window.duplicateMapping(mappingIdValue);
+                        await loadScenarios();
+                    } finally {
+                        button.disabled = false;
+                    }
+                }
+            } else if (action === 'delete-mapping') {
+                const mappingIdValue = button.dataset.mappingId;
+                if (mappingIdValue && typeof window.deleteMapping === 'function') {
+                    button.disabled = true;
+                    try {
+                        await window.deleteMapping(mappingIdValue);
+                        await loadScenarios();
+                    } finally {
+                        button.disabled = false;
+                    }
                 }
             }
         });

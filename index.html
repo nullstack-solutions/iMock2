@@ -563,8 +563,28 @@
             <!-- SCENARIOS PAGE -->
             <div id="scenarios-page" class="hidden">
                 <div class="page-header">
-                    <div class="page-title">Scenario Management</div>
-                    <div style="display: flex; gap: var(--space-2);">
+                    <div class="scenario-page-title">
+                        <div class="page-title">Scenario Mappings</div>
+                        <span id="scenario-stats" class="badge badge-secondary" title="Visible scenarios and mappings"></span>
+                    </div>
+                    <div class="scenarios-header-actions">
+                        <div class="scenario-search">
+                            <svg class="icon icon-16" aria-hidden="true" focusable="false"><use href="#icon-search"></use></svg>
+                            <input type="text" class="form-input scenario-search-input" id="scenario-search" placeholder="Filter scenarios..." autocomplete="off" />
+                        </div>
+                        <div class="scenario-bulk-wrap" id="scenario-bulk-wrap" style="display: none;">
+                            <button class="btn btn-secondary" id="scenario-bulk-btn" type="button">
+                                <span>Bulk Actions</span>
+                                <span class="badge badge-secondary scenario-bulk-count" id="scenario-bulk-count">0</span>
+                                <svg class="icon icon-16" aria-hidden="true" focusable="false"><use href="#icon-sidebar-expand"></use></svg>
+                            </button>
+                            <div class="scenario-bulk-menu" id="scenario-bulk-menu" aria-hidden="true">
+                                <button class="scenario-bulk-item" id="scenario-bulk-reset" type="button">Reset Selected</button>
+                                <button class="scenario-bulk-item" id="scenario-bulk-set-state" type="button">Set State…</button>
+                                <div class="scenario-bulk-sep"></div>
+                                <button class="scenario-bulk-item danger" id="scenario-bulk-clear" type="button">Clear Selection</button>
+                            </div>
+                        </div>
                         <button class="btn btn-secondary" onclick="refreshScenarios()">
                             <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-refresh"></use></svg>
                             <span>Refresh</span>
@@ -574,6 +594,13 @@
                             <span>Reset All</span>
                         </button>
                     </div>
+                </div>
+
+                <div class="scenario-select-all-row" id="scenario-select-all-row" style="display: none;">
+                    <button type="button" class="scenario-select-btn" id="scenario-select-all-btn" role="checkbox" aria-checked="false" aria-label="Select all visible scenarios">
+                        <span class="scenario-select-box" aria-hidden="true"></span>
+                    </button>
+                    <span class="scenario-select-label">Select all visible</span>
                 </div>
                 
                 <div class="card card-static">
