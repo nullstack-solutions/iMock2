@@ -269,7 +269,7 @@
             // Clean up deletion timeouts and pending deleted IDs
             if (window.deletionTimeouts instanceof Map) {
                 Logger.info('LIFECYCLE', 'Cleaning up deletion timeouts');
-                for (const [id, timeout] of window.deletionTimeouts) {
+                for (const timeout of window.deletionTimeouts.values()) {
                     clearTimeout(timeout);
                 }
                 window.deletionTimeouts.clear();

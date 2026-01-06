@@ -2,20 +2,7 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
-
-function createLoggerStub(consoleObj = console) {
-    return {
-        LEVELS: { DEBUG: 0, INFO: 1, WARN: 2, ERROR: 3, SILENT: 4 },
-        setLevel() {},
-        debug: (...args) => consoleObj.log(...args),
-        info: (...args) => consoleObj.info(...args),
-        warn: (...args) => consoleObj.warn(...args),
-        error: (...args) => consoleObj.error(...args),
-        api: (...args) => consoleObj.log(...args),
-        cache: (...args) => consoleObj.log(...args),
-        ui: (...args) => consoleObj.log(...args),
-    };
-}
+const { createLoggerStub } = require('./helpers/stubs');
 
 function createElementStub() {
     return {
@@ -148,7 +135,7 @@ function assertValidCreatePayload(payload) {
     assert.strictEqual(payload.metadata?.source, 'template', 'metadata.source should flag template origin');
 
     if (typeof payload.scenarioName === 'string') {
-        assert.ok(!/\\s/.test(payload.scenarioName), 'scenarioName must not contain whitespace');
+        assert.ok(!/\s/.test(payload.scenarioName), 'scenarioName must not contain whitespace');
     }
 }
 
