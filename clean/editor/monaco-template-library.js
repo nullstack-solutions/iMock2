@@ -250,14 +250,14 @@
             content: {
                 mappings: [
                     {
-                        scenarioName: 'Retry Scenario',
+                        scenarioName: 'Retry_Scenario',
                         requiredScenarioState: 'Started',
                         newScenarioState: 'Recovered',
                         request: { method: 'GET', urlPath: '/api/flaky' },
                         response: { status: 500, jsonBody: { error: 'Temporary failure' } }
                     },
                     {
-                        scenarioName: 'Retry Scenario',
+                        scenarioName: 'Retry_Scenario',
                         requiredScenarioState: 'Recovered',
                         request: { method: 'GET', urlPath: '/api/flaky' },
                         response: { status: 200, jsonBody: { message: 'Success' } }
@@ -274,13 +274,13 @@
             content: {
                 mappings: [
                     {
-                        scenarioName: 'To do list',
+                        scenarioName: 'todo_list',
                         requiredScenarioState: 'Started',
                         request: { method: 'GET', url: '/todo/items' },
                         response: { status: 200, jsonBody: { items: ['Buy milk'] } }
                     },
                     {
-                        scenarioName: 'To do list',
+                        scenarioName: 'todo_list',
                         requiredScenarioState: 'Started',
                         newScenarioState: 'Item added',
                         request: {
@@ -291,7 +291,7 @@
                         response: { status: 201 }
                     },
                     {
-                        scenarioName: 'To do list',
+                        scenarioName: 'todo_list',
                         requiredScenarioState: 'Item added',
                         request: { method: 'GET', url: '/todo/items' },
                         response: { status: 200, jsonBody: { items: ['Buy milk', 'Cancel subscription'] } }
@@ -308,21 +308,21 @@
             content: {
                 mappings: [
                     {
-                        scenarioName: 'Order Status',
+                        scenarioName: 'Order_Status',
                         requiredScenarioState: 'Started',
                         newScenarioState: 'Processing',
                         request: { method: 'GET', urlPath: '/orders/123/status' },
                         response: { status: 200, jsonBody: { status: 'pending' } }
                     },
                     {
-                        scenarioName: 'Order Status',
+                        scenarioName: 'Order_Status',
                         requiredScenarioState: 'Processing',
                         newScenarioState: 'Shipped',
                         request: { method: 'GET', urlPath: '/orders/123/status' },
                         response: { status: 200, jsonBody: { status: 'processing' } }
                     },
                     {
-                        scenarioName: 'Order Status',
+                        scenarioName: 'Order_Status',
                         requiredScenarioState: 'Shipped',
                         request: { method: 'GET', urlPath: '/orders/123/status' },
                         response: { status: 200, jsonBody: { status: 'shipped' } }

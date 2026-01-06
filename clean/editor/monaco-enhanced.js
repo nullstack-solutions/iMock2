@@ -2180,8 +2180,18 @@ class MonacoInitializer {
             this.editorReadOnlyLocked = false;
         }
 
-        this.suspendHistoryRecording = true;
+this.suspendHistoryRecording = true;
         try {
+            // Clear selection and content before setting new value
+            if (editor && typeof editor.setSelection === 'function') {
+                editor.setSelection(new monaco.Range(1, 1, editor.getModel().getLineCount(), 1));
+            }
+            if (editor && typeof editor.trigger === 'function') {
+                editor.trigger('source', 'editor.action.selectAll');
+            }
+            if (editor && typeof editor.executeCommand === 'function') {
+                editor.executeCommand('editor.action.deleteAll');
+            }
             editor.setValue('');
         } finally {
             this.suspendHistoryRecording = false;
@@ -2621,9 +2631,14 @@ class MonacoInitializer {
     }
 
     // JSON operations
-    async formatJSON() {
+async formatJSON() {
         const editor = this.getActiveEditor();
         const content = editor.getValue();
+        
+        // Clear editor before formatting to prevent content concatenation
+        if (editor && typeof editor.setValue === 'function') {
+            editor.setValue('');
+        }
         
         try {
             if (this.workerPool) {

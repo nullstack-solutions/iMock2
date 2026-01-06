@@ -129,7 +129,7 @@ function parseQuery(query) {
 
         return Object.keys(result).length > 0 ? result : null;
     } catch (error) {
-        console.error('Query parse error:', error);
+        Logger.error('QUERY', 'Query parse error:', error);
         return null;
     }
 }

@@ -26,13 +26,13 @@
 
         const notifySuccess = notificationManager?.success?.bind(notificationManager)
             || notificationManager?.info?.bind(notificationManager)
-            || ((message) => console.warn('[DEMO]', message));
+            || ((message) => Logger.warn('DEMO', message));
         const notifyError = notificationManager?.error?.bind(notificationManager)
             || notificationManager?.warning?.bind(notificationManager)
-            || ((message) => console.warn('[DEMO]', message));
+            || ((message) => Logger.warn('DEMO', message));
         const notifyWarning = notificationManager?.warning?.bind(notificationManager)
             || notificationManager?.info?.bind(notificationManager)
-            || ((message) => console.warn('[DEMO]', message));
+            || ((message) => Logger.warn('DEMO', message));
 
         return async function loadDemoData() {
             const available = typeof isDatasetAvailable === 'function'

@@ -151,20 +151,41 @@ window.SELECTORS = {
 
 // --- SCHEDULING & RENDER HELPERS ---
 (function initialiseLifecycleManager() {
-    const intervalIds = new Set();
+    const intervalIds = new Map();
+    const timeoutIds = new Map();
     const rafIds = new Set();
     const eventListeners = new Map(); // Map<target, Set<{type, handler, options}>>
 
+    const recordInterval = (id, name, delay) => intervalIds.set(id, { name, delay, createdAt: Date.now() });
+    const recordTimeout = (id, name, delay) => timeoutIds.set(id, { name, delay, createdAt: Date.now() });
+
     const manager = {
-        setInterval(handler, delay) {
+        setInterval(handler, delay, name) {
             const id = window.setInterval(handler, delay);
-            intervalIds.add(id);
+            recordInterval(id, name, delay);
             return id;
+        },
+        setNamedInterval(name, handler, delay) {
+            return this.setInterval(handler, delay, name);
         },
         clearInterval(id) {
             if (id !== undefined && id !== null) {
                 window.clearInterval(id);
                 intervalIds.delete(id);
+            }
+        },
+        setTimeout(handler, delay, name) {
+            const id = window.setTimeout(() => {
+                timeoutIds.delete(id);
+                handler();
+            }, delay);
+            recordTimeout(id, name, delay);
+            return id;
+        },
+        clearTimeout(id) {
+            if (id !== undefined && id !== null) {
+                window.clearTimeout(id);
+                timeoutIds.delete(id);
             }
         },
         requestAnimationFrame(handler) {
@@ -208,8 +229,10 @@ window.SELECTORS = {
             }
         },
         clearAll() {
-            intervalIds.forEach(identifier => window.clearInterval(identifier));
+            intervalIds.forEach((_, identifier) => window.clearInterval(identifier));
             intervalIds.clear();
+            timeoutIds.forEach((_, identifier) => window.clearTimeout(identifier));
+            timeoutIds.clear();
             rafIds.forEach(identifier => window.cancelAnimationFrame(identifier));
             rafIds.clear();
 
@@ -220,6 +243,18 @@ window.SELECTORS = {
                 });
             });
             eventListeners.clear();
+        },
+        getStats() {
+            return {
+                intervals: intervalIds.size,
+                timeouts: timeoutIds.size,
+                rafs: rafIds.size,
+                eventTargets: eventListeners.size,
+                details: {
+                    intervals: Array.from(intervalIds.entries()),
+                    timeouts: Array.from(timeoutIds.entries())
+                }
+            };
         }
     };
 
@@ -327,7 +362,7 @@ window.debounce = function debounce(fn, wait = 150, options = {}) {
                 try {
                     onItemChanged(keyString, item, signature);
                 } catch (callbackError) {
-                    console.warn('renderList onItemChanged failed:', callbackError);
+                    Logger.warn('UI', 'renderList onItemChanged failed:', callbackError);
                 }
             }
 
@@ -349,7 +384,7 @@ window.debounce = function debounce(fn, wait = 150, options = {}) {
                 try {
                     onItemRemoved(String(key), node);
                 } catch (callbackError) {
-                    console.warn('renderList onItemRemoved failed:', callbackError);
+                    Logger.warn('UI', 'renderList onItemRemoved failed:', callbackError);
                 }
             }
         });
@@ -456,7 +491,7 @@ const migrateLegacySettings = (rawSettings) => {
             try {
                 normalized.customHeadersRaw = JSON.stringify(customHeaders, null, 2);
             } catch (error) {
-                console.warn('Failed to serialize migrated custom headers:', error);
+                Logger.warn('API', 'Failed to serialize migrated custom headers:', error);
                 normalized.customHeadersRaw = '';
             }
         }
@@ -483,7 +518,7 @@ window.readWiremockSettings = () => {
         const parsed = JSON.parse(raw);
         return migrateLegacySettings(parsed);
     } catch (error) {
-        console.warn('Failed to read stored settings, returning empty object:', error);
+        Logger.warn('UI', 'Failed to read stored settings, returning empty object:', error);
         return {};
     }
 };
@@ -508,7 +543,6 @@ window.uptimeInterval = null; // Make globally accessible for uptime tracking
 let autoRefreshInterval = null;
 
 // Global feature-level state
-window.allMappings = [];
 window.allRequests = [];
 window.allScenarios = [];
 window.isRecording = false;
@@ -547,7 +581,7 @@ window.apiFetch = async (endpoint, options = {}) => {
 
     // Minimal logging for periodic health checks to reduce memory usage
     if (verboseLogging) {
-        console.log(`🔗 [API] ${method} ${endpoint}`);
+        Logger.api(`${method} ${endpoint}`);
     }
 
     try {
@@ -556,7 +590,7 @@ window.apiFetch = async (endpoint, options = {}) => {
         if (!response.ok) {
             const errorText = await response.text();
             if (verboseLogging) {
-                console.error(`❌ [API] ${method} ${endpoint} - HTTP ${response.status}: ${errorText || response.statusText}`);
+                Logger.error('API', `HTTP ${response.status}: ${errorText || response.statusText}`, { endpoint, method });
             }
             throw new Error(`HTTP ${response.status}: ${errorText || response.statusText}`);
         }
@@ -564,7 +598,7 @@ window.apiFetch = async (endpoint, options = {}) => {
 
         // Only log success for non-periodic endpoints
         if (verboseLogging) {
-            console.log(`✅ [API] ${method} ${endpoint} - OK`);
+            Logger.api(`${method} ${endpoint} - OK`);
         }
 
         try {
@@ -578,7 +612,7 @@ window.apiFetch = async (endpoint, options = {}) => {
         clearTimeout(timeoutId);
         // Minimal error logging to reduce memory usage
         if (verboseLogging) {
-            console.error(`💥 [API] ${method} ${endpoint} - ${error.name}: ${error.message}`);
+            Logger.error('API', `${method} ${endpoint} - ${error.name}: ${error.message}`);
         }
         if (error.name === 'AbortError') throw new Error(`Request timeout after ${currentTimeout}ms`);
         throw error;
@@ -588,11 +622,11 @@ window.apiFetch = async (endpoint, options = {}) => {
 // --- CORE UI HELPERS ---
 
 window.showPage = (pageId, element) => {
-    console.log(`🔄 [showPage] Switching to tab: ${pageId}`);
+    Logger.info('UI', `Switching to tab: ${pageId}`);
 
     document.querySelectorAll('.main-content > div[id$="-page"]').forEach(p => p.classList.add('hidden'));
     const targetPage = document.getElementById(SELECTORS.PAGES[pageId.toUpperCase()]);
-    if (!targetPage) { console.warn(`Page not found: ${pageId}`); return; }
+    if (!targetPage) { Logger.warn('UI', `Page not found: ${pageId}`); return; }
     targetPage.classList.remove('hidden');
     document.querySelectorAll('.sidebar .nav-item').forEach(i => i.classList.remove('active'));
     if (element) element.classList.add('active');
@@ -603,11 +637,11 @@ window.showPage = (pageId, element) => {
         const oldTab = url.searchParams.get('tab');
         url.searchParams.set('tab', pageId);
         const newUrl = url.toString();
-        console.log(`🔗 [showPage] Updating URL: ${oldTab} → ${pageId}`);
-        console.log(`🔗 [showPage] New URL: ${newUrl}`);
+        Logger.api(`showPage: ${oldTab} → ${pageId}`);
+        Logger.api(`showPage URL: ${newUrl}`);
         window.history.replaceState({}, '', newUrl);
     } else {
-        console.warn('⚠️ [showPage] history.replaceState not available');
+        Logger.warn('UI', 'history.replaceState not available');
     }
 };
 
@@ -626,7 +660,7 @@ const applySidebarState = (shouldCollapse, { persist = true } = {}) => {
         toggleButton.setAttribute('title', label);
         toggleButton.querySelector('use')?.setAttribute('href', shouldCollapse ? '#icon-sidebar-expand' : '#icon-sidebar-collapse');
     }
-    if (persist) try { localStorage.setItem(SIDEBAR_STATE_STORAGE_KEY, shouldCollapse ? 'collapsed' : 'expanded'); } catch (e) { console.warn('Unable to persist sidebar state:', e); }
+    if (persist) try { localStorage.setItem(SIDEBAR_STATE_STORAGE_KEY, shouldCollapse ? 'collapsed' : 'expanded'); } catch (e) { Logger.warn('UI', 'Unable to persist sidebar state:', e); }
 };
 
 window.toggleSidebar = () => {
@@ -636,14 +670,14 @@ window.toggleSidebar = () => {
 
 window.initializeSidebarPreference = () => {
     let storedState = null;
-    try { storedState = localStorage.getItem(SIDEBAR_STATE_STORAGE_KEY); } catch (e) { console.warn('Unable to read sidebar state from storage:', e); }
+    try { storedState = localStorage.getItem(SIDEBAR_STATE_STORAGE_KEY); } catch (e) { Logger.warn('UI', 'Unable to read sidebar state from storage:', e); }
     applySidebarState(storedState === 'collapsed', { persist: false });
 };
 
 const resolveModalElement = (modalId) => {
-    if (!modalId) { console.warn('Modal ID is required to resolve modal element'); return null; }
+    if (!modalId) { Logger.warn('UI', 'Modal ID is required to resolve modal element'); return null; }
     const element = document.getElementById(modalId);
-    if (!element) console.warn(`Modal element not found for id: ${modalId}`);
+    if (!element) Logger.warn('UI', `Modal element not found for id: ${modalId}`);
     return element;
 };
 
@@ -685,7 +719,7 @@ window.hideModal = (modal) => {
             try {
                 window.editor.setValue('');
             } catch (e) {
-                console.warn('Failed to clear editor:', e);
+                Logger.warn('UI', 'Failed to clear editor:', e);
             }
         }
     }
@@ -776,4 +810,4 @@ LifecycleManager.addEventListener(document, 'keydown', (e) => {
 window.elementCache = new Map();
 window.invalidateElementCache = (id) => id ? window.elementCache.delete(id) : window.elementCache.clear();
 
-console.log('✅ Core.js loaded - Constants, API client, basic UI functions');
+Logger.info('UI', 'Core.js loaded - Constants, API client, basic UI functions');

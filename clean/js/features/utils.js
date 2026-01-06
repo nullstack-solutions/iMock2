@@ -3,7 +3,21 @@
 const Utils = {
     escapeHtml: (unsafe) => typeof unsafe !== 'string' ? String(unsafe) : 
         unsafe.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'})[m]),
-    
+
+    normalizeScenarioName: (value, replacement = '_') => {
+        if (value == null) {
+            return { original: value, normalized: value, changed: false, cleared: false, hadWhitespace: false };
+        }
+
+        const original = typeof value === 'string' ? value : String(value);
+        const hadWhitespace = /\s/.test(original);
+        const normalized = original.trim().replace(/\s+/g, replacement);
+        const cleared = Boolean(original) && !normalized;
+        const changed = normalized !== original;
+
+        return { original, normalized, changed, cleared, hadWhitespace };
+    },
+     
     formatJson: (obj, fallback = 'Invalid JSON', maxLength = 1000) => {
         try { 
             const jsonString = JSON.stringify(obj, null, 2);
