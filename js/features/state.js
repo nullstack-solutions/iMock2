@@ -4,10 +4,6 @@
     const window = global;
     const state = window.FeaturesState || {};
 
-    if (!Array.isArray(window.originalMappings)) window.originalMappings = [];
-    if (!Array.isArray(window.allMappings)) window.allMappings = [];
-    if (!Array.isArray(window.originalRequests)) window.originalRequests = [];
-    if (!Array.isArray(window.allRequests)) window.allRequests = [];
     if (!(window.mappingIndex instanceof Map)) window.mappingIndex = new Map();
     window.mappingTabTotals ??= { all: 0, get: 0, post: 0, put: 0, patch: 0, delete: 0 };
     window.requestTabTotals ??= { all: 0, matched: 0, unmatched: 0 };
@@ -43,16 +39,24 @@
         if (Array.isArray(mappings)) mappings.forEach(addMappingToIndex);
     }
 
-    function computeMappingTabTotals(source = []) {
+function computeMappingTabTotals(source = []) {
         const totals = { all: 0, get: 0, post: 0, put: 0, patch: 0, delete: 0 };
+        
+        // If no source provided, use MappingsStore
+        if (!Array.isArray(source) || source.length === 0) {
+            source = window.MappingsStore?.getAll ? window.MappingsStore.getAll() : [];
+        }
+        
         if (!Array.isArray(source) || source.length === 0) return totals;
         totals.all = source.length;
         source.forEach(mapping => { const method = (mapping?.request?.method || '').toLowerCase(); if (Object.prototype.hasOwnProperty.call(totals, method)) totals[method] += 1; });
         return totals;
     }
 
-    function refreshMappingTabSnapshot() {
-        window.mappingTabTotals = computeMappingTabTotals(window.originalMappings);
+function refreshMappingTabSnapshot() {
+        // Use MappingsStore instead of legacy window.originalMappings
+        const mappings = window.MappingsStore?.getAll ? window.MappingsStore.getAll() : [];
+        window.mappingTabTotals = computeMappingTabTotals(mappings);
     }
 
     function computeRequestTabTotals(source = []) {
@@ -73,8 +77,10 @@
         return totals;
     }
 
-    function refreshRequestTabSnapshot() {
-        window.requestTabTotals = computeRequestTabTotals(window.originalRequests);
+function refreshRequestTabSnapshot() {
+        // Use RequestsStore if available, fallback to legacy window.originalRequests
+        const requests = window.RequestsStore?.getAll ? window.RequestsStore.getAll() : window.originalRequests || [];
+        window.requestTabTotals = computeRequestTabTotals(requests);
         if (typeof window.updateRequestTabCounts === 'function') {
             window.updateRequestTabCounts();
         }
@@ -104,7 +110,7 @@
             try {
                 await mappingsFetchPromise;
             } catch (error) {
-                console.warn('fetchMappingsFromServer: previous request failed, starting a new one', error);
+                Logger.warn('STATE', 'fetchMappingsFromServer: previous request failed, starting a new one', error);
             }
         }
 
@@ -113,7 +119,7 @@
                 return await window.apiFetch(window.ENDPOINTS.MAPPINGS);
             } catch (error) {
                 if (window.DemoData?.isAvailable?.() && window.DemoData?.getMappingsPayload) {
-                    console.warn('⚠️ Falling back to demo mappings because the WireMock API request failed.', error);
+                    Logger.warn('STATE', 'Falling back to demo mappings because the WireMock API request failed.', error);
                     window.demoModeLastError = error;
                     markDemoModeActive('mappings-fallback');
                     return window.DemoData.getMappingsPayload();
@@ -130,6 +136,102 @@
         return requestPromise;
     }
 
+    function updateOptimisticCache(mapping, operation, options = {}) {
+        try {
+            if (!mapping) {
+                Logger.warn('STATE', 'updateOptimisticCache: no mapping provided');
+                return;
+            }
+
+            const mappingId = mapping.id || mapping.uuid;
+
+            // For delete operations, we only need the ID
+            if (operation === 'delete') {
+                if (!mappingId) {
+                    Logger.warn('STATE', 'updateOptimisticCache: delete operation requires mapping ID');
+                    return;
+                }
+
+                // Remove from MappingsStore
+                if (window.MappingsStore?.items instanceof Map) {
+                    window.MappingsStore.items.delete(mappingId);
+
+                    // Add to pending deletions
+                    if (typeof window.MappingsStore?.addPending === 'function') {
+                        window.MappingsStore.addPending({
+                            id: mappingId,
+                            type: 'delete',
+                            payload: null,
+                            optimisticMapping: null
+                        });
+                    }
+
+                    // Rebuild indexes
+                    if (typeof window.MappingsStore.rebuildIndexes === 'function') {
+                        window.MappingsStore.rebuildIndexes();
+                    }
+                }
+
+                // Refresh UI
+                window.cacheLastUpdate = Date.now();
+                if (typeof window.refreshMappingsFromCache === 'function') {
+                    window.refreshMappingsFromCache();
+                }
+
+                Logger.info('STATE', 'Deleted mapping from optimistic cache:', mappingId);
+                return;
+            }
+
+            // For create/update operations
+            if (!mappingId) {
+                Logger.warn('STATE', 'updateOptimisticCache: mapping must have an id or uuid');
+                return;
+            }
+
+            // Update MappingsStore
+            if (window.MappingsStore?.items instanceof Map) {
+                const existingMapping = window.MappingsStore.items.get(mappingId);
+
+                // Merge with existing data if updating
+                const finalMapping = existingMapping && operation === 'update'
+                    ? { ...existingMapping, ...mapping }
+                    : mapping;
+
+                window.MappingsStore.items.set(mappingId, finalMapping);
+
+                // Add to pending operations if queueMode is 'add'
+                if (options.queueMode === 'add' && typeof window.MappingsStore?.addPending === 'function') {
+                    window.MappingsStore.addPending({
+                        id: mappingId,
+                        type: operation,
+                        payload: mapping,
+                        optimisticMapping: finalMapping
+                    });
+                }
+                // Confirm operation if queueMode is 'confirm'
+                else if (options.queueMode === 'confirm' && typeof window.MappingsStore?.confirmPending === 'function') {
+                    window.MappingsStore.confirmPending(mappingId);
+                }
+
+                // Rebuild indexes
+                if (typeof window.MappingsStore.rebuildIndexes === 'function') {
+                    window.MappingsStore.rebuildIndexes();
+                }
+            }
+
+            // Refresh UI
+            window.cacheLastUpdate = Date.now();
+            if (typeof window.refreshMappingsFromCache === 'function') {
+                window.refreshMappingsFromCache();
+            }
+
+            Logger.info('STATE', `[updateOptimisticCache] ${operation} mapping:`, mappingId);
+
+        } catch (error) {
+            Logger.error('STATE', 'updateOptimisticCache failed:', error);
+        }
+    }
+
     state.markDemoModeActive = markDemoModeActive;
     state.addMappingToIndex = addMappingToIndex;
     state.rebuildMappingIndex = rebuildMappingIndex;
@@ -139,6 +241,7 @@
     state.refreshRequestTabSnapshot = refreshRequestTabSnapshot;
     state.removeMappingFromIndex = removeMappingFromIndex;
     state.fetchMappingsFromServer = fetchMappingsFromServer;
+    state.updateOptimisticCache = updateOptimisticCache;
 
     window.markDemoModeActive = markDemoModeActive;
     window.addMappingToIndex = addMappingToIndex;
@@ -149,10 +252,11 @@
     window.refreshRequestTabSnapshot = refreshRequestTabSnapshot;
     window.removeMappingFromIndex = removeMappingFromIndex;
     window.fetchMappingsFromServer = fetchMappingsFromServer;
+    window.updateOptimisticCache = updateOptimisticCache;
 
     window.FeaturesState = state;
 
-    console.log('✅ state.js loaded - State management functions registered');
+    Logger.info('STATE', 'state.js loaded - State management functions registered');
 
     if (typeof window.dispatchEvent === 'function') {
         let readyEvent;

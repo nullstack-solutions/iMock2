@@ -383,6 +383,9 @@
     <!-- Performance Optimization Scripts -->
     <script src="performance-optimizations.js"></script>
 
+    <!-- Logger - must be loaded first -->
+    <script src="../js/lib/logger.js"></script>
+
     <!-- Monaco Editor Lazy Loader (Phase 1 Optimization) -->
     <!-- Monaco will be loaded only when editor is actually opened -->
     <script src="monaco-loader.js"></script>
@@ -402,6 +405,10 @@
     <script src="../js/features/templates.js"></script>
     <script src="../js/features/filters.js"></script>
     <script src="../js/features/cache.js"></script>
+    <script src="../js/core/lifecycle.js"></script>
+    <script src="../js/features/store.js"></script>
+    <script src="../js/features/sync-engine.js"></script>
+    <script src="../js/features/operations.js"></script>
     <script src="../js/features/mappings.js"></script>
     <script src="../js/features/requests.js"></script>
     <script src="../js/features/scenarios.js"></script>
@@ -543,32 +550,105 @@
                         if (!mappingData) return;
                         const m = mappingData.mapping || mappingData;
                         if (!m || !m.id) return;
-                        if (!Array.isArray(window.allMappings)) window.allMappings = [];
-                        if (!Array.isArray(window.originalMappings)) window.originalMappings = [];
 
                         // drop service cache mapping if ever present
-                        if (typeof isImockCacheMapping === 'function' && isImockCacheMapping(m)) return; // never render the service mapping
+                        if (typeof isImockCacheMapping === 'function' && isImockCacheMapping(m)) return; // never render service mapping
 
-                        // Update or add entry in allMappings
-                        const idx = window.allMappings.findIndex(x => (x.id || x.uuid) === (m.id || m.uuid));
-                        if (idx >= 0) {
-                            window.allMappings[idx] = m;
-                        } else {
-                            window.allMappings.unshift(m);
+                        // Use MappingsStore if available (PRIMARY)
+                        if (window.MappingsStore && typeof window.MappingsStore.update === 'function') {
+                            window.MappingsStore.update(m.id || m.uuid, m);
+                            console.log('🎯 [OPTIMISTIC] MappingsStore updated successfully in editor context');
+                            console.log('🎯 [OPTIMISTIC] Updated mapping:', m.name || m.id);
+                            return true;
                         }
 
-                        // Update originalMappings as well for consistency
-                        const origIdx = window.originalMappings.findIndex(x => (x.id || x.uuid) === (m.id || m.uuid));
-                        if (origIdx >= 0) {
-                            window.originalMappings[origIdx] = m;
-                        } else {
-                            window.originalMappings.unshift(m);
-                        }
+                        // Use new MappingsStore architecture
+                        try {
+                            const mappingId = m.id || m.uuid;
 
-                        console.log('🎯 [OPTIMISTIC] Cache updated successfully in editor context');
-                        console.log('🎯 [OPTIMISTIC] Updated mapping:', m.name || m.id);
-                        console.log('🎯 [OPTIMISTIC] allMappings size:', window.allMappings.length);
-                        return true;
+                            if (!mappingId) {
+                                console.error('🎯 [OPTIMISTIC] Mapping must have an id or uuid');
+                                return false;
+                            }
+
+                            // Check if MappingsStore is available
+                            if (window.MappingsStore) {
+                                // Check if mapping already exists using internal Map
+                                const exists = window.MappingsStore.items.has(mappingId);
+
+                                if (exists) {
+                                    // Update existing mapping
+                                    window.MappingsStore.items.set(mappingId, m);
+                                    console.log('🎯 [OPTIMISTIC] Updated mapping via MappingsStore:', mappingId);
+                                } else {
+                                    // Add new mapping to store
+                                    window.MappingsStore.items.set(mappingId, m);
+                                    console.log('🎯 [OPTIMISTIC] Added new mapping via MappingsStore:', mappingId);
+                                }
+
+                                // Rebuild indexes
+                                if (typeof window.MappingsStore.rebuildIndexes === 'function') {
+                                    window.MappingsStore.rebuildIndexes();
+                                }
+
+                                // Trigger UI refresh
+                                window.cacheLastUpdate = Date.now();
+                                if (typeof window.refreshMappingsFromCache === 'function') {
+                                    window.refreshMappingsFromCache();
+                                }
+
+                                console.log('🎯 [OPTIMISTIC] MappingsStore updated successfully');
+                                return true;
+                            }
+
+                            // Fallback to MappingsOperations if MappingsStore not available
+                            if (window.MappingsOperations) {
+                                // Need to check existence differently since there's no public has method
+                                const exists = window.MappingsStore?.items?.has(mappingId);
+
+                                if (exists) {
+                                    window.MappingsOperations.update(mappingId, m);
+                                    console.log('🎯 [OPTIMISTIC] Updated mapping via MappingsOperations:', mappingId);
+                                } else {
+                                    window.MappingsOperations.create(m);
+                                    console.log('🎯 [OPTIMISTIC] Created mapping via MappingsOperations:', mappingId);
+                                }
+
+                                return true;
+                            }
+
+                            // Last resort fallback: try parent window function
+                            if (window.parent && window.parent !== window && window.parent.applyOptimisticMappingUpdate) {
+                                console.log('🎯 [OPTIMISTIC] Using parent window applyOptimisticMappingUpdate');
+                                window.parent.applyOptimisticMappingUpdate(m);
+                                return true;
+                            }
+
+                            console.error('🎯 [OPTIMISTIC] No available method to update mapping');
+                            return false;
+
+                        } catch (e) {
+                            console.error('🎯 [OPTIMISTIC] Failed to update mapping:', e);
+
+                            // Final fallback: postMessage to parent
+                            if (window.parent && window.parent !== window) {
+                                try {
+                                    console.log('🎯 [OPTIMISTIC] Sending optimistic update via postMessage to parent');
+                                    window.parent.postMessage({
+                                        type: 'imock-optimistic-mapping-update',
+                                        mapping: m,
+                                        source: 'json-editor',
+                                        timestamp: Date.now()
+                                    }, '*');
+                                    return true;
+                                } catch (postError) {
+                                    console.error('🎯 [OPTIMISTIC] PostMessage failed:', postError);
+                                    return false;
+                                }
+                            }
+
+                            return false;
+                        }
                     } catch (e) {
                         console.warn('🎯 [OPTIMISTIC] Local cache update failed, trying main function:', e);
                         // Fallback to main function
@@ -1280,39 +1360,64 @@
             const serialized = JSON.stringify(mapping, null, 2);
 
             try {
-                if (!window.apiFetch || !window.wiremockBaseUrl) {
+                // Check if MappingsOperations is available
+                if (!window.MappingsOperations) {
+                    throw new Error('MappingsOperations not available');
+                }
+
+                if (!window.wiremockBaseUrl) {
                     throw new Error('WireMock is not connected');
                 }
 
-                const endpoint = mode === 'update' ? `/mappings/${encodeURIComponent(targetId)}` : '/mappings';
-                const method = mode === 'update' ? 'PUT' : 'POST';
-                const response = await window.apiFetch(endpoint, {
-                    method,
-                    headers: { 'Content-Type': 'application/json' },
-                    body: serialized
-                });
+                let result;
 
-                const payload = response?.mapping || response;
-                const successMessage = mode === 'update'
-                    ? `Mapping ${targetId || payload?.id} updated successfully`
-                    : `Mapping ${payload?.id || mapping.name || 'new mapping'} created successfully`;
+                // Use MappingsOperations for optimistic CRUD
+                if (mode === 'update') {
+                    console.log(`✏️ [EDITOR] Updating mapping via MappingsOperations: ${targetId}`);
+                    result = await window.MappingsOperations.update(targetId, mapping);
+                } else {
+                    console.log(`➕ [EDITOR] Creating mapping via MappingsOperations`);
+                    result = await window.MappingsOperations.create(mapping);
+                }
 
-                showNotification(successMessage, 'success');
-                propagateMappingUpdate(payload || mapping);
-
-                const rememberedId = resolveMappingIdentifier(payload) || resolveMappingIdentifier(mapping);
+                // Remember the ID for future operations
+                const rememberedId = resolveMappingIdentifier(result) || resolveMappingIdentifier(mapping);
                 if (rememberedId) {
                     editorMappingContext.remember(rememberedId);
                 }
 
-                return payload;
+                // Notify parent window (if in iframe/popup)
+                if (window.opener || window.parent !== window) {
+                    const message = {
+                        type: 'imock-mapping-changed',
+                        operation: mode,
+                        mapping: result,
+                        source: 'json-editor',
+                        timestamp: Date.now()
+                    };
+
+                    if (window.opener) {
+                        window.opener.postMessage(message, '*');
+                    } else if (window.parent !== window) {
+                        window.parent.postMessage(message, '*');
+                    }
+                }
+
+                console.log(`✅ [EDITOR] ${mode} operation completed successfully`);
+                return result;
+
             } catch (error) {
-                console.error('WireMock operation failed:', error);
+                console.error(`❌ [EDITOR] ${mode} operation failed:`, error);
+
+                // Fallback: download the mapping as a file
                 const filename = buildDownloadFilename(mapping, mode === 'update' ? 'wiremock-update' : 'wiremock-create');
                 downloadFile(serialized, filename, 'application/json');
                 saveToHistory(serialized, mode === 'update' ? 'Saved as download (update fallback)' : 'Saved as download (create fallback)');
-                showNotification('WireMock unavailable, mapping downloaded instead', 'warning');
-                return null;
+
+                // Note: Don't show notification here - MappingsOperations already shows error notifications
+                console.warn('WireMock operation failed, mapping downloaded as fallback');
+
+                throw error; // Re-throw to let caller handle
             } finally {
                 if (editor) {
                     editor.updateOptions({ readOnly: false });
@@ -1623,7 +1728,7 @@
                 ? JSON.parse(decodeURIComponent(settingsParam))
                 : JSON.parse(localStorage.getItem('wiremock-settings') || '{}');
 
-            const host = settings.host || 'localhost';
+const host = settings.host || 'localhost';
             const port = settings.port || '8080';
 
             window.wiremockBaseUrl = window.normalizeWiremockBaseUrl
@@ -1704,6 +1809,12 @@
                 const mapping = await window.getMappingById(mappingId);
                 console.log('📡 API response received:', mapping);
                 
+                // Add mapping to MappingsStore for operations
+                if (mapping && window.MappingsStore) {
+                    window.MappingsStore.setFromServer([mapping], { source: 'editor-load' });
+                    console.log('📦 Mapping added to MappingsStore:', mapping.id);
+                }
+                 
                 if (mapping) {
                     // Wait for Monaco editor to be ready
                     let editorAttempts = 0;

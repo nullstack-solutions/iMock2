@@ -2,6 +2,7 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const { createLoggerStub } = require('./helpers/stubs');
 
 function createRequestsTestContext() {
     const sandbox = {
@@ -14,6 +15,8 @@ function createRequestsTestContext() {
         AbortController,
         Element: class Element {},
     };
+
+    sandbox.Logger = createLoggerStub(sandbox.console);
 
     // Mock DOM elements
     const domElementStub = () => ({

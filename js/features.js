@@ -83,7 +83,7 @@
                     } else {
                         window.wiremockBaseUrl = `http://${host}:${port}/__admin`;
                     }
-                    console.log('🔧 [checkHealth] Updated WireMock URL from form:', window.wiremockBaseUrl);
+                    Logger.info('FEATURES', 'Updated WireMock URL from form:', window.wiremockBaseUrl);
                 }
 
                 await checkHealthAndStartUptime();
@@ -217,7 +217,7 @@
             const actionContainer = document.getElementById(SELECTORS.IMPORT.ACTIONS);
 
             if (!fileInput || !fileDisplay) {
-                console.warn('Import file elements not found.');
+                Logger.warn('FEATURES', 'Import file elements not found.');
                 return;
             }
 
@@ -260,7 +260,7 @@
                 recorderLink.textContent = url.toString();
                 recorderLink.removeAttribute('title');
             } catch (error) {
-                console.warn('Failed to update recorder link:', error);
+                Logger.warn('FEATURES', 'Failed to update recorder link:', error);
             }
         };
 
@@ -453,11 +453,11 @@
                     // Then refresh the UI with fresh data (bypass cache to ensure consistency)
                     await fetchAndRenderMappings(null, { useCache: false });
                 } catch (refreshError) {
-                    console.warn('Failed to refresh mappings after import:', refreshError);
+                    Logger.warn('FEATURES', 'Failed to refresh mappings after import:', refreshError);
                 }
                 setStatusMessage(SELECTORS.IMPORT.RESULT, 'success', `Imported ${payload.mappings.length} mapping(s) using mode ${mode}.`);
             } catch (error) {
-                console.error('Import failed:', error);
+                Logger.error('FEATURES', 'Import failed:', error);
                 setStatusMessage(SELECTORS.IMPORT.RESULT, 'error', error.message || 'Import failed.');
                 NotificationManager.error(`Import failed: ${error.message}`);
                 throw error;
@@ -493,7 +493,7 @@
                 setStatusMessage(SELECTORS.EXPORT.RESULT, 'success', `Exported ${mappings.length} mapping(s) as ${format.toUpperCase()}.`);
                 NotificationManager.success(`Exported ${mappings.length} mapping(s).`);
             } catch (error) {
-                console.error('Export mappings failed:', error);
+                Logger.error('FEATURES', 'Export mappings failed:', error);
                 setStatusMessage(SELECTORS.EXPORT.RESULT, 'error', error.message || 'Failed to export mappings.');
                 NotificationManager.error(`Failed to export mappings: ${error.message}`);
             }
@@ -524,7 +524,7 @@
                 setStatusMessage(SELECTORS.EXPORT.RESULT, 'success', `Exported ${requests.length} request(s) as ${format.toUpperCase()}.`);
                 NotificationManager.success(`Exported ${requests.length} request(s).`);
             } catch (error) {
-                console.error('Export requests failed:', error);
+                Logger.error('FEATURES', 'Export requests failed:', error);
                 setStatusMessage(SELECTORS.EXPORT.RESULT, 'error', error.message || 'Failed to export request log.');
                 NotificationManager.error(`Failed to export request log: ${error.message}`);
             }
@@ -567,8 +567,8 @@
                 if (attempts >= 200) {
                     global.clearInterval(intervalId);
                     intervalId = null;
-                    if (typeof console !== 'undefined' && typeof console.error === 'function' && !initialized) {
-                        console.error('features.js could not find FeaturesState after waiting for 10 seconds.');
+                    if (!initialized) {
+                        Logger.error('FEATURES', 'features.js could not find FeaturesState after waiting for 10 seconds.');
                     }
                 }
             }, 50);

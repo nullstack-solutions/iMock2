@@ -25,7 +25,7 @@ class PaginationManager {
         this.containerSelector = containerSelector;
         this.itemsPerPage = itemsPerPage;
         this.currentPage = 1;
-        console.log('✅ Pagination initialized:', { itemsPerPage, containerSelector });
+        Logger.info('PAGINATION', 'Pagination initialized:', { itemsPerPage, containerSelector });
     }
 
     /**
@@ -41,7 +41,7 @@ class PaginationManager {
             this.currentPage = 1;
         }
 
-        console.log('📊 Pagination state updated:', {
+        Logger.debug('PAGINATION', 'Pagination state updated:', {
             totalItems,
             totalPages: this.totalPages,
             currentPage: this.currentPage,
@@ -69,12 +69,12 @@ class PaginationManager {
      */
     goToPage(pageNumber) {
         if (pageNumber < 1 || pageNumber > this.totalPages) {
-            console.warn('Invalid page number:', pageNumber);
+            Logger.warn('PAGINATION', 'Invalid page number:', pageNumber);
             return false;
         }
 
         this.currentPage = pageNumber;
-        console.log(`📄 Navigated to page ${pageNumber}/${this.totalPages}`);
+        Logger.debug('PAGINATION', `Navigated to page ${pageNumber}/${this.totalPages}`);
         return true;
     }
 
@@ -191,13 +191,13 @@ class PaginationManager {
      */
     attachListeners(onPageChange) {
         if (!this.containerSelector) {
-            console.warn('Pagination container not set');
+            Logger.warn('PAGINATION', 'Pagination container not set');
             return;
         }
 
         const container = document.querySelector(this.containerSelector);
         if (!container) {
-            console.warn('Pagination container not found:', this.containerSelector);
+            Logger.warn('PAGINATION', 'Pagination container not found:', this.containerSelector);
             return;
         }
 
@@ -223,11 +223,11 @@ class PaginationManager {
             }
         });
 
-        console.log('✅ Pagination event listeners attached');
+        Logger.info('PAGINATION', 'Pagination event listeners attached');
     }
 }
 
 // Export global instance
 window.PaginationManager = new PaginationManager();
 
-console.log('✅ Pagination module loaded');
+Logger.info('PAGINATION', 'Pagination module loaded');

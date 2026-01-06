@@ -161,11 +161,40 @@ async function handleEditMappingSubmit(e) {
     await updateMapping();
 }
 
+function normalizeScenarioNameInMapping(mapping) {
+    if (!mapping || typeof mapping !== 'object') return;
+
+    if (!Object.prototype.hasOwnProperty.call(mapping, 'scenarioName')) {
+        return;
+    }
+
+    const normalizer = window.Utils?.normalizeScenarioName;
+    if (typeof normalizer !== 'function') return;
+
+    const result = normalizer(mapping.scenarioName);
+    if (!result?.changed || !result?.hadWhitespace) return;
+
+    if (result.cleared) {
+        delete mapping.scenarioName;
+        NotificationManager.warning('Scenario name contained only whitespace and was cleared');
+    } else {
+        mapping.scenarioName = result.normalized;
+        NotificationManager.warning(`Scenario name cannot contain spaces. Replaced with "${result.normalized}"`);
+    }
+
+    const jsonEditor = document.getElementById('json-editor');
+    if (jsonEditor) {
+        try {
+            jsonEditor.value = JSON.stringify(mapping, null, 2);
+        } catch {}
+    }
+}
+
 /**
  * Update an existing mapping through the edit mapping form
  */
 window.updateMapping = async () => {
-    console.log('updateMapping called');
+    Logger.debug('EDITOR', 'updateMapping called');
 
     try {
         window.setMappingEditorBusyState(true, 'Updating…');
@@ -180,6 +209,8 @@ window.updateMapping = async () => {
             NotificationManager.error('Mapping ID not found');
             return;
         }
+
+        normalizeScenarioNameInMapping(mappingData);
 
         // Add metadata timestamps
         if (typeof mappingData === 'object' && mappingData) {
@@ -218,7 +249,7 @@ window.updateMapping = async () => {
         }
 
     } catch (e) {
-        console.error('Error in updateMapping:', e);
+        Logger.error('EDITOR', 'Error in updateMapping:', e);
         NotificationManager.error(`Update failed: ${e.message}`);
     } finally {
         window.setMappingEditorBusyState(false);
@@ -229,9 +260,9 @@ window.updateMapping = async () => {
  * Populate the JSON editor with mapping data
  */
 window.populateEditMappingForm = (mapping) => {
-    console.log('🔵 [EDITOR DEBUG] populateEditMappingForm called');
-    console.log('🔵 [EDITOR DEBUG] Incoming mapping ID:', mapping?.id);
-    console.log('🔵 [EDITOR DEBUG] Incoming mapping name:', mapping?.name);
+    Logger.debug('EDITOR', 'populateEditMappingForm called');
+    Logger.debug('EDITOR', 'Incoming mapping ID:', mapping?.id);
+    Logger.debug('EDITOR', 'Incoming mapping name:', mapping?.name);
 
     // Always reset state when opening a new mapping
     editorState.originalMapping = mapping;
@@ -239,13 +270,13 @@ window.populateEditMappingForm = (mapping) => {
     editorState.isDirty = false;
     updateDirtyIndicator();
 
-    console.log('🔵 [EDITOR DEBUG] After state update - currentMapping ID:', editorState.currentMapping?.id);
+    Logger.debug('EDITOR', 'After state update - currentMapping ID:', editorState.currentMapping?.id);
 
     // Load JSON mode (form editor removed as dead code)
-    console.log('🔵 [EDITOR DEBUG] Loading JSON mode for mapping ID:', editorState.currentMapping?.id);
+    Logger.debug('EDITOR', 'Loading JSON mode for mapping ID:', editorState.currentMapping?.id);
     loadJSONMode();
 
-    console.log('🔵 [EDITOR DEBUG] populateEditMappingForm completed for mapping ID:', mapping?.id);
+    Logger.debug('EDITOR', 'populateEditMappingForm completed for mapping ID:', mapping?.id);
 };
 
 // ===== JSON EDITOR MODE FUNCTIONS =====
@@ -270,20 +301,20 @@ function saveFromJSONMode() {
 function loadJSONMode() {
     const jsonEditor = document.getElementById('json-editor');
     if (!jsonEditor) {
-        console.log('🔴 [JSON DEBUG] JSON editor element not found!');
+        Logger.warn('EDITOR', 'JSON editor element not found!');
         return;
     }
-    
+
     if (!editorState.currentMapping) {
-        console.log('🔴 [JSON DEBUG] No currentMapping in editorState!');
+        Logger.warn('EDITOR', 'No currentMapping in editorState!');
         return;
     }
     
     const formattedJSON = JSON.stringify(editorState.currentMapping, null, 2);
     jsonEditor.value = formattedJSON;
 
-    console.log('🟡 [JSON DEBUG] JSON editor populated with mapping ID:', editorState.currentMapping?.id);
-    console.log('🟡 [JSON DEBUG] JSON content length:', formattedJSON.length);
+    Logger.debug('EDITOR', 'JSON editor populated with mapping ID:', editorState.currentMapping?.id);
+    Logger.debug('EDITOR', 'JSON content length:', formattedJSON.length);
 }
 
 /**
@@ -368,7 +399,7 @@ function showNotification(message, type = 'info') {
         return;
     }
     
-    // Fallback to console log
-    console.log(`[${type.toUpperCase()}] ${message}`);
+    // Fallback to logger
+    Logger.info('EDITOR', `[${type.toUpperCase()}] ${message}`);
 }
 
