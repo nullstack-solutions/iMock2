@@ -337,27 +337,22 @@ window.MappingsOperations = {
     // Remove temp/internal fields
     const cleanData = this._cleanMappingData(mappingData);
 
-    const response = await fetch(`${window.wiremockBaseUrl}/mappings`, {
+    // Use apiFetch for consistent auth headers
+    return await window.apiFetch('/mappings', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(cleanData),
     });
-
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Server error: ${response.status} ${error}`);
-    }
-
-    return await response.json();
   },
 
   async _sendUpdateRequest(id, mappingData) {
     // Remove temp/internal fields
     const cleanData = this._cleanMappingData(mappingData);
 
-    const response = await fetch(`${window.wiremockBaseUrl}/mappings/${id}`, {
+    // Use apiFetch for consistent auth headers
+    const result = await window.apiFetch(`/mappings/${id}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -365,25 +360,15 @@ window.MappingsOperations = {
       body: JSON.stringify(cleanData),
     });
 
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Server error: ${response.status} ${error}`);
-    }
-
-    // PUT may return empty body
-    const text = await response.text();
-    return text ? JSON.parse(text) : cleanData;
+    // PUT may return empty body or the updated mapping
+    return result || cleanData;
   },
 
   async _sendDeleteRequest(id) {
-    const response = await fetch(`${window.wiremockBaseUrl}/mappings/${id}`, {
+    // Use apiFetch for consistent auth headers
+    await window.apiFetch(`/mappings/${id}`, {
       method: 'DELETE',
     });
-
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Server error: ${response.status} ${error}`);
-    }
   },
 
   _cleanMappingData(mapping) {
