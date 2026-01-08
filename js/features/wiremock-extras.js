@@ -290,8 +290,6 @@ async function loadImockCacheBestOf3() {
     // Preferred order: fixed ID, then find-by-metadata (JSONPath), else none
     Logger.cache('loadImockCacheBestOf3 start');
     
-    let lastError = null;
-    
     const b = await getCacheByFixedId();
     if (b && b.response?.jsonBody) { 
         Logger.cache('Using cache: fixed id'); 

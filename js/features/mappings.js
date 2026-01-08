@@ -483,10 +483,6 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                     Logger.cache('Cache hit - using cached data for quick start');
                     dataSource = 'cache';
 
-                    // Use cached data immediately without duplicate server request
-                    // Background validation happens periodically via auto-refresh
-                    data = cached.data;
-                    
                     // Only validate in background if cache is older than 30 seconds
                     const cacheAge = Date.now() - (cached.data.timestamp || 0);
                     if (cacheAge > 30000) {
