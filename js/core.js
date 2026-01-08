@@ -592,7 +592,10 @@ window.apiFetch = async (endpoint, options = {}) => {
             if (verboseLogging) {
                 Logger.error('API', `HTTP ${response.status}: ${errorText || response.statusText}`, { endpoint, method });
             }
-            throw new Error(`HTTP ${response.status}: ${errorText || response.statusText}`);
+            const error = new Error(`HTTP ${response.status}: ${errorText || response.statusText}`);
+            error.status = response.status; // Add status property for reliable error handling
+            error.statusText = response.statusText;
+            throw error;
         }
         const responseData = response.headers.get('content-type')?.includes('application/json') ? await response.json() : await response.text();
 
