@@ -4,15 +4,15 @@
  * SyncEngine - Manages synchronization between client and WireMock server
  *
  * Strategy:
- * - Incremental sync every 30s (lightweight count check)
+ * - Incremental sync every 30s (lightweight staleness check)
  * - Full sync every 5min or on demand (consistency check)
  * - Service Cache for quick startup (1 hour TTL)
  * - Conflict resolution with last-write-wins + notification
  *
  * Optimizations (v2.0):
  * - Incremental sync does NOT fetch full /mappings on every tick
- * - Uses count-based change detection first
- * - Full fetch only when count changes or explicit request
+ * - Uses timestamp-based staleness detection before triggering full fetch
+ * - Full fetch only when data is considered stale or on explicit request
  * - Prevents polling storms via mutex and debouncing
  *
  * Designed for:
@@ -23,9 +23,8 @@
 window.SyncEngine = {
   // === CONFIGURATION ===
   config: {
-    // Incremental sync - now much lighter weight
+    // Incremental sync - now much lighter weight (staleness check only)
     incrementalInterval: 30000,    // 30 seconds (was 10s - reduced frequency)
-    incrementalTimeout: 5000,      // 5 second timeout
 
     // Full sync
     fullSyncInterval: 300000,      // 5 minutes
@@ -38,9 +37,6 @@ window.SyncEngine = {
     // Retry logic
     maxRetries: 3,
     retryDelay: 2000,              // 2 seconds base delay
-
-    // Incremental sync strategy
-    skipIncrementalIfNoChanges: true,  // Skip full fetch if count unchanged
   },
 
   // === STATE ===
@@ -54,7 +50,6 @@ window.SyncEngine = {
   lastCacheHash: null,
   isIncrementalSyncing: false,
   isFullSyncing: false,
-  lastKnownMappingCount: 0,
 
   /**
    * Initialize sync engine
@@ -215,9 +210,6 @@ window.SyncEngine = {
       window.MappingsStore.setFromServer(filteredMappings, {
         version: serverVersion,
       });
-
-      // Track mapping count for lightweight incremental sync
-      this.lastKnownMappingCount = filteredMappings.length;
 
       // Update UI
       if (typeof window.fetchAndRenderMappings === 'function') {

@@ -92,14 +92,10 @@ runTest('incrementalSync prevents overlapping executions', async () => {
   sandbox.MappingsStore.metadata.isOptimisticUpdate = false;
   sandbox.MappingsStore.metadata.lastFullSync = Date.now();
 
-  // Start first sync - it should set isIncrementalSyncing to true
+  // Start first sync - the lightweight implementation completes very quickly
   const firstRun = context.SyncEngine.incrementalSync();
   
-  // The new lightweight incremental sync doesn't make server calls
-  // but it should still use the mutex to prevent overlapping runs
-  const isFirstRunning = context.SyncEngine.isIncrementalSyncing;
-  
-  // Second call should be skipped because first is running
+  // Start second sync immediately
   const secondRun = context.SyncEngine.incrementalSync();
 
   await firstRun;

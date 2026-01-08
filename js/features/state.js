@@ -4,6 +4,10 @@
     const window = global;
     const state = window.FeaturesState || {};
 
+    // Threshold for reusing recently completed fetch results to avoid redundant requests
+    // When a force refresh is requested but a result just completed, reuse it if within this window
+    const FETCH_RESULT_REUSE_THRESHOLD_MS = 1000;
+
     if (!(window.mappingIndex instanceof Map)) window.mappingIndex = new Map();
     window.mappingTabTotals ??= { all: 0, get: 0, post: 0, put: 0, patch: 0, delete: 0 };
     window.requestTabTotals ??= { all: 0, matched: 0, unmatched: 0 };
@@ -116,7 +120,7 @@ function refreshRequestTabSnapshot() {
                 // If the in-flight request just completed, return its result
                 // unless we really need fresh data
                 const timeSinceResult = Date.now() - (window._lastMappingsFetchTime || 0);
-                if (timeSinceResult < 1000) { // Within 1 second, reuse result
+                if (timeSinceResult < FETCH_RESULT_REUSE_THRESHOLD_MS) {
                     Logger.debug('STATE', 'fetchMappingsFromServer: reusing just-completed result');
                     return result;
                 }
