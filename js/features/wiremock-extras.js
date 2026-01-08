@@ -158,9 +158,9 @@ function isAuthorizationError(error) {
     // Fall back to message parsing (convert to lowercase once for efficiency)
     if (error.message) {
         const lowerMessage = error.message.toLowerCase();
-        return error.message.includes('401') || 
-               error.message.includes('403') || 
-               error.message.includes('Authorization error') ||
+        return lowerMessage.includes('401') || 
+               lowerMessage.includes('403') || 
+               lowerMessage.includes('authorization error') ||
                lowerMessage.includes('unauthorized') ||
                lowerMessage.includes('forbidden');
     }

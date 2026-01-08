@@ -473,8 +473,8 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                     // Show user-friendly error notification
                     // Authorization errors are already shown by loadImockCacheBestOf3, so only show 
                     // generic warning for other types of errors
-                    const isAuthError = typeof window.isAuthorizationError === 'function' && window.isAuthorizationError(error);
-                    if (!isAuthError) {
+                    // isAuthorizationError is defined in wiremock-extras.js which loads before this file
+                    if (!window.isAuthorizationError(error)) {
                         if (typeof window.showWarningNotification === 'function') {
                             window.showWarningNotification('Cache loading failed, fetching mappings directly from server');
                         } else if (typeof NotificationManager !== 'undefined' && NotificationManager.warning) {
@@ -558,7 +558,8 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                     dataSource = 'direct';
                     
                     // Only regenerate cache asynchronously if there was no authorization error
-                    const shouldSkipRegenerate = typeof window.isAuthorizationError === 'function' && window.isAuthorizationError(cacheError);
+                    // isAuthorizationError is defined in wiremock-extras.js which loads before this file
+                    const shouldSkipRegenerate = window.isAuthorizationError(cacheError);
                     if (!shouldSkipRegenerate) {
                         try { 
                             console.log('🧩 [CACHE] Async regenerate after cache miss'); 

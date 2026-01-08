@@ -625,8 +625,9 @@ async function validateAndRefreshCache() {
     } catch (error) {
         console.error('🧩 [CACHE] Validation failed:', error);
         
-        // Show error notification for authorization issues using helper
-        if (typeof window.isAuthorizationError === 'function' && window.isAuthorizationError(error)) {
+        // Show error notification for authorization issues
+        // isAuthorizationError is defined in wiremock-extras.js which loads before this file
+        if (window.isAuthorizationError(error)) {
             console.error('🧩 [CACHE] Authorization error during validation');
             if (typeof window.showErrorNotification === 'function') {
                 window.showErrorNotification('Authorization error validating cache. Check your credentials.');
