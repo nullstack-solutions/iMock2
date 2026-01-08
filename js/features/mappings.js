@@ -487,7 +487,7 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                     const cacheTimestamp = typeof cached.data.timestamp === 'number'
                         ? cached.data.timestamp
                         : (cached.data.mappings || []).reduce((maxTs, m) => {
-                            const ts = m && m.metadata && m.metadata.imock && m.metadata.imock.timestamp;
+                            const ts = m?.metadata?.imock?.timestamp;
                             return (typeof ts === 'number' && ts > maxTs) ? ts : maxTs;
                         }, 0);
                     const cacheAge = Date.now() - cacheTimestamp;
