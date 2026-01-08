@@ -769,11 +769,11 @@ const filteredMappings = Array.isArray(incoming) ? incoming.filter(m => !isImock
         
         // Provide specific error messages based on error type
         let errorMessage = 'Failed to load mappings';
-        if (error.message && error.message.includes('401')) {
+        if (error.status === 401 || (error.message && error.message.includes('401'))) {
             errorMessage = 'Authorization error: Please check your credentials';
-        } else if (error.message && error.message.includes('403')) {
+        } else if (error.status === 403 || (error.message && error.message.includes('403'))) {
             errorMessage = 'Access forbidden: Check your permissions';
-        } else if (error.message && error.message.includes('404')) {
+        } else if (error.status === 404 || (error.message && error.message.includes('404'))) {
             errorMessage = 'Server endpoint not found';
         } else if (error.message && error.message.includes('timeout')) {
             errorMessage = 'Request timeout: Server not responding';

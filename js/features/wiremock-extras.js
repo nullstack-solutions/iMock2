@@ -143,9 +143,9 @@ async function getCacheByFixedId() {
         Logger.cache('Fixed ID miss');
     } catch (error) {
         // Log authorization and other errors but don't throw
-        if (error.message && error.message.includes('401')) {
+        if (error.status === 401 || (error.message && error.message.includes('401'))) {
             Logger.warn('CACHE', 'Authorization error loading cache by fixed ID - check credentials');
-        } else if (error.message && error.message.includes('404')) {
+        } else if (error.status === 404 || (error.message && error.message.includes('404'))) {
             Logger.debug('CACHE', 'Cache mapping not found by fixed ID (404)');
         } else {
             Logger.debug('CACHE', 'Error loading cache by fixed ID:', error.message);
@@ -174,7 +174,7 @@ async function getCacheByMetadata() {
                 if (found) { Logger.cache('Metadata hit'); return found; }
             } catch (bodyError) {
                 // Log if it's an auth error, otherwise try next body shape
-                if (bodyError.message && bodyError.message.includes('401')) {
+                if (bodyError.status === 401 || (bodyError.message && bodyError.message.includes('401'))) {
                     Logger.warn('CACHE', 'Authorization error loading cache by metadata - check credentials');
                 }
                 // Continue to try next body shape
