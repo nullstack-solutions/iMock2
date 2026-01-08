@@ -41,6 +41,7 @@ window.SyncEngine = {
     cacheRebuild: null,
   },
 
+  isStarted: false,
   lastCacheHash: null,
   isIncrementalSyncing: false,
 
@@ -60,12 +61,13 @@ window.SyncEngine = {
    * Start sync engine
    */
   start() {
-    if (this.timers.incremental || this.timers.fullSync || this.timers.cacheRebuild) {
+    if (this.isStarted) {
       Logger.debug('SYNC', 'Sync timers already running, skipping start');
       return;
     }
 
     Logger.info('SYNC', 'Starting sync timers');
+    this.isStarted = true;
 
     // Incremental sync every 10 seconds
     this.timers.incremental = window.LifecycleManager.setInterval(
@@ -100,6 +102,7 @@ window.SyncEngine = {
         this.timers[key] = null;
       }
     });
+    this.isStarted = false;
   },
 
   /**

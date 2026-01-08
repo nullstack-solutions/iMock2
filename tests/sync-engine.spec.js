@@ -69,6 +69,7 @@ runTest('start is idempotent and stop clears timers', () => {
 
   context.SyncEngine.start();
   assert.strictEqual(intervals.length, 3, 'initial start should schedule three timers');
+  assert.strictEqual(context.SyncEngine.isStarted, true, 'isStarted should be set after start');
 
   const firstTimers = { ...context.SyncEngine.timers };
   context.SyncEngine.start();
@@ -80,6 +81,9 @@ runTest('start is idempotent and stop clears timers', () => {
   context.SyncEngine.stop();
   assert.strictEqual(cleared.length, 3, 'stop should clear all timers');
   assert.strictEqual(context.SyncEngine.timers.incremental, null);
+  assert.strictEqual(context.SyncEngine.timers.fullSync, null);
+  assert.strictEqual(context.SyncEngine.timers.cacheRebuild, null);
+  assert.strictEqual(context.SyncEngine.isStarted, false, 'isStarted should reset after stop');
 });
 
 runTest('incrementalSync prevents overlapping executions', async () => {
