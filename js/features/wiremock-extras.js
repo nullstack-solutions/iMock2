@@ -141,8 +141,30 @@ const IMOCK_CACHE_ID = '00000000-0000-0000-0000-00000000cace';
 const IMOCK_CACHE_URL = '/__imock/cache';
 
 // Helper function to check if an error is an authorization error
+// Checks both error properties and message content for robustness
 function isAuthorizationError(error) {
-    return error && error.message && (error.message.includes('401') || error.message.includes('403') || error.message.includes('Authorization error'));
+    if (!error) return false;
+    
+    // Check status property first (if available)
+    if (error.status === 401 || error.status === 403) {
+        return true;
+    }
+    
+    // Check code property (if available)
+    if (error.code === 'UNAUTHORIZED' || error.code === 'FORBIDDEN') {
+        return true;
+    }
+    
+    // Fall back to message parsing
+    if (error.message) {
+        return error.message.includes('401') || 
+               error.message.includes('403') || 
+               error.message.includes('Authorization error') ||
+               error.message.toLowerCase().includes('unauthorized') ||
+               error.message.toLowerCase().includes('forbidden');
+    }
+    
+    return false;
 }
 
 // Helper function to show error notification
@@ -158,6 +180,11 @@ function showWarningNotification(message) {
         NotificationManager.warning(message);
     }
 }
+
+// Make helper functions globally accessible
+window.isAuthorizationError = isAuthorizationError;
+window.showErrorNotification = showErrorNotification;
+window.showWarningNotification = showWarningNotification;
 
 function isImockCacheMapping(m) {
     try {

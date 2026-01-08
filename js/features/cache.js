@@ -139,12 +139,15 @@ window.cacheManager = {
             console.error('❌ [CACHE] Rebuild failed:', error);
             
             // Show user-friendly error notification
-            // Helper function isAuthorizationError is defined in wiremock-extras.js
-            const isAuthError = error.message && (error.message.includes('401') || error.message.includes('403'));
-            if (isAuthError) {
-                if (typeof NotificationManager !== 'undefined' && NotificationManager.error) {
+            // Use global helper function from wiremock-extras.js
+            if (typeof window.isAuthorizationError === 'function' && window.isAuthorizationError(error)) {
+                if (typeof window.showErrorNotification === 'function') {
+                    window.showErrorNotification('Authorization error during cache rebuild. Check your credentials.');
+                } else if (typeof NotificationManager !== 'undefined' && NotificationManager.error) {
                     NotificationManager.error('Authorization error during cache rebuild. Check your credentials.');
                 }
+            } else if (typeof window.showWarningNotification === 'function') {
+                window.showWarningNotification('Cache rebuild failed. Mappings may be outdated.');
             } else if (typeof NotificationManager !== 'undefined' && NotificationManager.warning) {
                 NotificationManager.warning('Cache rebuild failed. Mappings may be outdated.');
             }
@@ -615,10 +618,12 @@ async function validateAndRefreshCache() {
         console.error('🧩 [CACHE] Validation failed:', error);
         
         // Show error notification for authorization issues
-        const isAuthError = error.message && (error.message.includes('401') || error.message.includes('403') || error.message.includes('Authorization error'));
-        if (isAuthError) {
+        // Use global helper function from wiremock-extras.js
+        if (typeof window.isAuthorizationError === 'function' && window.isAuthorizationError(error)) {
             console.error('🧩 [CACHE] Authorization error during validation');
-            if (typeof NotificationManager !== 'undefined' && NotificationManager.error) {
+            if (typeof window.showErrorNotification === 'function') {
+                window.showErrorNotification('Authorization error validating cache. Check your credentials.');
+            } else if (typeof NotificationManager !== 'undefined' && NotificationManager.error) {
                 NotificationManager.error('Authorization error validating cache. Check your credentials.');
             }
         }
@@ -682,11 +687,15 @@ window.refreshImockCache = async () => {
         console.error('🔄 [CACHE] refreshImockCache failed:', error);
         
         // Show user-friendly error notification
-        const isAuthError = error.message && (error.message.includes('401') || error.message.includes('403') || error.message.includes('Authorization error'));
-        if (isAuthError) {
-            if (typeof NotificationManager !== 'undefined' && NotificationManager.error) {
+        // Use global helper function from wiremock-extras.js
+        if (typeof window.isAuthorizationError === 'function' && window.isAuthorizationError(error)) {
+            if (typeof window.showErrorNotification === 'function') {
+                window.showErrorNotification('Authorization error refreshing cache. Check your credentials.');
+            } else if (typeof NotificationManager !== 'undefined' && NotificationManager.error) {
                 NotificationManager.error('Authorization error refreshing cache. Check your credentials.');
             }
+        } else if (typeof window.showWarningNotification === 'function') {
+            window.showWarningNotification('Cache refresh failed. Mappings may be outdated.');
         } else if (typeof NotificationManager !== 'undefined' && NotificationManager.warning) {
             NotificationManager.warning('Cache refresh failed. Mappings may be outdated.');
         }
