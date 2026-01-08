@@ -477,103 +477,69 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
             if (options && options.useCache) {
                 const cached = await loadImockCacheBestOf3();
                 if (cached && cached.data && Array.isArray(cached.data.mappings)) {
-                    // Cache hit - use cached data for quick UI, but always fetch fresh data for complete info
-                    Logger.cache('Cache hit - using cached data for quick start, fetching fresh data');
+                    // Cache hit - use cached data for quick UI
+                    Logger.cache('Cache hit - using cached data for quick start');
                     dataSource = 'cache';
 
-                    // Start async fresh fetch for silent validation (no UI re-render)
-                    (async () => {
-                        try {
-                            // Wait a bit for any optimistic updates to complete
-                            await new Promise(resolve => setTimeout(resolve, 200));
+                    // Use cached data immediately without duplicate server request
+                    // Background validation happens periodically via auto-refresh
+                    data = cached.data;
+                    
+                    // Only validate in background if cache is older than 30 seconds
+                    const cacheAge = Date.now() - (cached.data.timestamp || 0);
+                    if (cacheAge > 30000) {
+                        // Start async fresh fetch for silent validation (no UI re-render)
+                        (async () => {
+                            try {
+                                // Wait a bit for any optimistic updates to complete
+                                await new Promise(resolve => setTimeout(resolve, 500));
 
-                            const freshData = await fetchMappingsFromServer({ force: true });
-                            if (freshData && freshData.mappings) {
-                                const serverMappings = freshData.mappings.filter(x => !isImockCacheMapping(x));
-                                // Filter cache mappings too to exclude iMock service mappings from comparison
-                                const cachedMappings = (cached.data.mappings || []).filter(x => !isImockCacheMapping(x));
+                                const freshData = await fetchMappingsFromServer({ force: true });
+                                if (freshData && freshData.mappings) {
+                                    const serverMappings = freshData.mappings.filter(x => !isImockCacheMapping(x));
+                                    const cachedMappings = (cached.data.mappings || []).filter(x => !isImockCacheMapping(x));
 
-                                // Apply optimistic updates to server mappings before comparison
-                                const serverMappingsWithOptimistic = serverMappings.map(serverMapping => {
-                                    const serverId = serverMapping.id || serverMapping.uuid;
-                                    const optimisticItem = window.MappingsStore.pending.get(serverId);
+                                    // Simple count-based comparison for efficiency
+                                    const hasCountMismatch = cachedMappings.length !== serverMappings.length;
 
-                                    if (optimisticItem) {
-                                        if (optimisticItem.type === 'delete') {
-                                            // If optimistically deleted, don't include in comparison
-                                            return null;
-                                        } else if (optimisticItem.type === 'update') {
-                                            // Use optimistic version for comparison
-                                            return optimisticItem.optimisticMapping;
+                                    // Update cache manager with fresh data (silent background sync)
+                                    window.MappingsStore.setFromServer(serverMappings);
+                                    refreshMappingTabSnapshot();
+                                    syncCacheWithMappings(serverMappings);
+                                    rebuildMappingIndex(serverMappings);
+
+                                    // Show notification only for count mismatches to reduce noise
+                                    if (typeof NotificationManager !== 'undefined' && hasCountMismatch) {
+                                        const diff = serverMappings.length - cachedMappings.length;
+                                        if (diff > 0) {
+                                            NotificationManager.info(
+                                                `${diff} new mapping${diff === 1 ? '' : 's'} from server`,
+                                                3000
+                                            );
+                                        } else if (diff < 0) {
+                                            NotificationManager.info(
+                                                `${Math.abs(diff)} mapping${Math.abs(diff) === 1 ? '' : 's'} removed on server`,
+                                                3000
+                                            );
                                         }
-                                    }
-                                    return serverMapping;
-                                }).filter(m => m !== null);
-
-                                // Add optimistic creations to server data
-                                const currentMappings = window.MappingsStore.getAll();
-                                const allMappingsWithOptimistic = [...serverMappingsWithOptimistic];
-
-                                currentMappings.forEach(currentMapping => {
-                                    if (currentMapping._operation === 'create') {
-                                        const currentId = currentMapping.id || currentMapping.uuid;
-                                        const existsInServer = serverMappings.some(s => (s.id || s.uuid) === currentId);
-                                        if (!existsInServer) {
-                                            allMappingsWithOptimistic.push(currentMapping);
-                                        }
-                                    }
-                                });
-
-                                // Silent comparison: detect discrepancies between cache and server (accounting for optimistic updates)
-                                const cachedIds = new Set(cachedMappings.map(m => m.id || m.uuid));
-                                const serverIds = new Set(allMappingsWithOptimistic.map(m => m.id || m.uuid));
-
-                                // Check for mismatches
-                                const hasCountMismatch = cachedMappings.length !== allMappingsWithOptimistic.length;
-                                const missingInCache = [...serverIds].filter(id => !cachedIds.has(id));
-                                const extraInCache = [...cachedIds].filter(id => !serverIds.has(id));
-                                const hasMismatch = hasCountMismatch || missingInCache.length > 0 || extraInCache.length > 0;
-
-                                // Update cache manager with fresh data (silent background sync)
-                                window.MappingsStore.setFromServer(allMappingsWithOptimistic);
-                                refreshMappingTabSnapshot();
-                                syncCacheWithMappings(allMappingsWithOptimistic);
-                                rebuildMappingIndex(allMappingsWithOptimistic);
-
-                                // Show toast notification based on comparison
-                                if (typeof NotificationManager !== 'undefined') {
-                                    if (hasMismatch) {
-                                        const details = [];
-                                        if (missingInCache.length > 0) details.push(`${missingInCache.length} new on server`);
-                                        if (extraInCache.length > 0) details.push(`${extraInCache.length} missing on server`);
-
-                                        NotificationManager.warning(
-                                            `Cache discrepancies detected (${details.join(', ')}). Manual cache rebuild recommended.`,
-                                            5000
-                                        );
-                                        Logger.warn('CACHE', 'Discrepancies detected:', {
-                                            missingInCache,
-                                            extraInCache,
-                                            cachedCount: cachedMappings.length,
-                                            serverCount: allMappingsWithOptimistic.length
-                                        });
-                                    } else {
-                                        NotificationManager.success('Data synchronized with server', 3000);
-                                        Logger.cache('Data synchronized successfully');
+                                        Logger.cache('Cache updated with server data:', { cachedCount: cachedMappings.length, serverCount: serverMappings.length });
                                     }
                                 }
+                            } catch (e) {
+                                Logger.warn('CACHE', 'Background cache validation failed:', e);
+                                // Silent failure for background validation - don't interrupt user
                             }
-                        } catch (e) {
-                            Logger.warn('CACHE', 'Failed to validate cache:', e);
-                            if (typeof NotificationManager !== 'undefined') {
-                                NotificationManager.error('Cache validation failed');
-                            }
-                        }
-                    })();
+                        })();
+                    }
 
                     // Use cached slim data for immediate UI (fresh data synced in background silently)
                     data = cached.data;
                 } else {
+                    // Cache miss - notify user and load from server
+                    Logger.cache('Cache miss - loading from server');
+                    if (typeof NotificationManager !== 'undefined') {
+                        NotificationManager.info('Loading mappings from server...', 2000);
+                    }
                     data = await fetchMappingsFromServer({ force: true });
                     dataSource = 'direct';
                     // regenerate cache asynchronously
@@ -792,7 +758,22 @@ const filteredMappings = Array.isArray(incoming) ? incoming.filter(m => !isImock
         return true;
     } catch (error) {
         Logger.error('UI', 'Error in fetchAndRenderMappings:', error);
-        NotificationManager.error(`Failed to load mappings: ${error.message}`);
+        
+        // Provide specific error messages based on error type
+        let errorMessage = 'Failed to load mappings';
+        if (error.message && error.message.includes('401')) {
+            errorMessage = 'Authorization error: Please check your credentials';
+        } else if (error.message && error.message.includes('403')) {
+            errorMessage = 'Access forbidden: Check your permissions';
+        } else if (error.message && error.message.includes('404')) {
+            errorMessage = 'Server endpoint not found';
+        } else if (error.message && error.message.includes('timeout')) {
+            errorMessage = 'Request timeout: Server not responding';
+        } else if (error.message) {
+            errorMessage = `Failed to load mappings: ${error.message}`;
+        }
+        
+        NotificationManager.error(errorMessage);
         loadingState.classList.add('hidden');
         emptyState.classList.remove('hidden');
         container.style.display = 'none';

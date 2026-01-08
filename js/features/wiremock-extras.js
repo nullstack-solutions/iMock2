@@ -141,7 +141,16 @@ async function getCacheByFixedId() {
         const m = await apiFetch(`/mappings/${IMOCK_CACHE_ID}`);
         if (m && isImockCacheMapping(m)) return m;
         Logger.cache('Fixed ID miss');
-    } catch {}
+    } catch (error) {
+        // Log authorization and other errors but don't throw
+        if (error.message && error.message.includes('401')) {
+            Logger.warn('CACHE', 'Authorization error loading cache by fixed ID - check credentials');
+        } else if (error.message && error.message.includes('404')) {
+            Logger.debug('CACHE', 'Cache mapping not found by fixed ID (404)');
+        } else {
+            Logger.debug('CACHE', 'Error loading cache by fixed ID:', error.message);
+        }
+    }
     return null;
 }
 
@@ -163,12 +172,18 @@ async function getCacheByMetadata() {
                 const list = res?.mappings || res?.items || [];
                 const found = list.find(isImockCacheMapping);
                 if (found) { Logger.cache('Metadata hit'); return found; }
-            } catch {
-                // try next body shape
+            } catch (bodyError) {
+                // Log if it's an auth error, otherwise try next body shape
+                if (bodyError.message && bodyError.message.includes('401')) {
+                    Logger.warn('CACHE', 'Authorization error loading cache by metadata - check credentials');
+                }
+                // Continue to try next body shape
             }
         }
         Logger.cache('Metadata miss');
-    } catch {}
+    } catch (error) {
+        Logger.debug('CACHE', 'Error loading cache by metadata:', error.message);
+    }
     return null;
 }
 
@@ -274,11 +289,22 @@ window.refreshImockCache = refreshImockCache;
 async function loadImockCacheBestOf3() {
     // Preferred order: fixed ID, then find-by-metadata (JSONPath), else none
     Logger.cache('loadImockCacheBestOf3 start');
+    
+    let lastError = null;
+    
     const b = await getCacheByFixedId();
-    if (b && b.response?.jsonBody) { Logger.cache('Using cache: fixed id'); return { source: 'cache', data: b.response.jsonBody }; }
+    if (b && b.response?.jsonBody) { 
+        Logger.cache('Using cache: fixed id'); 
+        return { source: 'cache', data: b.response.jsonBody }; 
+    }
+    
     const c = await getCacheByMetadata();
-    if (c && c.response?.jsonBody) { Logger.cache('Using cache: metadata'); return { source: 'cache', data: c.response.jsonBody }; }
-    Logger.cache('No cache found');
+    if (c && c.response?.jsonBody) { 
+        Logger.cache('Using cache: metadata'); 
+        return { source: 'cache', data: c.response.jsonBody }; 
+    }
+    
+    Logger.cache('No cache found - will load from server');
     return null;
 }
 function cloneMappingForCache(mapping) {
