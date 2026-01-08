@@ -108,6 +108,7 @@ window.connectToWireMock = async () => {
         Logger.info('API', 'Using new optimized sync engine');
 
         // Load data using new SyncEngine (cache first, then full sync)
+        window.SyncEngine.stop();
         await window.SyncEngine.coldStart();
 
         // Start background sync timers
