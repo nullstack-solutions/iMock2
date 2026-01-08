@@ -11,6 +11,7 @@ const specs = [
     'scenarios.spec.js',
     'recording.spec.js',
     'mappings.spec.js',
+    'sync-engine.spec.js',
     'templates.spec.js'
 ];
 
