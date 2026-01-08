@@ -102,13 +102,24 @@ function refreshRequestTabSnapshot() {
     }
 
     async function fetchMappingsFromServer({ force = false } = {}) {
-        if (!force && mappingsFetchPromise) {
-            return mappingsFetchPromise;
-        }
-
-        if (force && mappingsFetchPromise) {
+        // If there's already an in-flight request, return it (deduplicate)
+        if (mappingsFetchPromise) {
+            if (!force) {
+                Logger.debug('STATE', 'fetchMappingsFromServer: reusing in-flight request');
+                return mappingsFetchPromise;
+            }
+            // If force=true, wait for existing request to complete first
+            // This prevents overlapping parallel requests
             try {
-                await mappingsFetchPromise;
+                Logger.debug('STATE', 'fetchMappingsFromServer: waiting for in-flight request before force refresh');
+                const result = await mappingsFetchPromise;
+                // If the in-flight request just completed, return its result
+                // unless we really need fresh data
+                const timeSinceResult = Date.now() - (window._lastMappingsFetchTime || 0);
+                if (timeSinceResult < 1000) { // Within 1 second, reuse result
+                    Logger.debug('STATE', 'fetchMappingsFromServer: reusing just-completed result');
+                    return result;
+                }
             } catch (error) {
                 Logger.warn('STATE', 'fetchMappingsFromServer: previous request failed, starting a new one', error);
             }
@@ -116,7 +127,9 @@ function refreshRequestTabSnapshot() {
 
         const requestPromise = (async () => {
             try {
-                return await window.apiFetch(window.ENDPOINTS.MAPPINGS);
+                const result = await window.apiFetch(window.ENDPOINTS.MAPPINGS);
+                window._lastMappingsFetchTime = Date.now();
+                return result;
             } catch (error) {
                 if (window.DemoData?.isAvailable?.() && window.DemoData?.getMappingsPayload) {
                     Logger.warn('STATE', 'Falling back to demo mappings because the WireMock API request failed.', error);

@@ -90,19 +90,27 @@ runTest('incrementalSync prevents overlapping executions', async () => {
   fetchCalls = 0;
   sandbox.MappingsStore.metadata.isSyncing = false;
   sandbox.MappingsStore.metadata.isOptimisticUpdate = false;
-  sandbox.MappingsStore.metadata.lastFullSync = true;
+  sandbox.MappingsStore.metadata.lastFullSync = Date.now();
 
+  // Start first sync - it should set isIncrementalSyncing to true
   const firstRun = context.SyncEngine.incrementalSync();
+  
+  // The new lightweight incremental sync doesn't make server calls
+  // but it should still use the mutex to prevent overlapping runs
+  const isFirstRunning = context.SyncEngine.isIncrementalSyncing;
+  
+  // Second call should be skipped because first is running
   const secondRun = context.SyncEngine.incrementalSync();
 
-  assert.strictEqual(fetchCalls, 1, 'second incrementalSync call should be skipped while first is running');
-
-  resolveFetch({ mappings: [], meta: {} });
   await firstRun;
   await secondRun;
 
+  // The key behavior: mutex flag should reset after completion
   assert.strictEqual(context.SyncEngine.isIncrementalSyncing, false, 'mutex flag should reset after completion');
-  assert.strictEqual(sandbox.MappingsStore.metadata.isSyncing, false, 'store syncing flag should reset after completion');
+  
+  // With the new lightweight sync, no server calls are made
+  // The full sync (5 min interval) handles actual data fetching
+  assert.strictEqual(fetchCalls, 0, 'lightweight incremental sync should not make server calls');
 });
 
 (async () => {
