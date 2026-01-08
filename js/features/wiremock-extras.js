@@ -155,13 +155,14 @@ function isAuthorizationError(error) {
         return true;
     }
     
-    // Fall back to message parsing
+    // Fall back to message parsing (convert to lowercase once for efficiency)
     if (error.message) {
+        const lowerMessage = error.message.toLowerCase();
         return error.message.includes('401') || 
                error.message.includes('403') || 
                error.message.includes('Authorization error') ||
-               error.message.toLowerCase().includes('unauthorized') ||
-               error.message.toLowerCase().includes('forbidden');
+               lowerMessage.includes('unauthorized') ||
+               lowerMessage.includes('forbidden');
     }
     
     return false;
@@ -181,10 +182,20 @@ function showWarningNotification(message) {
     }
 }
 
+// Helper to show appropriate notification based on error type
+function notifyError(error, authMessage, defaultMessage) {
+    if (isAuthorizationError(error)) {
+        showErrorNotification(authMessage);
+    } else if (defaultMessage) {
+        showWarningNotification(defaultMessage);
+    }
+}
+
 // Make helper functions globally accessible
 window.isAuthorizationError = isAuthorizationError;
 window.showErrorNotification = showErrorNotification;
 window.showWarningNotification = showWarningNotification;
+window.notifyError = notifyError;
 
 function isImockCacheMapping(m) {
     try {
