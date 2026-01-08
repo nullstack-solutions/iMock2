@@ -70,6 +70,8 @@ Features include formatting, validation, templates, comparison, and history trac
 | Document | Description |
 |----------|-------------|
 | [Features Overview](docs/features.md) | Complete feature status and capabilities |
+| [Business Features](docs/BUSINESS_FEATURES.md) | User-facing features and use cases |
+| [Repository Map](docs/REPOSITORY_MAP.md) | Code organization and file structure |
 | [API Coverage](docs/api-coverage.md) | WireMock Admin API endpoint mapping |
 | [Testing Guide](docs/testing.md) | Automated and manual testing procedures |
 | [Development](docs/development.md) | Roadmap and contribution guidelines |
