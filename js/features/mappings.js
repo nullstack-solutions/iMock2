@@ -463,7 +463,9 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
     }
 
     // Set render lock to prevent concurrent renders
-    window.MappingsStore.metadata.isRendering = true;
+    if (window.MappingsStore?.metadata) {
+        window.MappingsStore.metadata.isRendering = true;
+    }
     let renderSource = null;
 
     try {
@@ -503,7 +505,9 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                                     const hasCountMismatch = cachedMappings.length !== serverMappings.length;
 
                                     // Update cache manager with fresh data (silent background sync)
-                                    window.MappingsStore.setFromServer(serverMappings);
+                                    if (window.MappingsStore) {
+                                        window.MappingsStore.setFromServer(serverMappings);
+                                    }
                                     refreshMappingTabSnapshot();
                                     syncCacheWithMappings(serverMappings);
                                     rebuildMappingIndex(serverMappings);
@@ -561,13 +565,13 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
             let incoming = data.mappings || [];
 
             // Server data is now authoritative - optimistic updates are handled through UI updates only
-            const pendingOps = Array.from(window.MappingsStore.pending.values());
+            const pendingOps = window.MappingsStore?.pending ? Array.from(window.MappingsStore.pending.values()) : [];
             if (pendingOps.length > 0) {
                 Logger.debug('OPTIMISTIC', 'Applying optimistic updates to incoming data:', pendingOps.length, 'updates');
 
                 incoming = incoming.map(serverMapping => {
                     const serverId = serverMapping.id || serverMapping.uuid;
-                    const optimisticItem = window.MappingsStore.pending.get(serverId);
+                    const optimisticItem = window.MappingsStore?.pending ? window.MappingsStore.pending.get(serverId) : null;
                     if (optimisticItem) {
                         if (optimisticItem.type === 'delete') {
                             Logger.debug('OPTIMISTIC', 'Removing deleted mapping from results:', serverMapping.id);
@@ -602,7 +606,9 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
 const filteredMappings = Array.isArray(incoming) ? incoming.filter(m => !isImockCacheMapping(m)) : [];
             
             // Update MappingsStore
-            window.MappingsStore.setFromServer(filteredMappings);
+            if (window.MappingsStore) {
+                window.MappingsStore.setFromServer(filteredMappings);
+            }
             
             refreshMappingTabSnapshot();
             syncCacheWithMappings(filteredMappings);
@@ -614,7 +620,9 @@ const filteredMappings = Array.isArray(incoming) ? incoming.filter(m => !isImock
             const sourceOverride = typeof options?.source === 'string' ? options.source : null;
             const mappingsArray = Array.isArray(mappingsToRender) ? [...mappingsToRender] : [];
             
-            window.MappingsStore.setFromServer(mappingsArray);
+            if (window.MappingsStore) {
+                window.MappingsStore.setFromServer(mappingsArray);
+            }
             
             refreshMappingTabSnapshot();
             rebuildMappingIndex(mappingsArray);
@@ -627,7 +635,7 @@ const filteredMappings = Array.isArray(incoming) ? incoming.filter(m => !isImock
 
         loadingState.classList.add('hidden');
         
-        const currentMappings = window.MappingsStore.getAll();
+        const currentMappings = window.MappingsStore ? window.MappingsStore.getAll() : (Array.isArray(mappingsToRender) ? mappingsToRender : []);
         if (currentMappings.length === 0) {
             emptyState.classList.remove('hidden');
             container.style.display = 'none';
@@ -643,7 +651,7 @@ const filteredMappings = Array.isArray(incoming) ? incoming.filter(m => !isImock
         window.invalidateElementCache(SELECTORS.LISTS.MAPPINGS);
 
         // Sort mappings
-        const mappingsToSort = window.MappingsStore.getAll();
+        const mappingsToSort = window.MappingsStore ? window.MappingsStore.getAll() : currentMappings;
         const sortedMappings = [...mappingsToSort].sort((a, b) => {
             const priorityA = a.priority || 1;
             const priorityB = b.priority || 1;
@@ -790,6 +798,11 @@ const filteredMappings = Array.isArray(incoming) ? incoming.filter(m => !isImock
 // Used by legacy callers (state.js, wiremock-extras.js) after optimistic/cache updates
 window.refreshMappingsFromCache = async (sourceOverride = 'cache') => {
     try {
+        if (!window.MappingsStore) {
+            Logger.warn('CACHE', 'MappingsStore not available');
+            return false;
+        }
+        
         const mappings = window.MappingsStore.getAll();
         const normalized = mappings.filter(mapping => !isImockCacheMapping(mapping));
 
@@ -808,7 +821,7 @@ window.refreshMappingsFromCache = async (sourceOverride = 'cache') => {
             updateDataSourceIndicator(sourceOverride || 'cache');
         }
 
-        const mappingsToRender = window.MappingsStore.getAll();
+        const mappingsToRender = window.MappingsStore ? window.MappingsStore.getAll() : [];
         return await fetchAndRenderMappings(mappingsToRender, { source: sourceOverride || 'cache' });
     } catch (error) {
         Logger.warn('CACHE', 'refreshMappingsFromCache failed:', error);
@@ -830,9 +843,9 @@ window.initMappingPagination = function() {
     window.PaginationManager.attachListeners((newPage) => {
         Logger.debug('UI', `Page changed to: ${newPage}`);
 
-// Re-render mappings with new page
+        // Re-render mappings with new page
         const container = document.getElementById(SELECTORS.LISTS.MAPPINGS);
-        const currentMappings = window.MappingsStore.getAll();
+        const currentMappings = window.MappingsStore ? window.MappingsStore.getAll() : [];
         if (!container || !Array.isArray(currentMappings)) {
             Logger.warn('UI', 'Cannot render page: container or data not available');
             return;
@@ -894,12 +907,12 @@ window.getMappingById = async (mappingId) => {
 
         Logger.debug('CACHE', `Fetching mapping with ID: ${mappingId}`);
         Logger.debug('CACHE', 'Current wiremockBaseUrl:', window.wiremockBaseUrl);
-const currentMappings = window.MappingsStore.getAll();
+        const currentMappings = window.MappingsStore ? window.MappingsStore.getAll() : [];
         Logger.debug('CACHE', 'MappingsStore available:', !!window.MappingsStore);
         Logger.debug('CACHE', 'Cache size:', currentMappings?.length || 0);
 
         // Try to get from cache first
-        let cachedMapping = window.MappingsStore.get(mappingId);
+        let cachedMapping = window.MappingsStore ? window.MappingsStore.get(mappingId) : null;
         if (!cachedMapping && window.mappingIndex instanceof Map) {
             cachedMapping = window.mappingIndex.get(mappingId) || null;
         }
@@ -1069,6 +1082,11 @@ window.applyOptimisticMappingUpdate = (mappingLike) => {
 // Refresh mappings in background and then re-render without jank
 window.backgroundRefreshMappings = async (useCache = false) => {
     try {
+        if (!window.MappingsStore) {
+            Logger.warn('CACHE', 'MappingsStore not available for background refresh');
+            return;
+        }
+        
         let data;
         let source = 'direct';
         if (useCache) {
@@ -1109,7 +1127,9 @@ window.backgroundRefreshMappings = async (useCache = false) => {
 const filteredMappings = Array.isArray(incoming) ? incoming.filter(m => !isImockCacheMapping(m)) : [];
         
         // Update MappingsStore
-        window.MappingsStore.setFromServer(filteredMappings);
+        if (window.MappingsStore) {
+            window.MappingsStore.setFromServer(filteredMappings);
+        }
         
         refreshMappingTabSnapshot();
         syncCacheWithMappings(filteredMappings);
@@ -1118,7 +1138,8 @@ const filteredMappings = Array.isArray(incoming) ? incoming.filter(m => !isImock
         updateDataSourceIndicator(source);
         // re-render without loading state using batched DOM operations
         setTimeout(() => {
-            fetchAndRenderMappings(window.MappingsStore.getAll());
+            const mappingsToRender = window.MappingsStore ? window.MappingsStore.getAll() : [];
+            fetchAndRenderMappings(mappingsToRender);
         }, 0); // Use setTimeout to batch the render operation
     } catch (e) {
         Logger.warn('CACHE', 'Background refresh failed:', e);
@@ -1195,7 +1216,7 @@ window.renderMappingCard = function(mapping) {
 window.updateMappingsCounter = function() {
     const counter = document.getElementById(SELECTORS.COUNTERS.MAPPINGS);
     if (counter) {
-        const currentMappings = window.MappingsStore.getAll();
+        const currentMappings = window.MappingsStore ? window.MappingsStore.getAll() : [];
         counter.textContent = Array.isArray(currentMappings) ? currentMappings.length : 0;
     }
 };
