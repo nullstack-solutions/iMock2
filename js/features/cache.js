@@ -139,7 +139,9 @@ window.cacheManager = {
             console.error('❌ [CACHE] Rebuild failed:', error);
             
             // Show user-friendly error notification
-            if (error.message && (error.message.includes('401') || error.message.includes('403'))) {
+            // Helper function isAuthorizationError is defined in wiremock-extras.js
+            const isAuthError = error.message && (error.message.includes('401') || error.message.includes('403'));
+            if (isAuthError) {
                 if (typeof NotificationManager !== 'undefined' && NotificationManager.error) {
                     NotificationManager.error('Authorization error during cache rebuild. Check your credentials.');
                 }
@@ -609,11 +611,12 @@ async function validateAndRefreshCache() {
 
         console.log('🧩 [CACHE] Validation rebuilt cache because mapping was missing');
 
-    } catch (e) {
-        console.error('🧩 [CACHE] Validation failed:', e);
+    } catch (error) {
+        console.error('🧩 [CACHE] Validation failed:', error);
         
         // Show error notification for authorization issues
-        if (e.message && (e.message.includes('401') || e.message.includes('403') || e.message.includes('Authorization error'))) {
+        const isAuthError = error.message && (error.message.includes('401') || error.message.includes('403') || error.message.includes('Authorization error'));
+        if (isAuthError) {
             console.error('🧩 [CACHE] Authorization error during validation');
             if (typeof NotificationManager !== 'undefined' && NotificationManager.error) {
                 NotificationManager.error('Authorization error validating cache. Check your credentials.');
@@ -675,11 +678,12 @@ window.refreshImockCache = async () => {
         } catch (uiError) {
             console.warn('🔄 [CACHE] UI refresh after cache rebuild failed:', uiError);
         }
-    } catch (e) {
-        console.error('🔄 [CACHE] refreshImockCache failed:', e);
+    } catch (error) {
+        console.error('🔄 [CACHE] refreshImockCache failed:', error);
         
         // Show user-friendly error notification
-        if (e.message && (e.message.includes('401') || e.message.includes('403') || e.message.includes('Authorization error'))) {
+        const isAuthError = error.message && (error.message.includes('401') || error.message.includes('403') || error.message.includes('Authorization error'));
+        if (isAuthError) {
             if (typeof NotificationManager !== 'undefined' && NotificationManager.error) {
                 NotificationManager.error('Authorization error refreshing cache. Check your credentials.');
             }

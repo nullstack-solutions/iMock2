@@ -140,6 +140,25 @@ window.toggleMetaTimestamps = () => {
 const IMOCK_CACHE_ID = '00000000-0000-0000-0000-00000000cace';
 const IMOCK_CACHE_URL = '/__imock/cache';
 
+// Helper function to check if an error is an authorization error
+function isAuthorizationError(error) {
+    return error && error.message && (error.message.includes('401') || error.message.includes('403') || error.message.includes('Authorization error'));
+}
+
+// Helper function to show error notification
+function showErrorNotification(message) {
+    if (typeof NotificationManager !== 'undefined' && NotificationManager.error) {
+        NotificationManager.error(message);
+    }
+}
+
+// Helper function to show warning notification
+function showWarningNotification(message) {
+    if (typeof NotificationManager !== 'undefined' && NotificationManager.warning) {
+        NotificationManager.warning(message);
+    }
+}
+
 function isImockCacheMapping(m) {
     try {
         const byId = (m?.id || m?.uuid) === IMOCK_CACHE_ID;
@@ -197,7 +216,7 @@ async function getCacheByFixedId() {
         console.log('🧩 [CACHE] Fixed ID miss');
     } catch (error) {
         // Check for authorization errors
-        if (error.message && (error.message.includes('401') || error.message.includes('403'))) {
+        if (isAuthorizationError(error)) {
             console.error('🧩 [CACHE] Authorization error loading cache by fixed ID:', error);
             throw new Error(`Authorization error: ${error.message}`);
         }
@@ -227,7 +246,7 @@ async function getCacheByMetadata() {
                 if (found) { console.log('🧩 [CACHE] Metadata hit'); return found; }
             } catch (e) {
                 // Check for authorization errors
-                if (e.message && (e.message.includes('401') || e.message.includes('403'))) {
+                if (isAuthorizationError(e)) {
                     console.error('🧩 [CACHE] Authorization error loading cache by metadata:', e);
                     throw new Error(`Authorization error: ${e.message}`);
                 }
@@ -238,7 +257,7 @@ async function getCacheByMetadata() {
         console.log('🧩 [CACHE] Metadata miss');
     } catch (error) {
         // Propagate authorization errors
-        if (error.message && error.message.includes('Authorization error')) {
+        if (isAuthorizationError(error)) {
             throw error;
         }
         console.log('🧩 [CACHE] Metadata lookup error:', error.message);
@@ -314,11 +333,9 @@ async function regenerateImockCache(existingData = null) {
         } catch (e) {
             console.warn('🧩 [CACHE] Upsert cache failed:', e);
             // Check for authorization errors
-            if (e.message && (e.message.includes('401') || e.message.includes('403'))) {
+            if (isAuthorizationError(e)) {
                 console.error('🧩 [CACHE] Authorization error during cache upsert');
-                if (typeof NotificationManager !== 'undefined' && NotificationManager.error) {
-                    NotificationManager.error('Authorization error saving cache. Check your credentials.');
-                }
+                showErrorNotification('Authorization error saving cache. Check your credentials.');
             }
             throw e; // Propagate error to caller
         }
@@ -344,11 +361,9 @@ async function loadImockCacheBestOf3() {
         }
     } catch (error) {
         // Authorization errors should be shown to user
-        if (error.message && error.message.includes('Authorization error')) {
+        if (isAuthorizationError(error)) {
             console.error('🧩 [CACHE] Authorization error during cache load:', error);
-            if (typeof NotificationManager !== 'undefined' && NotificationManager.error) {
-                NotificationManager.error('Authorization error loading cache. Check your credentials.');
-            }
+            showErrorNotification('Authorization error loading cache. Check your credentials.');
             throw error; // Propagate to caller
         }
         console.warn('🧩 [CACHE] Fixed ID lookup failed:', error);
@@ -362,11 +377,9 @@ async function loadImockCacheBestOf3() {
         }
     } catch (error) {
         // Authorization errors should be shown to user
-        if (error.message && error.message.includes('Authorization error')) {
+        if (isAuthorizationError(error)) {
             console.error('🧩 [CACHE] Authorization error during cache load:', error);
-            if (typeof NotificationManager !== 'undefined' && NotificationManager.error) {
-                NotificationManager.error('Authorization error loading cache. Check your credentials.');
-            }
+            showErrorNotification('Authorization error loading cache. Check your credentials.');
             throw error; // Propagate to caller
         }
         console.warn('🧩 [CACHE] Metadata lookup failed:', error);
@@ -654,7 +667,7 @@ async function fetchExistingCacheMapping() {
     } catch (error) {
         console.warn('🧩 [CACHE] fetchExistingCacheMapping failed:', error);
         // Propagate authorization errors
-        if (error.message && error.message.includes('Authorization error')) {
+        if (isAuthorizationError(error)) {
             throw error;
         }
     }
@@ -690,11 +703,9 @@ async function syncCacheMappingWithServer(mapping, operation) {
         console.warn('🧩 [CACHE] syncCacheMappingWithServer failed:', error);
         
         // Show error notification for authorization issues
-        if (error.message && (error.message.includes('401') || error.message.includes('403') || error.message.includes('Authorization error'))) {
+        if (isAuthorizationError(error)) {
             console.error('🧩 [CACHE] Authorization error syncing cache with server');
-            if (typeof NotificationManager !== 'undefined' && NotificationManager.error) {
-                NotificationManager.error('Authorization error syncing cache. Check your credentials.');
-            }
+            showErrorNotification('Authorization error syncing cache. Check your credentials.');
         }
     }
 }
