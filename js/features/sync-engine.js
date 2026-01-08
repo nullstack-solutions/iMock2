@@ -41,7 +41,9 @@ window.SyncEngine = {
     cacheRebuild: null,
   },
 
+  isStarted: false,
   lastCacheHash: null,
+  isIncrementalSyncing: false,
 
   /**
    * Initialize sync engine
@@ -59,7 +61,13 @@ window.SyncEngine = {
    * Start sync engine
    */
   start() {
+    if (this.isStarted) {
+      Logger.debug('SYNC', 'Sync timers already running, skipping start');
+      return;
+    }
+
     Logger.info('SYNC', 'Starting sync timers');
+    this.isStarted = true;
 
     // Incremental sync every 10 seconds
     this.timers.incremental = window.LifecycleManager.setInterval(
@@ -94,6 +102,7 @@ window.SyncEngine = {
         this.timers[key] = null;
       }
     });
+    this.isStarted = false;
   },
 
   /**
@@ -221,71 +230,81 @@ window.SyncEngine = {
    * Incremental sync - check for changes from other users
    */
   async incrementalSync() {
-    if (window.MappingsStore.metadata.isSyncing || window.MappingsStore.metadata.isOptimisticUpdate) {
-      Logger.debug('SYNC', 'Already syncing or optimistic update in progress, skipping incremental sync');
+    if (this.isIncrementalSyncing) {
+      Logger.debug('SYNC', 'Incremental sync already in progress, skipping overlapping run');
       return;
     }
 
-    // Skip if no last sync (means we haven't done full sync yet)
-    if (!window.MappingsStore.metadata.lastFullSync) {
-      Logger.debug('SYNC', 'No full sync yet, skipping incremental');
-      return;
-    }
-
-    Logger.info('SYNC', 'Starting incremental sync');
-
-    window.MappingsStore.metadata.isSyncing = true;
-    window.MappingsStore.metadata.syncStartTime = Date.now();
-
+    this.isIncrementalSyncing = true;
     try {
-      // Fetch current mappings from server
-      const response = await this._fetchWithTimeout(
-        typeof window.fetchMappingsFromServer === 'function'
-          ? window.fetchMappingsFromServer({ force: true })
-          : fetch(`${window.wiremockBaseUrl}/mappings`).then(r => r.json()),
-        this.config.incrementalTimeout
-      );
-
-      const serverMappings = (response.mappings || []).filter(m => !this._isServiceCacheMapping(m));
-
-      // Detect changes
-      const changes = this._detectChanges(serverMappings);
-
-      if (changes.hasChanges) {
-        Logger.info('SYNC', `Detected changes: +${changes.added.length} ~${changes.updated.length} -${changes.deleted.length}`);
-
-        // Apply changes to store
-        const conflicts = window.MappingsStore.applyChanges(changes);
-
-        // Handle conflicts
-        if (conflicts.length > 0) {
-          this._handleConflicts(conflicts);
-        }
-
-        // Update UI
-        if (typeof window.fetchAndRenderMappings === 'function') {
-          window.fetchAndRenderMappings(window.MappingsStore.getAll(), { source: 'incremental' });
-        }
-
-        // Show notification if changes from other users
-        if (changes.added.length > 0 || changes.updated.length > 0 || changes.deleted.length > 0) {
-          const summary = this._formatChangesSummary(changes);
-          if (window.NotificationManager && typeof window.NotificationManager.info === 'function') {
-            window.NotificationManager.info(`Mappings updated: ${summary}`);
-          }
-        }
-
-        Logger.info('SYNC', 'Incremental sync completed with changes');
-      } else {
-        Logger.info('SYNC', 'Incremental sync completed - no changes');
+      if (window.MappingsStore.metadata.isSyncing || window.MappingsStore.metadata.isOptimisticUpdate) {
+        Logger.debug('SYNC', 'Already syncing or optimistic update in progress, skipping incremental sync');
+        return;
       }
 
-    } catch (error) {
-      Logger.warn('SYNC', 'Incremental sync failed:', error);
-      // Don't throw - incremental sync failures are not critical
+      // Skip if no last sync (means we haven't done full sync yet)
+      if (!window.MappingsStore.metadata.lastFullSync) {
+        Logger.debug('SYNC', 'No full sync yet, skipping incremental');
+        return;
+      }
+
+      Logger.info('SYNC', 'Starting incremental sync');
+
+      window.MappingsStore.metadata.isSyncing = true;
+      window.MappingsStore.metadata.syncStartTime = Date.now();
+
+      try {
+        // Fetch current mappings from server
+        const response = await this._fetchWithTimeout(
+          typeof window.fetchMappingsFromServer === 'function'
+            ? window.fetchMappingsFromServer({ force: true })
+            : fetch(`${window.wiremockBaseUrl}/mappings`).then(r => r.json()),
+          this.config.incrementalTimeout
+        );
+
+        const serverMappings = (response.mappings || []).filter(m => !this._isServiceCacheMapping(m));
+
+        // Detect changes
+        const changes = this._detectChanges(serverMappings);
+
+        if (changes.hasChanges) {
+          Logger.info('SYNC', `Detected changes: +${changes.added.length} ~${changes.updated.length} -${changes.deleted.length}`);
+
+          // Apply changes to store
+          const conflicts = window.MappingsStore.applyChanges(changes);
+
+          // Handle conflicts
+          if (conflicts.length > 0) {
+            this._handleConflicts(conflicts);
+          }
+
+          // Update UI
+          if (typeof window.fetchAndRenderMappings === 'function') {
+            window.fetchAndRenderMappings(window.MappingsStore.getAll(), { source: 'incremental' });
+          }
+
+          // Show notification if changes from other users
+          if (changes.added.length > 0 || changes.updated.length > 0 || changes.deleted.length > 0) {
+            const summary = this._formatChangesSummary(changes);
+            if (window.NotificationManager && typeof window.NotificationManager.info === 'function') {
+              window.NotificationManager.info(`Mappings updated: ${summary}`);
+            }
+          }
+
+          Logger.info('SYNC', 'Incremental sync completed with changes');
+        } else {
+          Logger.info('SYNC', 'Incremental sync completed - no changes');
+        }
+
+      } catch (error) {
+        Logger.warn('SYNC', 'Incremental sync failed:', error);
+        // Don't throw - incremental sync failures are not critical
+      } finally {
+        window.MappingsStore.metadata.isSyncing = false;
+        window.MappingsStore.metadata.syncStartTime = null;
+      }
     } finally {
-      window.MappingsStore.metadata.isSyncing = false;
-      window.MappingsStore.metadata.syncStartTime = null;
+      this.isIncrementalSyncing = false;
     }
   },
 
