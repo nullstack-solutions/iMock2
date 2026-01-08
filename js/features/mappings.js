@@ -483,14 +483,26 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                     Logger.cache('Cache hit - using cached data for quick start');
                     dataSource = 'cache';
 
+                    // Extract timestamp from cache metadata - fallback to finding the most recent mapping timestamp
+                    const cacheTimestamp = typeof cached.data.timestamp === 'number'
+                        ? cached.data.timestamp
+                        : (cached.data.mappings || []).reduce((maxTs, m) => {
+                            const ts = m && m.metadata && m.metadata.imock && m.metadata.imock.timestamp;
+                            return (typeof ts === 'number' && ts > maxTs) ? ts : maxTs;
+                        }, 0);
+                    const cacheAge = Date.now() - cacheTimestamp;
+                    
                     // Only validate in background if cache is older than 30 seconds
-                    const cacheAge = Date.now() - (cached.data.timestamp || 0);
                     if (cacheAge > 30000) {
                         // Start async fresh fetch for silent validation (no UI re-render)
                         (async () => {
                             try {
-                                // Wait a bit for any optimistic updates to complete
-                                await new Promise(resolve => setTimeout(resolve, 500));
+                                // Wait a bit for any optimistic updates to complete. Delay is configurable
+                                // via `window.OptimisticUpdateDelayMs` to balance responsiveness vs. stability.
+                                const optimisticUpdateDelayMs = (typeof window !== 'undefined' && typeof window.OptimisticUpdateDelayMs === 'number')
+                                    ? window.OptimisticUpdateDelayMs
+                                    : 500;
+                                await new Promise(resolve => setTimeout(resolve, optimisticUpdateDelayMs));
 
                                 const freshData = await fetchMappingsFromServer({ force: true });
                                 if (freshData && freshData.mappings) {
@@ -500,29 +512,33 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                                     // Simple count-based comparison for efficiency
                                     const hasCountMismatch = cachedMappings.length !== serverMappings.length;
 
-                                    // Update cache manager with fresh data (silent background sync)
-                                    if (window.MappingsStore) {
-                                        window.MappingsStore.setFromServer(serverMappings);
-                                    }
-                                    refreshMappingTabSnapshot();
-                                    syncCacheWithMappings(serverMappings);
-                                    rebuildMappingIndex(serverMappings);
-
-                                    // Show notification only for count mismatches to reduce noise
-                                    if (typeof NotificationManager !== 'undefined' && hasCountMismatch) {
-                                        const diff = serverMappings.length - cachedMappings.length;
-                                        if (diff > 0) {
-                                            NotificationManager.info(
-                                                `${diff} new mapping${diff === 1 ? '' : 's'} from server`,
-                                                3000
-                                            );
-                                        } else if (diff < 0) {
-                                            NotificationManager.info(
-                                                `${Math.abs(diff)} mapping${Math.abs(diff) === 1 ? '' : 's'} removed on server`,
-                                                3000
-                                            );
+                                    // Only update cache manager if there are differences to avoid unnecessary operations
+                                    if (hasCountMismatch) {
+                                        if (window.MappingsStore) {
+                                            window.MappingsStore.setFromServer(serverMappings);
                                         }
-                                        Logger.cache('Cache updated with server data:', { cachedCount: cachedMappings.length, serverCount: serverMappings.length });
+                                        refreshMappingTabSnapshot();
+                                        syncCacheWithMappings(serverMappings);
+                                        rebuildMappingIndex(serverMappings);
+
+                                        // Show notification for count mismatches
+                                        if (typeof NotificationManager !== 'undefined') {
+                                            const diff = serverMappings.length - cachedMappings.length;
+                                            if (diff > 0) {
+                                                NotificationManager.info(
+                                                    `${diff} new mapping${diff === 1 ? '' : 's'} from server`,
+                                                    3000
+                                                );
+                                            } else if (diff < 0) {
+                                                NotificationManager.info(
+                                                    `${Math.abs(diff)} mapping${Math.abs(diff) === 1 ? '' : 's'} removed on server`,
+                                                    3000
+                                                );
+                                            }
+                                            Logger.cache('Cache updated with server data:', { cachedCount: cachedMappings.length, serverCount: serverMappings.length });
+                                        }
+                                    } else {
+                                        Logger.debug('CACHE', 'No changes detected, skipping cache update');
                                     }
                                 }
                             } catch (e) {
