@@ -281,18 +281,18 @@ window.SyncEngine = {
 
       Logger.debug('SYNC', 'Starting lightweight incremental sync check');
 
-      // Lightweight check: just log that we're alive, no server call
-      // The full sync runs every 5 minutes and handles actual data fetching
-      // This prevents the polling storm issue
+      // Lightweight staleness check - does NOT make server calls
+      // The scheduled fullSync (every 5 min) handles actual data fetching
+      // This approach prevents the polling storm issue where every incremental
+      // tick would trigger a full /mappings fetch
       
-      // Only do a full data fetch if there's been recent activity or explicit trigger
       const timeSinceLastSync = Date.now() - (window.MappingsStore.metadata.lastFullSync || 0);
       const staleThreshold = this.config.fullSyncInterval / 2; // 2.5 minutes
       
       if (timeSinceLastSync > staleThreshold) {
-        Logger.debug('SYNC', `Data may be stale (${Math.round(timeSinceLastSync / 1000)}s since last sync), scheduling background refresh`);
-        // Don't call fullSync here - let the scheduled fullSync handle it
-        // This prevents multiple overlapping requests
+        // Data is getting stale, but we don't trigger a fetch here
+        // The scheduled fullSync will handle it on its next tick
+        Logger.debug('SYNC', `Data approaching staleness (${Math.round(timeSinceLastSync / 1000)}s since last sync), will refresh on next full sync`);
       } else {
         Logger.debug('SYNC', `Data is fresh (${Math.round(timeSinceLastSync / 1000)}s since last sync), skipping server check`);
       }
