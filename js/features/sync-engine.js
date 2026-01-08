@@ -296,15 +296,18 @@ window.SyncEngine = {
     try {
       Logger.debug('SYNC', 'Attempting to load from Service Cache');
 
-      // Try to fetch the cache mapping
-      const response = await fetch(`${window.wiremockBaseUrl}/mappings/00000000-0000-0000-0000-00000000cace`);
-
-      if (!response.ok) {
-        Logger.debug('SYNC', 'Service Cache not found');
-        return null;
+      // Try to fetch the cache mapping using apiFetch for consistent auth headers
+      let cacheMapping;
+      try {
+        cacheMapping = await window.apiFetch(`/mappings/00000000-0000-0000-0000-00000000cace`);
+      } catch (fetchError) {
+        // Handle 404 (cache not found) gracefully
+        if (fetchError.status === 404 || (fetchError.message && fetchError.message.includes('404'))) {
+          Logger.debug('SYNC', 'Service Cache not found');
+          return null;
+        }
+        throw fetchError;
       }
-
-      const cacheMapping = await response.json();
 
       // Extract cached data from response body
       const cached = cacheMapping.response?.jsonBody || cacheMapping;
@@ -410,19 +413,24 @@ window.SyncEngine = {
       };
 
       // Try PUT first (update existing), fall back to POST (create new)
-      let response = await fetch(`${window.wiremockBaseUrl}/mappings/${cacheMapping.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(cacheMapping),
-      });
-
-      if (!response.ok && response.status === 404) {
-        // Mapping doesn't exist, create it
-        await fetch(`${window.wiremockBaseUrl}/mappings`, {
-          method: 'POST',
+      // Use apiFetch for consistent auth headers
+      try {
+        await window.apiFetch(`/mappings/${cacheMapping.id}`, {
+          method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(cacheMapping),
         });
+      } catch (putError) {
+        if (putError.status === 404 || (putError.message && putError.message.includes('404'))) {
+          // Mapping doesn't exist, create it
+          await window.apiFetch('/mappings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(cacheMapping),
+          });
+        } else {
+          throw putError;
+        }
       }
 
       this.lastCacheHash = currentHash;
