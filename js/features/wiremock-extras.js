@@ -195,7 +195,15 @@ async function getCacheByFixedId() {
         const m = await apiFetch(`/mappings/${IMOCK_CACHE_ID}`);
         if (m && isImockCacheMapping(m)) return m;
         console.log('🧩 [CACHE] Fixed ID miss');
-    } catch {}
+    } catch (error) {
+        // Check for authorization errors
+        if (error.message && (error.message.includes('401') || error.message.includes('403'))) {
+            console.error('🧩 [CACHE] Authorization error loading cache by fixed ID:', error);
+            throw new Error(`Authorization error: ${error.message}`);
+        }
+        // For 404 or other errors, this is expected (cache may not exist yet)
+        console.log('🧩 [CACHE] Fixed ID lookup failed (expected if cache not created):', error.message);
+    }
     return null;
 }
 
@@ -218,11 +226,23 @@ async function getCacheByMetadata() {
                 const found = list.find(isImockCacheMapping);
                 if (found) { console.log('🧩 [CACHE] Metadata hit'); return found; }
             } catch (e) {
-                // try next body shape
+                // Check for authorization errors
+                if (e.message && (e.message.includes('401') || e.message.includes('403'))) {
+                    console.error('🧩 [CACHE] Authorization error loading cache by metadata:', e);
+                    throw new Error(`Authorization error: ${e.message}`);
+                }
+                // try next body shape or endpoint may not be supported
+                console.log('🧩 [CACHE] Metadata lookup attempt failed (trying next format):', e.message);
             }
         }
         console.log('🧩 [CACHE] Metadata miss');
-    } catch {}
+    } catch (error) {
+        // Propagate authorization errors
+        if (error.message && error.message.includes('Authorization error')) {
+            throw error;
+        }
+        console.log('🧩 [CACHE] Metadata lookup error:', error.message);
+    }
     return null;
 }
 
@@ -272,39 +292,86 @@ async function regenerateImockCache(existingData = null) {
     console.log('🧩 [CACHE] Regenerate cache start');
     const t0 = performance.now();
 
-    // Get fresh data from server - server is now the source of truth
-    let all = existingData;
-    if (!all) {
-        all = await fetchMappingsFromServer({ force: true });
-    }
-
-    const mappings = all?.mappings || [];
-
-    console.log('🧩 [CACHE] Using fresh server data for cache regeneration');
-
-    const slim = buildSlimList(mappings);
-    let finalPayload = slim;
     try {
-        const response = await upsertImockCacheMapping(slim);
-        const serverPayload = extractCacheJsonBody(response);
-        if (serverPayload) {
-            finalPayload = serverPayload;
+        // Get fresh data from server - server is now the source of truth
+        let all = existingData;
+        if (!all) {
+            all = await fetchMappingsFromServer({ force: true });
         }
-    } catch (e) {
-        console.warn('🧩 [CACHE] Upsert cache failed:', e);
+
+        const mappings = all?.mappings || [];
+
+        console.log('🧩 [CACHE] Using fresh server data for cache regeneration');
+
+        const slim = buildSlimList(mappings);
+        let finalPayload = slim;
+        try {
+            const response = await upsertImockCacheMapping(slim);
+            const serverPayload = extractCacheJsonBody(response);
+            if (serverPayload) {
+                finalPayload = serverPayload;
+            }
+        } catch (e) {
+            console.warn('🧩 [CACHE] Upsert cache failed:', e);
+            // Check for authorization errors
+            if (e.message && (e.message.includes('401') || e.message.includes('403'))) {
+                console.error('🧩 [CACHE] Authorization error during cache upsert');
+                if (typeof NotificationManager !== 'undefined' && NotificationManager.error) {
+                    NotificationManager.error('Authorization error saving cache. Check your credentials.');
+                }
+            }
+            throw e; // Propagate error to caller
+        }
+        const dt = Math.round(performance.now() - t0);
+        console.log(`🧩 [CACHE] Regenerate cache done (${(finalPayload?.mappings||[]).length} items) in ${dt}ms`);
+        return finalPayload;
+    } catch (error) {
+        const dt = Math.round(performance.now() - t0);
+        console.error(`🧩 [CACHE] Regenerate cache failed after ${dt}ms:`, error);
+        throw error;
     }
-    const dt = Math.round(performance.now() - t0);
-    console.log(`🧩 [CACHE] Regenerate cache done (${(finalPayload?.mappings||[]).length} items) in ${dt}ms`);
-    return finalPayload;
 }
 
 async function loadImockCacheBestOf3() {
     // Preferred order: fixed ID, then find-by-metadata (JSONPath), else none
     console.log('🧩 [CACHE] loadImockCacheBestOf3 start');
-    const b = await getCacheByFixedId();
-    if (b && b.response?.jsonBody) { console.log('🧩 [CACHE] Using cache: fixed id'); return { source: 'cache', data: b.response.jsonBody }; }
-    const c = await getCacheByMetadata();
-    if (c && c.response?.jsonBody) { console.log('🧩 [CACHE] Using cache: metadata'); return { source: 'cache', data: c.response.jsonBody }; }
+    
+    try {
+        const b = await getCacheByFixedId();
+        if (b && b.response?.jsonBody) { 
+            console.log('🧩 [CACHE] Using cache: fixed id'); 
+            return { source: 'cache', data: b.response.jsonBody }; 
+        }
+    } catch (error) {
+        // Authorization errors should be shown to user
+        if (error.message && error.message.includes('Authorization error')) {
+            console.error('🧩 [CACHE] Authorization error during cache load:', error);
+            if (typeof NotificationManager !== 'undefined' && NotificationManager.error) {
+                NotificationManager.error('Authorization error loading cache. Check your credentials.');
+            }
+            throw error; // Propagate to caller
+        }
+        console.warn('🧩 [CACHE] Fixed ID lookup failed:', error);
+    }
+    
+    try {
+        const c = await getCacheByMetadata();
+        if (c && c.response?.jsonBody) { 
+            console.log('🧩 [CACHE] Using cache: metadata'); 
+            return { source: 'cache', data: c.response.jsonBody }; 
+        }
+    } catch (error) {
+        // Authorization errors should be shown to user
+        if (error.message && error.message.includes('Authorization error')) {
+            console.error('🧩 [CACHE] Authorization error during cache load:', error);
+            if (typeof NotificationManager !== 'undefined' && NotificationManager.error) {
+                NotificationManager.error('Authorization error loading cache. Check your credentials.');
+            }
+            throw error; // Propagate to caller
+        }
+        console.warn('🧩 [CACHE] Metadata lookup failed:', error);
+    }
+    
     console.log('🧩 [CACHE] No cache found');
     return null;
 }
@@ -585,7 +652,11 @@ async function fetchExistingCacheMapping() {
             return cacheMapping;
         }
     } catch (error) {
-        console.warn('fetchExistingCacheMapping failed:', error);
+        console.warn('🧩 [CACHE] fetchExistingCacheMapping failed:', error);
+        // Propagate authorization errors
+        if (error.message && error.message.includes('Authorization error')) {
+            throw error;
+        }
     }
     return null;
 }
@@ -617,6 +688,14 @@ async function syncCacheMappingWithServer(mapping, operation) {
         console.log('🧩 [CACHE] Remote cache mapping updated via optimistic sync');
     } catch (error) {
         console.warn('🧩 [CACHE] syncCacheMappingWithServer failed:', error);
+        
+        // Show error notification for authorization issues
+        if (error.message && (error.message.includes('401') || error.message.includes('403') || error.message.includes('Authorization error'))) {
+            console.error('🧩 [CACHE] Authorization error syncing cache with server');
+            if (typeof NotificationManager !== 'undefined' && NotificationManager.error) {
+                NotificationManager.error('Authorization error syncing cache. Check your credentials.');
+            }
+        }
     }
 }
 

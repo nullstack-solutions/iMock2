@@ -137,6 +137,15 @@ window.cacheManager = {
 
         } catch (error) {
             console.error('❌ [CACHE] Rebuild failed:', error);
+            
+            // Show user-friendly error notification
+            if (error.message && (error.message.includes('401') || error.message.includes('403'))) {
+                if (typeof NotificationManager !== 'undefined' && NotificationManager.error) {
+                    NotificationManager.error('Authorization error during cache rebuild. Check your credentials.');
+                }
+            } else if (typeof NotificationManager !== 'undefined' && NotificationManager.warning) {
+                NotificationManager.warning('Cache rebuild failed. Mappings may be outdated.');
+            }
         } finally {
             this.isSyncing = false;
         }
@@ -601,7 +610,15 @@ async function validateAndRefreshCache() {
         console.log('🧩 [CACHE] Validation rebuilt cache because mapping was missing');
 
     } catch (e) {
-        console.warn('🧩 [CACHE] Validation failed:', e);
+        console.error('🧩 [CACHE] Validation failed:', e);
+        
+        // Show error notification for authorization issues
+        if (e.message && (e.message.includes('401') || e.message.includes('403') || e.message.includes('Authorization error'))) {
+            console.error('🧩 [CACHE] Authorization error during validation');
+            if (typeof NotificationManager !== 'undefined' && NotificationManager.error) {
+                NotificationManager.error('Authorization error validating cache. Check your credentials.');
+            }
+        }
         // Don't reset counters on failure - try again later
     }
 }
@@ -659,7 +676,16 @@ window.refreshImockCache = async () => {
             console.warn('🔄 [CACHE] UI refresh after cache rebuild failed:', uiError);
         }
     } catch (e) {
-        console.warn('🔄 [CACHE] refreshImockCache failed:', e);
+        console.error('🔄 [CACHE] refreshImockCache failed:', e);
+        
+        // Show user-friendly error notification
+        if (e.message && (e.message.includes('401') || e.message.includes('403') || e.message.includes('Authorization error'))) {
+            if (typeof NotificationManager !== 'undefined' && NotificationManager.error) {
+                NotificationManager.error('Authorization error refreshing cache. Check your credentials.');
+            }
+        } else if (typeof NotificationManager !== 'undefined' && NotificationManager.warning) {
+            NotificationManager.warning('Cache refresh failed. Mappings may be outdated.');
+        }
     } finally {
         window.cacheRebuilding = false;
         console.log('🔄 [CACHE] Cleared cache rebuilding flag');

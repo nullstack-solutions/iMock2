@@ -461,7 +461,23 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
             let data;
             let dataSource = 'direct';
             if (options && options.useCache) {
-                const cached = await loadImockCacheBestOf3();
+                let cached = null;
+                let cacheError = null;
+                
+                try {
+                    cached = await loadImockCacheBestOf3();
+                } catch (error) {
+                    cacheError = error;
+                    console.error('🧩 [CACHE] Cache loading failed with error:', error);
+                    
+                    // Show user-friendly error notification
+                    if (error.message && error.message.includes('Authorization error')) {
+                        // Authorization error already shown by loadImockCacheBestOf3
+                    } else if (typeof NotificationManager !== 'undefined' && NotificationManager.warning) {
+                        NotificationManager.warning('Cache loading failed, fetching mappings directly from server');
+                    }
+                }
+                
                 if (cached && cached.data && Array.isArray(cached.data.mappings)) {
                     // Cache hit - use cached data for quick UI, but always fetch fresh data for complete info
                     console.log('🧩 [CACHE] Cache hit - using cached data for quick start, fetching fresh data');
@@ -531,10 +547,22 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                     // Use cached slim data for immediate UI (will be replaced by fresh data)
                     data = cached.data;
                 } else {
+                    // Cache miss or error - fetch directly from server
+                    console.log('🧩 [CACHE] Cache miss or error - fetching directly from server');
                     data = await fetchMappingsFromServer({ force: true });
                     dataSource = 'direct';
-                    // regenerate cache asynchronously
-                    try { console.log('🧩 [CACHE] Async regenerate after cache miss'); regenerateImockCache(); } catch {}
+                    
+                    // Only regenerate cache asynchronously if there was no authorization error
+                    if (!cacheError || !cacheError.message || !cacheError.message.includes('Authorization error')) {
+                        try { 
+                            console.log('🧩 [CACHE] Async regenerate after cache miss'); 
+                            regenerateImockCache(); 
+                        } catch (e) {
+                            console.warn('🧩 [CACHE] Async regenerate failed:', e);
+                        }
+                    } else {
+                        console.log('🧩 [CACHE] Skipping cache regeneration due to authorization error');
+                    }
                 }
             } else {
                 data = await fetchMappingsFromServer({ force: true });
