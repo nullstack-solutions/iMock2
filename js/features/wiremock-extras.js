@@ -245,7 +245,10 @@ async function getCacheByFixedId() {
         // Check for authorization errors
         if (isAuthorizationError(error)) {
             console.error('🧩 [CACHE] Authorization error loading cache by fixed ID:', error);
-            throw new Error(`Authorization error: ${error.message}`);
+            // Preserve original error and add context
+            error.isAuthError = true;
+            error.context = 'cache-fixed-id-lookup';
+            throw error;
         }
         // For 404 or other errors, this is expected (cache may not exist yet)
         console.log('🧩 [CACHE] Fixed ID lookup failed (expected if cache not created):', error.message);
@@ -275,7 +278,10 @@ async function getCacheByMetadata() {
                 // Check for authorization errors
                 if (isAuthorizationError(e)) {
                     console.error('🧩 [CACHE] Authorization error loading cache by metadata:', e);
-                    throw new Error(`Authorization error: ${e.message}`);
+                    // Preserve original error and add context
+                    e.isAuthError = true;
+                    e.context = 'cache-metadata-lookup';
+                    throw e;
                 }
                 // try next body shape or endpoint may not be supported
                 console.log('🧩 [CACHE] Metadata lookup attempt failed (trying next format):', e.message);
@@ -283,7 +289,7 @@ async function getCacheByMetadata() {
         }
         console.log('🧩 [CACHE] Metadata miss');
     } catch (error) {
-        // Propagate authorization errors
+        // Only propagate if it's an authorization error (already handled above)
         if (isAuthorizationError(error)) {
             throw error;
         }

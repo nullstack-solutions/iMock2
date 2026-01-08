@@ -471,13 +471,15 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                     console.error('🧩 [CACHE] Cache loading failed with error:', error);
                     
                     // Show user-friendly error notification
-                    // Use global helper function from wiremock-extras.js
-                    if (typeof window.isAuthorizationError === 'function' && window.isAuthorizationError(error)) {
-                        // Authorization error already shown by loadImockCacheBestOf3
-                    } else if (typeof window.showWarningNotification === 'function') {
-                        window.showWarningNotification('Cache loading failed, fetching mappings directly from server');
-                    } else if (typeof NotificationManager !== 'undefined' && NotificationManager.warning) {
-                        NotificationManager.warning('Cache loading failed, fetching mappings directly from server');
+                    // Authorization errors are already shown by loadImockCacheBestOf3, so only show 
+                    // generic warning for other types of errors
+                    const isAuthError = typeof window.isAuthorizationError === 'function' && window.isAuthorizationError(error);
+                    if (!isAuthError) {
+                        if (typeof window.showWarningNotification === 'function') {
+                            window.showWarningNotification('Cache loading failed, fetching mappings directly from server');
+                        } else if (typeof NotificationManager !== 'undefined' && NotificationManager.warning) {
+                            NotificationManager.warning('Cache loading failed, fetching mappings directly from server');
+                        }
                     }
                 }
                 
