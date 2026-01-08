@@ -302,7 +302,7 @@ window.SyncEngine = {
         cacheMapping = await window.apiFetch(`/mappings/00000000-0000-0000-0000-00000000cace`);
       } catch (fetchError) {
         // Handle 404 (cache not found) gracefully
-        if (fetchError.status === 404 || (fetchError.message && fetchError.message.includes('404'))) {
+        if (fetchError.status === 404) {
           Logger.debug('SYNC', 'Service Cache not found');
           return null;
         }
@@ -421,7 +421,7 @@ window.SyncEngine = {
           body: JSON.stringify(cacheMapping),
         });
       } catch (putError) {
-        if (putError.status === 404 || (putError.message && putError.message.includes('404'))) {
+        if (putError.status === 404) {
           // Mapping doesn't exist, create it
           await window.apiFetch('/mappings', {
             method: 'POST',
