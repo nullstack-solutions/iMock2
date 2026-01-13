@@ -149,5 +149,57 @@ window.deleteMapping = async (id) => {
 };
 
 window.applyOptimisticMappingUpdate = (mapping) => {
-    if (window.updateOptimisticCache) window.updateOptimisticCache(mapping, 'update');
+    if (!mapping || !window.updateOptimisticCache) return;
+    const id = mapping.id || mapping.uuid;
+    if (!id) return;
+    
+    const op = (window.cacheManager?.cache?.has(id)) ? 'update' : 'create';
+    
+    // Remember optimistic shadow for survival across refreshes
+    if (!window.optimisticShadowMappings) window.optimisticShadowMappings = new Map();
+    window.optimisticShadowMappings.set(String(id), { ts: Date.now(), op, mapping });
+    
+    window.updateOptimisticCache(mapping, op, { queueMode: 'add' });
+};
+
+window.backgroundRefreshMappings = async (useCache = false) => {
+    try {
+        const res = await fetchMappingsFromServer({ force: !useCache });
+        let mappings = res.mappings || [];
+        
+        // Filter out pending deletions
+        if (window.pendingDeletedIds && window.pendingDeletedIds.size > 0) {
+            mappings = mappings.filter(m => {
+                const id = m.id || m.uuid;
+                return !window.pendingDeletedIds.has(id);
+            });
+        }
+        
+        // Apply optimistic shadows: overlay optimistic mappings onto server data
+        if (window.optimisticShadowMappings && window.optimisticShadowMappings.size > 0) {
+            const serverIds = new Set(mappings.map(m => m.id || m.uuid));
+            const merged = [...mappings];
+            
+            window.optimisticShadowMappings.forEach((shadow, id) => {
+                if (!serverIds.has(id)) {
+                    // Optimistic mapping not yet on server - keep it
+                    merged.push(shadow.mapping);
+                } else {
+                    // Mapping now on server - remove from shadow
+                    window.optimisticShadowMappings.delete(id);
+                }
+            });
+            
+            mappings = merged;
+        }
+        
+        window.originalMappings = mappings;
+        window.allMappings = mappings;
+        if (window.refreshMappingTabSnapshot) window.refreshMappingTabSnapshot();
+        if (window.syncCacheWithMappings) window.syncCacheWithMappings(mappings);
+        if (window.rebuildMappingIndex) window.rebuildMappingIndex(mappings);
+        if (window.fetchAndRenderMappings) window.fetchAndRenderMappings(mappings);
+    } catch (e) {
+        console.warn('Background refresh failed:', e);
+    }
 };

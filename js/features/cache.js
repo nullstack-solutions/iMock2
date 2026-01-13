@@ -31,17 +31,27 @@ window.updateOptimisticCache = function(mappingLike, op, options = {}) {
     if (!id) return;
 
     const ts = Date.now();
-    const idx = cm.optimisticQueue.findIndex(x => x.id === id);
-    const item = { id, op: op || 'update', payload: m, ts };
-
-    if (idx >= 0) cm.optimisticQueue[idx] = item;
-    else cm.optimisticQueue.push(item);
+    
+    // Confirm/remove from queue by default unless explicitly adding
+    if (options.queueMode !== 'add') {
+        const idx = cm.optimisticQueue.findIndex(x => x.id === id);
+        if (idx >= 0) cm.optimisticQueue.splice(idx, 1);
+    } else {
+        // Add to queue
+        const idx = cm.optimisticQueue.findIndex(x => x.id === id);
+        const item = { id, op: op || 'update', payload: m, ts };
+        if (idx >= 0) cm.optimisticQueue[idx] = item;
+        else cm.optimisticQueue.push(item);
+    }
 
     if (cm.cache.size === 0) seedCacheFromGlobals(cm.cache);
 
     if (op === 'delete') {
         cm.cache.delete(id);
         if (window.removeMappingFromIndex) window.removeMappingFromIndex(id);
+        if (Array.isArray(window.allMappings)) {
+            window.allMappings = window.allMappings.filter(x => (x.id || x.uuid) !== id);
+        }
     } else {
         let stored = m;
         if (op === 'update' && cm.cache.has(id)) {
@@ -64,13 +74,24 @@ window.updateOptimisticCache = function(mappingLike, op, options = {}) {
     if (options.refresh !== false && window.refreshMappingsFromCache) window.refreshMappingsFromCache();
 };
 
+cm.addOptimisticUpdate = (m, op) => {
+    const id = m.id || m.uuid;
+    if (!id) return;
+    const item = { id, op: op || 'update', payload: m, ts: Date.now() };
+    const idx = cm.optimisticQueue.findIndex(x => x.id === id);
+    if (idx >= 0) cm.optimisticQueue[idx] = item;
+    else cm.optimisticQueue.push(item);
+};
+
 window.rebuildCache = () => {
     cm.cache.clear();
     seedCacheFromGlobals(cm.cache);
 };
 
 window.refreshMappingsFromCache = () => {
-    if (window.fetchAndRenderMappings) window.fetchAndRenderMappings(null, { useCache: true });
+    if (!window.fetchAndRenderMappings) return;
+    const data = cm.cache.size > 0 ? Array.from(cm.cache.values()) : (window.allMappings || []);
+    window.fetchAndRenderMappings(data, { source: 'cache' });
 };
 
 console.log('✅ cache.js loaded');
