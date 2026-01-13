@@ -304,9 +304,6 @@ class EventDelegationManager {
             return '<div class="preview-section"><p>Preview generator not available</p></div>';
         }
 
-        // Use a simple, efficient approach for generating preview sections
-        const sections = [];
-
         // Request section with basic HTML to avoid complex UIComponents operations
         const requestSection = this._createSimplePreviewSection('Request', {
             'Method': mapping.request?.method || 'GET',

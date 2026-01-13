@@ -1,5 +1,14 @@
 'use strict';
 
+/**
+ * Helper function to filter out cache mappings
+ * @param {Array} mappings - Array of mappings to filter
+ * @returns {Array} Filtered array without cache mappings
+ */
+function filterNonCacheMappings(mappings) {
+    return Array.isArray(mappings) ? mappings.filter(m => !isImockCacheMapping(m)) : [];
+}
+
 function isOptimisticShadowMap(value) {
     return value && typeof value === 'object'
         && typeof value.forEach === 'function'
@@ -475,7 +484,7 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
             emptyState.classList.add('hidden');
             
             let data;
-            let dataSource = 'direct';
+            let dataSource;
             if (options && options.useCache) {
                 const cached = await loadImockCacheBestOf3();
                 if (cached && cached.data && Array.isArray(cached.data.mappings)) {
@@ -615,7 +624,7 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                     if (before !== incoming.length) Logger.cache('filtered pending-deleted from render:', before - incoming.length);
                 }
             } catch {}
-const filteredMappings = Array.isArray(incoming) ? incoming.filter(m => !isImockCacheMapping(m)) : [];
+            const filteredMappings = filterNonCacheMappings(incoming);
             
             // Update MappingsStore
             if (window.MappingsStore) {
@@ -1100,7 +1109,7 @@ window.backgroundRefreshMappings = async (useCache = false) => {
         }
         
         let data;
-        let source = 'direct';
+        let source;
         if (useCache) {
             const cached = await loadImockCacheBestOf3();
             if (cached && cached.data && Array.isArray(cached.data.mappings)) {
@@ -1136,7 +1145,7 @@ window.backgroundRefreshMappings = async (useCache = false) => {
         } catch (pendingError) {
         Logger.warn('CACHE', 'Failed to filter pending deletions during background refresh:', pendingError);
         }
-const filteredMappings = Array.isArray(incoming) ? incoming.filter(m => !isImockCacheMapping(m)) : [];
+        const filteredMappings = filterNonCacheMappings(incoming);
         
         // Update MappingsStore
         if (window.MappingsStore) {
@@ -1222,7 +1231,7 @@ window.renderMappingCard = function(mapping) {
     };
 
     return UIComponents.createCard('mapping', data, actions);
-}
+};
 
 // Update the mapping counter
 window.updateMappingsCounter = function() {
@@ -1236,8 +1245,8 @@ window.updateMappingsCounter = function() {
 function updateDataSourceIndicator(source) {
     const el = document.getElementById('data-source-indicator');
     if (!el) return;
-    let text = 'Source: direct';
-    let cls = 'badge badge-secondary';
+    let text;
+    let cls;
     switch (source) {
         case 'cache':
             text = 'Source: cache';
@@ -1275,8 +1284,8 @@ function updateDataSourceIndicator(source) {
 function updateRequestsSourceIndicator(source) {
     const el = document.getElementById('requests-source-indicator');
     if (!el) return;
-    let text = 'Requests: direct';
-    let cls = 'badge badge-secondary';
+    let text;
+    let cls;
     switch (source) {
         case 'custom':
             text = 'Requests: custom';

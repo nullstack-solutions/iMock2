@@ -189,7 +189,6 @@ function attemptAutoConnect(settings, options = {}) {
 }
 
 function initializeOnboardingFlow() {
-    const overlay = document.getElementById('onboarding-overlay');
     const form = document.getElementById('onboarding-form');
     const hostField = document.getElementById('onboarding-host');
     const portField = document.getElementById('onboarding-port');

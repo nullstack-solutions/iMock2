@@ -18,15 +18,7 @@
         // === Module coordination ===
 
         const {
-            markDemoModeActive,
-            addMappingToIndex,
-            rebuildMappingIndex,
-            computeMappingTabTotals,
-            refreshMappingTabSnapshot,
-            computeRequestTabTotals,
-            refreshRequestTabSnapshot,
-            removeMappingFromIndex,
-            fetchMappingsFromServer
+            markDemoModeActive
         } = featureState;
 
         // ===== UPTIME FUNCTIONS =====
@@ -96,7 +88,9 @@
         // Refresh mappings function for button compatibility
         window.refreshMappings = async () => {
             try {
-                const settings = (typeof window.readWiremockSettings === 'function') ? window.readWiremockSettings() : {};
+                if (typeof window.readWiremockSettings === 'function') {
+                    window.readWiremockSettings();
+                }
                 const useCache = isCacheEnabled();
                 const refreshed = await fetchAndRenderMappings(null, { useCache });
                 if (refreshed) {
