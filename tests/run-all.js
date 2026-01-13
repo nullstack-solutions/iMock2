@@ -11,6 +11,10 @@ const specs = [
     'scenarios.spec.js',
     'recording.spec.js',
     'mappings.spec.js',
+<<<<<<< HEAD
+=======
+    'sync-engine.spec.js',
+>>>>>>> clean
     'templates.spec.js'
 ];
 

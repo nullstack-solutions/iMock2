@@ -2,6 +2,7 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const { createLoggerStub } = require('./helpers/stubs');
 
 function createNotificationStub() {
     return {
@@ -28,6 +29,7 @@ function createNotificationStub() {
     };
 }
 
+
 const sandbox = {
     console,
     performance: { now: () => 0 },
@@ -37,6 +39,7 @@ const sandbox = {
 
 sandbox.window = sandbox;
 sandbox.NotificationManager = createNotificationStub();
+sandbox.Logger = createLoggerStub(sandbox.console);
 
 sandbox.updateRequestTabCounts = () => { sandbox.__requestCountsCalled = true; };
 

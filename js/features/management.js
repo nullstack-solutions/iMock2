@@ -30,6 +30,7 @@ window.toggleElementById = (elementId) => document.getElementById(elementId)?.cl
 
 window.togglePreview = (mappingId) => window.toggleElementById(`preview-${mappingId}`);
 window.toggleRequestPreview = (requestId) => window.toggleElementById(`request-preview-${requestId}`);
+<<<<<<< HEAD
 
 // --- CONNECTION & HEALTH MANAGEMENT (Moved from cache.js) ---
 
@@ -165,3 +166,5 @@ window.checkHealthAndStartUptime = async function() {
     
     return window.wiremockStatus.online;
 };
+=======
+>>>>>>> clean

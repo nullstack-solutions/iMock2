@@ -2180,8 +2180,23 @@ class MonacoInitializer {
             this.editorReadOnlyLocked = false;
         }
 
+<<<<<<< HEAD
         this.suspendHistoryRecording = true;
         try {
+=======
+this.suspendHistoryRecording = true;
+        try {
+            // Clear selection and content before setting new value
+            if (editor && typeof editor.setSelection === 'function') {
+                editor.setSelection(new monaco.Range(1, 1, editor.getModel().getLineCount(), 1));
+            }
+            if (editor && typeof editor.trigger === 'function') {
+                editor.trigger('source', 'editor.action.selectAll');
+            }
+            if (editor && typeof editor.executeCommand === 'function') {
+                editor.executeCommand('editor.action.deleteAll');
+            }
+>>>>>>> clean
             editor.setValue('');
         } finally {
             this.suspendHistoryRecording = false;
@@ -2621,10 +2636,22 @@ class MonacoInitializer {
     }
 
     // JSON operations
+<<<<<<< HEAD
     async formatJSON() {
         const editor = this.getActiveEditor();
         const content = editor.getValue();
         
+=======
+async formatJSON() {
+        const editor = this.getActiveEditor();
+        const content = editor.getValue();
+        
+        // Clear editor before formatting to prevent content concatenation
+        if (editor && typeof editor.setValue === 'function') {
+            editor.setValue('');
+        }
+        
+>>>>>>> clean
         try {
             if (this.workerPool) {
                 const formatted = await this.workerPool.execute('format', { text: content }, 1);

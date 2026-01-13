@@ -1,80 +1,358 @@
 'use strict';
 
-window.fetchAndRenderRequests = async (data = null, options = {}) => {
+window.fetchAndRenderRequests = async (requestsToRender = null, options = {}) => {
     const container = document.getElementById(SELECTORS.LISTS.REQUESTS);
-    if (!container) return false;
+    const emptyState = document.getElementById(SELECTORS.EMPTY.REQUESTS);
+    const loadingState = document.getElementById(SELECTORS.LOADING.REQUESTS);
 
+    if (!container || !emptyState || !loadingState) {
+        Logger.error('REQUESTS', 'Required DOM elements not found for requests rendering');
+        return false;
+    }
+    
     try {
-        if (data === null) {
+        let reqSource = 'direct';
+        if (requestsToRender === null) {
+            loadingState.classList.remove('hidden');
+            container.style.display = 'none';
+            emptyState.classList.add('hidden');
+
+            let data;
             try {
-                const res = await apiFetch(ENDPOINTS.REQUESTS);
-                data = res.requests || [];
+                data = await apiFetch(ENDPOINTS.REQUESTS);
             } catch (error) {
-                if (window.DemoData?.isAvailable?.()) {
-                    if (window.markDemoModeActive) window.markDemoModeActive('requests-fallback');
-                    data = window.DemoData.getRequestsPayload().requests || [];
-                } else { throw error; }
+                // WireMock may respond with an empty body when there are no requests (or journaling is disabled).
+                // Treat empty/parse errors and 404 as "no requests" to avoid noisy console errors.
+                const message = error?.message || '';
+                const isMissingRequests = /^HTTP\s+404\b/.test(message);
+                const isEmptyJson = error?.name === 'SyntaxError' || /Unexpected end of JSON input/i.test(message);
+                if (isMissingRequests || isEmptyJson) {
+                    Logger.warn('REQUESTS', 'Requests endpoint returned no payload; treating as empty list.', error);
+                    data = { requests: [], __source: 'empty' };
+                } else
+                if (window.DemoData?.isAvailable?.() && window.DemoData?.getRequestsPayload) {
+                    Logger.warn('REQUESTS', 'Falling back to demo requests because the WireMock API request failed.', error);
+                    window.demoModeLastError = error;
+                    markDemoModeActive('requests-fallback');
+                    data = window.DemoData.getRequestsPayload();
+                } else {
+                    throw error;
+                }
+            }
+
+            if (data && data.__source) {
+                reqSource = data.__source;
+                if (reqSource === 'demo') {
+                    markDemoModeActive('requests-fallback');
+                }
+                try { delete data.__source; } catch (_) {}
+            }
+
+            if (!data || typeof data !== 'object') {
+                data = { requests: [] };
+            }
+
+            const incomingRequests = Array.isArray(data.requests) ? data.requests : [];
+
+            window.originalRequests = incomingRequests;
+            refreshRequestTabSnapshot();
+            window.allRequests = [...incomingRequests];
+        } else {
+            const sourceOverride = options?.source;
+            window.allRequests = Array.isArray(requestsToRender) ? [...requestsToRender] : [];
+            window.originalRequests = [...window.allRequests];
+            refreshRequestTabSnapshot();
+            reqSource = sourceOverride || 'custom';
+            if (reqSource === 'demo') {
+                markDemoModeActive('manual-requests');
             }
         }
 
-        window.originalRequests = data;
-        window.allRequests = data;
+        loadingState.classList.add('hidden');
 
-        window.renderList(container, data, {
-            renderItem: window.renderRequestCard,
-            getKey: window.getRequestRenderKey,
-            getSignature: window.getRequestRenderSignature
+        if (window.allRequests.length === 0) {
+            emptyState.classList.remove('hidden');
+            container.style.display = 'none';
+            updateRequestsCounter();
+            return true;
+        }
+        
+        emptyState.classList.add('hidden');
+        container.style.display = 'block';
+
+        // Invalidate cache before re-rendering to ensure fresh DOM references
+        window.invalidateElementCache(SELECTORS.LISTS.REQUESTS);
+
+        renderList(container, window.allRequests, {
+            renderItem: renderRequestMarkup,
+            getKey: getRequestRenderKey,
+            getSignature: getRequestRenderSignature
         });
+        updateRequestsCounter();
+        // Source indicator + log, mirroring mappings
+        if (typeof updateRequestsSourceIndicator === 'function') updateRequestsSourceIndicator(reqSource);
+        Logger.info('REQUESTS', `Requests render from: ${reqSource} — ${window.allRequests.length} items`);
 
-        if (typeof updateRequestsCounter === 'function') updateRequestsCounter();
         return true;
-    } catch (e) {
-        console.error('Fetch requests failed', e);
+    } catch (error) {
+        Logger.error('REQUESTS', 'Error in fetchAndRenderRequests:', error);
+        NotificationManager.error(`Failed to load requests: ${error.message}`);
+        loadingState.classList.add('hidden');
+        emptyState.classList.remove('hidden');
+        container.style.display = 'none';
         return false;
     }
 };
 
-window.renderRequestCard = (r) => {
-    if (!r) return '';
-    const matched = r.wasMatched !== false;
+// Compact request renderer through UIComponents (shortened from ~62 to 18 lines)
+window.renderRequestCard = function(request) {
+    if (!request) {
+        Logger.warn('REQUESTS', 'Invalid request data:', request);
+        return '';
+    }
+    
+    const matched = request.wasMatched !== false;
+    const clientIp = request.request?.clientIp || 'Unknown';
+    
     const data = {
-        id: r.id || '',
-        method: r.request?.method || 'GET',
-        url: r.request?.url || r.request?.urlPath || 'N/A',
-        status: r.responseDefinition?.status || (matched ? 200 : 404),
-        time: Utils.parseRequestTime(r.request?.loggedDate),
+        id: request.id || '',
+        method: request.request?.method || 'GET',
+        url: request.request?.url || request.request?.urlPath || 'N/A',
+        status: request.responseDefinition?.status || (matched ? 200 : 404),
+        time: `${Utils.parseRequestTime(request.request.loggedDate)} <span class="request-ip">IP: ${Utils.escapeHtml(clientIp)}</span>`,
         extras: {
-            badges: matched ? '<span class="badge badge-success">Matched</span>' : '<span class="badge badge-danger">Unmatched</span>',
-            preview: (
-                UIComponents.createPreviewSection('Request', {
-                    'Method': r.request?.method,
-                    'URL': r.request?.url || r.request?.urlPath,
-                    'Client IP': r.request?.clientIp,
-                    'Headers': r.request?.headers,
-                    'Body': r.request?.body
-                }) +
-                UIComponents.createPreviewSection('Response', {
-                    'Status': r.responseDefinition?.status,
-                    'Matched': matched ? 'Yes' : 'No',
-                    'Headers': r.responseDefinition?.headers,
-                    'Body': r.responseDefinition?.jsonBody || r.responseDefinition?.body
-                })
-            )
+            badges: `
+                ${matched
+                    ? `<span class="badge badge-success">${Icons.render('check-circle', { className: 'badge-icon' })}<span>Matched</span></span>`
+                    : `<span class="badge badge-danger">${Icons.render('x-circle', { className: 'badge-icon' })}<span>Unmatched</span></span>`}
+            `,
+            preview: UIComponents.createPreviewSection(`${Icons.render('request-in', { className: 'icon-inline' })} Request`, {
+                'Method': request.request?.method,
+                'URL': request.request?.url || request.request?.urlPath,
+                'Client IP': clientIp,
+                'Headers': request.request?.headers,
+                'Body': request.request?.body
+            }) + UIComponents.createPreviewSection(`${Icons.render('response-out', { className: 'icon-inline' })} Response`, {
+                'Status': request.responseDefinition?.status,
+                'Matched': matched ? 'Yes' : 'No',
+                'Headers': request.responseDefinition?.headers,
+                'Body': request.responseDefinition?.jsonBody || request.responseDefinition?.body
+            })
         }
     };
+    
     return UIComponents.createCard('request', data, []);
+}
+
+// Update the requests counter
+function updateRequestsCounter() {
+    const counter = document.getElementById(SELECTORS.COUNTERS.REQUESTS);
+    if (counter) {
+        counter.textContent = Array.isArray(window.allRequests) ? window.allRequests.length : 0;
+    }
+    updateRequestTabCounts();
+}
+
+window.updateRequestsCounter = updateRequestsCounter;
+
+function updateRequestTabCounts() {
+    const counts = window.requestTabTotals || computeRequestTabTotals(window.originalRequests);
+
+    const requestCountTargets = {
+        all: document.getElementById('requests-tab-all'),
+        matched: document.getElementById('requests-tab-matched'),
+        unmatched: document.getElementById('requests-tab-unmatched')
+    };
+
+    Object.entries(requestCountTargets).forEach(([key, element]) => {
+        if (element) {
+            element.textContent = counts?.[key] ?? 0;
+        }
+    });
+}
+
+function setActiveFilterTab(button) {
+    if (!button) {
+        return;
+    }
+
+    const group = button.dataset.filterGroup;
+    if (!group) {
+        return;
+    }
+
+    document.querySelectorAll(`.filter-tab[data-filter-group="${group}"]`).forEach(tab => {
+        tab.classList.toggle('active', tab === button);
+    });
+}
+
+// Make this function globally accessible for URLStateManager
+window.syncFilterTabsFromSelect = function syncFilterTabsFromSelect(group, value) {
+    const normalizedValue = (value || '').toString().toLowerCase();
+    const tabs = document.querySelectorAll(`.filter-tab[data-filter-group="${group}"]`);
+    let activated = false;
+
+    tabs.forEach(tab => {
+        const tabValue = (tab.dataset.filterValue || '').toLowerCase();
+        const isMatch = tabValue === normalizedValue || (!tabValue && !normalizedValue);
+        if (isMatch) {
+            tab.classList.add('active');
+            activated = true;
+        } else {
+            tab.classList.remove('active');
+        }
+    });
+
+    if (!activated && tabs.length > 0) {
+        tabs[0].classList.add('active');
+    }
 };
 
-window.updateRequestsCounter = () => {
-    const el = document.getElementById(SELECTORS.COUNTERS.REQUESTS);
-    if (el) el.textContent = window.allRequests?.length || 0;
+window.handleRequestTabClick = (button, status) => {
+    setActiveFilterTab(button);
+    const select = document.getElementById('req-filter-status');
+    if (select) {
+        select.value = status || '';
+        if (typeof applyRequestFilters === 'function') {
+            applyRequestFilters();
+        }
+    }
+};
+
+window.initializeFilterTabs = () => {
+    const mappingSelect = document.getElementById('filter-method');
+    if (mappingSelect) {
+        mappingSelect.addEventListener('change', () => {
+            syncFilterTabsFromSelect('mapping', mappingSelect.value);
+        });
+        syncFilterTabsFromSelect('mapping', mappingSelect.value);
+    }
+
+    const requestStatusSelect = document.getElementById('req-filter-status');
+    if (requestStatusSelect) {
+        requestStatusSelect.addEventListener('change', () => {
+            syncFilterTabsFromSelect('requests', requestStatusSelect.value);
+        });
+        syncFilterTabsFromSelect('requests', requestStatusSelect.value);
+    }
+
+    updateRequestTabCounts();
+};
+
+// --- ACTION HANDLERS (deduplicated connectToWireMock) ---
+
+window.openEditModal = async (identifier) => {
+    const normalizeIdentifier = (value) => {
+        if (typeof value === 'string') return value.trim();
+        if (value === undefined || value === null) return '';
+        return String(value).trim();
+    };
+
+    const targetIdentifier = normalizeIdentifier(identifier);
+
+    if (!targetIdentifier) {
+        NotificationManager.show('Invalid mapping identifier', NotificationManager.TYPES.ERROR);
+        return;
+    }
+
+    // Clear previous editing states
+    if (typeof UIComponents?.clearCardState === 'function') {
+        UIComponents.clearCardState('mapping', 'is-editing');
+    }
+    if (targetIdentifier && typeof UIComponents?.setCardState === 'function') {
+        UIComponents.setCardState('mapping', targetIdentifier, 'is-editing', true);
+    }
+
+    // Show modal with loading state immediately
+    if (typeof window.showModal === 'function') {
+        window.showModal('edit-mapping-modal');
+    } else {
+        Logger.warn('REQUESTS', 'showModal function not found');
+        return;
+    }
+
+    if (typeof window.setMappingEditorBusyState === 'function') {
+        window.setMappingEditorBusyState(true, 'Loading…');
+    }
+
+    // Update the modal title
+    const modalTitleElement = document.getElementById(SELECTORS.MODAL.TITLE);
+    if (modalTitleElement) modalTitleElement.textContent = 'Edit Mapping';
+
+    Logger.debug('REQUESTS', 'openEditModal called for mapping identifier:', identifier);
+
+    // Fetch fresh data from server (single source of truth)
+    try {
+        const latest = await apiFetch(`/mappings/${encodeURIComponent(targetIdentifier)}`);
+        const latestMapping = latest?.mapping || latest;
+
+        if (!latestMapping || !latestMapping.id) {
+            throw new Error('Invalid mapping response from server');
+        }
+
+        Logger.debug('REQUESTS', 'Loaded mapping from server:', latestMapping);
+
+        // Populate form once with fresh data
+        if (typeof window.populateEditMappingForm === 'function') {
+            window.populateEditMappingForm(latestMapping);
+        } else {
+            Logger.error('REQUESTS', 'populateEditMappingForm function not found!');
+            return;
+        }
+
+        // Update cache and index
+        addMappingToIndex(latestMapping);
+
+        Logger.debug('REQUESTS', 'openEditModal completed successfully');
+    } catch (e) {
+        Logger.error('REQUESTS', 'Failed to load mapping:', e);
+        NotificationManager.show('Failed to load mapping: ' + e.message, NotificationManager.TYPES.ERROR);
+        // Close modal on error
+        if (typeof window.hideModal === 'function') {
+            window.hideModal('edit-mapping-modal');
+        }
+    } finally {
+        if (typeof window.setMappingEditorBusyState === 'function') {
+            window.setMappingEditorBusyState(false);
+        }
+    }
+};
+
+window.deleteMapping = async (id) => {
+    if (!confirm('Delete this mapping?')) return;
+
+    try {
+        // API call FIRST
+        await apiFetch(`/mappings/${id}`, { method: 'DELETE' });
+
+        NotificationManager.success('Mapping deleted!');
+
+        // Update cache and UI with server confirmation
+        removeMappingFromIndex(id);
+        updateOptimisticCache({ id }, 'delete');
+
+    } catch (e) {
+        // Handle 404: mapping already deleted
+        if (e.message.includes('404')) {
+            Logger.info('REQUESTS', 'Mapping already deleted from server (404), updating cache locally');
+            removeMappingFromIndex(id);
+            updateOptimisticCache({ id }, 'delete');
+            NotificationManager.success('Mapping was already deleted');
+        } else {
+            NotificationManager.error(`Delete failed: ${e.message}`);
+        }
+    }
 };
 
 window.clearRequests = async () => {
-    if (!confirm('Clear requests?')) return;
+    if (!confirm('Clear all requests?')) return;
+    
     try {
         await apiFetch('/requests', { method: 'DELETE' });
-        NotificationManager.success('Cleared');
-        window.fetchAndRenderRequests();
-    } catch (e) { NotificationManager.error('Clear failed'); }
+        NotificationManager.success('Requests cleared!');
+        await fetchAndRenderRequests();
+    } catch (e) {
+        NotificationManager.error(`Clear failed: ${e.message}`);
+    }
 };
+
