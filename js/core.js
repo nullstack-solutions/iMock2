@@ -566,10 +566,6 @@ window.normalizeWiremockBaseUrl = (hostInput, portInput) => {
 };
 
 // --- API CLIENT WITH TIMEOUT SUPPORT ---
-// Request ID generator for debugging correlation
-let _requestIdCounter = 0;
-const generateRequestId = () => `${Date.now().toString(36)}-${(++_requestIdCounter).toString(36)}`;
-
 window.apiFetch = async (endpoint, options = {}) => {
     const controller = new AbortController();
     const timeoutSettings = Utils.safeCall(window.readWiremockSettings) || {};
@@ -578,26 +574,10 @@ window.apiFetch = async (endpoint, options = {}) => {
     const fullUrl = `${window.wiremockBaseUrl}${endpoint}`;
     const method = options.method || 'GET';
     
-    // Generate request ID for correlation/debugging
-    const requestId = generateRequestId();
-    
-    // Determine client intent for debugging
-    let clientIntent = options.intent || 'unknown';
-    if (endpoint === window.ENDPOINTS?.MAPPINGS) {
-        clientIntent = options.intent || 'fetch-mappings';
-    } else if (endpoint === window.ENDPOINTS?.HEALTH) {
-        clientIntent = 'health-check';
-    } else if (endpoint.startsWith('/mappings/') && method === 'GET') {
-        clientIntent = 'get-single-mapping';
-    }
-    
     const headers = { 
         'Content-Type': 'application/json', 
         ...ensureCustomHeaderObject(timeoutSettings.customHeaders || window.customHeaders), 
         ...options.headers,
-        // Add correlation headers for debugging (optional - can be disabled in production)
-        'X-Request-Id': requestId,
-        'X-Client-Intent': clientIntent,
     };
 
     // Reduce logging verbosity for periodic endpoints to prevent memory leaks
