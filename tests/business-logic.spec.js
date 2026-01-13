@@ -42,7 +42,7 @@ sandbox.updateRequestTabCounts = () => { sandbox.__requestCountsCalled = true; }
 
 const context = vm.createContext(sandbox);
 
-for (const script of ['js/features/state.js', 'js/features/demo.js']) {
+for (const script of ['js/lib/logger.js', 'js/features/state.js', 'js/features/demo.js']) {
     const code = fs.readFileSync(path.join(__dirname, '..', script), 'utf8');
     vm.runInContext(code, context, { filename: script });
 }
