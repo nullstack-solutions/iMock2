@@ -25,6 +25,19 @@ function seedCacheFromGlobals(cacheMap) {
 
 window.isImockCacheMapping = (m) => m && m.metadata && m.metadata.imockCache === true;
 
+// Helper to manage optimistic queue entries
+function upsertQueueItem(id, op, payload, ts) {
+    const item = { id, op: op || 'update', payload, ts };
+    const idx = cm.optimisticQueue.findIndex(x => x.id === id);
+    if (idx >= 0) cm.optimisticQueue[idx] = item;
+    else cm.optimisticQueue.push(item);
+}
+
+function removeQueueItem(id) {
+    const idx = cm.optimisticQueue.findIndex(x => x.id === id);
+    if (idx >= 0) cm.optimisticQueue.splice(idx, 1);
+}
+
 window.updateOptimisticCache = function(mappingLike, op, options = {}) {
     const m = mappingLike.mapping || mappingLike;
     const id = m.id || m.uuid;
@@ -34,14 +47,9 @@ window.updateOptimisticCache = function(mappingLike, op, options = {}) {
     
     // Confirm/remove from queue by default unless explicitly adding
     if (options.queueMode !== 'add') {
-        const idx = cm.optimisticQueue.findIndex(x => x.id === id);
-        if (idx >= 0) cm.optimisticQueue.splice(idx, 1);
+        removeQueueItem(id);
     } else {
-        // Add to queue
-        const idx = cm.optimisticQueue.findIndex(x => x.id === id);
-        const item = { id, op: op || 'update', payload: m, ts };
-        if (idx >= 0) cm.optimisticQueue[idx] = item;
-        else cm.optimisticQueue.push(item);
+        upsertQueueItem(id, op, m, ts);
     }
 
     if (cm.cache.size === 0) seedCacheFromGlobals(cm.cache);
@@ -77,10 +85,7 @@ window.updateOptimisticCache = function(mappingLike, op, options = {}) {
 cm.addOptimisticUpdate = (m, op) => {
     const id = m.id || m.uuid;
     if (!id) return;
-    const item = { id, op: op || 'update', payload: m, ts: Date.now() };
-    const idx = cm.optimisticQueue.findIndex(x => x.id === id);
-    if (idx >= 0) cm.optimisticQueue[idx] = item;
-    else cm.optimisticQueue.push(item);
+    upsertQueueItem(id, op, m, Date.now());
 };
 
 window.rebuildCache = () => {

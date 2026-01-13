@@ -153,7 +153,7 @@ window.applyOptimisticMappingUpdate = (mapping) => {
     const id = mapping.id || mapping.uuid;
     if (!id) return;
     
-    const op = (window.cacheManager?.cache?.has(id)) ? 'update' : 'create';
+    const op = window.cacheManager?.cache?.has(id) === true ? 'update' : 'create';
     
     // Remember optimistic shadow for survival across refreshes
     if (!window.optimisticShadowMappings) window.optimisticShadowMappings = new Map();
@@ -177,20 +177,26 @@ window.backgroundRefreshMappings = async (useCache = false) => {
         
         // Apply optimistic shadows: overlay optimistic mappings onto server data
         if (window.optimisticShadowMappings && window.optimisticShadowMappings.size > 0) {
-            const serverIds = new Set(mappings.map(m => m.id || m.uuid));
-            const merged = [...mappings];
+            // Use Map for O(1) lookups
+            const serverMap = new Map(mappings.map(m => [m.id || m.uuid, m]));
+            const result = [...mappings]; // Start with all server mappings
             
             window.optimisticShadowMappings.forEach((shadow, id) => {
-                if (!serverIds.has(id)) {
+                if (!serverMap.has(id)) {
                     // Optimistic mapping not yet on server - keep it
-                    merged.push(shadow.mapping);
+                    result.push(shadow.mapping);
                 } else {
-                    // Mapping now on server - remove from shadow
+                    // Mapping now on server - merge optimistic changes, then remove from shadow
+                    const idx = result.findIndex(m => (m.id || m.uuid) === id);
+                    if (idx !== -1 && shadow && shadow.mapping) {
+                        // Shallow-merge: server mapping first, then optimistic fields override
+                        result[idx] = Object.assign({}, result[idx], shadow.mapping);
+                    }
                     window.optimisticShadowMappings.delete(id);
                 }
             });
             
-            mappings = merged;
+            mappings = result;
         }
         
         window.originalMappings = mappings;
