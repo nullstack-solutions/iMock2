@@ -26,7 +26,7 @@ if (!isOptimisticShadowMap(window.optimisticShadowMappings)) {
 
 const UIComponents = {
     // Base card component replacing renderMappingCard and renderRequestCard
-    createCard: (type, data, actions = []) => {
+    createCard(type, data, actions = []) {
         const { id, method, url, status, name, time, extras = {}, expanded = false } = data;
 
         // Map handler names to data-action attributes
@@ -66,7 +66,7 @@ const UIComponents = {
                                 ${action.icon ? Icons.render(action.icon, { className: 'action-icon' }) : ''}
                                 <span class="sr-only">${Utils.escapeHtml(action.title)}</span>
                             </button>
-                        `}).join('')}
+                        `;}).join('')}
                     </div>
                 </div>
                 <div class="${type}-preview" id="preview-${Utils.escapeHtml(id)}" style="display: ${expanded ? 'block' : 'none'};">
@@ -99,64 +99,68 @@ const UIComponents = {
         });
     },
 
-    createPreviewSection: (title, items) => `
-        <div class="preview-section">
-            <h4>${title}</h4>
-            ${Object.entries(items).map(([key, value]) => {
-                if (!value) return '';
-                
-                if (typeof value === 'object') {
-                    const jsonString = JSON.stringify(value);
-                    // For large objects, show a summary and lazy load full content
+    renderPreviewValue(key, value) {
+        if (!value) return '';
+
+        if (typeof value === 'object') {
+            const jsonString = JSON.stringify(value);
+            // For large objects, show a summary and lazy load full content
+            if (jsonString.length > 500) {
+                const preview = Utils.formatJson(value, 'Invalid JSON', 200);
+                const fullId = `full-${Math.random().toString(36).substr(2, 9)}`;
+                return `<div class="preview-value">
+                    <strong>${key}:</strong>
+                    <pre>${preview}</pre>
+                    <button class="btn btn-secondary btn-small" data-action="show-full-content" data-target-id="${fullId}" data-json="${Utils.escapeHtml(JSON.stringify(value))}" style="margin-top: 0.5rem; font-size: 0.8rem;">
+                        Show Full Content
+                    </button>
+                    <div id="${fullId}" style="display: none;"></div>
+                </div>`;
+            } else {
+                return `<div class="preview-value"><strong>${key}:</strong><pre>${Utils.formatJson(value)}</pre></div>`;
+            }
+        } else if (typeof value === 'string') {
+            const trimmed = value.trim();
+            if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+                try {
+                    const parsedJson = JSON.parse(trimmed);
+                    const jsonString = JSON.stringify(parsedJson);
                     if (jsonString.length > 500) {
-                        const preview = Utils.formatJson(value, 'Invalid JSON', 200);
+                        const preview = Utils.formatJson(parsedJson, 'Invalid JSON', 200);
                         const fullId = `full-${Math.random().toString(36).substr(2, 9)}`;
                         return `<div class="preview-value">
                             <strong>${key}:</strong>
                             <pre>${preview}</pre>
-                            <button class="btn btn-secondary btn-small" data-action="show-full-content" data-target-id="${fullId}" data-json="${Utils.escapeHtml(JSON.stringify(value))}" style="margin-top: 0.5rem; font-size: 0.8rem;">
+                            <button class="btn btn-secondary btn-small" data-action="show-full-content" data-target-id="${fullId}" data-json="${Utils.escapeHtml(JSON.stringify(parsedJson))}" style="margin-top: 0.5rem; font-size: 0.8rem;">
                                 Show Full Content
                             </button>
                             <div id="${fullId}" style="display: none;"></div>
                         </div>`;
-                    } else {
-                        return `<div class="preview-value"><strong>${key}:</strong><pre>${Utils.formatJson(value)}</pre></div>`;
                     }
-                } else if (typeof value === 'string') {
-                    const trimmed = value.trim();
-                    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
-                        try {
-                            const parsedJson = JSON.parse(trimmed);
-                            const jsonString = JSON.stringify(parsedJson);
-                            if (jsonString.length > 500) {
-                                const preview = Utils.formatJson(parsedJson, 'Invalid JSON', 200);
-                                const fullId = `full-${Math.random().toString(36).substr(2, 9)}`;
-                                return `<div class="preview-value">
-                                    <strong>${key}:</strong>
-                                    <pre>${preview}</pre>
-                                    <button class="btn btn-secondary btn-small" data-action="show-full-content" data-target-id="${fullId}" data-json="${Utils.escapeHtml(JSON.stringify(parsedJson))}" style="margin-top: 0.5rem; font-size: 0.8rem;">
-                                        Show Full Content
-                                    </button>
-                                    <div id="${fullId}" style="display: none;"></div>
-                                </div>`;
-                            }
-                            return `<div class="preview-value"><strong>${key}:</strong><pre>${Utils.formatJson(parsedJson)}</pre></div>`;
-                        } catch (e) {
-                            // If JSON parsing fails, fall back to original string rendering
-                        }
-                    }
-
-                    const escaped = Utils.escapeHtml(value);
-                    const formatted = escaped.includes('\n') ? `<pre>${escaped}</pre>` : escaped;
-                    return `<div class="preview-value"><strong>${key}:</strong> ${formatted}</div>`;
-                    } else {
-                    const safeValue = Utils.escapeHtml(String(value));
-                    return `<div class="preview-value"><strong>${key}:</strong> ${safeValue}</div>`;
+                    return `<div class="preview-value"><strong>${key}:</strong><pre>${Utils.formatJson(parsedJson)}</pre></div>`;
+                } catch (e) {
+                    // If JSON parsing fails, fall back to original string rendering
                 }
-            }).join('')}
-        </div>`,
+            }
+
+            const escaped = Utils.escapeHtml(value);
+            const formatted = escaped.includes('\n') ? `<pre>${escaped}</pre>` : escaped;
+            return `<div class="preview-value"><strong>${key}:</strong> ${formatted}</div>`;
+        } else {
+            const safeValue = Utils.escapeHtml(String(value));
+            return `<div class="preview-value"><strong>${key}:</strong> ${safeValue}</div>`;
+        }
+    },
+
+    createPreviewSection(title, items) {
+        return `
+        <div class="preview-section">
+            <h4>${title}</h4>
+            ${Object.entries(items).map(([key, value]) => this.renderPreviewValue(key, value)).join('')}
+        </div>`;
+    },
     
-    toggleDetails: (id, type) => {
+    toggleDetails(id, type) {
         const normalizedId = String(id ?? '');
         const preview = document.getElementById(`preview-${id}`);
         const arrow = document.getElementById(`arrow-${id}`);
@@ -187,7 +191,7 @@ const UIComponents = {
         UIComponents.setCardState(type, id, 'is-expanded', willShow);
     },
     
-    toggleFullContent: (elementId) => {
+    toggleFullContent(elementId) {
         const element = document.getElementById(elementId);
         const button = element.previousElementSibling;
         
@@ -305,6 +309,24 @@ function getOptimisticShadowTimestamp(mapping) {
     return Number.NaN;
 }
 
+function shouldUseOptimisticUpdate(serverMapping, optimisticMapping) {
+    if (!serverMapping) return true;
+    
+    // Check render signature to avoid unnecessary updates
+    if (typeof getMappingRenderSignature === 'function') {
+        try {
+            const liveSignature = getMappingRenderSignature(serverMapping);
+            const optimisticSignature = getMappingRenderSignature(optimisticMapping);
+            if (liveSignature === optimisticSignature) return false;
+        } catch {}
+    }
+
+    const serverTs = getOptimisticShadowTimestamp(serverMapping);
+    const optimisticTs = getOptimisticShadowTimestamp(optimisticMapping);
+    
+    return Number.isFinite(optimisticTs) && (!Number.isFinite(serverTs) || optimisticTs > serverTs);
+}
+
 function applyOptimisticShadowMappings(incoming) {
     if (!Array.isArray(incoming)) {
         return incoming;
@@ -319,16 +341,7 @@ function applyOptimisticShadowMappings(incoming) {
 
     for (const [rawId, entry] of Array.from(window.optimisticShadowMappings.entries())) {
         const normalizedId = String(rawId || '');
-        if (!entry || typeof entry !== 'object') {
-            window.optimisticShadowMappings.delete(normalizedId);
-            continue;
-        }
-
-        if (entry.mapping == null) {
-            const index = merged.findIndex(m => String(m?.id || m?.uuid || '') === normalizedId);
-            if (index !== -1) {
-                merged.splice(index, 1);
-            }
+        if (!entry || typeof entry !== 'object' || !entry.mapping) {
             window.optimisticShadowMappings.delete(normalizedId);
             continue;
         }
@@ -339,51 +352,34 @@ function applyOptimisticShadowMappings(incoming) {
         }
 
         const index = merged.findIndex(m => String(m?.id || m?.uuid || '') === normalizedId);
+        
         if (index !== -1) {
-            let shouldUseOptimistic = false;
-            let shouldRetainEntry = true;
-
-            if (typeof getMappingRenderSignature === 'function') {
-                try {
-                    const liveSignature = getMappingRenderSignature(merged[index]);
-                    const optimisticSignature = getMappingRenderSignature(entry.mapping);
-                    if (liveSignature === optimisticSignature) {
-                        window.optimisticShadowMappings.delete(normalizedId);
-                        continue;
-                    }
-                } catch {}
-            }
-
+            // Mapping exists in server list
             if ((entry.op || 'update') === 'create') {
-                shouldRetainEntry = false;
-            } else {
-                const serverTs = getOptimisticShadowTimestamp(merged[index]);
-                const optimisticTs = getOptimisticShadowTimestamp(entry.mapping);
-                if (Number.isFinite(optimisticTs)) {
-                    if (!Number.isFinite(serverTs) || optimisticTs > serverTs) {
-                        shouldUseOptimistic = true;
-                    } else {
-                        shouldRetainEntry = false;
-                    }
-                } else {
-                    shouldRetainEntry = false;
-                }
+                // If it was a create op but now exists on server, we might want to stop tracking it
+                // unless our local version is newer
             }
 
-            if (shouldUseOptimistic) {
+            if (shouldUseOptimisticUpdate(merged[index], entry.mapping)) {
                 entry.ts = now;
                 merged[index] = entry.mapping;
             } else {
-                if (!shouldRetainEntry) {
-                    window.optimisticShadowMappings.delete(normalizedId);
-                } else {
-                    entry.ts = now;
-                }
+                // Server version is newer or identical, stop tracking optimistic version
+                window.optimisticShadowMappings.delete(normalizedId);
             }
         } else {
-            merged.unshift(entry.mapping);
-            if (!Number.isFinite(entry.ts)) {
-                entry.ts = now;
+            // Mapping does not exist in server list
+             if ((entry.op || 'update') === 'create') {
+                merged.unshift(entry.mapping);
+                if (!Number.isFinite(entry.ts)) {
+                    entry.ts = now;
+                }
+            } else {
+                 // It was an update or delete, but item is gone from server. 
+                 // If it was a delete, we respected it by not adding it (it's not in merged).
+                 // If it was an update, but server doesn't have it, maybe it was deleted on server?
+                 // For now, if we have an update for a missing item, we drop it unless it was a create.
+                 window.optimisticShadowMappings.delete(normalizedId);
             }
         }
     }
@@ -442,6 +438,107 @@ function pruneOptimisticShadowMappings(currentList) {
         const optimisticTs = getOptimisticShadowTimestamp(entry.mapping);
         if (Number.isFinite(liveTs) && (!Number.isFinite(optimisticTs) || liveTs >= optimisticTs)) {
             window.optimisticShadowMappings.delete(id);
+        }
+    }
+}
+
+// Helper to sort mappings consistently
+function sortMappings(mappings) {
+    return [...mappings].sort((a, b) => {
+        const priorityA = a.priority || 1;
+        const priorityB = b.priority || 1;
+        if (priorityA !== priorityB) return priorityA - priorityB;
+        
+        const methodOrder = { 'GET': 1, 'POST': 2, 'PUT': 3, 'PATCH': 4, 'DELETE': 5 };
+        const methodA = methodOrder[a.request?.method] || 999;
+        const methodB = methodOrder[b.request?.method] || 999;
+        if (methodA !== methodB) return methodA - methodB;
+        
+        const urlA = a.request?.url || a.request?.urlPattern || a.request?.urlPath || '';
+        const urlB = b.request?.url || b.request?.urlPattern || b.request?.urlPath || '';
+        return urlA.localeCompare(urlB);
+    });
+}
+
+// Helper to validate cache against server data silently
+async function validateCacheAgainstServer(cachedMappings) {
+    try {
+        // Wait a bit for any optimistic updates to complete
+        await new Promise(resolve => setTimeout(resolve, 200));
+
+        const freshData = await fetchMappingsFromServer({ force: true });
+        if (!freshData || !freshData.mappings) return;
+
+        const serverMappings = freshData.mappings.filter(x => !isImockCacheMapping(x));
+        
+        // Silent comparison: detect discrepancies between cache and server
+        const cachedIds = new Set(cachedMappings.map(m => m.id || m.uuid));
+        const serverIds = new Set(serverMappings.map(m => m.id || m.uuid));
+
+        // Check for mismatches
+        const hasCountMismatch = cachedMappings.length !== serverMappings.length;
+        const missingInCache = [...serverIds].filter(id => !cachedIds.has(id));
+        const extraInCache = [...cachedIds].filter(id => !serverIds.has(id));
+        const hasMismatch = hasCountMismatch || missingInCache.length > 0 || extraInCache.length > 0;
+
+        // Update cache manager with fresh data (silent background sync)
+        const mergedMappings = [];
+
+        // Add all server mappings first (they have full data)
+        serverMappings.forEach(serverMapping => {
+            const serverId = serverMapping.id || serverMapping.uuid;
+            // Check if this server mapping was optimistically deleted
+            const optimisticItem = window.cacheManager.optimisticQueue.find(x => x.id === serverId);
+            const isOptimisticallyDeleted = optimisticItem && optimisticItem.op === 'delete';
+
+            if (!isOptimisticallyDeleted) {
+                mergedMappings.push(serverMapping);
+            }
+        });
+
+        // Add optimistic creations (mappings that exist locally but not on server)
+        window.allMappings.forEach(currentMapping => {
+            const currentId = currentMapping.id || currentMapping.uuid;
+            // If this mapping doesn't exist on server, it's an optimistic creation
+            const existsOnServer = serverIds.has(currentId);
+            if (!existsOnServer) {
+                mergedMappings.push(currentMapping);
+            }
+        });
+
+        // Update data stores silently (no UI re-render)
+        window.allMappings = mergedMappings;
+        window.originalMappings = mergedMappings;
+        refreshMappingTabSnapshot();
+        syncCacheWithMappings(window.originalMappings);
+        rebuildMappingIndex(window.originalMappings);
+
+        // Show toast notification based on comparison
+        if (typeof NotificationManager !== 'undefined') {
+            if (hasMismatch) {
+                const details = [];
+                if (missingInCache.length > 0) details.push(`${missingInCache.length} new on server`);
+                if (extraInCache.length > 0) details.push(`${extraInCache.length} missing on server`);
+
+                NotificationManager.warning(
+                    `Cache discrepancies detected (${details.join(', ')}). Manual cache rebuild recommended.`,
+                    5000
+                );
+                console.warn('🧩 [CACHE] Discrepancies detected:', {
+                    missingInCache,
+                    extraInCache,
+                    cachedCount: cachedMappings.length,
+                    serverCount: serverMappings.length
+                });
+            } else {
+                NotificationManager.success('Data synchronized with server', 3000);
+                console.log('🧩 [CACHE] Data synchronized successfully');
+            }
+        }
+    } catch (e) {
+        console.warn('🧩 [CACHE] Failed to validate cache:', e);
+        if (typeof NotificationManager !== 'undefined') {
+            NotificationManager.error('Cache validation failed');
         }
     }
 }
