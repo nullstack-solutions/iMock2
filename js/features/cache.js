@@ -21,11 +21,9 @@
     // --- HELPER FUNCTIONS ---
 
     function seedCacheFromGlobals(cacheMap) {
-        console.log('DEBUG: seedCacheFromGlobals called. allMappings length:', window.allMappings ? window.allMappings.length : 'undefined');
         if (Array.isArray(window.allMappings)) {
             window.allMappings.forEach(function(m) {
                 const id = m.id || m.uuid;
-                console.log('DEBUG: Seeding mapping:', id);
                 if (id) cacheMap.set(id, m);
             });
         }
@@ -45,7 +43,6 @@
     window.isImockCacheMapping = function(mapping) {
         return mapping && mapping.metadata && mapping.metadata.imockCache === true;
     };
-
     window.regenerateImockCache = function() {
         // Determine the authoritative source of mappings
         let sourceMappings = [];
@@ -63,19 +60,16 @@
                 count: sourceMappings.length
             }
         };
-
         window.imockCache = {
             data: cacheData,
             timestamp: Date.now(),
             version: 1
         };
-
         // Notify that cache has been updated
         console.log('📦 [CACHE] Cache regenerated with ' + cacheData.mappings.length + ' mappings');
         window.cacheManager.lastSync = Date.now();
         window.cacheManager.isDirty = false;
     };
-
     window.updateOptimisticCache = function(mappingLike, operation, options = {}) {
         const mapping = mappingLike.mapping || mappingLike;
         const id = mapping.id || mapping.uuid;
@@ -151,7 +145,6 @@
             window.refreshMappingsFromCache();
         }
     };
-
     window.garbageCollect = function() {
         const now = Date.now();
         const ttl = window.cacheManager.optimisticTTL;
@@ -171,7 +164,6 @@
             window.enqueueCacheSync();
         }
     };
-
     window.rebuildCache = function() {
         console.log('🔄 [CACHE] Rebuilding cache from memory...');
         window.cacheManager.cache.clear();
