@@ -217,22 +217,20 @@ window.applyQuickFilter = () => {
     const amount = parseInt(match[1]);
     const unit = match[2];
     
-    // Calculate the "from" time based on the unit
     switch (unit) {
-        case 'm': // minutes
+        case 'm':
             fromTime.setMinutes(fromTime.getMinutes() - amount);
             break;
-        case 'h': // hours
+        case 'h':
             fromTime.setHours(fromTime.getHours() - amount);
             break;
-        case 'd': // days
+        case 'd':
             fromTime.setDate(fromTime.getDate() - amount);
             break;
         default:
             return;
     }
     
-    // Set the time range and apply filters
     applyDateRange(dateFromEl, dateToEl, fromTime, now);
 };
 

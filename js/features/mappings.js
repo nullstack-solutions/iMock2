@@ -497,11 +497,8 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                         // Start async fresh fetch for silent validation (no UI re-render)
                         (async () => {
                             try {
-                                // Wait a bit for any optimistic updates to complete. Delay is configurable
-                                // via `window.optimisticUpdateDelayMs` to balance responsiveness vs. stability.
-                                const delayMs = (typeof window !== 'undefined' && typeof window.optimisticUpdateDelayMs === 'number')
-                                    ? window.optimisticUpdateDelayMs
-                                    : 500;
+                                const DEFAULT_OPTIMISTIC_DELAY_MS = 500;
+                                const delayMs = window.optimisticUpdateDelayMs ?? DEFAULT_OPTIMISTIC_DELAY_MS;
                                 await new Promise(resolve => setTimeout(resolve, delayMs));
 
                                 const freshData = await fetchMappingsFromServer({ force: true });

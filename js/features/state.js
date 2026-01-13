@@ -31,29 +31,59 @@
     function addMappingToIndex(mapping) {
         if (!mapping || typeof mapping !== 'object') return;
         if (!(window.mappingIndex instanceof Map)) window.mappingIndex = new Map();
+        
         const identifiers = new Set();
-        ['id', 'uuid', 'stubMappingId', 'stubId', 'mappingId'].forEach(field => { if (mapping[field]) identifiers.add(String(mapping[field]).trim()); });
-        if (mapping.metadata?.id) identifiers.add(String(mapping.metadata.id).trim());
-        identifiers.forEach(id => { if (id) window.mappingIndex.set(id, mapping); });
+        const idFields = ['id', 'uuid', 'stubMappingId', 'stubId', 'mappingId'];
+        
+        for (const field of idFields) {
+            if (mapping[field]) {
+                identifiers.add(String(mapping[field]).trim());
+            }
+        }
+        
+        if (mapping.metadata?.id) {
+            identifiers.add(String(mapping.metadata.id).trim());
+        }
+        
+        for (const id of identifiers) {
+            if (id) {
+                window.mappingIndex.set(id, mapping);
+            }
+        }
     }
 
     function rebuildMappingIndex(mappings) {
-        if (!(window.mappingIndex instanceof Map)) window.mappingIndex = new Map();
-        else window.mappingIndex.clear();
-        if (Array.isArray(mappings)) mappings.forEach(addMappingToIndex);
+        if (!(window.mappingIndex instanceof Map)) {
+            window.mappingIndex = new Map();
+        } else {
+            window.mappingIndex.clear();
+        }
+        
+        if (Array.isArray(mappings)) {
+            mappings.forEach(addMappingToIndex);
+        }
     }
 
 function computeMappingTabTotals(source = []) {
         const totals = { all: 0, get: 0, post: 0, put: 0, patch: 0, delete: 0 };
         
-        // If no source provided, use MappingsStore
         if (!Array.isArray(source) || source.length === 0) {
             source = window.MappingsStore?.getAll ? window.MappingsStore.getAll() : [];
         }
         
-        if (!Array.isArray(source) || source.length === 0) return totals;
+        if (!Array.isArray(source) || source.length === 0) {
+            return totals;
+        }
+        
         totals.all = source.length;
-        source.forEach(mapping => { const method = (mapping?.request?.method || '').toLowerCase(); if (Object.prototype.hasOwnProperty.call(totals, method)) totals[method] += 1; });
+        
+        for (const mapping of source) {
+            const method = (mapping?.request?.method || '').toLowerCase();
+            if (Object.prototype.hasOwnProperty.call(totals, method)) {
+                totals[method] += 1;
+            }
+        }
+        
         return totals;
     }
 
@@ -65,19 +95,22 @@ function refreshMappingTabSnapshot() {
 
     function computeRequestTabTotals(source = []) {
         const totals = { all: 0, matched: 0, unmatched: 0 };
+        
         if (!Array.isArray(source) || source.length === 0) {
             return totals;
         }
 
         totals.all = source.length;
-        source.forEach(request => {
+        
+        for (const request of source) {
             const matched = request?.wasMatched !== false;
             if (matched) {
                 totals.matched += 1;
             } else {
                 totals.unmatched += 1;
             }
-        });
+        }
+        
         return totals;
     }
 

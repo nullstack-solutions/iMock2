@@ -57,9 +57,15 @@ window.MappingsOperations = {
     const normalizedPayload = { ...(mappingData || {}) };
     normalizeScenarioNameField(normalizedPayload, { notify: (msg) => window.NotificationManager?.warning?.(msg) });
 
+    function generateFallbackId() {
+      const timestamp = Date.now();
+      const random = Math.random().toString(36).substr(2, 9);
+      return `temp-${timestamp}-${random}`;
+    }
+
     const tempId = typeof crypto?.randomUUID === 'function'
       ? `temp-${crypto.randomUUID()}`
-      : `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      : generateFallbackId();
 
     Logger.info('OPS', `Creating mapping with temp ID: ${tempId}`);
 
