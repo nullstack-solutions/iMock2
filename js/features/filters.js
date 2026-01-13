@@ -629,14 +629,16 @@ function updateSavedFiltersDisplay(tab) {
     }
 
     // Build chips HTML - with X inside the button
+    // Properly escape both backslashes and single quotes to prevent injection
+    const escapeForJS = (str) => str.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
     const chips = savedFilters.map(filter => `
         <button type="button"
                 class="filter-chip filter-chip-saved"
-                onclick="applySavedFilter('${tab}', '${filter.name.replace(/'/g, "\\'")}')"
+                onclick="applySavedFilter('${tab}', '${escapeForJS(filter.name)}')"
                 title="${filter.query}">
             <span class="filter-chip-text">${filter.name}</span>
             <span class="filter-chip-remove"
-                  onclick="event.stopPropagation(); deleteSavedFilter('${tab}', '${filter.name.replace(/'/g, "\\'")}')"
+                  onclick="event.stopPropagation(); deleteSavedFilter('${tab}', '${escapeForJS(filter.name)}')"
                   title="Delete filter"
                   aria-label="Delete filter">×</span>
         </button>
