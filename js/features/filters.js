@@ -177,16 +177,27 @@ window.removeActiveFilter = (key) => {
 };
 window.applyRequestFilters = () => FilterManager.applyRequestFilters();
 
+// Helper function to set date range values and apply filters
+function applyDateRange(fromEl, toEl, fromTime, toTime) {
+    if (fromEl) fromEl.value = Utils.formatDateTime(fromTime);
+    if (toEl) toEl.value = Utils.formatDateTime(toTime);
+    FilterManager.applyRequestFilters();
+    if (typeof FilterManager.flushRequestFilters === 'function') {
+        FilterManager.flushRequestFilters();
+    }
+}
+
 // Quick filter function for preset time ranges
 window.applyQuickFilter = () => {
     const quickFilterEl = document.getElementById(SELECTORS.REQUEST_FILTERS.QUICK);
     if (!quickFilterEl) return;
 
     const value = quickFilterEl.value;
+    const dateFromEl = document.getElementById(SELECTORS.REQUEST_FILTERS.DATE_FROM);
+    const dateToEl = document.getElementById(SELECTORS.REQUEST_FILTERS.DATE_TO);
+    
     if (!value) {
         // Clear time range if no quick filter selected
-        const dateFromEl = document.getElementById(SELECTORS.REQUEST_FILTERS.DATE_FROM);
-        const dateToEl = document.getElementById(SELECTORS.REQUEST_FILTERS.DATE_TO);
         if (dateFromEl) dateFromEl.value = '';
         if (dateToEl) dateToEl.value = '';
         FilterManager.applyRequestFilters();
@@ -221,18 +232,8 @@ window.applyQuickFilter = () => {
             return;
     }
     
-    // Set the time range inputs
-    const dateFromEl = document.getElementById(SELECTORS.REQUEST_FILTERS.DATE_FROM);
-    const dateToEl = document.getElementById(SELECTORS.REQUEST_FILTERS.DATE_TO);
-
-    if (dateFromEl) dateFromEl.value = Utils.formatDateTime(fromTime);
-    if (dateToEl) dateToEl.value = Utils.formatDateTime(now);
-
-    // Apply the filters
-    FilterManager.applyRequestFilters();
-    if (typeof FilterManager.flushRequestFilters === 'function') {
-        FilterManager.flushRequestFilters();
-    }
+    // Set the time range and apply filters
+    applyDateRange(dateFromEl, dateToEl, fromTime, now);
 };
 
 // Clear quick time filter selection (used when custom time range is set)
@@ -263,7 +264,6 @@ window.applyQuickTimeFilter = () => {
 
     // Calculate time range
     const now = new Date();
-    const toTime = now;
     let fromTime = new Date(now);
 
     // Parse time value
@@ -285,19 +285,8 @@ window.applyQuickTimeFilter = () => {
         }
     }
 
-    // Format datetime for input fields (YYYY-MM-DDTHH:mm)
-    const formatDateTime = (date) => {
-        const pad = (n) => String(n).padStart(2, '0');
-        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
-    };
-
-    fromEl.value = formatDateTime(fromTime);
-    toEl.value = formatDateTime(toTime);
-
-    FilterManager.applyRequestFilters();
-    if (typeof FilterManager.flushRequestFilters === 'function') {
-        FilterManager.flushRequestFilters();
-    }
+    // Set the time range and apply filters
+    applyDateRange(fromEl, toEl, fromTime, now);
 };
 
 window.clearRequestFilters = () => {

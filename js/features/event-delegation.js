@@ -235,7 +235,12 @@ class EventDelegationManager {
             const startTime = performance.now();
             try {
                 if (type === 'mapping') {
-                    // Get mapping from store or index
+                    // Get mapping from store or legacy index.
+                    // NOTE: window.MappingsStore is the primary source of truth for mappings.
+                    // window.mappingIndex is a legacy compatibility layer that mirrors the same data
+                    // for older code paths. It is only consulted as a fallback when MappingsStore
+                    // does not yet have the mapping (e.g. during incremental migration).
+                    // Once all consumers are migrated to MappingsStore, this fallback can be removed.
                     const mapping = window.MappingsStore.get(id) ||
                                    window.mappingIndex?.get(id);
 

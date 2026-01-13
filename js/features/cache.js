@@ -29,7 +29,11 @@ function isCacheEnabled() {
         const settings = (typeof window.readWiremockSettings === 'function') ? window.readWiremockSettings() : {};
         return (settings.cacheEnabled !== false) && (checkbox ? checkbox.checked : true);
     } catch (error) {
-        Logger.warn('CACHE', 'Failed to resolve cache enabled state:', error);
+        Logger.warn(
+            'CACHE',
+            'Failed to resolve cache enabled state. Defaulting to cache disabled. Check settings configuration.',
+            error
+        );
         return false;
     }
 }
