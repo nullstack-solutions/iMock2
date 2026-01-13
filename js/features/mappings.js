@@ -648,6 +648,9 @@ const filteredMappings = Array.isArray(incoming) ? incoming.filter(m => !isImock
         loadingState.classList.add('hidden');
         
         const currentMappings = window.MappingsStore ? window.MappingsStore.getAll() : (Array.isArray(mappingsToRender) ? mappingsToRender : []);
+        
+        // Set window.allMappings for backward compatibility with tests and legacy code
+        window.allMappings = currentMappings;
         if (currentMappings.length === 0) {
             emptyState.classList.remove('hidden');
             container.style.display = 'none';
@@ -720,7 +723,7 @@ const filteredMappings = Array.isArray(incoming) ? incoming.filter(m => !isImock
             }
 
             // Batch updates to counter, source indicator, and filters
-            requestAnimationFrame(() => {
+            const batchUpdate = () => {
                 updateMappingsCounter();
                 if (renderSource) {
                     updateDataSourceIndicator(renderSource);
@@ -740,7 +743,14 @@ const filteredMappings = Array.isArray(incoming) ? incoming.filter(m => !isImock
 
                 // Reset willChange after update
                 container.style.willChange = 'auto';
-            });
+            };
+            
+            // Use requestAnimationFrame if available (browser), otherwise execute immediately (tests)
+            if (typeof requestAnimationFrame === 'function') {
+                requestAnimationFrame(batchUpdate);
+            } else {
+                batchUpdate();
+            }
 
         } catch (domError) {
             Logger.error('UI', 'DOM batch update failed:', domError);
@@ -925,12 +935,21 @@ window.getMappingById = async (mappingId) => {
 
         // Try to get from cache first
         let cachedMapping = window.MappingsStore ? window.MappingsStore.get(mappingId) : null;
-        if (!cachedMapping && window.mappingIndex instanceof Map) {
+        
+        // Check legacy mappingIndex (use duck typing for Map to support VM contexts)
+        if (!cachedMapping && window.mappingIndex && typeof window.mappingIndex.get === 'function') {
             cachedMapping = window.mappingIndex.get(mappingId) || null;
         }
-        if (!cachedMapping) {
-            cachedMapping = currentMappings.find(m => m.id === mappingId) || null;
+        
+        // Check allMappings array as last fallback
+        if (!cachedMapping && Array.isArray(window.allMappings)) {
+            cachedMapping = window.allMappings.find(m => m.id === mappingId || m.uuid === mappingId) || null;
         }
+        
+        if (!cachedMapping) {
+            cachedMapping = currentMappings.find(m => m.id === mappingId || m.uuid === mappingId) || null;
+        }
+        
         if (cachedMapping) {
             Logger.cache(`Found mapping in cache: ${mappingId}`, cachedMapping);
             return cachedMapping;

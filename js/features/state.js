@@ -58,8 +58,10 @@ function computeMappingTabTotals(source = []) {
     }
 
 function refreshMappingTabSnapshot() {
-        // Use MappingsStore instead of legacy window.originalMappings
-        const mappings = window.MappingsStore?.getAll ? window.MappingsStore.getAll() : [];
+        // Use MappingsStore as primary source, fallback to legacy window.originalMappings for tests
+        const mappings = window.MappingsStore?.getAll 
+            ? window.MappingsStore.getAll() 
+            : (window.originalMappings || []);
         window.mappingTabTotals = computeMappingTabTotals(mappings);
     }
 
