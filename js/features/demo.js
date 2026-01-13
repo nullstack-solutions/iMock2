@@ -53,10 +53,15 @@
                 return { status: 'success', mappingsLoaded: true, requestsLoaded: true };
             }
 
+            const errors = results.filter(r => r.status === 'rejected').map(r => r.reason);
             notify('warning', 'Demo data only loaded partially. Check console.');
+            if (errors.length > 0) {
+                notify('error', 'Some demo data failed to load.');
+            }
+
             return { 
                 status: 'partial', 
-                errors: results.filter(r => r.status === 'rejected').map(r => r.reason)
+                errors: errors
             };
         };
     }
