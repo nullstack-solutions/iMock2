@@ -563,8 +563,29 @@
             <!-- SCENARIOS PAGE -->
             <div id="scenarios-page" class="hidden">
                 <div class="page-header">
-                    <div class="page-title">Scenario Management</div>
-                    <div style="display: flex; gap: var(--space-2);">
+                    <div class="scenario-page-title">
+                        <div class="page-title">Scenario Mappings</div>
+                        <span id="scenario-stats" class="badge badge-secondary" title="Visible scenarios and mappings">0/0 scenarios • 0 mappings</span>
+                    </div>
+                    <div class="scenarios-header-actions">
+                        <div class="scenario-search">
+                            <svg class="icon icon-16" aria-hidden="true" focusable="false"><use href="#icon-search"></use></svg>
+                            <input type="text" class="form-input scenario-search-input" id="scenario-search" placeholder="Filter scenarios..." autocomplete="off" />
+                        </div>
+                        <div class="scenario-bulk-wrap is-hidden" id="scenario-bulk-wrap">
+                            <button class="btn btn-secondary" id="scenario-bulk-btn" type="button">
+                                <span>Bulk Actions</span>
+                                <span class="badge badge-secondary scenario-bulk-count" id="scenario-bulk-count">0</span>
+                                <svg class="icon icon-16" aria-hidden="true" focusable="false"><use href="#icon-sidebar-expand"></use></svg>
+                            </button>
+                            <div class="scenario-bulk-menu" id="scenario-bulk-menu" aria-hidden="true">
+                                <button class="scenario-bulk-item" id="scenario-bulk-reset" type="button">Reset Selected</button>
+                                <button class="scenario-bulk-item" id="scenario-bulk-set-state" type="button">Set State…</button>
+                                <button class="scenario-bulk-item" id="scenario-bulk-export" type="button">Export Selected (JSON)</button>
+                                <div class="scenario-bulk-sep"></div>
+                                <button class="scenario-bulk-item danger" id="scenario-bulk-clear" type="button">Clear Selection</button>
+                            </div>
+                        </div>
                         <button class="btn btn-secondary" onclick="refreshScenarios()">
                             <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-refresh"></use></svg>
                             <span>Refresh</span>
@@ -574,6 +595,13 @@
                             <span>Reset All</span>
                         </button>
                     </div>
+                </div>
+
+                <div class="scenario-select-all-row" id="scenario-select-all-row" style="display: none;">
+                    <button type="button" class="scenario-select-btn" id="scenario-select-all-btn" role="checkbox" aria-checked="false" aria-label="Select all visible scenarios">
+                        <span class="scenario-select-box" aria-hidden="true"></span>
+                    </button>
+                    <span class="scenario-select-label">Select all visible</span>
                 </div>
                 
                 <div class="card card-static">
@@ -1013,6 +1041,7 @@
     </div>
 
 <!-- JavaScript modules in loading order -->
+<script src="js/lib/logger.js"></script>
 <script src="editor/monaco-template-library.js"></script>
 <script src="js/vendor-js-yaml.min.js"></script>
 <script src="js/core.js"></script>
@@ -1024,6 +1053,13 @@
 <script src="js/features/queryParser.js"></script>
 <script src="js/features/filters.js"></script>
 <script src="js/features/filter-presets.js"></script>
+
+<!-- New optimized cache architecture -->
+<script src="js/features/store.js"></script>
+<script src="js/features/sync-engine.js"></script>
+<script src="js/features/operations.js"></script>
+
+<!-- Legacy cache (for backward compatibility during transition) -->
 <script src="js/features/cache.js"></script>
 <script src="js/features/mappings.js"></script>
 <script src="js/features/pagination.js"></script>
