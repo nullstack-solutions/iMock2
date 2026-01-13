@@ -1,779 +1,296 @@
 'use strict';
 
-// ===== CORE.JS - Base infrastructure =====
-// Constants, API client, and shared UI helpers
+(function(global) {
+    const window = global;
 
-// --- GLOBAL CONSTANTS FOR SELECTORS AND ENDPOINTS ---
-window.SELECTORS = {
-    // Pages
-    PAGES: {
-        MAPPINGS: 'mappings-page',
-        REQUESTS: 'requests-page',
-        SCENARIOS: 'scenarios-page',
-        'IMPORT-EXPORT': 'import-export-page',
-        RECORDING: 'recording-page',
-        SETTINGS: 'settings-page'
-    },
-
-    // Request log filters
-    REQUEST_FILTERS: {
-        METHOD: 'req-filter-method',
-        STATUS: 'req-filter-status',
-        URL: 'req-filter-url',
-        DATE_FROM: 'req-filter-from',
-        DATE_TO: 'req-filter-to',
-        QUICK: 'req-filter-quick'
-    },
-
-    // Mapping filters
-    MAPPING_FILTERS: {
-        QUERY: 'filter-query'
-    },
-
-    // Data lists
-    LISTS: {
-        MAPPINGS: 'mappings-list',
-        REQUESTS: 'requests-list',
-        SCENARIOS: 'scenarios-list'
-    },
-
-    // Empty states
-    EMPTY: {
-        MAPPINGS: 'mappings-empty',
-        REQUESTS: 'requests-empty'
-    },
-
-    // UI elements
-    UI: {
-        STATS: 'stats',
-        SEARCH_FILTERS: 'search-filters',
-        UPTIME: 'uptime',
-        DATA_SOURCE_INDICATOR: 'data-source-indicator',
-        REQUESTS_SOURCE_INDICATOR: 'requests-source-indicator'
-    },
-
-    // Loading states
-    LOADING: {
-        MAPPINGS: 'mappings-loading',
-        REQUESTS: 'requests-loading'
-    },
-
-    // Counters
-    COUNTERS: {
-        MAPPINGS: 'mappings-count',
-        REQUESTS: 'requests-count'
-    },
-
-    // Connection
-    CONNECTION: {
-        SETUP: 'connection-setup',
-        HOST: 'wiremock-host',
-        PORT: 'wiremock-port',
-        CONNECT_BTN: 'connect-btn',
-        STATUS_DOT: 'status-dot',
-        STATUS_TEXT: 'status-text',
-        UPTIME: 'uptime'
-    },
-
-    // Modal
-    MODAL: {
-        FORM: 'mapping-form',
-        ID: 'mapping-id',
-        TITLE: 'modal-title'
-    },
-
-    // Form fields (kept for test compatibility)
-    FORM_FIELDS: {
-        METHOD: 'mapping-method',
-        URL: 'mapping-url',
-        STATUS: 'mapping-status',
-        HEADERS: 'mapping-headers',
-        BODY: 'mapping-body',
-        PRIORITY: 'mapping-priority',
-        NAME: 'mapping-name'
-    },
-
-    // Buttons
-    BUTTONS: {
-        ADD_MAPPING: 'add-mapping-btn',
-        START_RECORDING: 'start-recording-btn'
-    },
-
-    // Recording
-    RECORDING: {
-        URL: 'recording-url',
-        CAPTURE_HEADERS: 'capture-headers',
-        CAPTURE_BODY: 'capture-body',
-        URL_FILTER: 'url-filter',
-        INDICATOR: 'recording-indicator',
-        TARGET: 'recording-target',
-        COUNT: 'recording-count',
-        STOP_BTN: 'stop-recording-btn'
-    },
-
-    // Settings
-    SETTINGS: {
-        HOST: 'settings-host',
-        PORT: 'settings-port',
-        TIMEOUT: 'settings-timeout',
-        AUTO_REFRESH: 'auto-refresh',
-        THEME: 'theme-select',
-        CUSTOM_HEADERS: 'custom-headers',
-        CACHE_ENABLED: 'cache-enabled'
-    },
-
-    // Import/Export
-    IMPORT: {
-        FILE: 'import-file',
-        DISPLAY: 'file-display',
-        ACTIONS: 'import-actions',
-        RESULT: 'import-result',
-        MODE: 'import-mode'
-    },
-
-    EXPORT: {
-        FORMAT: 'export-format',
-        RESULT: 'export-result'
-    },
-
-    // Statistics
-    STATS: {
-        TOTAL_MAPPINGS: 'total-mappings',
-        TOTAL_REQUESTS: 'total-requests'
-    },
-
-    // Health
-    HEALTH: {
-        INDICATOR: 'health-indicator'
-    },
-
-};
-
-// --- SCHEDULING & RENDER HELPERS ---
-(function initialiseLifecycleManager() {
-    const intervalIds = new Set();
-    const rafIds = new Set();
-    const eventListeners = new Map(); // Map<target, Set<{type, handler, options}>>
-
-    const manager = {
-        setInterval(handler, delay) {
-            const id = window.setInterval(handler, delay);
-            intervalIds.add(id);
-            return id;
+    // --- GLOBAL CONSTANTS ---
+    window.SELECTORS = {
+        PAGES: {
+            MAPPINGS: 'mappings-page',
+            REQUESTS: 'requests-page',
+            SCENARIOS: 'scenarios-page',
+            'IMPORT-EXPORT': 'import-export-page',
+            RECORDING: 'recording-page',
+            SETTINGS: 'settings-page'
         },
-        clearInterval(id) {
-            if (id !== undefined && id !== null) {
+        REQUEST_FILTERS: {
+            METHOD: 'req-filter-method',
+            STATUS: 'req-filter-status',
+            URL: 'req-filter-url',
+            DATE_FROM: 'req-filter-from',
+            DATE_TO: 'req-filter-to',
+            QUICK: 'req-filter-quick'
+        },
+        MAPPING_FILTERS: { QUERY: 'filter-query' },
+        LISTS: { MAPPINGS: 'mappings-list', REQUESTS: 'requests-list', SCENARIOS: 'scenarios-list' },
+        EMPTY: { MAPPINGS: 'mappings-empty', REQUESTS: 'requests-empty' },
+        UI: {
+            STATS: 'stats',
+            SEARCH_FILTERS: 'search-filters',
+            UPTIME: 'uptime',
+            DATA_SOURCE_INDICATOR: 'data-source-indicator',
+            REQUESTS_SOURCE_INDICATOR: 'requests-source-indicator'
+        },
+        LOADING: { MAPPINGS: 'mappings-loading', REQUESTS: 'requests-loading' },
+        COUNTERS: { MAPPINGS: 'mappings-count', REQUESTS: 'requests-count' },
+        CONNECTION: {
+            SETUP: 'connection-setup',
+            HOST: 'wiremock-host',
+            PORT: 'wiremock-port',
+            CONNECT_BTN: 'connect-btn',
+            STATUS_DOT: 'status-dot',
+            STATUS_TEXT: 'status-text',
+            UPTIME: 'uptime'
+        },
+        MODAL: { FORM: 'mapping-form', ID: 'mapping-id', TITLE: 'modal-title' },
+        BUTTONS: { ADD_MAPPING: 'add-mapping-btn', START_RECORDING: 'start-recording-btn' },
+        HEALTH: { INDICATOR: 'health-indicator' }
+    };
+
+    window.ENDPOINTS = {
+        HEALTH: '/health',
+        MAPPINGS: '/mappings',
+        MAPPINGS_RESET: '/mappings/reset',
+        MAPPINGS_SAVE: '/mappings/save',
+        MAPPINGS_IMPORT: '/mappings/import',
+        MAPPINGS_FIND_BY_METADATA: '/mappings/find-by-metadata',
+        MAPPINGS_REMOVE_BY_METADATA: '/mappings/remove-by-metadata',
+        MAPPINGS_UNMATCHED: '/mappings/unmatched',
+        REQUESTS: '/requests',
+        REQUESTS_COUNT: '/requests/count',
+        REQUESTS_REMOVE: '/requests/remove',
+        REQUESTS_FIND: '/requests/find',
+        REQUESTS_UNMATCHED: '/requests/unmatched',
+        REQUESTS_UNMATCHED_NEAR_MISSES: '/requests/unmatched/near-misses',
+        RECORDINGS_START: '/recordings/start',
+        RECORDINGS_STOP: '/recordings/stop',
+        RECORDINGS_STATUS: '/recordings/status',
+        RECORDINGS_SNAPSHOT: '/recordings/snapshot',
+        SCENARIOS: '/scenarios',
+        SCENARIOS_RESET: '/scenarios/reset'
+    };
+
+    // --- UTILS ---
+    window.Utils = {
+        escapeHtml(str) {
+            if (!str) return '';
+            const div = document.createElement('div');
+            div.textContent = String(str);
+            return div.innerHTML;
+        },
+        
+        getStatusClass(status) {
+            const s = Number(status);
+            if (s >= 200 && s < 300) return 'status-success';
+            if (s >= 400 && s < 500) return 'status-warning';
+            if (s >= 500) return 'status-danger';
+            return 'status-info';
+        },
+
+        formatJson(val, fallback = 'Invalid JSON', maxLength = 0) {
+            try {
+                const str = JSON.stringify(val, null, 2);
+                return (maxLength > 0 && str.length > maxLength) ? str.slice(0, maxLength) + '...' : str;
+            } catch (e) { return fallback; }
+        },
+
+        parseRequestTime(loggedDate) {
+            if (!loggedDate) return 'N/A';
+            try { return new Date(loggedDate).toLocaleTimeString(); }
+            catch (e) { return 'N/A'; }
+        },
+
+        formatDateTime(date) {
+            const pad = (n) => String(n).padStart(2, '0');
+            return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+        },
+
+        toggleElement(el, show) {
+            if (el) el.classList.toggle('hidden', !show);
+        },
+
+        showElement(el) { this.toggleElement(el, true); },
+        hideElement(el) { this.toggleElement(el, false); },
+
+        safeCall(fn, ...args) {
+            try { return typeof fn === 'function' ? fn(...args) : null; }
+            catch (e) { console.warn('Safe call failed', e); return null; }
+        }
+    };
+
+    // --- LIFECYCLE MANAGER ---
+    (function initLifecycle() {
+        const intervals = new Set();
+        const rafs = new Set();
+        const listeners = [];
+
+        window.LifecycleManager = {
+            setInterval(fn, delay) {
+                const id = window.setInterval(fn, delay);
+                intervals.add(id);
+                return id;
+            },
+            clearInterval(id) {
                 window.clearInterval(id);
-                intervalIds.delete(id);
-            }
-        },
-        requestAnimationFrame(handler) {
-            const id = window.requestAnimationFrame(handler);
-            rafIds.add(id);
-            return id;
-        },
-        cancelAnimationFrame(id) {
-            if (id !== undefined && id !== null) {
+                intervals.delete(id);
+            },
+            requestAnimationFrame(fn) {
+                const id = window.requestAnimationFrame(fn);
+                rafs.add(id);
+                return id;
+            },
+            cancelAnimationFrame(id) {
                 window.cancelAnimationFrame(id);
-                rafIds.delete(id);
-            }
-        },
-        addEventListener(target, type, handler, options) {
-            if (!target || !type || !handler) return;
-
-            target.addEventListener(type, handler, options);
-
-            if (!eventListeners.has(target)) {
-                eventListeners.set(target, new Set());
-            }
-            eventListeners.get(target).add({ type, handler, options });
-        },
-        removeEventListener(target, type, handler, options) {
-            if (!target || !type || !handler) return;
-
-            target.removeEventListener(type, handler, options);
-
-            const listeners = eventListeners.get(target);
-            if (listeners) {
-                for (const listener of listeners) {
-                    if (listener.type === type && listener.handler === handler &&
-                        JSON.stringify(listener.options) === JSON.stringify(options)) {
-                        listeners.delete(listener);
-                        break;
-                    }
-                }
-                if (listeners.size === 0) {
-                    eventListeners.delete(target);
-                }
-            }
-        },
-        clearAll() {
-            intervalIds.forEach(identifier => window.clearInterval(identifier));
-            intervalIds.clear();
-            rafIds.forEach(identifier => window.cancelAnimationFrame(identifier));
-            rafIds.clear();
-
-            // Clean up all event listeners
-            eventListeners.forEach((listeners, target) => {
-                listeners.forEach(({ type, handler, options }) => {
+                rafs.delete(id);
+            },
+            addEventListener(target, type, handler, options) {
+                if (!target) return;
+                target.addEventListener(type, handler, options);
+                listeners.push({ target, type, handler, options });
+            },
+            clearAll() {
+                intervals.forEach(id => window.clearInterval(id));
+                rafs.forEach(id => window.cancelAnimationFrame(id));
+                listeners.forEach(({ target, type, handler, options }) => {
                     target.removeEventListener(type, handler, options);
                 });
-            });
-            eventListeners.clear();
-        }
+                intervals.clear(); rafs.clear(); listeners.length = 0;
+            }
+        };
+        window.addEventListener('beforeunload', () => window.LifecycleManager.clearAll());
+    })();
+
+    // --- DEBOUNCE ---
+    window.debounce = function(fn, wait = 150) {
+        let timeout;
+        return function(...args) {
+            clearTimeout(timeout);
+            timeout = setTimeout(() => fn.apply(this, args), wait);
+        };
     };
 
-    window.LifecycleManager = manager;
-    window.addEventListener('beforeunload', () => manager.clearAll());
-})();
-
-window.debounce = function debounce(fn, wait = 150, options = {}) {
-    let timeoutId;
-    let lastArgs;
-    let lastThis;
-    let result;
-    const { leading = false, trailing = true } = options;
-
-    const invoke = () => {
-        timeoutId = undefined;
-        if (trailing && lastArgs) {
-            result = fn.apply(lastThis, lastArgs);
-            lastArgs = lastThis = undefined;
-        }
-    };
-
-    return Object.assign(function debounced(...args) {
-        lastArgs = args;
-        lastThis = this;
-
-        if (timeoutId === undefined) {
-            if (leading) {
-                result = fn.apply(lastThis, lastArgs);
-                lastArgs = lastThis = undefined;
-            }
-            timeoutId = window.setTimeout(invoke, wait);
-        } else {
-            window.clearTimeout(timeoutId);
-            timeoutId = window.setTimeout(invoke, wait);
-        }
-
-        return result;
-    }, {
-        cancel() {
-            if (timeoutId !== undefined) {
-                window.clearTimeout(timeoutId);
-            }
-            timeoutId = undefined;
-            lastArgs = lastThis = undefined;
-        },
-        flush() {
-            if (timeoutId !== undefined) {
-                window.clearTimeout(timeoutId);
-                invoke();
-            }
-            return result;
-        }
-    });
-};
-
-(function initialiseRenderList() {
-    const pendingFrames = new WeakMap();
-
-    function toElement(markup) {
-        if (typeof markup !== 'string' || !markup.trim()) {
-            return null;
-        }
-        const template = document.createElement('template');
-        template.innerHTML = markup.trim();
-        return template.content.firstElementChild;
-    }
-
-    window.renderList = function renderList(container, items, options = {}) {
-        if (!(container instanceof Element) || !Array.isArray(items)) {
-            return;
-        }
-        const { renderItem, getKey, getSignature, onItemChanged, onItemRemoved } = options;
-        if (typeof renderItem !== 'function') {
-            return;
-        }
-
-        const existingNodes = new Map();
-        Array.from(container.children).forEach(node => {
-            if (node instanceof HTMLElement && node.dataset && node.dataset.id) {
-                existingNodes.set(node.dataset.id, node);
-            }
-        });
+    // --- RENDER LIST ---
+    window.renderList = function(container, items, options = {}) {
+        if (!container || !Array.isArray(items)) return;
+        const { renderItem, getKey, getSignature } = options;
+        if (typeof renderItem !== 'function') return;
 
         const fragment = document.createDocumentFragment();
-
         items.forEach(item => {
-            const key = typeof getKey === 'function' ? getKey(item) : (item && (item.id || item.uuid));
-            if (!key) {
-                return;
-            }
-            const keyString = String(key);
-            const signature = typeof getSignature === 'function' ? getSignature(item) : keyString;
-            const existing = existingNodes.get(keyString);
-
-            if (existing && existing.dataset.renderSignature === signature) {
-                existing.dataset.renderSignature = signature;
-                fragment.appendChild(existing);
-                existingNodes.delete(keyString);
-                return;
-            }
-
-            const previousSignature = existing ? existing.dataset.renderSignature || null : null;
-            if (existing && typeof onItemChanged === 'function' && previousSignature !== signature) {
-                try {
-                    onItemChanged(keyString, item, signature);
-                } catch (callbackError) {
-                    console.warn('renderList onItemChanged failed:', callbackError);
-                }
-            }
-
+            const key = getKey ? getKey(item) : (item.id || item.uuid);
+            const signature = getSignature ? getSignature(item) : String(key);
+            
             const markup = renderItem(item);
-            const node = toElement(markup);
-            if (!node) {
-                existingNodes.delete(keyString);
-                return;
-            }
-            node.dataset.id = keyString;
-            node.dataset.renderSignature = signature;
-            fragment.appendChild(node);
-            existingNodes.delete(keyString);
-        });
-
-        existingNodes.forEach((node, key) => {
-            node.remove();
-            if (typeof onItemRemoved === 'function') {
-                try {
-                    onItemRemoved(String(key), node);
-                } catch (callbackError) {
-                    console.warn('renderList onItemRemoved failed:', callbackError);
-                }
+            const temp = document.createElement('template');
+            temp.innerHTML = markup.trim();
+            const node = temp.content.firstElementChild;
+            
+            if (node) {
+                node.dataset.id = key;
+                node.dataset.signature = signature;
+                fragment.appendChild(node);
             }
         });
 
-        const scheduleRender = () => {
-            container.replaceChildren(fragment);
-        };
+        window.requestAnimationFrame(() => {
+            container.innerHTML = '';
+            container.appendChild(fragment);
+        });
+    };
 
-        if (window.LifecycleManager && typeof window.LifecycleManager.requestAnimationFrame === 'function') {
-            const pending = pendingFrames.get(container);
-            if (pending) {
-                window.LifecycleManager.cancelAnimationFrame(pending);
-            }
-            const handle = window.LifecycleManager.requestAnimationFrame(() => {
-                scheduleRender();
-                pendingFrames.delete(container);
-            });
-            if (handle !== null) {
-                pendingFrames.set(container, handle);
-            }
-        } else if (typeof window.requestAnimationFrame === 'function') {
-            const handle = window.requestAnimationFrame(scheduleRender);
-            pendingFrames.set(container, handle);
-        } else {
-            scheduleRender();
+    // --- ICONS ---
+    window.Icons = {
+        render(name, opts = {}) {
+            const cls = `icon icon-${name} ${opts.className || ''}`.trim();
+            return `<svg class="${cls}" aria-hidden="true" focusable="false"><use href="#icon-${name}"></use></svg>`;
         }
     };
-})();
 
-window.Icons = {
-    render(name, options = {}) {
-        if (!name) {
-            return '';
-        }
-        const classes = ['icon', `icon-${name}`];
-        if (options.className) {
-            classes.push(options.className);
-        }
-        const classAttr = classes.join(' ');
-        return `<svg class="${classAttr}" aria-hidden="true" focusable="false"><use href="#icon-${name}"></use></svg>`;
-    }
-};
+    // --- SETTINGS HELPERS ---
+    window.readWiremockSettings = () => {
+        try {
+            const saved = localStorage.getItem('wiremock-settings');
+            return saved ? JSON.parse(saved) : {};
+        } catch (e) { return {}; }
+    };
 
-window.ENDPOINTS = {
-    // Core endpoints
-    HEALTH: '/health',
-    MAPPINGS: '/mappings',
-    MAPPINGS_RESET: '/mappings/reset',
-    MAPPINGS_SAVE: '/mappings/save',
-    MAPPINGS_IMPORT: '/mappings/import',
-    MAPPINGS_FIND_BY_METADATA: '/mappings/find-by-metadata',
-    MAPPINGS_REMOVE_BY_METADATA: '/mappings/remove-by-metadata',
-    MAPPINGS_UNMATCHED: '/mappings/unmatched', // Added in 3.13.x
+    window.normalizeWiremockBaseUrl = (host, port) => {
+        let h = (host || 'localhost').trim();
+        let p = (port || '').trim();
+        if (!h.includes('://')) h = 'http://' + h;
+        try {
+            const url = new URL(h);
+            const finalPort = p || url.port || (url.protocol === 'https:' ? '443' : '8080');
+            return `${url.protocol}//${url.hostname}:${finalPort}/__admin`;
+        } catch (e) { return `http://localhost:8080/__admin`; }
+    };
 
-    // Request endpoints
-    REQUESTS: '/requests', // DELETE to clear request journal
-    REQUESTS_COUNT: '/requests/count', // Requires POST
-    REQUESTS_REMOVE: '/requests/remove',
-    REQUESTS_FIND: '/requests/find', // Requires POST
-    REQUESTS_UNMATCHED: '/requests/unmatched',
-    REQUESTS_UNMATCHED_NEAR_MISSES: '/requests/unmatched/near-misses',
+    // --- API CLIENT ---
+    window.apiFetch = async (endpoint, options = {}) => {
+        const settings = window.readWiremockSettings();
+        const timeout = Number(settings.requestTimeout) || 60000;
+        const controller = new AbortController();
+        const id = setTimeout(() => controller.abort(), timeout);
 
-    // Recording endpoints (corrected)
-    RECORDINGS_START: '/recordings/start', // Requires POST
-    RECORDINGS_STOP: '/recordings/stop', // Requires POST
-    RECORDINGS_STATUS: '/recordings/status', // Uses GET
-    RECORDINGS_SNAPSHOT: '/recordings/snapshot', // Requires POST
-
-    // Scenario endpoints
-    SCENARIOS: '/scenarios',
-    SCENARIOS_RESET: '/scenarios/reset'
-};
-
-const ensureCustomHeaderObject = (value) => {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) {
-        return {};
-    }
-
-    return Object.keys(value).reduce((acc, key) => {
-        const normalizedKey = String(key).trim();
-        if (!normalizedKey) {
-            return acc;
-        }
-        acc[normalizedKey] = value[key];
-        return acc;
-    }, {});
-};
-
-const migrateLegacySettings = (rawSettings) => {
-    if (!rawSettings || typeof rawSettings !== 'object' || Array.isArray(rawSettings)) {
-        return {};
-    }
-
-    const normalized = { ...rawSettings };
-    const customHeaders = ensureCustomHeaderObject(normalized.customHeaders);
-
-    if (typeof normalized.authHeader === 'string' && normalized.authHeader.trim()) {
-        const authValue = normalized.authHeader.trim();
-        if (!Object.prototype.hasOwnProperty.call(customHeaders, 'Authorization')) {
-            customHeaders.Authorization = authValue;
-        }
-        delete normalized.authHeader;
-        if (!normalized.customHeadersRaw || typeof normalized.customHeadersRaw !== 'string' || !normalized.customHeadersRaw.trim()) {
-            try {
-                normalized.customHeadersRaw = JSON.stringify(customHeaders, null, 2);
-            } catch (error) {
-                console.warn('Failed to serialize migrated custom headers:', error);
-                normalized.customHeadersRaw = '';
-            }
-        }
-    }
-
-    normalized.customHeaders = customHeaders;
-
-    if (typeof normalized.customHeadersRaw !== 'string') {
-        normalized.customHeadersRaw = '';
-    }
-
-    normalized.autoConnect = normalized.autoConnect !== false;
-    return normalized;
-};
-
-window.normalizeWiremockSettings = (settings) => migrateLegacySettings(settings);
-
-window.readWiremockSettings = () => {
-    try {
-        const raw = localStorage.getItem('wiremock-settings');
-        if (!raw) {
-            return {};
-        }
-        const parsed = JSON.parse(raw);
-        return migrateLegacySettings(parsed);
-    } catch (error) {
-        console.warn('Failed to read stored settings, returning empty object:', error);
-        return {};
-    }
-};
-
-// Helper to build the documented scenario state endpoint
-window.buildScenarioStateEndpoint = (scenarioName) => {
-    const rawName = typeof scenarioName === 'string' ? scenarioName : '';
-    if (!rawName.trim()) {
-        return '';
-    }
-
-    return `${ENDPOINTS.SCENARIOS}/${encodeURIComponent(rawName)}/state`;
-};
-
-// --- GLOBAL STATE ---
-let wiremockBaseUrl = '';
-// Use centralized default if available, fallback to hardcoded value
-let requestTimeout = window.DEFAULT_SETTINGS?.requestTimeout ? parseInt(window.DEFAULT_SETTINGS.requestTimeout) : 69000;
-window.customHeaders = ensureCustomHeaderObject(window.DEFAULT_SETTINGS?.customHeaders || {});
-window.startTime = null; // Make globally accessible for uptime tracking
-window.uptimeInterval = null; // Make globally accessible for uptime tracking
-let autoRefreshInterval = null;
-
-// Global feature-level state
-window.allMappings = [];
-window.allRequests = [];
-window.allScenarios = [];
-window.isRecording = false;
-window.recordedCount = 0;
-
-window.normalizeWiremockBaseUrl = (hostInput, portInput) => {
-    let rawHost = (hostInput || '').trim() || 'localhost';
-    let port = (portInput || '').trim();
-    let scheme = 'http', hostname = '';
-    try {
-        const url = new URL(rawHost.includes('://') ? rawHost : `http://${rawHost}`);
-        scheme = url.protocol.replace(':', '') || 'http';
-        hostname = url.hostname;
-        port ||= url.port;
-    } catch (e) {
-        const m = rawHost.match(/^([^:/]+)(?::(\d+))?$/);
-        hostname = m ? m[1] : rawHost;
-        port ||= m?.[2];
-    }
-    return `${scheme}://${hostname || 'localhost'}:${port || (scheme === 'https' ? '443' : '8080')}/__admin`;
-};
-
-// --- API CLIENT WITH TIMEOUT SUPPORT ---
-window.apiFetch = async (endpoint, options = {}) => {
-    const controller = new AbortController();
-    const timeoutSettings = Utils.safeCall(window.readWiremockSettings) || {};
-    const currentTimeout = timeoutSettings.requestTimeout ? parseInt(timeoutSettings.requestTimeout) : (window.DEFAULT_SETTINGS?.requestTimeout ? parseInt(window.DEFAULT_SETTINGS.requestTimeout) : 69000);
-    const timeoutId = setTimeout(() => controller.abort(), currentTimeout);
-    const fullUrl = `${window.wiremockBaseUrl}${endpoint}`;
-    const method = options.method || 'GET';
-    const headers = { 'Content-Type': 'application/json', ...ensureCustomHeaderObject(timeoutSettings.customHeaders || window.customHeaders), ...options.headers };
-
-    // Reduce logging verbosity for periodic endpoints to prevent memory leaks
-    const isPeriodicEndpoint = endpoint === window.ENDPOINTS?.HEALTH || endpoint === window.ENDPOINTS?.MAPPINGS;
-    const verboseLogging = !isPeriodicEndpoint;
-
-    // Minimal logging for periodic health checks to reduce memory usage
-    if (verboseLogging) {
-        console.log(`🔗 [API] ${method} ${endpoint}`);
-    }
-
-    try {
-        const response = await fetch(fullUrl, { ...options, signal: controller.signal, headers });
-        clearTimeout(timeoutId);
-        if (!response.ok) {
-            const errorText = await response.text();
-            if (verboseLogging) {
-                console.error(`❌ [API] ${method} ${endpoint} - HTTP ${response.status}: ${errorText || response.statusText}`);
-            }
-            throw new Error(`HTTP ${response.status}: ${errorText || response.statusText}`);
-        }
-        const responseData = response.headers.get('content-type')?.includes('application/json') ? await response.json() : await response.text();
-
-        // Only log success for non-periodic endpoints
-        if (verboseLogging) {
-            console.log(`✅ [API] ${method} ${endpoint} - OK`);
-        }
+        const url = `${window.wiremockBaseUrl}${endpoint}`;
+        const headers = { 'Content-Type': 'application/json', ...(settings.customHeaders || {}), ...options.headers };
 
         try {
-            if (endpoint === window.ENDPOINTS?.HEALTH || endpoint === window.ENDPOINTS?.MAPPINGS) {
-                window.lastWiremockSuccess = Date.now();
-                Utils.safeCall(window.updateLastSuccessUI);
-            }
-        } catch (_) {}
-        return responseData;
-    } catch (error) {
-        clearTimeout(timeoutId);
-        // Minimal error logging to reduce memory usage
-        if (verboseLogging) {
-            console.error(`💥 [API] ${method} ${endpoint} - ${error.name}: ${error.message}`);
+            const res = await fetch(url, { ...options, headers, signal: controller.signal });
+            clearTimeout(id);
+            if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+            
+            const isJson = res.headers.get('content-type')?.includes('application/json');
+            return isJson ? await res.json() : await res.text();
+        } catch (err) {
+            clearTimeout(id);
+            if (err.name === 'AbortError') throw new Error(`Timeout after ${timeout}ms`);
+            throw err;
         }
-        if (error.name === 'AbortError') throw new Error(`Request timeout after ${currentTimeout}ms`);
-        throw error;
-    }
-};
+    };
 
-// --- CORE UI HELPERS ---
+    // --- UI HELPERS ---
+    window.showPage = (pageId, btn) => {
+        document.querySelectorAll('.main-content > div[id$="-page"]').forEach(p => p.classList.add('hidden'));
+        const target = document.getElementById(SELECTORS.PAGES[pageId.toUpperCase()]);
+        if (target) target.classList.remove('hidden');
 
-window.showPage = (pageId, element) => {
-    console.log(`🔄 [showPage] Switching to tab: ${pageId}`);
+        document.querySelectorAll('.sidebar .nav-item').forEach(i => i.classList.remove('active'));
+        if (btn) btn.classList.add('active');
 
-    document.querySelectorAll('.main-content > div[id$="-page"]').forEach(p => p.classList.add('hidden'));
-    const targetPage = document.getElementById(SELECTORS.PAGES[pageId.toUpperCase()]);
-    if (!targetPage) { console.warn(`Page not found: ${pageId}`); return; }
-    targetPage.classList.remove('hidden');
-    document.querySelectorAll('.sidebar .nav-item').forEach(i => i.classList.remove('active'));
-    if (element) element.classList.add('active');
-
-    // Update URL with active tab
-    if (window.history && window.history.replaceState) {
-        const url = new URL(window.location.href);
-        const oldTab = url.searchParams.get('tab');
-        url.searchParams.set('tab', pageId);
-        const newUrl = url.toString();
-        console.log(`🔗 [showPage] Updating URL: ${oldTab} → ${pageId}`);
-        console.log(`🔗 [showPage] New URL: ${newUrl}`);
-        window.history.replaceState({}, '', newUrl);
-    } else {
-        console.warn('⚠️ [showPage] history.replaceState not available');
-    }
-};
-
-// Sidebar collapse helpers
-const SIDEBAR_COLLAPSED_CLASS = 'sidebar-collapsed';
-const SIDEBAR_STATE_STORAGE_KEY = 'imock-sidebar-state';
-
-const applySidebarState = (shouldCollapse, { persist = true } = {}) => {
-    if (!document.body) return;
-    document.body.classList.toggle(SIDEBAR_COLLAPSED_CLASS, shouldCollapse);
-    const toggleButton = document.querySelector('.sidebar-toggle');
-    if (toggleButton) {
-        const label = shouldCollapse ? 'Expand sidebar' : 'Collapse sidebar';
-        toggleButton.setAttribute('aria-expanded', String(!shouldCollapse));
-        toggleButton.setAttribute('aria-label', label);
-        toggleButton.setAttribute('title', label);
-        toggleButton.querySelector('use')?.setAttribute('href', shouldCollapse ? '#icon-sidebar-expand' : '#icon-sidebar-collapse');
-    }
-    if (persist) try { localStorage.setItem(SIDEBAR_STATE_STORAGE_KEY, shouldCollapse ? 'collapsed' : 'expanded'); } catch (e) { console.warn('Unable to persist sidebar state:', e); }
-};
-
-window.toggleSidebar = () => {
-    const isCollapsed = document.body?.classList.contains(SIDEBAR_COLLAPSED_CLASS);
-    applySidebarState(!isCollapsed);
-};
-
-window.initializeSidebarPreference = () => {
-    let storedState = null;
-    try { storedState = localStorage.getItem(SIDEBAR_STATE_STORAGE_KEY); } catch (e) { console.warn('Unable to read sidebar state from storage:', e); }
-    applySidebarState(storedState === 'collapsed', { persist: false });
-};
-
-const resolveModalElement = (modalId) => {
-    if (!modalId) { console.warn('Modal ID is required to resolve modal element'); return null; }
-    const element = document.getElementById(modalId);
-    if (!element) console.warn(`Modal element not found for id: ${modalId}`);
-    return element;
-};
-
-window.showModal = (modalId) => {
-    const modal = resolveModalElement(modalId);
-    if (!modal) return;
-    modal.classList.remove('hidden');
-    modal.style.display = 'flex';
-    const firstInput = modal.querySelector('input, select, textarea');
-    if (firstInput) LifecycleManager.requestAnimationFrame(() => firstInput.focus());
-};
-
-window.openAddMappingModal = () => {
-    if (window.TemplateManager?.openGalleryForTarget) {
-        window.TemplateManager.openGalleryForTarget('create-inline');
-        return;
-    }
-
-    const trigger = document.querySelector('[data-template-trigger][data-template-target="create-inline"]');
-    if (trigger) {
-        trigger.click();
-    } else {
-        window.showModal('template-gallery-modal');
-    }
-};
-
-window.hideModal = (modal) => {
-    const modalElement = typeof modal === 'string' ? resolveModalElement(modal) : modal;
-    if (!modalElement) return;
-    modalElement.classList.add('hidden');
-    modalElement.style.display = 'none';
-    modalElement.querySelector('form')?.reset();
-    if (modalElement.id === 'edit-mapping-modal') {
-        if (typeof UIComponents?.clearCardState === 'function') {
-            UIComponents.clearCardState('mapping', 'is-editing');
+        if (window.history?.replaceState) {
+            const url = new URL(window.location.href);
+            url.searchParams.set('tab', pageId);
+            window.history.replaceState({}, '', url);
         }
-        // Clear Monaco Editor content to prevent showing previous mapping
-        if (window.editor && typeof window.editor.setValue === 'function') {
-            try {
-                window.editor.setValue('');
-            } catch (e) {
-                console.warn('Failed to clear editor:', e);
-            }
-        }
-    }
-};
+    };
 
-window.showTab = (tabName, button) => {
-    document.querySelectorAll('.tab-content').forEach(tab => tab.classList.add('hidden'));
-    document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
-    document.getElementById(`${tabName}-tab`).classList.remove('hidden');
-    button.classList.add('active');
+    window.showModal = (id) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.classList.remove('hidden');
+        el.style.display = 'flex';
+        const input = el.querySelector('input, select, textarea');
+        if (input) setTimeout(() => input.focus(), 50);
+    };
 
-    // Update URL with active tab
-    if (window.history && window.history.replaceState) {
-        const url = new URL(window.location.href);
-        url.searchParams.set('tab', tabName);
-        window.history.replaceState({}, '', url.toString());
-    }
-};
+    window.hideModal = (modal) => {
+        const el = typeof modal === 'string' ? document.getElementById(modal) : modal;
+        if (!el) return;
+        el.classList.add('hidden');
+        el.style.display = 'none';
+        el.querySelector('form')?.reset();
+    };
 
-const applyThemeToDom = (theme) => {
-    if (!document.body) return;
-    document.body.setAttribute('data-theme', theme);
-    const iconTargets = [document.getElementById('theme-icon'), document.getElementById('editor-theme-icon')].filter(Boolean);
-    if (iconTargets.length) {
-        const target = theme === 'dark' ? '#icon-sun' : '#icon-moon';
-        iconTargets.forEach(icon => { icon.setAttribute('href', target); icon.setAttribute('xlink:href', target); });
-    }
-};
+    window.initializeTheme = () => {
+        const theme = localStorage.getItem('theme') || 'dark';
+        document.body.setAttribute('data-theme', theme);
+        const icon = document.getElementById('theme-icon');
+        if (icon) icon.setAttribute('href', theme === 'dark' ? '#icon-sun' : '#icon-moon');
+    };
 
-const persistThemePreference = (preference) => {
-    localStorage.setItem('theme', preference);
-    try { localStorage.setItem('wiremock-settings', JSON.stringify({ ...Utils.safeCall(window.readWiremockSettings) || {}, theme: preference })); } catch (_) {}
-};
+    // Initializations
+    window.initializeTheme();
+    console.log('✅ Core.js loaded');
 
-window.toggleTheme = () => {
-    if (!document.body) return;
-    const newTheme = (document.body.getAttribute('data-theme') || 'dark') === 'dark' ? 'light' : 'dark';
-    applyThemeToDom(newTheme);
-    persistThemePreference(newTheme);
-    if (window.NotificationManager) NotificationManager.show(`Switched to ${newTheme} theme`, 'success');
-};
-
-window.changeTheme = () => {
-    const themeSelect = document.getElementById('theme-select');
-    if (!themeSelect) return;
-    const selectedTheme = themeSelect.value;
-    const themeToApply = selectedTheme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : selectedTheme;
-    applyThemeToDom(themeToApply);
-    persistThemePreference(selectedTheme);
-    if (window.NotificationManager) NotificationManager.show(`Theme changed to ${selectedTheme}`, 'success');
-};
-
-window.initializeTheme = () => {
-    const savedTheme = localStorage.getItem('theme') || 'dark';
-    const themeToApply = savedTheme === 'auto' ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : savedTheme;
-    applyThemeToDom(themeToApply);
-    const themeSelect = document.getElementById('theme-select');
-    if (themeSelect) themeSelect.value = savedTheme;
-};
-
-// Initialize theme only after DOMContentLoaded
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initializeTheme);
-} else {
-    initializeTheme();
-}
-
-// --- MODAL EVENTS ---
-
-// Close modal when clicking outside
-LifecycleManager.addEventListener(document, 'click', (e) => {
-    if (e.target.classList.contains('modal')) {
-        hideModal(e.target);
-    }
-});
-
-// Close modal with Escape key
-LifecycleManager.addEventListener(document, 'keydown', (e) => {
-    if (e.key === 'Escape') {
-        const visibleModal = document.querySelector('.modal:not(.hidden)');
-        if (visibleModal) {
-            hideModal(visibleModal);
-        }
-    }
-});
-
-// --- DOM ELEMENT CACHE (minimal) ---
-window.elementCache = new Map();
-window.invalidateElementCache = (id) => id ? window.elementCache.delete(id) : window.elementCache.clear();
-
-console.log('✅ Core.js loaded - Constants, API client, basic UI functions');
+})(typeof window !== 'undefined' ? window : globalThis);
