@@ -82,7 +82,7 @@ function refreshMappingTabSnapshot() {
     }
 
 function refreshRequestTabSnapshot() {
-        // Use MappingsStore for requests
+        // Use MappingsStore.getAllRequests() as the single source of truth for captured requests
         const requests = window.MappingsStore?.getAllRequests ? window.MappingsStore.getAllRequests() : [];
         window.requestTabTotals = computeRequestTabTotals(requests);
         if (typeof window.updateRequestTabCounts === 'function') {

@@ -292,9 +292,7 @@ runTest('refreshRequestTabSnapshot updates totals', () => {
     ];
     
     // Initialize MappingsStore with test data
-    if (context.MappingsStore) {
-        context.MappingsStore.setRequests(testRequests);
-    }
+    context.MappingsStore.setRequests(testRequests);
 
     context.__requestCountsCalled = false;
     context.updateRequestTabCounts = () => { context.__requestCountsCalled = true; };

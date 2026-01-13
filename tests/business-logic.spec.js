@@ -74,9 +74,7 @@ runTest('refreshMappingTabSnapshot stores totals correctly', () => {
     ];
     
     // Initialize MappingsStore with test data
-    if (context.MappingsStore) {
-        context.MappingsStore.setFromServer(testMappings);
-    }
+    context.MappingsStore.setFromServer(testMappings);
     
     context.refreshMappingTabSnapshot();
     assert.strictEqual(context.mappingTabTotals.get, 1);
@@ -101,9 +99,7 @@ runTest('refreshRequestTabSnapshot updates totals and invokes counter hook', () 
     ];
     
     // Initialize MappingsStore with test data
-    if (context.MappingsStore) {
-        context.MappingsStore.setRequests(testRequests);
-    }
+    context.MappingsStore.setRequests(testRequests);
     
     context.__requestCountsCalled = false;
     context.refreshRequestTabSnapshot();

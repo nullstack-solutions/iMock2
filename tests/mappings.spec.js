@@ -160,9 +160,7 @@ runTest('getMappingById returns cached mapping when available', async () => {
     };
 
     // Add to MappingsStore
-    if (context.MappingsStore) {
-        context.MappingsStore.setFromServer([testMapping]);
-    }
+    context.MappingsStore.setFromServer([testMapping]);
 
     const result = await context.getMappingById('test-id-123');
 
@@ -289,7 +287,7 @@ runTest('fetchAndRenderMappings renders provided mappings', async () => {
     assert.strictEqual(result, true, 'Should return true');
     
     // Check if mappings were processed - either in innerHTML or in MappingsStore
-    const mappingsInStore = context.MappingsStore ? context.MappingsStore.getAll() : [];
+    const mappingsInStore = context.MappingsStore.getAll();
     assert.ok(mappingsListElement.innerHTML.includes('map-1') ||
               mappingsInStore.some(m => m.id === 'map-1'),
               'Should process mapping 1');
