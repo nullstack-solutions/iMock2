@@ -16,10 +16,9 @@ build/
 
 # Node/Yarn/NPM
 node_modules/
-<<<<<<< HEAD
+
 package-lock.json
-=======
->>>>>>> clean
+
 yarn.lock
 pnpm-lock.yaml
 
