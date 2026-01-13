@@ -27,9 +27,9 @@ window.UIComponents = {
                             </span>
                             ${name ? `<span class="${type}-name">${Utils.escapeHtml(name)}</span>` : ''}
                         </div>
-                        <div class="${type}-url-line">
+                        <div class="url-line">
                             <span class="status-badge ${Utils.getStatusClass(status)}">${status}</span>
-                            <span class="${type}-url">${Utils.escapeHtml(url)}</span>
+                            <span class="url-text">${Utils.escapeHtml(url)}</span>
                             ${extras.badges || ''}
                         </div>
                     </div>
@@ -48,11 +48,16 @@ window.UIComponents = {
     },
 
     createPreviewSection(title, items) {
-        return `
-        <div class="preview-section">
-            <h4>${title}</h4>
-            ${Object.entries(items).map(([k, v]) => v ? `<div class="preview-value"><strong>${k}:</strong> <pre>${typeof v === 'object' ? JSON.stringify(v, null, 2) : Utils.escapeHtml(v)}</pre></div>` : '').join('')}
-        </div>`;
+        if (!items || Object.keys(items).length === 0) return '';
+        const content = Object.entries(items)
+            .map(([k, v]) => {
+                if (v === null || v === undefined) return '';
+                const val = (typeof v === 'object') ? JSON.stringify(v, null, 2) : Utils.escapeHtml(v);
+                return `<div class="preview-value"><strong>${k}:</strong> <pre>${val}</pre></div>`;
+            })
+            .join('');
+        
+        return content ? `<div class="preview-section"><h4>${title}</h4>${content}</div>` : '';
     },
 
     setCardState(type, id, cls, active) {
@@ -62,7 +67,12 @@ window.UIComponents = {
 };
 
 window.sortMappings = (mappings) => {
-    return [...mappings].sort((a, b) => (a.priority || 1) - (b.priority || 1) || (a.request?.method || '').localeCompare(b.request?.method || ''));
+    return [...mappings].sort((a, b) => {
+        const pA = a.priority || 1, pB = b.priority || 1;
+        if (pA !== pB) return pA - pB;
+        return (a.request?.method || '').localeCompare(b.request?.method || '') ||
+               (a.request?.url || '').localeCompare(b.request?.url || '');
+    });
 };
 
 window.fetchAndRenderMappings = async (data = null, options = {}) => {
@@ -72,7 +82,7 @@ window.fetchAndRenderMappings = async (data = null, options = {}) => {
     try {
         if (data === null) {
             try {
-                const res = await fetchMappingsFromServer({ force: true });
+                const res = await apiFetch(ENDPOINTS.MAPPINGS + (options.useCache ? '?cache=true' : ''));
                 data = res.mappings || [];
             } catch (error) {
                 if (window.DemoData?.isAvailable?.()) {
@@ -82,11 +92,26 @@ window.fetchAndRenderMappings = async (data = null, options = {}) => {
             }
         }
 
+        // Apply optimistic updates from queue
+        if (window.cacheManager?.optimisticQueue?.length > 0) {
+            const queue = window.cacheManager.optimisticQueue;
+            data = data.map(m => {
+                const opt = queue.find(x => x.id === (m.id || m.uuid));
+                return opt ? (opt.op === 'delete' ? null : opt.payload) : m;
+            }).filter(Boolean);
+            
+            queue.forEach(opt => {
+                if (opt.op !== 'delete' && !data.some(m => (m.id || m.uuid) === opt.id)) {
+                    data.unshift(opt.payload);
+                }
+            });
+        }
+
         window.originalMappings = data;
         window.allMappings = data;
         
         window.renderList(container, window.sortMappings(data), {
-            renderItem: window.renderMappingMarkup,
+            renderItem: window.renderMappingCard,
             getKey: window.getMappingRenderKey,
             getSignature: window.getMappingRenderSignature
         });
@@ -101,8 +126,8 @@ window.fetchAndRenderMappings = async (data = null, options = {}) => {
 
 window.renderMappingCard = (mapping) => {
     if (!mapping || !mapping.id) return '';
-    const normalizedId = String(mapping.id || mapping.uuid || '');
-    const isExpanded = window.mappingPreviewState.has(normalizedId);
+    const id = mapping.id || mapping.uuid;
+    const isExpanded = window.mappingPreviewState.has(id);
     
     const actions = [
         { class: 'secondary', handler: 'duplicateMapping', icon: 'clipboard' },
@@ -111,22 +136,34 @@ window.renderMappingCard = (mapping) => {
     ];
 
     const data = {
-        id: mapping.id,
+        id,
         method: mapping.request?.method || 'GET',
-        url: mapping.request?.url || 'N/A',
+        url: mapping.request?.url || mapping.request?.urlPath || mapping.request?.urlPattern || 'N/A',
         status: mapping.response?.status || 200,
-        name: mapping.name || `Mapping ${mapping.id.substring(0, 8)}`,
+        name: mapping.name || `Mapping ${id.substring(0, 8)}`,
         expanded: isExpanded,
         extras: {
-            preview: isExpanded ? UIComponents.createPreviewSection('Request', mapping.request) : ''
+            preview: isExpanded ? (
+                window.UIComponents.createPreviewSection('Request', {
+                    'Method': mapping.request?.method,
+                    'URL': mapping.request?.url || mapping.request?.urlPattern,
+                    'Headers': mapping.request?.headers,
+                    'Body': mapping.request?.body || mapping.request?.bodyPatterns
+                }) + 
+                window.UIComponents.createPreviewSection('Response', {
+                    'Status': mapping.response?.status,
+                    'Body': mapping.response?.jsonBody || mapping.response?.body,
+                    'Headers': mapping.response?.headers
+                })
+            ) : ''
         }
     };
 
-    return UIComponents.createCard('mapping', data, actions);
+    return window.UIComponents.createCard('mapping', data, actions);
 };
 
 window.getMappingById = async (id) => {
-    const cached = window.allMappings?.find(m => m.id === id);
+    const cached = window.allMappings?.find(m => (m.id || m.uuid) === id);
     if (cached) return cached;
     return await apiFetch(`/mappings/${id}`);
 };

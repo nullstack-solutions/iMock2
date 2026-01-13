@@ -39,7 +39,12 @@
             if (s >= 400 && s < 500) return 'status-warning';
             return s >= 500 ? 'status-danger' : 'status-info';
         },
-        parseRequestTime(d) { return d ? new Date(d).toLocaleTimeString() : 'N/A'; }
+        parseRequestTime(d) { return d ? new Date(d).toLocaleTimeString() : 'N/A'; },
+        formatDateTime(d) {
+            const date = new Date(d);
+            const pad = (n) => String(n).padStart(2, '0');
+            return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+        }
     };
 
     window.LifecycleManager = {
@@ -69,7 +74,7 @@
     };
 
     window.Icons = {
-        render: (name, opts = {}) => `<svg class=\"icon icon-${name} ${opts.className || ''}\"><use href=\"#icon-${name}\"></use></svg>`
+        render: (name, opts = {}) => `<svg class="icon icon-${name} ${opts.className || ''}"><use href="#icon-${name}"></use></svg>`
     };
 
     window.apiFetch = async (url, opts = {}) => {
@@ -78,6 +83,12 @@
             ...opts,
             headers: { 'Content-Type': 'application/json', ...opts.headers }
         });
+        
+        if (res.ok) {
+            window.lastWiremockSuccess = Date.now();
+            if (window.updateLastSuccessUI) window.updateLastSuccessUI();
+        }
+
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.headers.get('content-type')?.includes('application/json') ? res.json() : res.text();
     };

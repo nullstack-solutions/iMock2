@@ -5,17 +5,14 @@ window.fetchAndRenderRequests = async (data = null, options = {}) => {
     if (!container) return false;
 
     try {
-        let reqSource = options.source || 'direct';
         if (data === null) {
             try {
                 const res = await apiFetch(ENDPOINTS.REQUESTS);
                 data = res.requests || [];
             } catch (error) {
                 if (window.DemoData?.isAvailable?.()) {
-                    console.warn('⚠️ Falling back to demo requests.', error);
                     if (window.markDemoModeActive) window.markDemoModeActive('requests-fallback');
                     data = window.DemoData.getRequestsPayload().requests || [];
-                    reqSource = 'demo';
                 } else { throw error; }
             }
         }
@@ -24,7 +21,7 @@ window.fetchAndRenderRequests = async (data = null, options = {}) => {
         window.allRequests = data;
 
         window.renderList(container, data, {
-            renderItem: window.renderRequestMarkup,
+            renderItem: window.renderRequestCard,
             getKey: window.getRequestRenderKey,
             getSignature: window.getRequestRenderSignature
         });
@@ -43,12 +40,26 @@ window.renderRequestCard = (r) => {
     const data = {
         id: r.id || '',
         method: r.request?.method || 'GET',
-        url: r.request?.url || 'N/A',
+        url: r.request?.url || r.request?.urlPath || 'N/A',
         status: r.responseDefinition?.status || (matched ? 200 : 404),
         time: Utils.parseRequestTime(r.request?.loggedDate),
         extras: {
             badges: matched ? '<span class="badge badge-success">Matched</span>' : '<span class="badge badge-danger">Unmatched</span>',
-            preview: UIComponents.createPreviewSection('Request', r.request)
+            preview: (
+                UIComponents.createPreviewSection('Request', {
+                    'Method': r.request?.method,
+                    'URL': r.request?.url || r.request?.urlPath,
+                    'Client IP': r.request?.clientIp,
+                    'Headers': r.request?.headers,
+                    'Body': r.request?.body
+                }) +
+                UIComponents.createPreviewSection('Response', {
+                    'Status': r.responseDefinition?.status,
+                    'Matched': matched ? 'Yes' : 'No',
+                    'Headers': r.responseDefinition?.headers,
+                    'Body': r.responseDefinition?.jsonBody || r.responseDefinition?.body
+                })
+            )
         }
     };
     return UIComponents.createCard('request', data, []);
