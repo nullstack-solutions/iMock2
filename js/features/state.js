@@ -4,20 +4,6 @@
     const window = global;
     const state = window.FeaturesState || {};
 
-<<<<<<< HEAD
-    if (!Array.isArray(window.originalMappings)) window.originalMappings = [];
-    if (!Array.isArray(window.allMappings)) window.allMappings = [];
-    if (!Array.isArray(window.originalRequests)) window.originalRequests = [];
-    if (!Array.isArray(window.allRequests)) window.allRequests = [];
-    if (!(window.mappingIndex instanceof Map)) window.mappingIndex = new Map();
-    
-    window.mappingTabTotals ??= { all: 0, get: 0, post: 0, put: 0, patch: 0, delete: 0 };
-    window.requestTabTotals ??= { all: 0, matched: 0, unmatched: 0 };
-    
-    if (!(window.pendingDeletedIds instanceof Set)) window.pendingDeletedIds = new Set();
-    if (!(window.deletionTimeouts instanceof Map)) window.deletionTimeouts = new Map();
-    
-=======
     // Threshold for reusing recently completed fetch results to avoid redundant requests
     // When a force refresh is requested but a result just completed, reuse it if within this window
     const FETCH_REUSE_WINDOW_MS = 1000;
@@ -27,7 +13,6 @@
     window.requestTabTotals ??= { all: 0, matched: 0, unmatched: 0 };
     if (!(window.pendingDeletedIds instanceof Set)) window.pendingDeletedIds = new Set();
     if (!(window.deletionTimeouts instanceof Map)) window.deletionTimeouts = new Map();
->>>>>>> clean
     window.isDemoMode ??= false;
     window.demoModeAnnounced ??= false;
     window.demoModeLastError ??= null;
@@ -46,59 +31,15 @@
     function addMappingToIndex(mapping) {
         if (!mapping || typeof mapping !== 'object') return;
         if (!(window.mappingIndex instanceof Map)) window.mappingIndex = new Map();
-<<<<<<< HEAD
-        
-        const identifiers = new Set();
-        const fields = ['id', 'uuid', 'stubMappingId', 'stubId', 'mappingId'];
-        
-        fields.forEach(function(field) {
-            if (mapping[field]) {
-                identifiers.add(String(mapping[field]).trim());
-            }
-        });
-        
-        if (mapping.metadata?.id) {
-            identifiers.add(String(mapping.metadata.id).trim());
-        }
-        
-        identifiers.forEach(function(id) {
-            if (id) window.mappingIndex.set(id, mapping);
-        });
-=======
         const identifiers = new Set();
         ['id', 'uuid', 'stubMappingId', 'stubId', 'mappingId'].forEach(field => { if (mapping[field]) identifiers.add(String(mapping[field]).trim()); });
         if (mapping.metadata?.id) identifiers.add(String(mapping.metadata.id).trim());
         identifiers.forEach(id => { if (id) window.mappingIndex.set(id, mapping); });
->>>>>>> clean
     }
 
     function rebuildMappingIndex(mappings) {
         if (!(window.mappingIndex instanceof Map)) window.mappingIndex = new Map();
         else window.mappingIndex.clear();
-<<<<<<< HEAD
-        
-        if (Array.isArray(mappings)) {
-            mappings.forEach(addMappingToIndex);
-        }
-    }
-
-    function computeMappingTabTotals(source = []) {
-        const totals = { all: 0, get: 0, post: 0, put: 0, patch: 0, delete: 0 };
-        if (!Array.isArray(source) || source.length === 0) return totals;
-        
-        totals.all = source.length;
-        source.forEach(function(mapping) {
-            const method = (mapping?.request?.method || '').toLowerCase();
-            if (Object.prototype.hasOwnProperty.call(totals, method)) {
-                totals[method] += 1;
-            }
-        });
-        return totals;
-    }
-
-    function refreshMappingTabSnapshot() {
-        window.mappingTabTotals = computeMappingTabTotals(window.originalMappings);
-=======
         if (Array.isArray(mappings)) mappings.forEach(addMappingToIndex);
     }
 
@@ -120,7 +61,6 @@ function refreshMappingTabSnapshot() {
         // Use MappingsStore instead of legacy window.originalMappings
         const mappings = window.MappingsStore?.getAll ? window.MappingsStore.getAll() : [];
         window.mappingTabTotals = computeMappingTabTotals(mappings);
->>>>>>> clean
     }
 
     function computeRequestTabTotals(source = []) {
@@ -130,11 +70,7 @@ function refreshMappingTabSnapshot() {
         }
 
         totals.all = source.length;
-<<<<<<< HEAD
-        source.forEach(function(request) {
-=======
         source.forEach(request => {
->>>>>>> clean
             const matched = request?.wasMatched !== false;
             if (matched) {
                 totals.matched += 1;
@@ -145,15 +81,10 @@ function refreshMappingTabSnapshot() {
         return totals;
     }
 
-<<<<<<< HEAD
-    function refreshRequestTabSnapshot() {
-        window.requestTabTotals = computeRequestTabTotals(window.originalRequests);
-=======
 function refreshRequestTabSnapshot() {
         // Use RequestsStore if available, fallback to legacy window.originalRequests
         const requests = window.RequestsStore?.getAll ? window.RequestsStore.getAll() : window.originalRequests || [];
         window.requestTabTotals = computeRequestTabTotals(requests);
->>>>>>> clean
         if (typeof window.updateRequestTabCounts === 'function') {
             window.updateRequestTabCounts();
         }
@@ -175,26 +106,6 @@ function refreshRequestTabSnapshot() {
     }
 
     async function fetchMappingsFromServer({ force = false } = {}) {
-<<<<<<< HEAD
-        if (!force && mappingsFetchPromise) {
-            return mappingsFetchPromise;
-        }
-
-        if (force && mappingsFetchPromise) {
-            try {
-                await mappingsFetchPromise;
-            } catch (error) {
-                console.warn('fetchMappingsFromServer: previous request failed, starting a new one', error);
-            }
-        }
-
-        const requestPromise = (async function() {
-            try {
-                return await window.apiFetch(window.ENDPOINTS.MAPPINGS);
-            } catch (error) {
-                if (window.DemoData?.isAvailable?.() && window.DemoData?.getMappingsPayload) {
-                    console.warn('⚠️ Falling back to demo mappings because the WireMock API request failed.', error);
-=======
         // If there's already an in-flight request, return it (deduplicate)
         if (mappingsFetchPromise) {
             if (!force) {
@@ -226,7 +137,6 @@ function refreshRequestTabSnapshot() {
             } catch (error) {
                 if (window.DemoData?.isAvailable?.() && window.DemoData?.getMappingsPayload) {
                     Logger.warn('STATE', 'Falling back to demo mappings because the WireMock API request failed.', error);
->>>>>>> clean
                     window.demoModeLastError = error;
                     markDemoModeActive('mappings-fallback');
                     return window.DemoData.getMappingsPayload();
@@ -243,8 +153,6 @@ function refreshRequestTabSnapshot() {
         return requestPromise;
     }
 
-<<<<<<< HEAD
-=======
     function updateOptimisticCache(mapping, operation, options = {}) {
         try {
             if (!mapping) {
@@ -341,7 +249,6 @@ function refreshRequestTabSnapshot() {
         }
     }
 
->>>>>>> clean
     state.markDemoModeActive = markDemoModeActive;
     state.addMappingToIndex = addMappingToIndex;
     state.rebuildMappingIndex = rebuildMappingIndex;
@@ -351,10 +258,7 @@ function refreshRequestTabSnapshot() {
     state.refreshRequestTabSnapshot = refreshRequestTabSnapshot;
     state.removeMappingFromIndex = removeMappingFromIndex;
     state.fetchMappingsFromServer = fetchMappingsFromServer;
-<<<<<<< HEAD
-=======
     state.updateOptimisticCache = updateOptimisticCache;
->>>>>>> clean
 
     window.markDemoModeActive = markDemoModeActive;
     window.addMappingToIndex = addMappingToIndex;
@@ -365,18 +269,11 @@ function refreshRequestTabSnapshot() {
     window.refreshRequestTabSnapshot = refreshRequestTabSnapshot;
     window.removeMappingFromIndex = removeMappingFromIndex;
     window.fetchMappingsFromServer = fetchMappingsFromServer;
-<<<<<<< HEAD
-
-    window.FeaturesState = state;
-
-    console.log('✅ state.js loaded - State management functions registered');
-=======
     window.updateOptimisticCache = updateOptimisticCache;
 
     window.FeaturesState = state;
 
     Logger.info('STATE', 'state.js loaded - State management functions registered');
->>>>>>> clean
 
     if (typeof window.dispatchEvent === 'function') {
         let readyEvent;

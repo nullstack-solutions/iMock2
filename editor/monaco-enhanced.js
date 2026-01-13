@@ -2180,10 +2180,6 @@ class MonacoInitializer {
             this.editorReadOnlyLocked = false;
         }
 
-<<<<<<< HEAD
-        this.suspendHistoryRecording = true;
-        try {
-=======
 this.suspendHistoryRecording = true;
         try {
             // Clear selection and content before setting new value
@@ -2196,7 +2192,6 @@ this.suspendHistoryRecording = true;
             if (editor && typeof editor.executeCommand === 'function') {
                 editor.executeCommand('editor.action.deleteAll');
             }
->>>>>>> clean
             editor.setValue('');
         } finally {
             this.suspendHistoryRecording = false;
@@ -2636,12 +2631,6 @@ this.suspendHistoryRecording = true;
     }
 
     // JSON operations
-<<<<<<< HEAD
-    async formatJSON() {
-        const editor = this.getActiveEditor();
-        const content = editor.getValue();
-        
-=======
 async formatJSON() {
         const editor = this.getActiveEditor();
         const content = editor.getValue();
@@ -2651,7 +2640,6 @@ async formatJSON() {
             editor.setValue('');
         }
         
->>>>>>> clean
         try {
             if (this.workerPool) {
                 const formatted = await this.workerPool.execute('format', { text: content }, 1);
