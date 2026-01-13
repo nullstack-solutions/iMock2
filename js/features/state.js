@@ -58,10 +58,8 @@ function computeMappingTabTotals(source = []) {
     }
 
 function refreshMappingTabSnapshot() {
-        // Use MappingsStore as primary source, fallback to legacy window.originalMappings for tests
-        const mappings = window.MappingsStore?.getAll 
-            ? window.MappingsStore.getAll() 
-            : (window.originalMappings || []);
+        // Use MappingsStore as single source of truth
+        const mappings = window.MappingsStore?.getAll ? window.MappingsStore.getAll() : [];
         window.mappingTabTotals = computeMappingTabTotals(mappings);
     }
 
@@ -84,8 +82,8 @@ function refreshMappingTabSnapshot() {
     }
 
 function refreshRequestTabSnapshot() {
-        // Use RequestsStore if available, fallback to legacy window.originalRequests
-        const requests = window.RequestsStore?.getAll ? window.RequestsStore.getAll() : window.originalRequests || [];
+        // Use MappingsStore for requests
+        const requests = window.MappingsStore?.getAllRequests ? window.MappingsStore.getAllRequests() : [];
         window.requestTabTotals = computeRequestTabTotals(requests);
         if (typeof window.updateRequestTabCounts === 'function') {
             window.updateRequestTabCounts();

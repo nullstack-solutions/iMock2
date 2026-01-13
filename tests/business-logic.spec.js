@@ -45,7 +45,7 @@ sandbox.updateRequestTabCounts = () => { sandbox.__requestCountsCalled = true; }
 
 const context = vm.createContext(sandbox);
 
-for (const script of ['js/features/state.js', 'js/features/demo.js']) {
+for (const script of ['js/features/store.js', 'js/features/state.js', 'js/features/demo.js']) {
     const code = fs.readFileSync(path.join(__dirname, '..', script), 'utf8');
     vm.runInContext(code, context, { filename: script });
 }
@@ -68,10 +68,16 @@ runTest('computeMappingTabTotals aggregates HTTP methods', () => {
 });
 
 runTest('refreshMappingTabSnapshot stores totals correctly', () => {
-    context.originalMappings = [
-        { request: { method: 'GET' } },
-        { request: { method: 'POST' } },
+    const testMappings = [
+        { id: 'test-1', request: { method: 'GET' } },
+        { id: 'test-2', request: { method: 'POST' } },
     ];
+    
+    // Initialize MappingsStore with test data
+    if (context.MappingsStore) {
+        context.MappingsStore.setFromServer(testMappings);
+    }
+    
     context.refreshMappingTabSnapshot();
     assert.strictEqual(context.mappingTabTotals.get, 1);
     assert.strictEqual(context.mappingTabTotals.post, 1);
@@ -89,10 +95,16 @@ runTest('computeRequestTabTotals distinguishes matched requests', () => {
 });
 
 runTest('refreshRequestTabSnapshot updates totals and invokes counter hook', () => {
-    context.originalRequests = [
-        { wasMatched: true },
-        { wasMatched: false },
+    const testRequests = [
+        { id: 'req-1', wasMatched: true },
+        { id: 'req-2', wasMatched: false },
     ];
+    
+    // Initialize MappingsStore with test data
+    if (context.MappingsStore) {
+        context.MappingsStore.setRequests(testRequests);
+    }
+    
     context.__requestCountsCalled = false;
     context.refreshRequestTabSnapshot();
     assert.strictEqual(context.requestTabTotals.matched, 1);

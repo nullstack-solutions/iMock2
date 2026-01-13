@@ -649,8 +649,6 @@ const filteredMappings = Array.isArray(incoming) ? incoming.filter(m => !isImock
         
         const currentMappings = window.MappingsStore ? window.MappingsStore.getAll() : (Array.isArray(mappingsToRender) ? mappingsToRender : []);
         
-        // Set window.allMappings for backward compatibility with tests and legacy code
-        window.allMappings = currentMappings;
         if (currentMappings.length === 0) {
             emptyState.classList.remove('hidden');
             container.style.display = 'none';
@@ -933,19 +931,10 @@ window.getMappingById = async (mappingId) => {
         Logger.debug('CACHE', 'MappingsStore available:', !!window.MappingsStore);
         Logger.debug('CACHE', 'Cache size:', currentMappings?.length || 0);
 
-        // Try to get from cache first
+        // Try to get from MappingsStore first
         let cachedMapping = window.MappingsStore ? window.MappingsStore.get(mappingId) : null;
         
-        // Check legacy mappingIndex (use duck typing for Map to support VM contexts)
-        if (!cachedMapping && window.mappingIndex && typeof window.mappingIndex.get === 'function') {
-            cachedMapping = window.mappingIndex.get(mappingId) || null;
-        }
-        
-        // Check allMappings array as last fallback
-        if (!cachedMapping && Array.isArray(window.allMappings)) {
-            cachedMapping = window.allMappings.find(m => m.id === mappingId || m.uuid === mappingId) || null;
-        }
-        
+        // Fallback to searching in currentMappings array
         if (!cachedMapping) {
             cachedMapping = currentMappings.find(m => m.id === mappingId || m.uuid === mappingId) || null;
         }
