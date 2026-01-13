@@ -88,6 +88,7 @@
         // Refresh mappings function for button compatibility
         window.refreshMappings = async () => {
             try {
+                // Trigger settings read to ensure settings are loaded (side effect for initialization)
                 if (typeof window.readWiremockSettings === 'function') {
                     window.readWiremockSettings();
                 }
