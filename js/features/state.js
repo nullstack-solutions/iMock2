@@ -9,10 +9,13 @@
     if (!Array.isArray(window.originalRequests)) window.originalRequests = [];
     if (!Array.isArray(window.allRequests)) window.allRequests = [];
     if (!(window.mappingIndex instanceof Map)) window.mappingIndex = new Map();
+    
     window.mappingTabTotals ??= { all: 0, get: 0, post: 0, put: 0, patch: 0, delete: 0 };
     window.requestTabTotals ??= { all: 0, matched: 0, unmatched: 0 };
+    
     if (!(window.pendingDeletedIds instanceof Set)) window.pendingDeletedIds = new Set();
     if (!(window.deletionTimeouts instanceof Map)) window.deletionTimeouts = new Map();
+    
     window.isDemoMode ??= false;
     window.demoModeAnnounced ??= false;
     window.demoModeLastError ??= null;
@@ -31,23 +34,45 @@
     function addMappingToIndex(mapping) {
         if (!mapping || typeof mapping !== 'object') return;
         if (!(window.mappingIndex instanceof Map)) window.mappingIndex = new Map();
+        
         const identifiers = new Set();
-        ['id', 'uuid', 'stubMappingId', 'stubId', 'mappingId'].forEach(field => { if (mapping[field]) identifiers.add(String(mapping[field]).trim()); });
-        if (mapping.metadata?.id) identifiers.add(String(mapping.metadata.id).trim());
-        identifiers.forEach(id => { if (id) window.mappingIndex.set(id, mapping); });
+        const fields = ['id', 'uuid', 'stubMappingId', 'stubId', 'mappingId'];
+        
+        fields.forEach(function(field) {
+            if (mapping[field]) {
+                identifiers.add(String(mapping[field]).trim());
+            }
+        });
+        
+        if (mapping.metadata?.id) {
+            identifiers.add(String(mapping.metadata.id).trim());
+        }
+        
+        identifiers.forEach(function(id) {
+            if (id) window.mappingIndex.set(id, mapping);
+        });
     }
 
     function rebuildMappingIndex(mappings) {
         if (!(window.mappingIndex instanceof Map)) window.mappingIndex = new Map();
         else window.mappingIndex.clear();
-        if (Array.isArray(mappings)) mappings.forEach(addMappingToIndex);
+        
+        if (Array.isArray(mappings)) {
+            mappings.forEach(addMappingToIndex);
+        }
     }
 
     function computeMappingTabTotals(source = []) {
         const totals = { all: 0, get: 0, post: 0, put: 0, patch: 0, delete: 0 };
         if (!Array.isArray(source) || source.length === 0) return totals;
+        
         totals.all = source.length;
-        source.forEach(mapping => { const method = (mapping?.request?.method || '').toLowerCase(); if (Object.prototype.hasOwnProperty.call(totals, method)) totals[method] += 1; });
+        source.forEach(function(mapping) {
+            const method = (mapping?.request?.method || '').toLowerCase();
+            if (Object.prototype.hasOwnProperty.call(totals, method)) {
+                totals[method] += 1;
+            }
+        });
         return totals;
     }
 
@@ -62,7 +87,7 @@
         }
 
         totals.all = source.length;
-        source.forEach(request => {
+        source.forEach(function(request) {
             const matched = request?.wasMatched !== false;
             if (matched) {
                 totals.matched += 1;
@@ -108,7 +133,7 @@
             }
         }
 
-        const requestPromise = (async () => {
+        const requestPromise = (async function() {
             try {
                 return await window.apiFetch(window.ENDPOINTS.MAPPINGS);
             } catch (error) {
