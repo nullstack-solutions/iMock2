@@ -4,6 +4,10 @@
     const window = global;
     const state = window.FeaturesState || {};
 
+    // Threshold for reusing recently completed fetch results to avoid redundant requests
+    // When a force refresh is requested but a result just completed, reuse it if within this window
+    const FETCH_RESULT_REUSE_THRESHOLD_MS = 1000;
+
     if (!(window.mappingIndex instanceof Map)) window.mappingIndex = new Map();
     window.mappingTabTotals ??= { all: 0, get: 0, post: 0, put: 0, patch: 0, delete: 0 };
     window.requestTabTotals ??= { all: 0, matched: 0, unmatched: 0 };
@@ -102,13 +106,24 @@ function refreshRequestTabSnapshot() {
     }
 
     async function fetchMappingsFromServer({ force = false } = {}) {
-        if (!force && mappingsFetchPromise) {
-            return mappingsFetchPromise;
-        }
-
-        if (force && mappingsFetchPromise) {
+        // If there's already an in-flight request, return it (deduplicate)
+        if (mappingsFetchPromise) {
+            if (!force) {
+                Logger.debug('STATE', 'fetchMappingsFromServer: reusing in-flight request');
+                return mappingsFetchPromise;
+            }
+            // If force=true, wait for existing request to complete first
+            // This prevents overlapping parallel requests
             try {
-                await mappingsFetchPromise;
+                Logger.debug('STATE', 'fetchMappingsFromServer: waiting for in-flight request before force refresh');
+                const result = await mappingsFetchPromise;
+                // If the in-flight request just completed, return its result
+                // unless we really need fresh data
+                const timeSinceResult = Date.now() - (window._lastMappingsFetchTime || 0);
+                if (timeSinceResult < FETCH_RESULT_REUSE_THRESHOLD_MS) {
+                    Logger.debug('STATE', 'fetchMappingsFromServer: reusing just-completed result');
+                    return result;
+                }
             } catch (error) {
                 Logger.warn('STATE', 'fetchMappingsFromServer: previous request failed, starting a new one', error);
             }
@@ -116,7 +131,9 @@ function refreshRequestTabSnapshot() {
 
         const requestPromise = (async () => {
             try {
-                return await window.apiFetch(window.ENDPOINTS.MAPPINGS);
+                const result = await window.apiFetch(window.ENDPOINTS.MAPPINGS);
+                window._lastMappingsFetchTime = Date.now();
+                return result;
             } catch (error) {
                 if (window.DemoData?.isAvailable?.() && window.DemoData?.getMappingsPayload) {
                     Logger.warn('STATE', 'Falling back to demo mappings because the WireMock API request failed.', error);
