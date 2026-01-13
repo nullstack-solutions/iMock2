@@ -57,7 +57,9 @@ window.MappingsOperations = {
     const normalizedPayload = { ...(mappingData || {}) };
     normalizeScenarioNameField(normalizedPayload, { notify: (msg) => window.NotificationManager?.warning?.(msg) });
 
-    const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const tempId = typeof crypto?.randomUUID === 'function'
+      ? `temp-${crypto.randomUUID()}`
+      : `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
     Logger.info('OPS', `Creating mapping with temp ID: ${tempId}`);
 

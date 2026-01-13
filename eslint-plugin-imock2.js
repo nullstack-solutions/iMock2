@@ -15,7 +15,7 @@ module.exports = {
         },
         schema: [], // no options
         messages: {
-          noLegacyMappings: 'Use MappingsStore instead of legacy window.allMappings or window.originalMappings'
+          noLegacyMappings: 'Use MappingsStore.getAll() instead of window.allMappings or window.originalMappings'
         }
       },
       create: function(context) {

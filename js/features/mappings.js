@@ -498,11 +498,11 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                         (async () => {
                             try {
                                 // Wait a bit for any optimistic updates to complete. Delay is configurable
-                                // via `window.OptimisticUpdateDelayMs` to balance responsiveness vs. stability.
-                                const optimisticUpdateDelayMs = (typeof window !== 'undefined' && typeof window.OptimisticUpdateDelayMs === 'number')
-                                    ? window.OptimisticUpdateDelayMs
+                                // via `window.optimisticUpdateDelayMs` to balance responsiveness vs. stability.
+                                const delayMs = (typeof window !== 'undefined' && typeof window.optimisticUpdateDelayMs === 'number')
+                                    ? window.optimisticUpdateDelayMs
                                     : 500;
-                                await new Promise(resolve => setTimeout(resolve, optimisticUpdateDelayMs));
+                                await new Promise(resolve => setTimeout(resolve, delayMs));
 
                                 const freshData = await fetchMappingsFromServer({ force: true });
                                 if (freshData && freshData.mappings) {
