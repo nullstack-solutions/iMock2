@@ -70,6 +70,8 @@ Features include formatting, validation, templates, comparison, and history trac
 | Document | Description |
 |----------|-------------|
 | [Features Overview](docs/features.md) | Complete feature status and capabilities |
+| [Business Features](docs/BUSINESS_FEATURES.md) | User-facing features and use cases |
+| [Repository Map](docs/REPOSITORY_MAP.md) | Code organization and file structure |
 | [API Coverage](docs/api-coverage.md) | WireMock Admin API endpoint mapping |
 | [Testing Guide](docs/testing.md) | Automated and manual testing procedures |
 | [Development](docs/development.md) | Roadmap and contribution guidelines |
@@ -125,6 +127,7 @@ Follow the comprehensive checklist in [docs/testing.md](docs/testing.md) to veri
 - **Frontend:** Vanilla JavaScript (ES6+), HTML5, CSS3
 - **JSON Editor:** Monaco Editor / CodeMirror 5
 - **API:** WireMock Admin REST API
+- **Data Management:** MappingsStore (single source of truth with optimistic updates)
 - **Storage:** IndexedDB for history, LocalStorage for settings
 - **Workers:** Web Workers for heavy JSON operations
 
@@ -142,9 +145,9 @@ Follow the comprehensive checklist in [docs/testing.md](docs/testing.md) to veri
 - Settings persistence and theme switching
 - Demo mode with fixture data
 - Comprehensive JSON editor with Monaco
+- MappingsStore as single source of truth (backward compatibility removed)
 
 ### In Progress ⚠️
-- Cache service verification pipeline
 - Recording workflow UI integration
 - Auto-refresh scheduler
 - Near-miss analysis dashboard

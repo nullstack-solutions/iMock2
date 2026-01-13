@@ -1,222 +1,418 @@
+/**
+ * Query Parser for filtering mappings and requests
+ * Simple Gmail-like syntax parser without external dependencies
+ *
+ * Example queries:
+ * Mappings:
+ * - method:GET,POST          → OR between methods
+ * - url:api status:200       → AND between different fields
+ * - method:GET url:/users    → combination of conditions
+ * - -status:404              → exclusion
+ * - priority:1-5             → priority range
+ *
+ * Requests:
+ * - method:GET url:api       → filter by method and URL
+ * - matched:true             → show only matched requests
+ * - matched:false            → show only unmatched requests
+ * - status:200,201           → filter by response status codes
+ * - client:192.168           → filter by client IP
+ */
+
 'use strict';
 
-(function(global) {
-    const KEYWORDS = ['method', 'url', 'status', 'name', 'scenario', 'matched', 'client'];
-    const RANGE_KEYWORDS = ['priority'];
+const KEYWORDS = ['method', 'url', 'status', 'name', 'scenario', 'matched', 'client'];
+const RANGE_KEYWORDS = ['priority'];
 
-    /**
-     * Checks if value matches condition
-     */
-    function matchesCondition(value, condition) {
-        if (value === undefined || value === null) return false;
-
-        const stringValue = String(value).toLowerCase();
-
-        // Check for exclusion
-        if (condition && typeof condition === 'object' && condition.exclude) {
-            const excludeValues = Array.isArray(condition.exclude) ? condition.exclude : [condition.exclude];
-            return !excludeValues.some(ex => stringValue.includes(String(ex).toLowerCase()));
-        }
-
-        // Regular match (OR)
-        const conditions = Array.isArray(condition) ? condition : [condition];
-        return conditions.some(cond => stringValue.includes(String(cond).toLowerCase()));
+/**
+ * Parses query string into structured object
+ * @param {string} query - Query string (e.g., "method:GET,POST url:api")
+ * @returns {Object|null} - Parsed object or null on error
+ */
+function parseQuery(query) {
+    if (!query || typeof query !== 'string') {
+        return null;
     }
 
-    /**
-     * Checks if value matches range
-     */
-    function matchesRange(value, range) {
-        const numValue = Number(value);
-        if (isNaN(numValue)) return false;
-
-        const from = range.from !== undefined ? Number(range.from) : -Infinity;
-        const to = range.to !== undefined ? Number(range.to) : Infinity;
-
-        return numValue >= from && numValue <= to;
+    const trimmed = query.trim();
+    if (!trimmed) {
+        return null;
     }
 
-    /**
-     * Parses query string into structured object
-     */
-    function parseQuery(query) {
-        if (!query || typeof query !== 'string') return null;
-        
-        const trimmed = query.trim();
-        if (!trimmed) return null;
+    try {
+        const result = {};
 
-        try {
-            const result = {};
-            const keyValuePattern = /(-?)(\w+):([\w\/\*.,\-]+|"[^"]*")/g;
-            let match;
-            const processedIndices = [];
+        // Regular expression to find key:value pairs
+        // Supports: key:value, key:value1,value2, -key:value
+        const keyValuePattern = /(-?)(\w+):([\w\/\*.,\-]+|"[^"]*")/g;
+        let match;
+        const processedIndices = [];
 
-            while ((match = keyValuePattern.exec(trimmed)) !== null) {
-                const [fullMatch, isExclude, key, rawValue] = match;
-                let value = rawValue;
+        while ((match = keyValuePattern.exec(trimmed)) !== null) {
+            const isExclude = match[1] === '-';
+            const key = match[2];
+            let value = match[3];
 
-                if (value.startsWith('"') && value.endsWith('"')) {
-                    value = value.slice(1, -1);
-                }
-
-                if (!KEYWORDS.includes(key) && !RANGE_KEYWORDS.includes(key)) continue;
-
-                processedIndices.push({ start: match.index, end: match.index + fullMatch.length });
-
-                // Handle ranges
-                if (RANGE_KEYWORDS.includes(key)) {
-                    const rangeMatch = value.match(/^(\d+)-(\d+)$/);
-                    if (rangeMatch) {
-                        result[key] = { from: rangeMatch[1], to: rangeMatch[2] };
-                    } else if (/^\d+$/.test(value)) {
-                        result[key] = { from: value, to: value };
-                    }
-                    continue;
-                }
-
-                // Handle exclusions/values
-                const values = value.split(',');
-                const normalizedValue = values.length > 1 ? values : values[0];
-                
-                if (isExclude) {
-                    result[key] = { exclude: normalizedValue };
-                } else {
-                    result[key] = normalizedValue;
-                }
+            // Remove quotes if present
+            if (value.startsWith('"') && value.endsWith('"')) {
+                value = value.slice(1, -1);
             }
 
-            // Extract free text
-            if (processedIndices.length > 0) {
-                let textParts = [];
-                let lastEnd = 0;
-                processedIndices.sort((a, b) => a.start - b.start);
+            // Check that this is a known keyword
+            if (!KEYWORDS.includes(key) && !RANGE_KEYWORDS.includes(key)) {
+                continue;
+            }
 
-                for (const idx of processedIndices) {
-                    if (idx.start > lastEnd) {
-                        const part = trimmed.slice(lastEnd, idx.start).trim();
-                        if (part) textParts.push(part);
-                    }
-                    lastEnd = idx.end;
+            processedIndices.push({ start: match.index, end: match.index + match[0].length });
+
+            // Handle ranges (e.g., priority:1-5)
+            if (RANGE_KEYWORDS.includes(key)) {
+                // Only treat as range if value matches two numbers separated by a single hyphen
+                const rangeMatch = value.match(/^(\d+)-(\d+)$/);
+                if (rangeMatch) {
+                    result[key] = {
+                        from: rangeMatch[1],
+                        to: rangeMatch[2]
+                    };
+                } else if (/^\d+$/.test(value)) {
+                    // Single numeric value
+                    result[key] = {
+                        from: value,
+                        to: value
+                    };
                 }
-                if (lastEnd < trimmed.length) {
-                    const part = trimmed.slice(lastEnd).trim();
+                // Skip invalid range values (non-numeric)
+                continue;
+            }
+
+            // Handle exclusions
+            if (isExclude) {
+                const values = value.split(',');
+                result[key] = {
+                    exclude: values.length > 1 ? values : values[0]
+                };
+                continue;
+            }
+
+            // Handle regular values (with comma support for OR)
+            const values = value.split(',');
+            result[key] = values.length > 1 ? values : values[0];
+        }
+
+        // Collect remaining text (free search)
+        if (processedIndices.length > 0) {
+            let textParts = [];
+            let lastEnd = 0;
+
+            processedIndices.sort((a, b) => a.start - b.start);
+
+            for (const idx of processedIndices) {
+                if (idx.start > lastEnd) {
+                    const part = trimmed.slice(lastEnd, idx.start).trim();
                     if (part) textParts.push(part);
                 }
-                if (textParts.length) result.text = textParts.join(' ');
-            } else {
-                result.text = trimmed;
+                lastEnd = idx.end;
             }
 
-            return Object.keys(result).length > 0 ? result : null;
-        } catch (error) {
-            console.error('Query parse error:', error);
-            return null;
+            if (lastEnd < trimmed.length) {
+                const part = trimmed.slice(lastEnd).trim();
+                if (part) textParts.push(part);
+            }
+
+            const freeText = textParts.join(' ').trim();
+            if (freeText) {
+                result.text = freeText;
+            }
+        } else {
+            // If there are no key:value pairs, all text is free search
+            result.text = trimmed;
+        }
+
+        return Object.keys(result).length > 0 ? result : null;
+    } catch (error) {
+        Logger.error('QUERY', 'Query parse error:', error);
+        return null;
+    }
+}
+
+/**
+ * Checks if value matches condition
+ * @param {*} value - Value to check
+ * @param {*} condition - Condition (string, array of strings, or object with exclude)
+ * @returns {boolean}
+ */
+function matchesCondition(value, condition) {
+    if (!value && value !== 0) {
+        return false;
+    }
+
+    const stringValue = String(value).toLowerCase();
+
+    // Check for exclusion
+    if (condition && typeof condition === 'object' && condition.exclude) {
+        const excludeValues = Array.isArray(condition.exclude)
+            ? condition.exclude
+            : [condition.exclude];
+
+        for (const excludeValue of excludeValues) {
+            if (stringValue.includes(String(excludeValue).toLowerCase())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // Regular match (OR between values if array)
+    const conditions = Array.isArray(condition) ? condition : [condition];
+
+    for (const cond of conditions) {
+        const condStr = String(cond).toLowerCase();
+        if (stringValue.includes(condStr)) {
+            return true;
         }
     }
 
-    /**
-     * Filters mappings
-     */
-    function filterMappings(mappings, parsedQuery) {
-        if (!Array.isArray(mappings)) return [];
-        if (!parsedQuery || typeof parsedQuery !== 'object') return mappings;
+    return false;
+}
 
-        return mappings.filter(mapping => {
-            if (!mapping) return false;
+/**
+ * Checks if value matches range
+ * @param {number} value - Value to check
+ * @param {Object} range - Object with from and to properties
+ * @returns {boolean}
+ */
+function matchesRange(value, range) {
+    const numValue = Number(value);
+    if (isNaN(numValue)) {
+        return false;
+    }
 
-            const mReq = mapping.request || {};
-            const mRes = mapping.response || {};
+    const from = range.from !== undefined ? Number(range.from) : -Infinity;
+    const to = range.to !== undefined ? Number(range.to) : Infinity;
 
-            if (parsedQuery.method && !matchesCondition(mReq.method, parsedQuery.method)) return false;
-            
-            if (parsedQuery.url) {
-                const url = mReq.url || mReq.urlPattern || mReq.urlPath || '';
-                if (!matchesCondition(url, parsedQuery.url)) return false;
+    return numValue >= from && numValue <= to;
+}
+
+/**
+ * Filters array of mappings by parsed query
+ *
+ * Note: When filtering by priority range, mappings without a priority property
+ * will be treated as having a default priority of 1.
+ *
+ * @param {Array} mappings - Array of mappings to filter
+ * @param {Object} parsedQuery - Result of parseQuery()
+ * @returns {Array} - Filtered array
+ */
+function filterMappings(mappings, parsedQuery) {
+    if (!Array.isArray(mappings)) {
+        return [];
+    }
+
+    if (!parsedQuery || typeof parsedQuery !== 'object') {
+        return mappings;
+    }
+
+    return mappings.filter(mapping => {
+        if (!mapping) {
+            return false;
+        }
+
+        // Check method
+        if (parsedQuery.method) {
+            const requestMethod = mapping.request?.method || '';
+            if (!matchesCondition(requestMethod, parsedQuery.method)) {
+                return false;
             }
+        }
 
-            if (parsedQuery.status && !matchesCondition(mRes.status, parsedQuery.status)) return false;
-            if (parsedQuery.name && !matchesCondition(mapping.name, parsedQuery.name)) return false;
-            if (parsedQuery.scenario && !matchesCondition(mapping.scenarioName, parsedQuery.scenario)) return false;
-
-            if (parsedQuery.priority) {
-                const priority = mapping.priority ?? 1;
-                if (!matchesRange(priority, parsedQuery.priority)) return false;
+        // Check url (search in url, urlPattern, urlPath)
+        if (parsedQuery.url) {
+            const mappingUrl = mapping.request?.url ||
+                             mapping.request?.urlPattern ||
+                             mapping.request?.urlPath || '';
+            if (!matchesCondition(mappingUrl, parsedQuery.url)) {
+                return false;
             }
+        }
 
-            if (parsedQuery.text) {
-                const searchText = String(parsedQuery.text).toLowerCase();
-                const url = (mReq.url || mReq.urlPattern || mReq.urlPath || '').toLowerCase();
-                const name = (mapping.name || '').toLowerCase();
-                const method = (mReq.method || '').toLowerCase();
-                
-                if (!url.includes(searchText) && !name.includes(searchText) && !method.includes(searchText)) {
-                    return false;
+        // Check status
+        if (parsedQuery.status) {
+            const responseStatus = mapping.response?.status ?? '';
+            if (!matchesCondition(responseStatus, parsedQuery.status)) {
+                return false;
+            }
+        }
+
+        // Check name
+        if (parsedQuery.name) {
+            const mappingName = mapping.name || '';
+            if (!matchesCondition(mappingName, parsedQuery.name)) {
+                return false;
+            }
+        }
+
+        // Check scenario
+        if (parsedQuery.scenario) {
+            const scenarioName = mapping.scenarioName || '';
+            if (!matchesCondition(scenarioName, parsedQuery.scenario)) {
+                return false;
+            }
+        }
+
+        // Check priority (range)
+        // Note: Default priority is 1 if not specified on the mapping
+        if (parsedQuery.priority) {
+            const mappingPriority = mapping.priority ?? 1;
+            if (!matchesRange(mappingPriority, parsedQuery.priority)) {
+                return false;
+            }
+        }
+
+        // Check text search (if there is text without a key)
+        if (parsedQuery.text) {
+            const searchText = String(parsedQuery.text).toLowerCase();
+            const mappingUrl = (mapping.request?.url ||
+                              mapping.request?.urlPattern ||
+                              mapping.request?.urlPath || '').toLowerCase();
+            const mappingName = (mapping.name || '').toLowerCase();
+            const mappingMethod = (mapping.request?.method || '').toLowerCase();
+
+            if (!mappingUrl.includes(searchText) &&
+                !mappingName.includes(searchText) &&
+                !mappingMethod.includes(searchText)) {
+                return false;
+            }
+        }
+
+        return true;
+    });
+}
+
+/**
+ * Main filtering function - parses query and filters mappings
+ * @param {Array} mappings - Array of mappings
+ * @param {string} queryString - Query string
+ * @returns {Array} - Filtered array
+ */
+function filterMappingsByQuery(mappings, queryString) {
+    const parsed = parseQuery(queryString);
+    return filterMappings(mappings, parsed);
+}
+
+/**
+ * Filters array of requests by parsed query
+ * @param {Array} requests - Array of requests to filter
+ * @param {Object} parsedQuery - Result of parseQuery()
+ * @returns {Array} - Filtered array
+ */
+function filterRequests(requests, parsedQuery) {
+    if (!Array.isArray(requests)) {
+        return [];
+    }
+
+    if (!parsedQuery || typeof parsedQuery !== 'object') {
+        return requests;
+    }
+
+    return requests.filter(request => {
+        if (!request) {
+            return false;
+        }
+
+        // Check method
+        if (parsedQuery.method) {
+            const requestMethod = request.request?.method || '';
+            if (!matchesCondition(requestMethod, parsedQuery.method)) {
+                return false;
+            }
+        }
+
+        // Check URL
+        if (parsedQuery.url) {
+            const requestUrl = request.request?.url || request.request?.urlPath || '';
+            if (!matchesCondition(requestUrl, parsedQuery.url)) {
+                return false;
+            }
+        }
+
+        // Check status (response status code)
+        if (parsedQuery.status) {
+            const responseStatus = request.response?.status ??
+                                 request.responseDefinition?.status ?? '';
+            if (!matchesCondition(responseStatus, parsedQuery.status)) {
+                return false;
+            }
+        }
+
+        // Check matched/unmatched
+        if (parsedQuery.matched !== undefined) {
+            const isMatched = request.wasMatched !== false;
+            const matchValues = Array.isArray(parsedQuery.matched)
+                ? parsedQuery.matched
+                : [parsedQuery.matched];
+
+            // Check if any value matches
+            let matchFound = false;
+            for (const val of matchValues) {
+                const valStr = String(val).toLowerCase();
+                if ((valStr === 'true' || valStr === 'yes' || valStr === '1') && isMatched) {
+                    matchFound = true;
+                    break;
+                }
+                if ((valStr === 'false' || valStr === 'no' || valStr === '0') && !isMatched) {
+                    matchFound = true;
+                    break;
                 }
             }
 
-            return true;
-        });
-    }
-
-    /**
-     * Filters requests
-     */
-    function filterRequests(requests, parsedQuery) {
-        if (!Array.isArray(requests)) return [];
-        if (!parsedQuery || typeof parsedQuery !== 'object') return requests;
-
-        return requests.filter(request => {
-            if (!request) return false;
-
-            const rReq = request.request || {};
-            const rRes = request.response || request.responseDefinition || {};
-
-            if (parsedQuery.method && !matchesCondition(rReq.method, parsedQuery.method)) return false;
-            
-            if (parsedQuery.url) {
-                const url = rReq.url || rReq.urlPath || '';
-                if (!matchesCondition(url, parsedQuery.url)) return false;
+            if (!matchFound) {
+                return false;
             }
+        }
 
-            if (parsedQuery.status && !matchesCondition(rRes.status, parsedQuery.status)) return false;
-
-            if (parsedQuery.matched !== undefined) {
-                const isMatched = request.wasMatched !== false;
-                const matchValues = Array.isArray(parsedQuery.matched) ? parsedQuery.matched : [parsedQuery.matched];
-                const hasMatch = matchValues.some(val => {
-                    const s = String(val).toLowerCase();
-                    return ((s === 'true' || s === 'yes' || s === '1') && isMatched) ||
-                           ((s === 'false' || s === 'no' || s === '0') && !isMatched);
-                });
-                if (!hasMatch) return false;
+        // Check client IP
+        if (parsedQuery.client) {
+            const clientIp = request.request?.clientIp || '';
+            if (!matchesCondition(clientIp, parsedQuery.client)) {
+                return false;
             }
+        }
 
-            if (parsedQuery.client && !matchesCondition(rReq.clientIp, parsedQuery.client)) return false;
+        // Check text search (if there is text without a key)
+        if (parsedQuery.text) {
+            const searchText = String(parsedQuery.text).toLowerCase();
+            const requestUrl = (request.request?.url || request.request?.urlPath || '').toLowerCase();
+            const requestMethod = (request.request?.method || '').toLowerCase();
+            const clientIp = (request.request?.clientIp || '').toLowerCase();
 
-            if (parsedQuery.text) {
-                const searchText = String(parsedQuery.text).toLowerCase();
-                const url = (rReq.url || rReq.urlPath || '').toLowerCase();
-                const method = (rReq.method || '').toLowerCase();
-                const ip = (rReq.clientIp || '').toLowerCase();
-
-                if (!url.includes(searchText) && !method.includes(searchText) && !ip.includes(searchText)) {
-                    return false;
-                }
+            if (!requestUrl.includes(searchText) &&
+                !requestMethod.includes(searchText) &&
+                !clientIp.includes(searchText)) {
+                return false;
             }
+        }
 
-            return true;
-        });
-    }
+        return true;
+    });
+}
 
-    // Export API
-    global.QueryParser = {
-        parseQuery,
-        filterMappings,
-        filterMappingsByQuery: (mappings, query) => filterMappings(mappings, parseQuery(query)),
-        filterRequests,
-        filterRequestsByQuery: (requests, query) => filterRequests(requests, parseQuery(query)),
-        matchesCondition,
-        matchesRange
-    };
+/**
+ * Main filtering function - parses query and filters requests
+ * @param {Array} requests - Array of requests
+ * @param {string} queryString - Query string
+ * @returns {Array} - Filtered array
+ */
+function filterRequestsByQuery(requests, queryString) {
+    const parsed = parseQuery(queryString);
+    return filterRequests(requests, parsed);
+}
 
-})(typeof window !== 'undefined' ? window : globalThis);
+// Export for use in browser
+window.QueryParser = {
+    parseQuery,
+    filterMappings,
+    filterMappingsByQuery,
+    filterRequests,
+    filterRequestsByQuery,
+    matchesCondition,
+    matchesRange
+};

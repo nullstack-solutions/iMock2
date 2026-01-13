@@ -2,6 +2,7 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const { createLoggerStub } = require('./helpers/stubs');
 
 function createElementStub() {
     return {
@@ -35,6 +36,8 @@ function createTemplatesTestContext() {
         Date,
         performance: { now: () => 0 },
     };
+
+    sandbox.Logger = createLoggerStub(sandbox.console);
 
     const element = createElementStub();
     const elements = Object.create(null);
@@ -130,6 +133,10 @@ function assertValidCreatePayload(payload) {
     const hasFault = Boolean(payload.response?.fault);
     assert.ok(hasStatus || hasFault, 'response.status or fault is required');
     assert.strictEqual(payload.metadata?.source, 'template', 'metadata.source should flag template origin');
+
+    if (typeof payload.scenarioName === 'string') {
+        assert.ok(!/\s/.test(payload.scenarioName), 'scenarioName must not contain whitespace');
+    }
 }
 
 runTest('all built-in templates create valid mapping payloads', async () => {

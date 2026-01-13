@@ -1,392 +1,420 @@
 'use strict';
 
-(function(global) {
-    const window = global;
+// --- NEW FUNCTIONS FOR WIREMOCK 3.13.x ---
 
-    // --- CONSTANTS ---
-    const IMOCK_CACHE_ID = '00000000-0000-0000-0000-00000000cace';
-    const IMOCK_CACHE_URL = '/__imock/cache';
+// Search mappings by metadata
+window.findMappingsByMetadata = async (metadata) => {
+    try {
+        const response = await apiFetch(ENDPOINTS.MAPPINGS_FIND_BY_METADATA, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(metadata)
+        });
+        return response.mappings || [];
+    } catch (error) {
+        Logger.error('METADATA', 'Find mappings by metadata error:', error);
+        return [];
+    }
+};
 
-    // --- API & UI EXTENSIONS ---
+Logger.info('UI', 'Features.js loaded - Business functions for mappings, requests, scenarios + WireMock 3.9.1+ API fixes');
 
-    window.findMappingsByMetadata = async (metadata) => {
-        try {
-            const response = await apiFetch(ENDPOINTS.MAPPINGS_FIND_BY_METADATA, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(metadata)
-            });
-            return response.mappings || [];
-        } catch (error) {
-            console.error('Find mappings by metadata error:', error);
-            return [];
-        }
-    };
+// Update connection status text with last successful request time
+window.updateLastSuccessUI = () => {
+    try {
+        const el = document.getElementById(SELECTORS.CONNECTION.STATUS_TEXT);
+        if (!el) return;
+        const ts = window.lastWiremockSuccess || Date.now();
+        const time = new Date(ts).toLocaleTimeString();
+        el.textContent = `Last OK: ${time}`;
+        Logger.info('HEALTH', 'last success UI updated:', { ts, time });
+    } catch {
+        // noop
+    }
+};
 
-    window.updateLastSuccessUI = () => {
-        try {
-            const el = document.getElementById(SELECTORS.CONNECTION.STATUS_TEXT);
-            if (!el) return;
-            const ts = window.lastWiremockSuccess || Date.now();
-            el.textContent = `Last OK: ${new Date(ts).toLocaleTimeString()}`;
-        } catch (e) {}
-    };
+// Centralized health UI updater (single source of truth)
+window.applyHealthUI = (isHealthy, responseTime) => {
+    try {
+        window.healthState = window.healthState || { isHealthy: null, lastCheckAt: null, lastOkAt: null, lastLatencyMs: null };
+        window.healthState.lastCheckAt = Date.now();
+        if (isHealthy === true) {
+            window.healthState.isHealthy = true;
+            window.healthState.lastOkAt = Date.now();
+            window.healthState.lastLatencyMs = typeof responseTime === 'number' ? responseTime : null;
+        } else if (isHealthy === false) {
+            window.healthState.isHealthy = false;
+            window.healthState.lastLatencyMs = null;
+        } // null => error/unknown
 
-    window.applyHealthUI = (isHealthy, responseTime) => {
-        try {
-            window.healthState = window.healthState || { isHealthy: null, lastCheckAt: null, lastOkAt: null, lastLatencyMs: null };
-            window.healthState.lastCheckAt = Date.now();
-            
+        const healthIndicator = document.getElementById(SELECTORS.HEALTH.INDICATOR);
+        if (healthIndicator) {
+            healthIndicator.style.display = 'inline';
             if (isHealthy === true) {
-                window.healthState.isHealthy = true;
-                window.healthState.lastOkAt = Date.now();
-                window.healthState.lastLatencyMs = typeof responseTime === 'number' ? responseTime : null;
+                const ms = typeof responseTime === 'number' ? `${responseTime}ms` : 'OK';
+                healthIndicator.innerHTML = `<span>Response Time: </span><span class="healthy">${ms}</span>`;
             } else if (isHealthy === false) {
-                window.healthState.isHealthy = false;
-                window.healthState.lastLatencyMs = null;
+                healthIndicator.innerHTML = `<span>Response Time: </span><span class="unhealthy">Unhealthy</span>`;
+            } else {
+                healthIndicator.innerHTML = `<span>Response Time: </span><span class="error">Error</span>`;
             }
-
-            const indicator = document.getElementById(SELECTORS.HEALTH.INDICATOR);
-            if (indicator) {
-                indicator.style.display = 'inline';
-                if (isHealthy === true) {
-                    const ms = typeof responseTime === 'number' ? `${responseTime}ms` : 'OK';
-                    indicator.innerHTML = `<span>Response Time: </span><span class="healthy">${ms}</span>`;
-                } else if (isHealthy === false) {
-                    indicator.innerHTML = `<span>Response Time: </span><span class="unhealthy">Unhealthy</span>`;
-                } else {
-                    indicator.innerHTML = `<span>Response Time: </span><span class="error">Error</span>`;
-                }
-            }
-
-            if (isHealthy === true) {
-                window.lastWiremockSuccess = Date.now();
-                if (typeof window.updateLastSuccessUI === 'function') window.updateLastSuccessUI();
-            }
-        } catch (e) {
-            console.warn('applyHealthUI failed:', e);
         }
+
+        // Keep status text in sync (Last OK)
+        if (isHealthy === true) {
+            window.lastWiremockSuccess = Date.now();
+            if (typeof window.updateLastSuccessUI === 'function') window.updateLastSuccessUI();
+        }
+    } catch (e) {
+        Logger.warn('HEALTH', 'applyHealthUI failed:', e);
+    }
+};
+
+// Central toggle for showing metadata timestamps on mapping cards
+try {
+    const savedToggle = localStorage.getItem('imock-show-meta-timestamps');
+    if (savedToggle !== null) {
+        window.showMetaTimestamps = savedToggle === '1';
+    }
+} catch {}
+window.toggleMetaTimestamps = () => {
+    try {
+        window.showMetaTimestamps = window.showMetaTimestamps === false ? true : false;
+        localStorage.setItem('imock-show-meta-timestamps', window.showMetaTimestamps ? '1' : '0');
+// Re-render current list without refetch
+        const currentMappings = window.MappingsStore.getAll();
+        if (Array.isArray(currentMappings)) {
+            fetchAndRenderMappings(currentMappings);
+        }
+    } catch (e) { Logger.warn('METADATA', 'toggleMetaTimestamps failed:', e); }
+};
+
+// --- iMock cache mapping helpers (best-of-3 discovery) ---
+const IMOCK_CACHE_ID = '00000000-0000-0000-0000-00000000cace';
+const IMOCK_CACHE_URL = '/__imock/cache';
+
+function isImockCacheMapping(m) {
+    try {
+        const byId = (m?.id || m?.uuid) === IMOCK_CACHE_ID;
+        const byMeta = m?.metadata?.imock?.type === 'cache';
+        const byName = (m?.name || '').toLowerCase() === 'imock cache';
+        const byUrl = (m?.request?.url || m?.request?.urlPath) === IMOCK_CACHE_URL;
+        return !!(byId || byMeta || byName || byUrl);
+    } catch { return false; }
+}
+
+function slimMapping(m) {
+    return {
+        id: m.id || m.uuid,
+        name: m.name || m.metadata?.name,
+        priority: m.priority,
+        persistent: m.persistent,
+        scenarioName: m.scenarioName,
+        requiredScenarioState: m.requiredScenarioState,
+        newScenarioState: m.newScenarioState,
+        request: {
+            method: m.request?.method,
+            url: m.request?.urlPath || m.request?.urlPathPattern || m.request?.urlPattern || m.request?.url || 'N/A',
+            // No headers/query params in cache - only essential matching data
+        },
+        response: {
+            status: m.response?.status,
+            // Only essential response data for filtering
+        },
+        metadata: {
+            created: m.metadata?.created,
+            edited: m.metadata?.edited,
+            source: m.metadata?.source,
+            // Essential metadata fields for timestamps and source tracking
+        },
     };
+}
+
+function buildSlimList(arr) {
+    const items = (arr || []).filter(x => !isImockCacheMapping(x)).map(slimMapping);
+    return { mappings: items };
+}
+
+async function getCacheByFixedId() {
+    try {
+        Logger.cache('Trying fixed ID lookup...');
+        const m = await apiFetch(`/mappings/${IMOCK_CACHE_ID}`);
+        if (m && isImockCacheMapping(m)) return m;
+        Logger.cache('Fixed ID miss');
+    } catch (error) {
+        // Log authorization and other errors but don't throw
+        if (error.status === 401 || (error.message && error.message.includes('401'))) {
+            Logger.warn('CACHE', 'Authorization error loading cache by fixed ID - check credentials');
+        } else if (error.status === 404 || (error.message && error.message.includes('404'))) {
+            Logger.debug('CACHE', 'Cache mapping not found by fixed ID (404)');
+        } else {
+            Logger.debug('CACHE', 'Error loading cache by fixed ID:', error.message);
+        }
+    }
+    return null;
+}
+
+async function getCacheByMetadata() {
+    try {
+        // WireMock 3 expects JSONPath on metadata
+        const tryBodies = [
+            { matchesJsonPath: "$[?(@.metadata.imock.type == 'cache')]" },
+            { matchesJsonPath: { expression: "$[?(@.metadata.imock.type == 'cache')]" } },
+        ];
+        Logger.cache('Trying metadata lookup (JSONPath)...');
+        for (const body of tryBodies) {
+            try {
+                const res = await apiFetch(ENDPOINTS.MAPPINGS_FIND_BY_METADATA, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body),
+                });
+                const list = res?.mappings || res?.items || [];
+                const found = list.find(isImockCacheMapping);
+                if (found) { Logger.cache('Metadata hit'); return found; }
+            } catch (bodyError) {
+                // Log if it's an auth error, otherwise try next body shape
+                if (bodyError.status === 401 || (bodyError.message && bodyError.message.includes('401'))) {
+                    Logger.warn('CACHE', 'Authorization error loading cache by metadata - check credentials');
+                }
+                // Continue to try next body shape
+            }
+        }
+        Logger.cache('Metadata miss');
+    } catch (error) {
+        Logger.debug('CACHE', 'Error loading cache by metadata:', error.message);
+    }
+    return null;
+}
+
+async function upsertImockCacheMapping(slim) {
+    Logger.cache('Upsert cache mapping start');
+    // Simple hash for cache validation
+    const slimStr = JSON.stringify(slim || {});
+    let h = 0;
+    for (let i = 0; i < slimStr.length; i++) { h = (h * 31 + slimStr.charCodeAt(i)) | 0; }
+    const hash = (h >>> 0).toString(16);
+
+    const meta = {
+        imock: {
+            type: 'cache',
+            version: 1,
+            timestamp: Date.now(),
+            count: (slim?.mappings || []).length,
+            hash: hash,
+        },
+    };
+    const stub = {
+        id: IMOCK_CACHE_ID,
+        name: 'iMock Cache',
+        priority: 1,
+        persistent: false,
+        request: { method: 'GET', url: IMOCK_CACHE_URL },
+        response: {
+            status: 200,
+            jsonBody: slim,
+            headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        },
+        metadata: meta,
+    };
+    try {
+        // Try update first; if 404, create
+        Logger.cache('PUT /mappings/{id}');
+        const response = await apiFetch(`/mappings/${IMOCK_CACHE_ID}`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(stub),
+        });
+        Logger.cache('Upsert done (PUT)');
+        return response;
+    } catch {
+        Logger.cache('PUT failed, POST /mappings');
+        const response = await apiFetch('/mappings', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(stub),
+        });
+        Logger.cache('Upsert done (POST)');
+        return response;
+    }
+}
+
+async function regenerateImockCache(existingData = null) {
+    Logger.cache('Regenerate cache start');
+    const t0 = performance.now();
+
+    // Get fresh data from server - server is now the source of truth
+    let all = existingData;
+    if (!all) {
+        all = await fetchMappingsFromServer({ force: true });
+    }
+
+    const mappings = all?.mappings || [];
+
+    Logger.cache('Using fresh server data for cache regeneration');
+
+    const slim = buildSlimList(mappings);
+    let finalPayload = slim;
+    try {
+        const response = await upsertImockCacheMapping(slim);
+        const serverPayload = extractCacheJsonBody(response);
+        if (serverPayload) {
+            finalPayload = serverPayload;
+        }
+    } catch (e) {
+        Logger.warn('CACHE', 'Upsert cache failed:', e);
+    }
+    const dt = Math.round(performance.now() - t0);
+    Logger.cache(`Regenerate cache done (${(finalPayload?.mappings||[]).length} items) in ${dt}ms`);
+    return finalPayload;
+}
+
+async function refreshImockCache() {
+    Logger.cache('Refresh cache requested');
+    try {
+        // Regenerate the cache from current server state
+        const result = await regenerateImockCache();
+
+        // Refresh the UI to show latest data
+        if (typeof window.refreshMappingsFromCache === 'function') {
+            window.refreshMappingsFromCache();
+        }
+
+        Logger.cache('Refresh cache completed');
+        return result;
+    } catch (error) {
+        Logger.error('CACHE', 'Refresh cache failed:', error);
+        throw error;
+    }
+}
+
+window.refreshImockCache = refreshImockCache;
+
+async function loadImockCacheBestOf3() {
+    // Preferred order: fixed ID, then find-by-metadata (JSONPath), else none
+    Logger.cache('loadImockCacheBestOf3 start');
+    
+    const b = await getCacheByFixedId();
+    if (b && b.response?.jsonBody) { 
+        Logger.cache('Using cache: fixed id'); 
+        return { source: 'cache', data: b.response.jsonBody }; 
+    }
+    
+    const c = await getCacheByMetadata();
+    if (c && c.response?.jsonBody) { 
+        Logger.cache('Using cache: metadata'); 
+        return { source: 'cache', data: c.response.jsonBody }; 
+    }
+    
+    Logger.cache('No cache found - will load from server');
+    return null;
+}
+function cloneMappingForCache(mapping) {
+    if (!mapping) return null;
 
     try {
-        const savedToggle = localStorage.getItem('imock-show-meta-timestamps');
-        if (savedToggle !== null) window.showMetaTimestamps = savedToggle === '1';
-    } catch {}
-
-    window.toggleMetaTimestamps = () => {
-        try {
-            window.showMetaTimestamps = !window.showMetaTimestamps;
-            localStorage.setItem('imock-show-meta-timestamps', window.showMetaTimestamps ? '1' : '0');
-            if (Array.isArray(window.allMappings)) {
-                fetchAndRenderMappings(window.allMappings);
-            }
-        } catch (e) { console.warn('toggleMetaTimestamps failed:', e); }
-    };
-
-    // --- CACHE HELPERS ---
-
-    window.isImockCacheMapping = function(m) {
-        try {
-            return (m?.id === IMOCK_CACHE_ID) || 
-                   (m?.uuid === IMOCK_CACHE_ID) ||
-                   (m?.metadata?.imock?.type === 'cache') ||
-                   (m?.name?.toLowerCase() === 'imock cache') ||
-                   (m?.request?.url === IMOCK_CACHE_URL) ||
-                   (m?.request?.urlPath === IMOCK_CACHE_URL);
-        } catch { return false; }
-    };
-
-    function slimMapping(m) {
-        return {
-            id: m.id || m.uuid,
-            name: m.name || m.metadata?.name,
-            priority: m.priority,
-            persistent: m.persistent,
-            scenarioName: m.scenarioName,
-            requiredScenarioState: m.requiredScenarioState,
-            newScenarioState: m.newScenarioState,
-            request: {
-                method: m.request?.method,
-                url: m.request?.urlPath || m.request?.urlPathPattern || m.request?.urlPattern || m.request?.url || 'N/A',
-            },
-            response: {
-                status: m.response?.status,
-            },
-            metadata: {
-                created: m.metadata?.created,
-                edited: m.metadata?.edited,
-                source: m.metadata?.source,
-            },
-        };
-    }
-
-    function buildSlimList(arr) {
-        const items = (arr || []).filter(x => !window.isImockCacheMapping(x)).map(slimMapping);
-        return { mappings: items };
-    }
-
-    async function getCacheByFixedId() {
-        try {
-            const m = await apiFetch(`/mappings/${IMOCK_CACHE_ID}`);
-            if (m && window.isImockCacheMapping(m)) return m;
-        } catch {}
-        return null;
-    }
-
-    async function getCacheByMetadata() {
-        try {
-            const queries = [
-                { matchesJsonPath: "$[?(@.metadata.imock.type == 'cache')]" },
-                { matchesJsonPath: { expression: "$[?(@.metadata.imock.type == 'cache')]" } },
-            ];
-            for (const body of queries) {
-                try {
-                    const res = await apiFetch(ENDPOINTS.MAPPINGS_FIND_BY_METADATA, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(body),
-                    });
-                    const list = res?.mappings || res?.items || [];
-                    const found = list.find(window.isImockCacheMapping);
-                    if (found) return found;
-                } catch (e) {}
-            }
-        } catch {}
-        return null;
-    }
-
-    async function upsertImockCacheMapping(slim) {
-        const slimStr = JSON.stringify(slim || {});
-        let h = 0;
-        for (let i = 0; i < slimStr.length; i++) h = (h * 31 + slimStr.charCodeAt(i)) | 0;
-        const hash = (h >>> 0).toString(16);
-
-        const stub = {
-            id: IMOCK_CACHE_ID,
-            name: 'iMock Cache',
-            priority: 1,
-            persistent: false,
-            request: { method: 'GET', url: IMOCK_CACHE_URL },
-            response: {
-                status: 200,
-                jsonBody: slim,
-                headers: { 'Content-Type': 'application/json; charset=utf-8' },
-            },
-            metadata: {
-                imock: {
-                    type: 'cache',
-                    version: 1,
-                    timestamp: Date.now(),
-                    count: (slim?.mappings || []).length,
-                    hash: hash,
-                },
-            },
-        };
-
-        try {
-            return await apiFetch(`/mappings/${IMOCK_CACHE_ID}`, {
-                method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(stub),
-            });
-        } catch (e) {
-            return await apiFetch('/mappings', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(stub),
-            });
+        if (typeof structuredClone === 'function') {
+            return structuredClone(mapping);
         }
+    } catch (error) {
+        Logger.warn('CACHE', 'structuredClone failed for mapping cache clone:', error);
     }
 
-    window.regenerateImockCache = async function(existingData = null) {
-        let all = existingData;
-        if (!all) {
-            all = await fetchMappingsFromServer({ force: true });
+    try {
+        return JSON.parse(JSON.stringify(mapping));
+    } catch (error) {
+        Logger.warn('CACHE', 'JSON clone failed for mapping cache clone:', error);
+    }
+
+    return { ...mapping };
+}
+
+function mergeMappingData(existing, incoming) {
+    if (!existing) return incoming;
+    if (!incoming) return existing;
+
+    return {
+        ...existing,
+        ...incoming,
+        request: { ...existing.request, ...incoming.request },
+        response: { ...existing.response, ...incoming.response },
+        metadata: { ...existing.metadata, ...incoming.metadata }
+    };
+}
+
+function syncCacheWithMappings(mappings) {
+    try {
+        const store = window.MappingsStore;
+        if (!store || !(store.items instanceof Map) || !Array.isArray(mappings)) {
+            return;
         }
 
-        const mappings = all?.mappings || [];
-        const slim = buildSlimList(mappings);
-        let finalPayload = slim;
-        
-        try {
-            const response = await upsertImockCacheMapping(slim);
-            const serverPayload = extractCacheJsonBody(response);
-            if (serverPayload) finalPayload = serverPayload;
-        } catch (e) {
-            console.warn('🧩 [CACHE] Upsert cache failed:', e);
+        const cache = store.items;
+        const seenIds = new Set();
+
+        mappings.forEach(mapping => {
+            if (!mapping || isImockCacheMapping(mapping)) {
+                return;
+            }
+
+            const id = mapping.id || mapping.uuid;
+            if (!id) {
+                return;
+            }
+
+            seenIds.add(id);
+
+            const cloned = cloneMappingForCache(mapping) || { ...mapping };
+            if (cache.has(id)) {
+                cache.set(id, mergeMappingData(cache.get(id), cloned));
+            } else {
+                cache.set(id, cloned);
+            }
+        });
+
+        const pendingOps = store.pending instanceof Map ? Array.from(store.pending.values()) : [];
+        const optimisticIds = new Set();
+        for (const item of pendingOps) {
+            if (!item || item.type === 'delete') {
+                continue;
+            }
+            if (item.id) {
+                optimisticIds.add(item.id);
+            }
         }
-        return finalPayload;
-    };
 
-    window.loadImockCacheBestOf3 = async function() {
-        console.log('🧩 [CACHE] loadImockCacheBestOf3 start');
-        const b = await getCacheByFixedId();
-        if (b && b.response?.jsonBody) return { source: 'cache', data: b.response.jsonBody };
-        const c = await getCacheByMetadata();
-        if (c && c.response?.jsonBody) return { source: 'cache', data: c.response.jsonBody };
-        console.log('🧩 [CACHE] No cache found');
-        return null;
-    };
-
-    window.cloneMappingForCache = function(mapping) {
-        if (!mapping) return null;
-        try {
-            if (typeof structuredClone === 'function') return structuredClone(mapping);
-        } catch (e) {}
-        try {
-            return JSON.parse(JSON.stringify(mapping));
-        } catch (e) { return { ...mapping }; }
-    };
-
-    window.mergeMappingData = function(existing, incoming) {
-        if (!existing) return incoming;
-        if (!incoming) return existing;
-        return {
-            ...existing,
-            ...incoming,
-            request: { ...existing.request, ...incoming.request },
-            response: { ...existing.response, ...incoming.response },
-            metadata: { ...existing.metadata, ...incoming.metadata }
-        };
-    };
-
-    // --- CACHE SYNC QUEUE ---
-
-    function extractCacheJsonBody(payload) {
-        try {
-            if (!payload || typeof payload !== 'object') return null;
-            if (payload.response?.jsonBody) return payload.response.jsonBody;
-            if (payload.mapping?.response?.jsonBody) return payload.mapping.response.jsonBody;
-            if (payload.jsonBody?.mappings || Array.isArray(payload.mappings)) {
-                const mappings = Array.isArray(payload.jsonBody?.mappings)
-                    ? payload.jsonBody.mappings
-                    : (Array.isArray(payload.mappings) ? payload.mappings : []);
-                return { mappings: mappings.map(item => ({ ...item })) };
+        Array.from(cache.keys()).forEach(existingId => {
+            if (!seenIds.has(existingId) && !optimisticIds.has(existingId)) {
+                cache.delete(existingId);
             }
-        } catch (error) {}
-        return null;
+        });
+
+        window.cacheLastUpdate = Date.now();
+    } catch (error) {
+        Logger.warn('CACHE', 'syncCacheWithMappings failed:', error);
     }
+}
 
-    function cloneSlimMappingsList(source) {
-        return Array.isArray(source) ? source.map(item => ({ ...item })) : [];
-    }
-
-    function buildUpdatedCachePayload(existingPayload, mapping, operation) {
-        try {
-            const normalizedOp = (operation || 'update').toLowerCase();
-            const mappingId = mapping?.id || mapping?.uuid;
-            
-            if (!mappingId) {
-                return existingPayload ? { mappings: cloneSlimMappingsList(existingPayload.mappings) } : { mappings: [] };
-            }
-
-            const base = existingPayload && Array.isArray(existingPayload.mappings)
-                ? cloneSlimMappingsList(existingPayload.mappings)
-                : [];
-
-            const index = base.findIndex(item => (item?.id || item?.uuid) === mappingId);
-
-            if (normalizedOp === 'delete') {
-                if (index !== -1) base.splice(index, 1);
-            } else if (mapping) {
-                const slim = slimMapping(mapping);
-                if (index !== -1) base[index] = { ...base[index], ...slim };
-                else base.push(slim);
-            }
-
-            return { mappings: base };
-        } catch (error) {
+function extractCacheJsonBody(payload) {
+    try {
+        if (!payload || typeof payload !== 'object') {
             return null;
         }
-    }
 
-    async function fetchExistingCacheMapping() {
-        try {
-            let cacheMapping = await getCacheByFixedId();
-            if (cacheMapping) return cacheMapping;
-            return await getCacheByMetadata();
-        } catch (error) {}
-        return null;
-    }
-
-    async function syncCacheMappingWithServer(mapping, operation) {
-        try {
-            if (!isCacheEnabled()) return;
-
-            const existingMapping = await fetchExistingCacheMapping();
-            if (!existingMapping || !existingMapping.response) return;
-
-            const currentPayload = extractCacheJsonBody(existingMapping) || { mappings: [] };
-            const updatedPayload = buildUpdatedCachePayload(currentPayload, mapping, operation);
-            if (!updatedPayload) return;
-
-            const response = await upsertImockCacheMapping(updatedPayload);
-            const finalPayload = extractCacheJsonBody(response) || updatedPayload;
-            window.imockCacheSnapshot = finalPayload;
-            window.cacheLastUpdate = Date.now();
-        } catch (error) {
-            console.warn('🧩 [CACHE] syncCacheMappingWithServer failed:', error);
+        if (payload.response?.jsonBody) {
+            return payload.response.jsonBody;
         }
+
+        if (payload.mapping?.response?.jsonBody) {
+            return payload.mapping.response.jsonBody;
+        }
+
+        if (payload.jsonBody?.mappings || Array.isArray(payload.mappings)) {
+            const mappings = Array.isArray(payload.jsonBody?.mappings)
+                ? payload.jsonBody.mappings
+                : Array.isArray(payload.mappings)
+                    ? payload.mappings
+                    : [];
+            return { mappings: mappings.map(item => ({ ...item })) };
+        }
+    } catch (error) {
+        Logger.warn('CACHE', 'extractCacheJsonBody failed:', error);
     }
-
-    let cacheSyncQueue = Promise.resolve();
-    window.enqueueCacheSync = function(mapping, operation) {
-        cacheSyncQueue = cacheSyncQueue
-            .catch(() => {})
-            .then(() => syncCacheMappingWithServer(mapping, operation));
-    };
-
-    window.syncCacheWithMappings = function(mappings) {
-        try {
-            const manager = window.cacheManager;
-            if (!manager || !(manager.cache instanceof Map) || !Array.isArray(mappings)) return;
-
-            const cache = manager.cache;
-            const seenIds = new Set();
-
-            mappings.forEach(mapping => {
-                if (!mapping || window.isImockCacheMapping(mapping)) return;
-                const id = mapping.id || mapping.uuid;
-                if (!id) return;
-
-                seenIds.add(id);
-                const cloned = window.cloneMappingForCache(mapping) || { ...mapping };
-                
-                if (cache.has(id)) {
-                    cache.set(id, window.mergeMappingData(cache.get(id), cloned));
-                } else {
-                    cache.set(id, cloned);
-                }
-            });
-
-            const optimisticQueue = Array.isArray(manager.optimisticQueue) ? manager.optimisticQueue : [];
-            const optimisticIds = new Set(optimisticQueue.filter(i => i && i.op !== 'delete' && i.id).map(i => i.id));
-
-            Array.from(cache.keys()).forEach(existingId => {
-                if (!seenIds.has(existingId) && !optimisticIds.has(existingId)) {
-                    cache.delete(existingId);
-                }
-            });
-
-            window.cacheLastUpdate = Date.now();
-        } catch (error) {
-            console.warn('syncCacheWithMappings failed:', error);
-        }
-    };
-
-    window.buildCacheSnapshot = function() {
-        const manager = window.cacheManager;
-        if (!manager || !(manager.cache instanceof Map)) return [];
-
-        try {
-            const snapshot = [];
-            for (const mapping of manager.cache.values()) {
-                if (!mapping || window.isImockCacheMapping(mapping)) continue;
-                snapshot.push(window.cloneMappingForCache(mapping) || { ...mapping });
-            }
-            return snapshot;
-        } catch (error) {
-            console.warn('buildCacheSnapshot failed:', error);
-            return [];
-        }
-    };
-
-    console.log('✅ WireMock extras loaded');
-
-})(typeof window !== 'undefined' ? window : globalThis);
+    return null;
+}

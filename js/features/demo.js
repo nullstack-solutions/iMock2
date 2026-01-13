@@ -1,71 +1,114 @@
 'use strict';
 
-(function(global) {
-    const window = global;
-
+(function initDemoMode(global) {
     function createDemoLoader(dependencies = {}) {
         const {
             markDemoModeActive,
-            notificationManager = {},
+            notificationManager,
             fetchAndRenderMappings,
             fetchAndRenderRequests,
             isDatasetAvailable,
             getDataset,
         } = dependencies;
 
-        if (typeof markDemoModeActive !== 'function' || 
-            typeof fetchAndRenderMappings !== 'function' || 
-            typeof fetchAndRenderRequests !== 'function') {
-            throw new Error('Demo loader missing required dependencies');
+        if (typeof markDemoModeActive !== 'function') {
+            throw new Error('Demo loader requires markDemoModeActive callback');
+        }
+        if (!notificationManager || typeof notificationManager === 'function') {
+            throw new Error('Demo loader requires a notification manager object');
+        }
+        if (typeof fetchAndRenderMappings !== 'function') {
+            throw new Error('Demo loader requires fetchAndRenderMappings function');
+        }
+        if (typeof fetchAndRenderRequests !== 'function') {
+            throw new Error('Demo loader requires fetchAndRenderRequests function');
         }
 
-        const notify = (type, message) => {
-            const fn = notificationManager[type] || notificationManager.info || console.warn;
-            fn.call(notificationManager, message);
-        };
+        const notifySuccess = notificationManager?.success?.bind(notificationManager)
+            || notificationManager?.info?.bind(notificationManager)
+            || ((message) => Logger.warn('DEMO', message));
+        const notifyError = notificationManager?.error?.bind(notificationManager)
+            || notificationManager?.warning?.bind(notificationManager)
+            || ((message) => Logger.warn('DEMO', message));
+        const notifyWarning = notificationManager?.warning?.bind(notificationManager)
+            || notificationManager?.info?.bind(notificationManager)
+            || ((message) => Logger.warn('DEMO', message));
 
         return async function loadDemoData() {
-            const available = typeof isDatasetAvailable === 'function' ? isDatasetAvailable() : true;
+            const available = typeof isDatasetAvailable === 'function'
+                ? isDatasetAvailable()
+                : true;
+
             if (!available) {
-                notify('error', 'Demo dataset is not available in this build.');
-                return { status: 'unavailable' };
+                notifyError('Demo dataset is not available in this build.');
+                return {
+                    status: 'unavailable',
+                    mappingsLoaded: false,
+                    requestsLoaded: false,
+                    errors: [],
+                };
             }
 
             const dataset = typeof getDataset === 'function' ? getDataset() : null;
             if (!dataset) {
-                notify('error', 'Unable to load the demo dataset.');
-                return { status: 'missing' };
+                notifyError('Unable to load the demo dataset.');
+                return {
+                    status: 'missing',
+                    mappingsLoaded: false,
+                    requestsLoaded: false,
+                    errors: [],
+                };
             }
+
+            const mappings = Array.isArray(dataset.mappings) ? dataset.mappings : [];
+            const requests = Array.isArray(dataset.requests) ? dataset.requests : [];
 
             markDemoModeActive('manual-trigger');
 
-            const results = await Promise.allSettled([
-                fetchAndRenderMappings(dataset.mappings || [], { source: 'demo' }),
-                fetchAndRenderRequests(dataset.requests || [], { source: 'demo' })
+            const [mappingsOutcome, requestsOutcome] = await Promise.allSettled([
+                fetchAndRenderMappings(mappings, { source: 'demo' }),
+                fetchAndRenderRequests(requests, { source: 'demo' }),
             ]);
 
-            const [mappingsRes, requestsRes] = results;
-            const success = mappingsRes.status === 'fulfilled' && requestsRes.status === 'fulfilled' &&
-                            mappingsRes.value !== false && requestsRes.value !== false;
+            const mappingsLoaded = mappingsOutcome.status === 'fulfilled'
+                ? mappingsOutcome.value !== false
+                : false;
+            const requestsLoaded = requestsOutcome.status === 'fulfilled'
+                ? requestsOutcome.value !== false
+                : false;
 
-            if (success) {
-                notify('success', 'Demo data loaded locally. Explore the interface freely.');
-                return { status: 'success', mappingsLoaded: true, requestsLoaded: true };
+            const errors = [];
+            if (mappingsOutcome.status === 'rejected') {
+                errors.push(mappingsOutcome.reason);
+            }
+            if (requestsOutcome.status === 'rejected') {
+                errors.push(requestsOutcome.reason);
             }
 
-            const errors = results.filter(r => r.status === 'rejected').map(r => r.reason);
-            notify('warning', 'Demo data only loaded partially. Check console.');
-            if (errors.length > 0) {
-                notify('error', 'Some demo data failed to load.');
+            const status = mappingsLoaded && requestsLoaded
+                ? 'success'
+                : (mappingsLoaded || requestsLoaded ? 'partial' : 'failed');
+
+            if (status === 'success') {
+                notifySuccess('Demo data loaded locally. Explore the interface freely.');
+            } else {
+                notifyWarning('Demo data only loaded partially. Check the console for details.');
+                if (errors.length) {
+                    notifyError('Some demo data failed to load. Inspect console for details.');
+                }
             }
 
-            return { 
-                status: 'partial', 
-                errors: errors
+            return {
+                status,
+                mappingsLoaded,
+                requestsLoaded,
+                errors,
             };
         };
     }
 
-    window.DemoMode = { createLoader: createDemoLoader };
+    global.DemoMode = {
+        createLoader: createDemoLoader,
+    };
 
 })(typeof window !== 'undefined' ? window : globalThis);
