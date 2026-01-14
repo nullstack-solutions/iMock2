@@ -13,7 +13,6 @@
     background: rgba(10, 10, 10, 0.8);
     z-index: 1000;
     justify-content: center;
-    align-items: center;
     backdrop-filter: blur(10px);
 }
 
@@ -35,7 +34,7 @@
     border-radius: var(--radius-xl);
     width: 90%;
     max-width: 800px;
-    max-height: 90vh;
+    height: 100%;
     box-shadow: var(--shadow-xl);
     border: 1px solid rgba(255, 255, 255, 0.08);
     display: flex;
@@ -43,6 +42,11 @@
     overflow: hidden;
     backdrop-filter: blur(18px);
     position: relative;
+}
+
+.modal-content--wide {
+    height: 90vh;
+    max-height: 90vh;
 }
 
 .modal-header {
@@ -76,17 +80,11 @@
     padding: var(--space-2) var(--space-3);
 }
 
-.modal-content > form,
-.modal-content > #form-editor-container,
 .modal-content > #json-editor-container,
 .modal-content > .modal-body {
     flex: 1;
     overflow-y: auto;
-}
-
-.modal-content > form,
-.modal-content > #form-editor-container {
-    padding: var(--space-6);
+    min-height: 0;
 }
 
 .modal-content > #json-editor-container {
@@ -95,6 +93,8 @@
     flex-direction: column;
     overflow: hidden;
     min-height: 0;
+    /* Flex to fill available space - no JS calculations needed */
+    flex: 1;
 }
 
 .modal-header h2 {
@@ -171,8 +171,8 @@
 
 .modal-body {
     padding: var(--space-6);
-    max-height: 70vh;
     overflow-y: auto;
+    min-height: 0;
 }
 
 .modal-footer {
@@ -501,19 +501,30 @@ pre {
     background: var(--bg-primary);
     color: var(--text-primary);
     resize: none;
-    min-height: 320px;
     outline: none;
     tab-size: 2;
     flex: 1;
     min-width: 0;
-    min-height: 0;
     box-sizing: border-box;
     overflow: auto;
+    /* Height controlled by parent container, no min-height conflicts */
+    height: 100%;
+    /* Performance optimizations for large text */
+    will-change: scroll-position;
+    contain: strict;
 }
 
 .json-editor:focus {
     background: var(--bg-primary);
-    box-shadow: inset 0 0 0 1px var(--primary-400);
+    /* Simplified focus style - no box-shadow for better performance */
+    outline: 1px solid var(--primary-400);
+    outline-offset: -1px;
+}
+
+.json-editor:disabled {
+    opacity: 0.6;
+    cursor: wait;
+    color: var(--text-secondary);
 }
 
 .json-validation {

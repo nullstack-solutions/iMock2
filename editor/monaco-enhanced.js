@@ -1,21 +1,5 @@
 'use strict';
 
-function editorEscapeHtml(value) {
-    if (value == null) {
-        return '';
-    }
-    return String(value).replace(/[&<>"']/g, (char) => {
-        switch (char) {
-            case '&': return '&amp;';
-            case '<': return '&lt;';
-            case '>': return '&gt;';
-            case '"': return '&quot;';
-            case "'": return '&#39;';
-            default: return char;
-        }
-    });
-}
-
 // ---- Template library & history helpers ----
 
 const TEMPLATE_CATEGORY_LABELS = {
@@ -409,6 +393,9 @@ class EditorHistory {
                 latestTimestamp,
                 latestLabel
             };
+
+            // Phase 2: Schedule automatic cleanup
+            this.scheduleCleanup();
         } catch (error) {
             console.warn('[HISTORY] Failed to initialise history', error);
         }
@@ -922,6 +909,119 @@ class EditorHistory {
             await run(db);
         });
     }
+
+    // Phase 2 Optimization: Cleanup old history entries
+    // Follows Dexie.js and React Query TTL patterns
+    async cleanup(options = {}) {
+        const maxAgeMs = options.maxAgeMs || 30 * 24 * 60 * 60 * 1000; // 30 days default
+        const maxEntries = options.maxEntries || 50; // Max 50 entries default
+
+        await this.ready;
+
+        await this.withLock(async () => {
+            const db = await this.dbPromise;
+            const tx = db.transaction(HISTORY_FRAMES_STORE, 'readwrite');
+            const store = tx.objectStore(HISTORY_FRAMES_STORE);
+            const tsIndex = store.index('ts');
+
+            // 1. Delete entries older than maxAgeMs (time-based cleanup)
+            const cutoffTime = Date.now() - maxAgeMs;
+            const oldRange = IDBKeyRange.upperBound(cutoffTime);
+            let deletedByAge = 0;
+
+            const oldCursor = tsIndex.openCursor(oldRange);
+            await new Promise((resolve, reject) => {
+                oldCursor.onsuccess = (event) => {
+                    const cursor = event.target.result;
+                    if (cursor) {
+                        cursor.delete();
+                        deletedByAge++;
+                        cursor.continue();
+                    } else {
+                        resolve();
+                    }
+                };
+                oldCursor.onerror = () => reject(oldCursor.error);
+            });
+
+            await waitForTransaction(tx);
+
+            // 2. Limit total entries (size-based cleanup)
+            const tx2 = db.transaction(HISTORY_FRAMES_STORE, 'readwrite');
+            const store2 = tx2.objectStore(HISTORY_FRAMES_STORE);
+            const countRequest = store2.count();
+            const count = await promisifyRequest(countRequest);
+
+            let deletedBySize = 0;
+            if (count > maxEntries) {
+                const toDelete = count - maxEntries;
+                const cursor = store2.openCursor();
+
+                await new Promise((resolve, reject) => {
+                    let deleted = 0;
+                    cursor.onsuccess = (event) => {
+                        const cur = event.target.result;
+                        if (cur && deleted < toDelete) {
+                            cur.delete();
+                            deleted++;
+                            deletedBySize++;
+                            cur.continue();
+                        } else {
+                            resolve();
+                        }
+                    };
+                    cursor.onerror = () => reject(cursor.error);
+                });
+            }
+
+            await waitForTransaction(tx2);
+
+            const totalDeleted = deletedByAge + deletedBySize;
+            if (totalDeleted > 0) {
+                console.log(`✅ [HISTORY] Cleanup completed: deleted ${deletedByAge} old entries (>${Math.round(maxAgeMs / 86400000)}d) + ${deletedBySize} excess entries`);
+
+                // Update stats
+                const remaining = await this.readAllFrames(db);
+                this.stats.count = remaining.length;
+                this.stats.byteSize = remaining.reduce((acc, entry) => acc + (entry.byteSize || 0), 0);
+
+                if (remaining.length > 0) {
+                    const latest = remaining[remaining.length - 1];
+                    this.stats.latestTimestamp = latest.ts;
+                    this.stats.latestLabel = latest.label;
+                } else {
+                    this.stats.latestTimestamp = null;
+                    this.stats.latestLabel = null;
+                    this.currentId = null;
+                    this.lastEntry = null;
+                }
+
+                console.log(`📊 [HISTORY] Stats after cleanup: ${this.stats.count} entries, ${(this.stats.byteSize / 1024 / 1024).toFixed(2)} MB`);
+            }
+        });
+    }
+
+    // Phase 2: Schedule periodic cleanup
+    scheduleCleanup(intervalMs = 24 * 60 * 60 * 1000, options = {}) {
+        // Run cleanup once per day by default
+        const cleanup = async () => {
+            try {
+                await this.cleanup(options);
+            } catch (error) {
+                console.error('[HISTORY] Cleanup failed:', error);
+            }
+        };
+
+        // Run initial cleanup after 10 seconds
+        setTimeout(cleanup, 10000);
+
+        // Schedule periodic cleanup
+        const interval = setInterval(cleanup, intervalMs);
+
+        console.log(`✅ [HISTORY] Cleanup scheduled: every ${Math.round(intervalMs / 3600000)}h, max age ${Math.round((options.maxAgeMs || 30 * 24 * 60 * 60 * 1000) / 86400000)}d, max ${options.maxEntries || 50} entries`);
+
+        return interval;
+    }
 }
 
 function resolveTemplatePath(source, path) {
@@ -1053,309 +1153,6 @@ function copyTextToClipboard(text) {
             console.warn('Clipboard fallback failed:', error);
             return false;
         }
-    }
-}
-
-function renderTemplateLibrary() {
-    const container = document.getElementById('templateGrid');
-    if (!container) {
-        return;
-    }
-
-    const templates = getTemplateLibrarySnapshot();
-
-    container.innerHTML = '';
-
-    ensureTemplatePreviewHandlers();
-
-    const infoPanel = document.createElement('section');
-    infoPanel.className = 'template-info';
-    infoPanel.innerHTML = `
-        <p class="template-info__lead">Browse ready-made WireMock snippets or treat this gallery as a quick reference:</p>
-        <ul>
-            <li><strong>Use template</strong> drops the JSON straight into the editor.</li>
-            <li><strong>Copy JSON</strong> copies the snippet so you can adapt it manually.</li>
-            <li>Each card highlights key features like matchers, templating, webhooks, or proxy settings.</li>
-        </ul>
-        <p>It's perfectly fine to just read through these examples—no need to apply a template if you only need guidance.</p>
-    `;
-    container.appendChild(infoPanel);
-
-    if (!templates.length) {
-        const empty = document.createElement('div');
-        empty.className = 'history-empty';
-        empty.innerHTML = '<p>No templates available</p><small>Add templates to MonacoTemplateLibrary to populate this view.</small>';
-        container.appendChild(empty);
-        return;
-    }
-
-    templates.forEach((template) => {
-        const card = document.createElement('article');
-        card.className = 'template-card';
-        card.dataset.templateId = template.id;
-        card.setAttribute('role', 'button');
-        card.setAttribute('tabindex', '0');
-
-        const header = document.createElement('div');
-        header.className = 'template-header';
-
-        const title = document.createElement('h3');
-        title.textContent = template.title;
-        header.appendChild(title);
-
-        const badge = document.createElement('span');
-        const badgeCategory = template.category && TEMPLATE_CATEGORY_LABELS[template.category]
-            ? template.category
-            : 'basic';
-        badge.className = `badge ${badgeCategory}`;
-        badge.textContent = TEMPLATE_CATEGORY_LABELS[badgeCategory] || 'Template';
-        header.appendChild(badge);
-
-        const description = document.createElement('p');
-        description.className = 'template-description';
-        description.textContent = template.description || 'Ready-to-use WireMock template.';
-
-        const highlight = document.createElement('span');
-        highlight.className = 'template-highlight';
-        highlight.textContent = getTemplateHeadline(template);
-
-        const featuresContainer = document.createElement('div');
-        featuresContainer.className = 'template-features';
-
-        const featureData = getTemplateFeature(template);
-        if (featureData) {
-            const feature = document.createElement('div');
-            feature.className = 'template-feature';
-
-            const key = document.createElement('div');
-            key.className = 'template-feature__key';
-            key.textContent = featureData.label;
-
-            const value = document.createElement('div');
-            value.className = 'template-feature__value';
-            value.textContent = featureData.value;
-
-            feature.appendChild(key);
-            feature.appendChild(value);
-            featuresContainer.appendChild(feature);
-        }
-
-        const preview = document.createElement('pre');
-        preview.className = 'history-preview';
-        preview.textContent = buildTemplatePreview(template);
-
-        const actions = document.createElement('div');
-        actions.className = 'template-actions';
-
-        const useButton = document.createElement('button');
-        useButton.className = 'btn btn-primary btn-sm';
-        useButton.type = 'button';
-        useButton.textContent = 'Use template';
-        useButton.addEventListener('click', (event) => {
-            event.stopPropagation();
-            applyTemplateFromCard(template);
-        });
-
-        const copyButton = document.createElement('button');
-        copyButton.className = 'btn btn-secondary btn-sm';
-        copyButton.type = 'button';
-        copyButton.textContent = 'Copy JSON';
-        copyButton.addEventListener('click', async (event) => {
-            event.stopPropagation();
-            const json = template && template.content && typeof template.content === 'string'
-                ? template.content
-                : JSON.stringify(template.content, null, 2);
-            const success = await copyTextToClipboard(json);
-            if (initializer && typeof initializer.showNotification === 'function') {
-                initializer.showNotification(success ? `Template "${template.title}" copied` : 'Clipboard copy failed', success ? 'success' : 'error');
-            }
-        });
-
-        actions.appendChild(useButton);
-        actions.appendChild(copyButton);
-
-        card.addEventListener('click', () => showTemplatePreview(template));
-        card.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault();
-                showTemplatePreview(template);
-            }
-        });
-
-        card.appendChild(header);
-        card.appendChild(description);
-        if (highlight.textContent) {
-            card.appendChild(highlight);
-        }
-        if (featuresContainer.childNodes.length) {
-            card.appendChild(featuresContainer);
-        }
-        card.appendChild(preview);
-        card.appendChild(actions);
-
-        container.appendChild(card);
-    });
-}
-
-function ensureTemplatePreviewHandlers() {
-    const modal = document.getElementById('templatePreviewModal');
-    if (!modal || modal.dataset.previewBound === 'true') {
-        return;
-    }
-
-    modal.dataset.previewBound = 'true';
-
-    const actions = modal.querySelector('#templatePreviewActions');
-    if (actions) {
-        actions.addEventListener('click', async (event) => {
-            const button = event.target instanceof HTMLElement
-                ? event.target.closest('[data-template-action]')
-                : null;
-            if (!button) {
-                return;
-            }
-
-            event.preventDefault();
-
-            const action = button.dataset.templateAction;
-            if (!action) {
-                return;
-            }
-
-            const template = getTemplateById(modal.dataset.templateId);
-            if (!template) {
-                return;
-            }
-
-            if (action === 'apply') {
-                applyTemplateFromCard(template);
-                return;
-            }
-
-            if (action === 'copy') {
-                const json = typeof template.content === 'string'
-                    ? template.content
-                    : JSON.stringify(template.content, null, 2);
-                const success = await copyTextToClipboard(json);
-                const initializer = window.monacoInitializer;
-                if (initializer && typeof initializer.showNotification === 'function') {
-                    initializer.showNotification(success ? `Template "${template.title}" copied` : 'Clipboard copy failed', success ? 'success' : 'error');
-                }
-                return;
-            }
-
-            if (action === 'close') {
-                if (typeof window.closeModal === 'function') {
-                    window.closeModal('templatePreviewModal');
-                }
-            }
-        });
-    }
-}
-
-function getTemplateById(templateId) {
-    if (!templateId) {
-        return null;
-    }
-
-    return getTemplateLibrarySnapshot().find((item) => item.id === templateId) || null;
-}
-
-function showTemplatePreview(template) {
-    if (!template || !template.id) {
-        return;
-    }
-
-    const modal = document.getElementById('templatePreviewModal');
-    if (!modal) {
-        return;
-    }
-
-    modal.dataset.templateId = template.id;
-
-    const title = modal.querySelector('#modal-title-template-preview');
-    if (title) {
-        title.textContent = template.title || 'Template preview';
-    }
-
-    const description = modal.querySelector('#templatePreviewDescription');
-    if (description) {
-        description.textContent = template.description || '';
-        description.style.display = template.description ? '' : 'none';
-    }
-
-    const meta = modal.querySelector('#templatePreviewMeta');
-    if (meta) {
-        const headline = getTemplateHeadline(template) || '—';
-        const feature = getTemplateFeature(template);
-
-        meta.innerHTML = '';
-
-        const endpointRow = document.createElement('div');
-        endpointRow.className = 'template-preview-meta__row';
-
-        const endpointLabel = document.createElement('span');
-        endpointLabel.className = 'template-preview-meta__label';
-        endpointLabel.textContent = 'Endpoint';
-
-        const endpointValue = document.createElement('span');
-        endpointValue.className = 'template-preview-meta__value';
-        endpointValue.textContent = headline;
-
-        endpointRow.appendChild(endpointLabel);
-        endpointRow.appendChild(endpointValue);
-        meta.appendChild(endpointRow);
-
-        if (feature) {
-            const featureRow = document.createElement('div');
-            featureRow.className = 'template-preview-meta__row';
-
-            const featureLabel = document.createElement('span');
-            featureLabel.className = 'template-preview-meta__label';
-            featureLabel.textContent = 'Highlight';
-
-            const featureCode = document.createElement('code');
-            featureCode.className = 'template-preview-meta__code';
-            featureCode.textContent = `${feature.label} = ${feature.value}`;
-
-            featureRow.appendChild(featureLabel);
-            featureRow.appendChild(featureCode);
-            meta.appendChild(featureRow);
-        }
-    }
-
-    const code = modal.querySelector('#templatePreviewCode');
-    if (code) {
-        const payload = template && template.content ? template.content : {};
-        const json = typeof payload === 'string'
-            ? payload
-            : JSON.stringify(payload, null, 2);
-        code.textContent = json;
-    }
-
-    ensureTemplatePreviewHandlers();
-
-    if (typeof window.openModal === 'function') {
-        window.openModal('templatePreviewModal');
-    }
-}
-
-function applyTemplateFromCard(template) {
-    const initializer = window.monacoInitializer;
-    if (!initializer) {
-        return;
-    }
-
-    let applied = false;
-    if (typeof initializer.applyTemplate === 'function') {
-        applied = initializer.applyTemplate(template);
-    } else if (typeof initializer.applyTemplateById === 'function') {
-        applied = initializer.applyTemplateById(template.id);
-    }
-
-    if (applied && typeof window.closeModal === 'function') {
-        window.closeModal('templatePreviewModal');
-        window.closeModal('fullscreenModal');
     }
 }
 
@@ -1709,10 +1506,10 @@ async function renderHistoryModal(options = {}) {
             ? `${formatRelativeTime(stats.latestTimestamp)} (${new Date(stats.latestTimestamp).toLocaleString()})`
             : '—';
         const latestLabel = stats.latestLabel || '—';
-        const safeApproxSize = editorEscapeHtml(approxSize);
-        const safeLastSaved = editorEscapeHtml(lastSaved);
-        const safeLatestLabel = editorEscapeHtml(latestLabel);
-        const safeCount = typeof stats.count === 'number' ? stats.count : editorEscapeHtml(String(stats.count || '—'));
+        const safeApproxSize = window.Utils.escapeHtml(approxSize);
+        const safeLastSaved = window.Utils.escapeHtml(lastSaved);
+        const safeLatestLabel = window.Utils.escapeHtml(latestLabel);
+        const safeCount = typeof stats.count === 'number' ? stats.count : window.Utils.escapeHtml(String(stats.count || '—'));
 
         statsContainer.innerHTML = `
             <div class="history-meta">
@@ -2030,6 +1827,16 @@ class MonacoInitializer {
     }
 
     async loadMonaco() {
+        // Phase 1 Optimization: Use lazy loader
+        if (typeof MonacoLoader !== 'undefined' && MonacoLoader.load) {
+            console.log('🚀 [Lazy Loading] Loading Monaco via MonacoLoader...');
+            await MonacoLoader.load();
+            console.log('✅ [Lazy Loading] Monaco loaded successfully');
+            return;
+        }
+
+        // Fallback to original loading method
+        console.warn('⚠️ [Lazy Loading] MonacoLoader not available, using fallback');
         await this.waitForMonacoLoader();
 
         const attempts = [];
@@ -2373,8 +2180,18 @@ class MonacoInitializer {
             this.editorReadOnlyLocked = false;
         }
 
-        this.suspendHistoryRecording = true;
+this.suspendHistoryRecording = true;
         try {
+            // Clear selection and content before setting new value
+            if (editor && typeof editor.setSelection === 'function') {
+                editor.setSelection(new monaco.Range(1, 1, editor.getModel().getLineCount(), 1));
+            }
+            if (editor && typeof editor.trigger === 'function') {
+                editor.trigger('source', 'editor.action.selectAll');
+            }
+            if (editor && typeof editor.executeCommand === 'function') {
+                editor.executeCommand('editor.action.deleteAll');
+            }
             editor.setValue('');
         } finally {
             this.suspendHistoryRecording = false;
@@ -2783,7 +2600,7 @@ class MonacoInitializer {
     }
 
     getDefaultStub() {
-        return JSON.stringify({
+        const fallback = () => JSON.stringify({
             'name': 'Example WireMock Mapping',
             'request': {
                 'method': 'GET',
@@ -2800,12 +2617,28 @@ class MonacoInitializer {
                 }
             }
         }, null, 2);
+
+        try {
+            if (window.TemplateManager?.getEmptyMappingContent) {
+                const emptyMapping = window.TemplateManager.getEmptyMappingContent();
+                return JSON.stringify(emptyMapping, null, 2);
+            }
+        } catch (error) {
+            console.warn('Unable to get empty mapping content from TemplateManager, falling back to default stub', error);
+        }
+
+        return fallback();
     }
 
     // JSON operations
-    async formatJSON() {
+async formatJSON() {
         const editor = this.getActiveEditor();
         const content = editor.getValue();
+        
+        // Clear editor before formatting to prevent content concatenation
+        if (editor && typeof editor.setValue === 'function') {
+            editor.setValue('');
+        }
         
         try {
             if (this.workerPool) {
@@ -4505,9 +4338,10 @@ class MonacoInitializer {
                 window.removeEventListener('resize', integration.resizeHandler);
             }
 
-            integration.resizeHandler = () => {
-                this.refreshFindWidgetLayout();
-            };
+            // Debounce resize handler to avoid excessive calls
+            integration.resizeHandler = window.debounce ?
+                window.debounce(() => this.refreshFindWidgetLayout(), 150) :
+                () => this.refreshFindWidgetLayout();
 
             window.addEventListener('resize', integration.resizeHandler, { passive: true });
         }
@@ -5642,18 +5476,21 @@ function bootstrapMonacoInitializer() {
     return monacoInitializationPromise;
 }
 
-// Auto-initialize when DOM is ready
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-        bootstrapMonacoInitializer();
-    });
-} else {
+// Phase 1 Optimization: Lazy initialization
+// Monaco is initialized only when actually needed (when editor is opened)
+// This saves 3-5 MB if editor is not used
+
+// Initialize Monaco when monaco:loaded event is dispatched
+window.addEventListener('monaco:loaded', () => {
+    console.log('🚀 [Lazy Init] monaco:loaded event received, initializing editor...');
     bootstrapMonacoInitializer();
-}
+});
+
+// Expose bootstrap function for manual initialization
+window.bootstrapMonacoInitializer = bootstrapMonacoInitializer;
 
 // Export for use in other modules
 if (typeof window !== 'undefined') {
     window.monacoInitializer = monacoInitializer;
-    window.renderTemplateLibrary = renderTemplateLibrary;
     window.renderHistoryModal = renderHistoryModal;
 }

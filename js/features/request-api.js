@@ -12,7 +12,7 @@ window.getRequestCount = async (criteria = {}) => {
         });
         return response.count || 0;
     } catch (error) {
-        console.error('Request count error:', error);
+        Logger.error('REQUESTS', 'Request count error:', error);
         NotificationManager.error(`Request count failed: ${error.message}`);
         return 0;
     }
@@ -28,7 +28,7 @@ window.findRequests = async (criteria) => {
         });
         return response.requests || [];
     } catch (error) {
-        console.error('Find requests error:', error);
+        Logger.error('REQUESTS', 'Find requests error:', error);
         NotificationManager.error(`Request search failed: ${error.message}`);
         return [];
     }
@@ -40,7 +40,7 @@ window.getUnmatchedRequests = async () => {
         const response = await apiFetch(ENDPOINTS.REQUESTS_UNMATCHED);
         return response.requests || [];
     } catch (error) {
-        console.error('Unmatched requests error:', error);
+        Logger.error('REQUESTS', 'Unmatched requests error:', error);
         return [];
     }
 };

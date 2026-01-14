@@ -52,7 +52,22 @@ if (!window.NotificationManager) {
 
             if (!this._boundHandleKeydown) {
                 this._boundHandleKeydown = this.handleKeydown.bind(this);
-                document.addEventListener('keydown', this._boundHandleKeydown);
+                if (window.LifecycleManager) {
+                    window.LifecycleManager.addEventListener(document, 'keydown', this._boundHandleKeydown);
+                } else {
+                    document.addEventListener('keydown', this._boundHandleKeydown);
+                }
+            }
+        },
+
+        cleanup() {
+            if (this._boundHandleKeydown) {
+                if (window.LifecycleManager) {
+                    window.LifecycleManager.removeEventListener(document, 'keydown', this._boundHandleKeydown);
+                } else {
+                    document.removeEventListener('keydown', this._boundHandleKeydown);
+                }
+                this._boundHandleKeydown = null;
             }
         },
 
@@ -433,7 +448,7 @@ window.TabManager = {
             clearFunction: 'clearMappingFilters'
         },
         requests: {
-            name: 'Requests', 
+            name: 'Requests',
             loadFunction: 'loadRequests',
             clearFunction: 'clearRequestFilters'
         },
@@ -443,54 +458,73 @@ window.TabManager = {
             clearFunction: null
         }
     },
-    
+
+    /**
+     * Get currently active tab name
+     * @returns {string} Active tab name ('mappings', 'requests', or 'scenarios')
+     */
+    getCurrentTab() {
+        // Find active tab button
+        const activeButton = document.querySelector('.tab-link.active');
+        if (activeButton) {
+            // Extract tab name from onclick attribute or data attribute
+            const onclick = activeButton.getAttribute('onclick');
+            if (onclick) {
+                const match = onclick.match(/showTab\(['"](\w+)['"]\)/);
+                if (match) return match[1];
+            }
+        }
+        // Default to mappings if no active tab found
+        return 'mappings';
+    },
+
     async refresh(tabName) {
         const config = this.configs[tabName];
-        if (!config) {
-            console.warn(`Tab config not found: ${tabName}`);
-            return;
-        }
-        
+        if (!config) { Logger.warn('MANAGERS', `Tab config not found: ${tabName}`); return; }
         try {
             const loadFn = window[config.loadFunction];
             if (typeof loadFn === 'function') {
                 await loadFn();
-                console.log(`✅ ${config.name} refreshed`);
+                Logger.info('MANAGERS', `${config.name} refreshed`);
             } else {
-                console.warn(`Load function not found: ${config.loadFunction}`);
+                Logger.warn('MANAGERS', `Load function not found: ${config.loadFunction}`);
             }
         } catch (error) {
-            console.error(`Error refreshing ${config.name}:`, error);
+            Logger.error('MANAGERS', `Error refreshing ${config.name}:`, error);
             NotificationManager.error(`Failed to refresh ${config.name}: ${error.message}`);
         }
     },
-    
+
     clearFilters(tabName) {
         const config = this.configs[tabName];
         if (!config || !config.clearFunction) return;
-        
+
         try {
             const clearFn = window[config.clearFunction];
             if (typeof clearFn === 'function') {
                 clearFn();
-                console.log(`🧹 ${config.name} filters cleared`);
+                Logger.info('MANAGERS', `${config.name} filters cleared`);
             }
         } catch (error) {
-            console.error(`Error clearing ${config.name} filters:`, error);
+            Logger.error('MANAGERS', `Error clearing ${config.name} filters:`, error);
         }
     }
 };
 
 function executeMappingFilters() {
-    const method = document.getElementById('filter-method')?.value?.trim() || '';
-    const url = document.getElementById('filter-url')?.value?.trim() || '';
-    const status = document.getElementById('filter-status')?.value?.trim() || '';
+    const queryInput = document.getElementById('filter-query');
+    const query = queryInput?.value?.trim() || '';
 
-    const filters = { method, url, status };
-    window.FilterManager.saveFilterState('mappings', filters);
+    // Save query to filter state
+    window.FilterManager.saveFilterState('mappings', { query });
 
-    if (!Array.isArray(window.originalMappings) || window.originalMappings.length === 0) {
-        window.allMappings = [];
+    // Update URL with filter query for sharing
+    updateURLFilterParams(query, 'mappings');
+
+    // Get all mappings from MappingsStore (window.originalMappings is a getter to MappingsStore)
+    const allMappingsFromStore = window.originalMappings;
+
+    if (!Array.isArray(allMappingsFromStore) || allMappingsFromStore.length === 0) {
         const emptyState = document.getElementById(SELECTORS.EMPTY.MAPPINGS);
         const container = document.getElementById(SELECTORS.LISTS.MAPPINGS);
         if (emptyState) emptyState.classList.remove('hidden');
@@ -501,43 +535,21 @@ function executeMappingFilters() {
         return;
     }
 
-    const loweredMethod = method.toLowerCase();
-    const loweredUrl = url.toLowerCase();
-    const hasFilters = Boolean(method || url || status);
+    // Use new query parser for filtering
+    let filteredMappings;
+    if (query) {
+        if (window.QueryParser && typeof window.QueryParser.filterMappingsByQuery === 'function') {
+            filteredMappings = window.QueryParser.filterMappingsByQuery(allMappingsFromStore, query);
+        } else {
+            Logger.warn('MANAGERS', '[Mapping Filter] QueryParser or filterMappingsByQuery is not available. Showing all mappings.');
+            filteredMappings = allMappingsFromStore;
+        }
+    } else {
+        filteredMappings = allMappingsFromStore;
+    }
 
-    const filteredMappings = hasFilters
-        ? window.originalMappings.filter(mapping => {
-            if (!mapping) {
-                return false;
-            }
-
-            if (method) {
-                const requestMethod = (mapping.request?.method || '').toLowerCase();
-                if (!requestMethod.includes(loweredMethod)) {
-                    return false;
-                }
-            }
-
-            if (url) {
-                const mappingUrl = (mapping.request?.url || mapping.request?.urlPattern || mapping.request?.urlPath || '').toLowerCase();
-                const mappingName = (mapping.name || '').toLowerCase();
-                if (!mappingUrl.includes(loweredUrl) && !mappingName.includes(loweredUrl)) {
-                    return false;
-                }
-            }
-
-            if (status) {
-                const responseStatus = (mapping.response?.status ?? '').toString();
-                if (!responseStatus.includes(status)) {
-                    return false;
-                }
-            }
-
-            return true;
-        })
-        : window.originalMappings;
-
-    window.allMappings = hasFilters ? filteredMappings : window.originalMappings;
+    // Store filtered result in a separate variable (don't assign to window.allMappings - it's a getter to MappingsStore!)
+    window._filteredMappings = filteredMappings;
 
     const container = document.getElementById(SELECTORS.LISTS.MAPPINGS);
     const emptyState = document.getElementById(SELECTORS.EMPTY.MAPPINGS);
@@ -547,7 +559,7 @@ function executeMappingFilters() {
         return;
     }
 
-    const sortedMappings = [...window.allMappings].sort((a, b) => {
+    const sortedMappings = [...filteredMappings].sort((a, b) => {
         const priorityA = a?.priority ?? 1;
         const priorityB = b?.priority ?? 1;
         if (priorityA !== priorityB) return priorityA - priorityB;
@@ -562,11 +574,32 @@ function executeMappingFilters() {
         return urlA.localeCompare(urlB);
     });
 
-    renderList(container, sortedMappings, {
-        renderItem: renderMappingMarkup,
-        getKey: getMappingRenderKey,
-        getSignature: getMappingRenderSignature
-    });
+    // Update pagination state and render only current page
+    if (window.PaginationManager) {
+        window.PaginationManager.updateState(sortedMappings.length);
+
+        // Get items for current page
+        const pageItems = window.PaginationManager.getCurrentPageItems(sortedMappings);
+
+        renderList(container, pageItems, {
+            renderItem: renderMappingMarkup,
+            getKey: getMappingRenderKey,
+            getSignature: getMappingRenderSignature
+        });
+
+        // Render pagination controls
+        const paginationContainer = document.getElementById('mappings-pagination');
+        if (paginationContainer) {
+            paginationContainer.innerHTML = window.PaginationManager.renderControls();
+        }
+    } else {
+        // Fallback: render all items if pagination not available
+        renderList(container, sortedMappings, {
+            renderItem: renderMappingMarkup,
+            getKey: getMappingRenderKey,
+            getSignature: getMappingRenderSignature
+        });
+    }
 
     if (loadingState) {
         loadingState.classList.add('hidden');
@@ -586,14 +619,19 @@ function executeMappingFilters() {
 }
 
 function executeRequestFilters() {
-    const method = document.getElementById('req-filter-method')?.value?.trim() || '';
-    const status = document.getElementById('req-filter-status')?.value?.trim() || '';
-    const url = document.getElementById('req-filter-url')?.value?.trim() || '';
-    const from = document.getElementById('req-filter-from')?.value || '';
-    const to = document.getElementById('req-filter-to')?.value || '';
+    // Get query-based filter
+    const queryInput = document.getElementById('req-filter-query');
+    const query = queryInput?.value?.trim() || '';
 
-    const filters = { method, status, url, from, to };
-    window.FilterManager.saveFilterState('requests', filters);
+    // Get time range filters
+    const fromInput = document.getElementById('req-filter-from');
+    const toInput = document.getElementById('req-filter-to');
+    const from = fromInput?.value || '';
+    const to = toInput?.value || '';
+
+    // Save filters to localStorage and URL
+    window.FilterManager.saveFilterState('requests', { query, from, to });
+    updateURLFilterParams(query, 'requests');
 
     if (!Array.isArray(window.originalRequests) || window.originalRequests.length === 0) {
         window.allRequests = [];
@@ -607,66 +645,38 @@ function executeRequestFilters() {
         return;
     }
 
-    const loweredMethod = method.toLowerCase();
-    const loweredUrl = url.toLowerCase();
+    // Step 1: Apply query-based filters
+    let filteredRequests = query && window.QueryParser
+        ? window.QueryParser.filterRequestsByQuery(window.originalRequests, query)
+        : window.originalRequests;
+
+    // Step 2: Apply time range filters
     const fromTime = from ? new Date(from).getTime() : null;
     const toTime = to ? new Date(to).getTime() : null;
-    const hasFilters = Boolean(method || status || url || fromTime !== null || toTime !== null);
 
-    const filteredRequests = hasFilters
-        ? window.originalRequests.filter(request => {
-            if (!request) {
-                return false;
-            }
+    if (fromTime !== null || toTime !== null) {
+        filteredRequests = filteredRequests.filter(request => {
+            if (!request) return false;
 
-            if (method) {
-                const reqMethod = (request.request?.method || '').toLowerCase();
-                if (!reqMethod.includes(loweredMethod)) {
+            const requestTime = new Date(request.request?.loggedDate || request.loggedDate).getTime();
+
+            if (fromTime !== null && Number.isFinite(fromTime)) {
+                if (!Number.isFinite(requestTime) || requestTime < fromTime) {
                     return false;
                 }
             }
 
-            if (status) {
-                if (status === 'matched' && request.wasMatched === false) {
-                    return false;
-                }
-                if (status === 'unmatched' && request.wasMatched !== false) {
-                    return false;
-                }
-                if (status !== 'matched' && status !== 'unmatched') {
-                    const responseStatus = request.response?.status ?? request.responseDefinition?.status ?? '';
-                    if (!responseStatus.toString().includes(status)) {
-                        return false;
-                    }
-                }
-            }
-
-            if (url) {
-                const requestUrl = (request.request?.url || '').toLowerCase();
-                if (!requestUrl.includes(loweredUrl)) {
-                    return false;
-                }
-            }
-
-            if (fromTime) {
-                const requestTime = new Date(request.request?.loggedDate || request.loggedDate).getTime();
-                if (Number.isFinite(fromTime) && (!Number.isFinite(requestTime) || requestTime < fromTime)) {
-                    return false;
-                }
-            }
-
-            if (toTime) {
-                const requestTime = new Date(request.request?.loggedDate || request.loggedDate).getTime();
-                if (Number.isFinite(toTime) && (!Number.isFinite(requestTime) || requestTime > toTime)) {
+            if (toTime !== null && Number.isFinite(toTime)) {
+                if (!Number.isFinite(requestTime) || requestTime > toTime) {
                     return false;
                 }
             }
 
             return true;
-        })
-        : window.originalRequests;
+        });
+    }
 
-    window.allRequests = hasFilters ? filteredRequests : window.originalRequests;
+    window.allRequests = filteredRequests;
 
     const container = document.getElementById(SELECTORS.LISTS.REQUESTS);
     const emptyState = document.getElementById(SELECTORS.EMPTY.REQUESTS);
@@ -698,35 +708,35 @@ function executeRequestFilters() {
         updateRequestsCounter();
     }
 
-    console.log(`🔍 Filtered requests: ${window.allRequests.length} items`);
+    Logger.debug('MANAGERS', `Filtered requests: ${window.allRequests.length} items`);
 }
 
 // --- FILTER MANAGER ---
 // Centralized filter management
-function getMappingRenderKey(mapping) {
-    if (!mapping || typeof mapping !== 'object') {
-        return '';
+function getRenderKey(item, ...keys) {
+    if (!item || typeof item !== 'object') return '';
+    for (const key of keys) {
+        const value = key.includes('.') ? key.split('.').reduce((obj, k) => obj?.[k], item) : item[key];
+        if (value != null) return String(value);
     }
-    return String(mapping.id || mapping.uuid || mapping.stubId || '');
+    return '';
+}
+
+function getMappingRenderKey(mapping) {
+    return getRenderKey(mapping, 'id', 'uuid', 'stubId');
 }
 
 function getMappingRenderSignature(mapping) {
-    if (!mapping || typeof mapping !== 'object') {
-        return '';
-    }
+    if (!mapping || typeof mapping !== 'object') return '';
     const request = mapping.request || {};
     const response = mapping.response || {};
     const metadata = mapping.metadata || {};
     const stringifyForSignature = (value) => {
-        if (value === undefined || value === null) {
-            return '';
-        }
+        if (value == null) return '';
         try {
             const str = typeof value === 'string' ? value : JSON.stringify(value);
             return str.length > 300 ? `${str.slice(0, 300)}…` : str;
-        } catch {
-            return '';
-        }
+        } catch { return ''; }
     };
     return [
         request.method || '',
@@ -752,27 +762,15 @@ function renderMappingMarkup(mapping) {
 }
 
 function getRequestRenderKey(request) {
-    if (!request || typeof request !== 'object') {
-        return '';
-    }
-    return String(request.id || request.requestId || request.mappingUuid || request.request?.id || request.request?.loggedDate || request.loggedDate || '');
+    return getRenderKey(request, 'id', 'requestId', 'mappingUuid', 'request.id', 'request.loggedDate', 'loggedDate');
 }
 
 function getRequestRenderSignature(request) {
-    if (!request || typeof request !== 'object') {
-        return '';
-    }
-    const req = request.request || {};
-    const res = request.responseDefinition || {};
-    return [
-        req.method || '',
-        req.url || req.urlPath || '',
-        req.loggedDate || request.loggedDate || '',
-        request.wasMatched === false ? 'unmatched' : 'matched',
-        res.status ?? '',
-        (res.body || res.jsonBody || '').length,
-        (req.body || '').length
-    ].join('|');
+    if (!request || typeof request !== 'object') return '';
+    const req = request.request || {}, res = request.responseDefinition || {};
+    return [req.method || '', req.url || req.urlPath || '', req.loggedDate || request.loggedDate || '',
+            request.wasMatched === false ? 'unmatched' : 'matched', res.status ?? '',
+            (res.body || res.jsonBody || '').length, (req.body || '').length].join('|');
 }
 
 function renderRequestMarkup(request) {
@@ -786,7 +784,7 @@ window.FilterManager = {
             const key = `imock-filters-${tabName}`;
             localStorage.setItem(key, JSON.stringify(filters));
         } catch (e) {
-            console.warn('Failed to save filter state:', e);
+            Logger.warn('MANAGERS', 'Failed to save filter state:', e);
         }
     },
     
@@ -797,7 +795,7 @@ window.FilterManager = {
             const saved = localStorage.getItem(key);
             return saved ? JSON.parse(saved) : {};
         } catch (e) {
-            console.warn('Failed to load filter state:', e);
+            Logger.warn('MANAGERS', 'Failed to load filter state:', e);
             return {};
         }
     },
@@ -831,48 +829,265 @@ window.FilterManager = {
     },
     
     // Restore filter state on page load
+    // Priority: URL params > localStorage
     restoreFilters(tabName) {
-        const filters = this.loadFilterState(tabName);
-        
         if (tabName === 'mappings') {
-            if (filters.method) {
-                const elem = document.getElementById('filter-method');
-                if (elem) elem.value = filters.method;
-            }
-            if (filters.url) {
-                const elem = document.getElementById('filter-url');
-                if (elem) elem.value = filters.url;
-            }
-            if (filters.status) {
-                const elem = document.getElementById('filter-status');
-                if (elem) elem.value = filters.status;
+            // First check URL parameters (for sharing) - tab-scoped
+            const urlFilter = getFilterFromURL('mappings');
+
+            if (urlFilter) {
+                // URL has priority - restore from URL
+                const elem = document.getElementById('filter-query');
+                if (elem) elem.value = urlFilter;
+                return { query: urlFilter };
+            } else {
+                // Fallback to localStorage
+                const filters = this.loadFilterState(tabName);
+                if (filters.query) {
+                    const elem = document.getElementById('filter-query');
+                    if (elem) elem.value = filters.query;
+                }
+                return filters;
             }
         } else if (tabName === 'requests') {
-            if (filters.method) {
-                const elem = document.getElementById('req-filter-method');
-                if (elem) elem.value = filters.method;
+            // Check URL parameters first (for sharing) - tab-scoped
+            const urlFilter = getFilterFromURL('requests');
+
+            if (urlFilter) {
+                // URL has priority - restore from URL
+                const elem = document.getElementById('req-filter-query');
+                if (elem) {
+                    elem.value = urlFilter;
+                    return { query: urlFilter };
+                }
             }
-            if (filters.status) {
-                const elem = document.getElementById('req-filter-status');
-                if (elem) elem.value = filters.status;
+
+            // Fallback to localStorage
+            const filters = this.loadFilterState(tabName);
+
+            // Restore query-based filter
+            const queryElem = document.getElementById('req-filter-query');
+            if (queryElem && filters.query) {
+                queryElem.value = filters.query;
             }
-            if (filters.url) {
-                const elem = document.getElementById('req-filter-url');
-                if (elem) elem.value = filters.url;
+
+            // Restore time range filters (always restore from/to regardless of query)
+            const fromElem = document.getElementById('req-filter-from');
+            const toElem = document.getElementById('req-filter-to');
+            if (fromElem) fromElem.value = filters.from || '';
+            if (toElem) toElem.value = filters.to || '';
+
+            return filters;
+        }
+
+        return {};
+    },
+
+    /**
+     * Check if URL has any filter parameters
+     * @param {string} tabName - 'mappings' or 'requests'
+     * @returns {boolean}
+     */
+    hasURLFilters(tabName) {
+        const filters = this.getFiltersFromURL(tabName);
+        return Object.values(filters).some(value => value !== '');
+    }
+};
+
+// ==========================================
+// Filter Presets Manager
+// ==========================================
+window.FilterPresetsManager = {
+    /**
+     * Get all custom presets
+     * @returns {Object} Custom presets
+     */
+    getAllPresets() {
+        try {
+            const customPresets = localStorage.getItem('imock-filter-presets-custom');
+            return customPresets ? JSON.parse(customPresets) : {};
+        } catch (error) {
+            Logger.warn('MANAGERS', 'Failed to load custom presets:', error);
+            return {};
+        }
+    },
+
+    /**
+     * Apply a preset by ID
+     * @param {string} presetId - Preset identifier
+     * @param {string} tabName - 'mappings' or 'requests'
+     */
+    applyPreset(presetId, tabName = 'mappings') {
+        const presets = this.getAllPresets();
+        const preset = presets[presetId];
+
+        if (!preset) {
+            Logger.warn('MANAGERS', `Preset not found: ${presetId}`);
+            return;
+        }
+
+        if (tabName === 'mappings') {
+            const methodElem = document.getElementById('filter-method');
+            const queryElem = document.getElementById('filter-url');
+            const statusElem = document.getElementById('filter-status');
+
+            if (methodElem) methodElem.value = preset.filters.method || '';
+            if (queryElem) queryElem.value = preset.filters.query || '';
+            if (statusElem) statusElem.value = preset.filters.status || '';
+
+            // Apply filters
+            if (typeof window.applyFilters === 'function') {
+                window.applyFilters();
             }
-            if (filters.from) {
-                const elem = document.getElementById('req-filter-from');
-                if (elem) elem.value = filters.from;
+
+            // Sync tabs
+            if (preset.filters.method && typeof window.syncFilterTabsFromSelect === 'function') {
+                window.syncFilterTabsFromSelect('mapping', preset.filters.method);
             }
-            if (filters.to) {
-                const elem = document.getElementById('req-filter-to');
-                if (elem) elem.value = filters.to;
+
+            // Show notification
+            if (typeof NotificationManager !== 'undefined') {
+                NotificationManager.info(`Applied preset: ${preset.name}`);
             }
         }
+    },
+
+    /**
+     * Save a custom preset
+     * @param {string} presetId - Unique preset ID
+     * @param {Object} presetData - Preset data { name, icon, filters }
+     */
+    saveCustomPreset(presetId, presetData) {
+        try {
+            const customPresets = this.getCustomPresets();
+            customPresets[presetId] = presetData;
+            localStorage.setItem('imock-filter-presets-custom', JSON.stringify(customPresets));
+
+            if (typeof NotificationManager !== 'undefined') {
+                NotificationManager.success(`Preset "${presetData.name}" saved`);
+            }
+
+            // Refresh preset UI if available
+            if (typeof window.renderFilterPresets === 'function') {
+                window.renderFilterPresets();
+            }
+        } catch (error) {
+            Logger.error('MANAGERS', 'Failed to save preset:', error);
+            if (typeof NotificationManager !== 'undefined') {
+                NotificationManager.error('Failed to save preset');
+            }
+        }
+    },
+
+    /**
+     * Get custom presets only
+     * @returns {Object} Custom presets
+     */
+    getCustomPresets() {
+        try {
+            const customPresets = localStorage.getItem('imock-filter-presets-custom');
+            return customPresets ? JSON.parse(customPresets) : {};
+        } catch (error) {
+            Logger.warn('MANAGERS', 'Failed to load custom presets:', error);
+            return {};
+        }
+    },
+
+    /**
+     * Delete a custom preset
+     * @param {string} presetId - Preset ID to delete
+     */
+    deleteCustomPreset(presetId) {
+        try {
+            const customPresets = this.getCustomPresets();
+            delete customPresets[presetId];
+            localStorage.setItem('imock-filter-presets-custom', JSON.stringify(customPresets));
+
+            if (typeof NotificationManager !== 'undefined') {
+                NotificationManager.success('Preset deleted');
+            }
+
+            // Refresh preset UI
+            if (typeof window.renderFilterPresets === 'function') {
+                window.renderFilterPresets();
+            }
+        } catch (error) {
+            Logger.error('MANAGERS', 'Failed to delete preset:', error);
+            if (typeof NotificationManager !== 'undefined') {
+                NotificationManager.error('Failed to delete preset');
+            }
+        }
+    },
+
+    /**
+     * Get current filters as preset data
+     * @param {string} tabName - 'mappings' or 'requests'
+     * @returns {Object} Current filters
+     */
+    getCurrentFiltersAsPreset(tabName = 'mappings') {
+        if (tabName === 'mappings') {
+            return {
+                method: document.getElementById('filter-method')?.value || '',
+                query: document.getElementById('filter-url')?.value || '',
+                status: document.getElementById('filter-status')?.value || ''
+            };
+        }
+        return {};
     }
 };
 
 window.FilterManager._applyMappingFilters = window.debounce(executeMappingFilters, 180);
 window.FilterManager._applyRequestFilters = window.debounce(executeRequestFilters, 180);
 
-console.log('✅ Managers.js loaded - NotificationManager, TabManager, FilterManager');
+// ===== URL Filter Parameters for Sharing =====
+
+/**
+ * Update URL with filter query parameter for sharing (tab-scoped)
+ * @param {string} query - Filter query string
+ * @param {string} tabName - Tab name ('mappings' or 'requests')
+ */
+function updateURLFilterParams(query, tabName = 'mappings') {
+    if (!window.history || !window.history.replaceState) return;
+
+    const url = new URL(window.location.href);
+    const paramName = `${tabName}_filter`;
+
+    if (query) {
+        url.searchParams.set(paramName, query);
+    } else {
+        url.searchParams.delete(paramName);
+    }
+
+    // Note: tab parameter is managed by showPage() function
+    // Don't update it here to avoid conflicts
+
+    // Update URL without reloading page
+    window.history.replaceState({}, '', url.toString());
+}
+
+/**
+ * Get filter query from URL parameters (tab-scoped)
+ * @param {string} tabName - Tab name ('mappings' or 'requests')
+ * @returns {string|null} - Filter query or null
+ */
+function getFilterFromURL(tabName = 'mappings') {
+    const urlParams = new URLSearchParams(window.location.search);
+    const paramName = `${tabName}_filter`;
+    return urlParams.get(paramName);
+}
+
+/**
+ * Get active tab from URL
+ * @returns {string|null} - Tab name or null
+ */
+function getActiveTabFromURL() {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('tab');
+}
+
+// Make URL functions globally accessible
+window.updateURLFilterParams = updateURLFilterParams;
+window.getFilterFromURL = getFilterFromURL;
+window.getActiveTabFromURL = getActiveTabFromURL;
+
+Logger.info('MANAGERS', 'Managers.js loaded - NotificationManager, TabManager, FilterManager');

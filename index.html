@@ -157,8 +157,8 @@
                     <use href="#icon-logo"></use>
                 </svg>
             </span>
-            <span class="logo-text">iTest</span>
-            <span class="version">v2.21</span>
+            <span class="logo-text">iMock</span>
+            <span class="version">v2.24</span>
         </div>
         <div class="status">
             <div class="status-indicator">
@@ -264,7 +264,7 @@
                             <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-bolt"></use></svg>
                             <span class="btn-label">Force Refresh Cache</span>
                         </button>
-                        <button class="btn btn-primary" onclick="openAddMappingModal()" id="add-mapping-btn" disabled>
+                        <button class="btn btn-primary" data-template-trigger data-template-target="create-inline" id="add-mapping-btn" disabled>
                             <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-plus"></use></svg>
                             <span>Add Mapping</span>
                         </button>
@@ -295,63 +295,110 @@
                 
                 
                 <div class="search-filters" id="search-filters" style="display: none;">
-                    <div class="filter-tabs" role="tablist">
-                        <button type="button" class="filter-tab active" data-filter-group="mapping" data-filter-value="" onclick="handleMappingTabClick(this, '')">
-                            <span>All</span>
-                            <span class="filter-tab-count" id="mapping-tab-all">0</span>
-                        </button>
-                        <button type="button" class="filter-tab" data-filter-group="mapping" data-filter-value="GET" onclick="handleMappingTabClick(this, 'GET')">
-                            <span>GET</span>
-                            <span class="filter-tab-count" id="mapping-tab-get">0</span>
-                        </button>
-                        <button type="button" class="filter-tab" data-filter-group="mapping" data-filter-value="POST" onclick="handleMappingTabClick(this, 'POST')">
-                            <span>POST</span>
-                            <span class="filter-tab-count" id="mapping-tab-post">0</span>
-                        </button>
-                        <button type="button" class="filter-tab" data-filter-group="mapping" data-filter-value="PUT" onclick="handleMappingTabClick(this, 'PUT')">
-                            <span>PUT</span>
-                            <span class="filter-tab-count" id="mapping-tab-put">0</span>
-                        </button>
-                        <button type="button" class="filter-tab" data-filter-group="mapping" data-filter-value="PATCH" onclick="handleMappingTabClick(this, 'PATCH')">
-                            <span>PATCH</span>
-                            <span class="filter-tab-count" id="mapping-tab-patch">0</span>
-                        </button>
-                        <button type="button" class="filter-tab" data-filter-group="mapping" data-filter-value="DELETE" onclick="handleMappingTabClick(this, 'DELETE')">
-                            <span>DELETE</span>
-                            <span class="filter-tab-count" id="mapping-tab-delete">0</span>
-                        </button>
-                    </div>
-                    <div class="filter-grid">
-                        <div class="form-group">
-                            <label class="form-label">Method</label>
-                            <select class="form-select" id="filter-method" onchange="applyFilters()">
-                                <option value="">All Methods</option>
-                                <option value="GET">GET</option>
-                                <option value="POST">POST</option>
-                                <option value="PUT">PUT</option>
-                                <option value="DELETE">DELETE</option>
-                                <option value="PATCH">PATCH</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Search by URL or Name</label>
+                    <div class="filter-query-container">
+                        <div class="form-group filter-query-form-group">
+                            <label class="form-label">
+                                Filter Query
+                                <button type="button"
+                                        class="btn-link btn-help-toggle"
+                                        onclick="toggleQueryHelp()"
+                                        aria-expanded="false"
+                                        aria-controls="query-help">
+                                    Show Examples
+                                </button>
+                            </label>
                             <div class="input-shell">
                                 <span class="input-icon">
                                     <svg class="icon icon-input" aria-hidden="true" focusable="false"><use href="#icon-search"></use></svg>
                                 </span>
-                                <input type="text" class="form-input" id="filter-url" placeholder="Enter URL or Name" oninput="applyFilters()">
-                                <button type="button" class="input-clear" onclick="document.getElementById('filter-url').value=''; applyFilters();" title="Clear search">
-                                    <span class="sr-only">Clear search</span>
+                                <input
+                                    type="text"
+                                    class="form-input"
+                                    id="filter-query"
+                                    placeholder="e.g., method:GET,POST url:api status:200"
+                                    oninput="applyFilters()"
+                                    autocomplete="off"
+                                    aria-describedby="query-help"
+                                >
+                                <button type="button" class="input-clear" onclick="clearMappingFilters()" title="Clear query">
+                                    <span class="sr-only">Clear query</span>
                                     &times;
                                 </button>
                             </div>
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="saveCurrentMappingFilter()" title="Save current filter">
+                                <svg class="icon" aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                                    <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                                    <polyline points="7 3 7 8 15 8"></polyline>
+                                </svg>
+                                <span>Save</span>
+                            </button>
                         </div>
-                        <div class="form-group">
-                            <label class="form-label">Status</label>
-                            <input type="number" class="form-input" id="filter-status" placeholder="e.g., 200" min="100" max="599" oninput="applyFilters()">
+
+                        <!-- Quick filters and active filters -->
+                        <div class="filter-chips-container">
+                            <div class="quick-filters">
+                                <span class="quick-filters-label">Quick:</span>
+                                <button type="button" class="filter-chip filter-chip-quick" onclick="applyQuickMethodFilter('GET')" data-method="GET">
+                                    GET
+                                </button>
+                                <button type="button" class="filter-chip filter-chip-quick" onclick="applyQuickMethodFilter('POST')" data-method="POST">
+                                    POST
+                                </button>
+                                <button type="button" class="filter-chip filter-chip-quick" onclick="applyQuickMethodFilter('PUT')" data-method="PUT">
+                                    PUT
+                                </button>
+                                <button type="button" class="filter-chip filter-chip-quick" onclick="applyQuickMethodFilter('PATCH')" data-method="PATCH">
+                                    PATCH
+                                </button>
+                                <button type="button" class="filter-chip filter-chip-quick" onclick="applyQuickMethodFilter('DELETE')" data-method="DELETE">
+                                    DELETE
+                                </button>
+                                <span class="filters-separator filter-hidden" id="saved-filters-separator">|</span>
+                                <div class="saved-filters-inline filter-hidden" id="saved-filters-list">
+                                    <!-- Saved filter chips will be inserted here -->
+                                </div>
+                            </div>
+                            <div class="active-filters filter-hidden" id="active-filters">
+                                <span class="active-filters-label">Active:</span>
+                                <div class="active-filters-list" id="active-filters-list">
+                                    <!-- Active filter chips will be inserted here -->
+                                </div>
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <button class="btn btn-secondary" onclick="clearMappingFilters()">Clear Filters</button>
+
+                        <div id="query-help" class="query-help hidden">
+                            <div class="query-help-title">Query Syntax Examples:</div>
+                            <div class="query-help-examples">
+                                <div class="query-help-example">
+                                    <code>method:GET,POST</code>
+                                    <span>Filter by GET or POST methods</span>
+                                </div>
+                                <div class="query-help-example">
+                                    <code>url:api</code>
+                                    <span>URL contains "api"</span>
+                                </div>
+                                <div class="query-help-example">
+                                    <code>status:200,201</code>
+                                    <span>Status is 200 or 201</span>
+                                </div>
+                                <div class="query-help-example">
+                                    <code>name:user</code>
+                                    <span>Name contains "user"</span>
+                                </div>
+                                <div class="query-help-example">
+                                    <code>-status:404</code>
+                                    <span>Exclude 404 status</span>
+                                </div>
+                                <div class="query-help-example">
+                                    <code>priority:1-5</code>
+                                    <span>Priority between 1 and 5</span>
+                                </div>
+                                <div class="query-help-example">
+                                    <code>method:GET url:users status:200</code>
+                                    <span>Combine multiple filters (AND logic)</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -365,6 +412,7 @@
                     <div class="cards-container" id="mappings-list" style="display: none;">
                         <!-- Mapping items will be dynamically inserted here -->
                     </div>
+                    <div id="mappings-pagination" class="pagination-container"></div>
                 </div>
             </div>
             
@@ -404,44 +452,80 @@
                             <span class="filter-tab-count" id="requests-tab-unmatched">0</span>
                         </button>
                     </div>
-                    <!-- First row: Basic filters -->
-                    <div class="filter-grid">
-                        <div class="form-group">
-                            <label class="form-label">Method</label>
-                            <select class="form-select" id="req-filter-method" onchange="applyRequestFilters()">
-                                <option value="">All Methods</option>
-                                <option value="GET">GET</option>
-                                <option value="POST">POST</option>
-                                <option value="PUT">PUT</option>
-                                <option value="DELETE">DELETE</option>
-                                <option value="PATCH">PATCH</option>
-                            </select>
+
+                    <!-- Query-based filter -->
+                    <div class="form-group filter-query-form-group">
+                        <label for="req-filter-query" class="form-label">
+                            Filter Query
+                            <button type="button" class="help-button" onclick="toggleQueryHelp('requests')" aria-label="Show query syntax help" aria-expanded="false" aria-controls="req-query-help">
+                                ?
+                            </button>
+                        </label>
+                        <div class="input-shell">
+                            <span class="input-icon">
+                                <svg class="icon icon-input" aria-hidden="true" focusable="false"><use href="#icon-search"></use></svg>
+                            </span>
+                            <input
+                                type="text"
+                                class="form-input"
+                                id="req-filter-query"
+                                placeholder="e.g., method:GET url:api matched:true status:200,201"
+                                oninput="applyRequestFilters()"
+                                aria-describedby="req-query-help">
+                            <button type="button" class="input-clear" onclick="clearRequestFilters()" title="Clear filters">
+                                <span class="sr-only">Clear filters</span>
+                                &times;
+                            </button>
                         </div>
-                        <div class="form-group">
-                            <label class="form-label">Status</label>
-                            <select class="form-select" id="req-filter-status" onchange="applyRequestFilters()">
-                                <option value="">All Statuses</option>
-                                <option value="matched">Matched</option>
-                                <option value="unmatched">Unmatched</option>
-                            </select>
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="saveCurrentRequestFilter()" title="Save current filter">
+                            <svg class="icon" aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                                <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                                <polyline points="7 3 7 8 15 8"></polyline>
+                            </svg>
+                            <span>Save</span>
+                        </button>
+                        <div id="req-query-help" class="query-help hidden" role="region" aria-live="polite">
+                            <strong>Query Syntax:</strong>
+                            <ul>
+                                <li><code>method:GET,POST</code> - Filter by HTTP methods (OR)</li>
+                                <li><code>url:api</code> - Search in URL</li>
+                                <li><code>matched:true</code> - Show only matched requests</li>
+                                <li><code>matched:false</code> - Show only unmatched requests</li>
+                                <li><code>status:200,201</code> - Filter by response status codes</li>
+                                <li><code>client:192.168</code> - Filter by client IP</li>
+                                <li><code>method:GET url:api</code> - Combine filters (AND)</li>
+                                <li><code>-status:500</code> - Exclude status 500</li>
+                            </ul>
                         </div>
-                        <div class="form-group">
-                            <label class="form-label">URL Pattern</label>
-                            <div class="input-shell">
-                                <span class="input-icon">
-                                    <svg class="icon icon-input" aria-hidden="true" focusable="false"><use href="#icon-search"></use></svg>
-                                </span>
-                                <input type="text" class="form-input" id="req-filter-url" placeholder="e.g., /api/*" oninput="applyRequestFilters()">
-                                <button type="button" class="input-clear" onclick="document.getElementById('req-filter-url').value=''; applyRequestFilters();" title="Clear search">
-                                    <span class="sr-only">Clear search</span>
-                                    &times;
-                                </button>
+                    </div>
+
+                    <!-- Quick filter chips for common methods -->
+                    <div class="filter-chips-container">
+                        <div class="quick-filters">
+                            <button type="button" class="filter-chip filter-chip-quick" onclick="applyQuickRequestFilter('GET')">GET</button>
+                            <button type="button" class="filter-chip filter-chip-quick" onclick="applyQuickRequestFilter('POST')">POST</button>
+                            <button type="button" class="filter-chip filter-chip-quick" onclick="applyQuickRequestFilter('PUT')">PUT</button>
+                            <button type="button" class="filter-chip filter-chip-quick" onclick="applyQuickRequestFilter('PATCH')">PATCH</button>
+                            <button type="button" class="filter-chip filter-chip-quick" onclick="applyQuickRequestFilter('DELETE')">DELETE</button>
+                            <button type="button" class="filter-chip filter-chip-quick" onclick="applyQuickRequestFilter('matched:true')">Matched</button>
+                            <button type="button" class="filter-chip filter-chip-quick" onclick="applyQuickRequestFilter('matched:false')">Unmatched</button>
+                            <span class="filters-separator filter-hidden" id="req-saved-filters-separator">|</span>
+                            <div class="saved-filters-inline filter-hidden" id="req-saved-filters-list">
+                                <!-- Saved filter chips will be inserted here -->
                             </div>
                         </div>
+                        <div class="active-filters filter-hidden" id="req-active-filters">
+                            <!-- Active filter chips will be rendered here -->
+                        </div>
+                    </div>
+
+                    <!-- Time Range Filters -->
+                    <div class="filter-grid" style="margin-top: var(--space-3);">
                         <div class="form-group">
-                            <label class="form-label">Quick Filter</label>
-                            <select class="form-select" id="req-filter-quick" onchange="applyQuickFilter()">
-                                <option value="">Select time range</option>
+                            <label class="form-label">Quick Time Filter</label>
+                            <select class="form-select" id="req-filter-quick" onchange="applyQuickTimeFilter()">
+                                <option value="">All Time</option>
                                 <option value="5m">Last 5 minutes</option>
                                 <option value="15m">Last 15 minutes</option>
                                 <option value="30m">Last 30 minutes</option>
@@ -454,15 +538,11 @@
                                 <option value="7d">Last 7 days</option>
                             </select>
                         </div>
-                    </div>
-                    
-                    <!-- Second row: Time Range -->
-                    <div class="filter-grid" style="margin-top: var(--space-3);">
                         <div class="form-group">
                             <label class="form-label">Custom Time Range</label>
                             <div style="display: flex; gap: var(--space-2);">
-                                <input type="datetime-local" class="form-input" id="req-filter-from" onchange="clearQuickFilter(); applyRequestFilters()" style="flex: 1;" placeholder="From">
-                                <input type="datetime-local" class="form-input" id="req-filter-to" onchange="clearQuickFilter(); applyRequestFilters()" style="flex: 1;" placeholder="To">
+                                <input type="datetime-local" class="form-input" id="req-filter-from" onchange="clearQuickTimeFilter(); applyRequestFilters()" style="flex: 1;" placeholder="From">
+                                <input type="datetime-local" class="form-input" id="req-filter-to" onchange="clearQuickTimeFilter(); applyRequestFilters()" style="flex: 1;" placeholder="To">
                             </div>
                         </div>
                     </div>
@@ -483,8 +563,29 @@
             <!-- SCENARIOS PAGE -->
             <div id="scenarios-page" class="hidden">
                 <div class="page-header">
-                    <div class="page-title">Scenario Management</div>
-                    <div style="display: flex; gap: var(--space-2);">
+                    <div class="scenario-page-title">
+                        <div class="page-title">Scenario Mappings</div>
+                        <span id="scenario-stats" class="badge badge-secondary" title="Visible scenarios and mappings">0/0 scenarios • 0 mappings</span>
+                    </div>
+                    <div class="scenarios-header-actions">
+                        <div class="scenario-search">
+                            <svg class="icon icon-16" aria-hidden="true" focusable="false"><use href="#icon-search"></use></svg>
+                            <input type="text" class="form-input scenario-search-input" id="scenario-search" placeholder="Filter scenarios..." autocomplete="off" />
+                        </div>
+                        <div class="scenario-bulk-wrap is-hidden" id="scenario-bulk-wrap">
+                            <button class="btn btn-secondary" id="scenario-bulk-btn" type="button">
+                                <span>Bulk Actions</span>
+                                <span class="badge badge-secondary scenario-bulk-count" id="scenario-bulk-count">0</span>
+                                <svg class="icon icon-16" aria-hidden="true" focusable="false"><use href="#icon-sidebar-expand"></use></svg>
+                            </button>
+                            <div class="scenario-bulk-menu" id="scenario-bulk-menu" aria-hidden="true">
+                                <button class="scenario-bulk-item" id="scenario-bulk-reset" type="button">Reset Selected</button>
+                                <button class="scenario-bulk-item" id="scenario-bulk-set-state" type="button">Set State…</button>
+                                <button class="scenario-bulk-item" id="scenario-bulk-export" type="button">Export Selected (JSON)</button>
+                                <div class="scenario-bulk-sep"></div>
+                                <button class="scenario-bulk-item danger" id="scenario-bulk-clear" type="button">Clear Selection</button>
+                            </div>
+                        </div>
                         <button class="btn btn-secondary" onclick="refreshScenarios()">
                             <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-refresh"></use></svg>
                             <span>Refresh</span>
@@ -494,6 +595,13 @@
                             <span>Reset All</span>
                         </button>
                     </div>
+                </div>
+
+                <div class="scenario-select-all-row" id="scenario-select-all-row" style="display: none;">
+                    <button type="button" class="scenario-select-btn" id="scenario-select-all-btn" role="checkbox" aria-checked="false" aria-label="Select all visible scenarios">
+                        <span class="scenario-select-box" aria-hidden="true"></span>
+                    </button>
+                    <span class="scenario-select-label">Select all visible</span>
                 </div>
                 
                 <div class="card card-static">
@@ -599,7 +707,7 @@
                             <p class="form-help">Select how WireMock should handle existing mappings during import.</p>
                         </div>
                         <div class="form-group" id="import-actions" style="display: none;">
-                            <button class="btn btn-primary" id="import-submit-btn" onclick="executeImportFromUi()">
+                            <button class="btn btn-primary" id="import-submit-btn" onclick="executeImport()">
                                 <span class="btn-spinner loading-spinner" aria-hidden="true"></span>
                                 <span class="btn-label">
                                     <svg class="icon" aria-hidden="true" focusable="false"><use href="#icon-request-in"></use></svg>
@@ -756,63 +864,6 @@
         </div>
     </div>
 
-    <!-- MODAL FOR ADDING/EDITING MAPPINGS -->
-    <div id="add-mapping-modal" class="modal hidden">
-        <div class="modal-content">
-            <button class="modal-close" type="button" onclick="hideModal('add-mapping-modal')" aria-label="Close add mapping modal">
-                <svg class="icon icon-16" aria-hidden="true" focusable="false">
-                    <use href="#icon-x-circle"></use>
-                </svg>
-                <span class="sr-only">Close</span>
-            </button>
-            <div class="modal-header">
-                <div class="modal-header-main">
-                    <h3 id="modal-title">Add New Mapping</h3>
-                </div>
-                <div class="modal-header-actions">
-                    <button type="button" class="btn btn-primary" onclick="saveMappingWrapper()">
-                        <span class="btn-label">Save Mapping</span>
-                    </button>
-                </div>
-            </div>
-            <form id="mapping-form">
-                <input type="hidden" id="mapping-id">
-                
-                <div class="form-group">
-                    <label class="form-label">Mapping Name</label>
-                    <input type="text" class="form-input" id="mapping-name" placeholder="Enter mapping name">
-                </div>
-                
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label">Method</label>
-                        <select class="form-select" id="method">
-                            <option value="GET">GET</option>
-                            <option value="POST">POST</option>
-                            <option value="PUT">PUT</option>
-                            <option value="DELETE">DELETE</option>
-                            <option value="PATCH">PATCH</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">URL Pattern</label>
-                        <input type="text" class="form-input" id="url-pattern" placeholder="/api/users" required>
-                    </div>
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Response Status</label>
-                    <input type="number" class="form-input" id="response-status" value="200" min="100" max="599">
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Response Body</label>
-                    <textarea class="form-textarea" id="response-body" rows="6" placeholder='{ "message": "Hello World" }'></textarea>
-                </div>
-            </form>
-        </div>
-    </div>
-
     <!-- MODAL FOR EDITING MAPPINGS -->
     <div id="edit-mapping-modal" class="modal hidden">
         <div class="modal-content">
@@ -822,102 +873,31 @@
                 </svg>
                 <span class="sr-only">Close</span>
             </button>
-            <div class="modal-header">
-                <div class="modal-header-main">
-                    <h3 id="edit-modal-title">Edit Mapping</h3>
-                    <span id="editor-dirty-indicator" class="dirty-indicator" style="display: none;">● Unsaved changes</span>
-                </div>
-                <div class="modal-header-actions">
-                    <button type="button" class="btn btn-secondary btn-sm" data-action="format-json">Format</button>
-                    <button type="button" class="btn btn-secondary btn-sm" data-action="minify-json">Minify</button>
-                    <button type="button" class="btn btn-primary" id="update-mapping-btn" onclick="updateMapping()">
-                        <span class="btn-label">Update Mapping</span>
-                        <span class="btn-spinner loading-spinner" aria-hidden="true"></span>
-                    </button>
-                </div>
-            </div>
-            
-            <!-- Form Editor (Hidden by default) -->
-            <div id="form-editor-container" style="display: none;">
-            <form id="edit-mapping-form">
-                <input type="hidden" id="edit-mapping-id">
-                
-                <div class="form-group">
-                    <label class="form-label">Mapping Name</label>
-                    <input type="text" class="form-input" id="edit-mapping-name" placeholder="Enter mapping name">
-                </div>
-                
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label">Method</label>
-                        <select class="form-select" id="edit-method">
-                            <option value="GET">GET</option>
-                            <option value="POST">POST</option>
-                            <option value="PUT">PUT</option>
-                            <option value="DELETE">DELETE</option>
-                            <option value="PATCH">PATCH</option>
-                        </select>
+                <div class="modal-header">
+                    <div class="modal-header-main">
+                        <h3 id="edit-modal-title">Edit Mapping</h3>
+                        <span id="editor-dirty-indicator" class="dirty-indicator" style="display: none;">● Unsaved changes</span>
                     </div>
-                    <div class="form-group">
-                        <label class="form-label">URL Pattern</label>
-                        <input type="text" class="form-input" id="edit-url-pattern" placeholder="/api/users" required>
-                    </div>
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Response Status</label>
-                    <input type="number" class="form-input" id="edit-response-status" value="200" min="100" max="599">
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Response Delay (ms)</label>
-                    <input type="number" class="form-input" id="edit-response-delay" placeholder="Delay in milliseconds">
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Request Headers (JSON)</label>
-                    <textarea class="form-textarea" id="edit-request-headers" rows="3" placeholder='{ "Content-Type": "application/json" }'></textarea>
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Request Body</label>
-                    <textarea class="form-textarea" id="edit-request-body" rows="3" placeholder='{ "name": "example" }'></textarea>
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Response Headers (JSON)</label>
-                    <textarea class="form-textarea" id="edit-response-headers" rows="3" placeholder='{ "Content-Type": "application/json" }'></textarea>
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Response Body</label>
-                    <textarea class="form-textarea" id="edit-response-body" rows="6" placeholder='{ "message": "Hello World" }'></textarea>
-                </div>
-                
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label">Priority</label>
-                        <input type="number" class="form-input" id="edit-mapping-priority" placeholder="Priority">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Scenario Name</label>
-                        <input type="text" class="form-input" id="edit-mapping-scenario" placeholder="Scenario name">
+                    <div class="modal-header-actions">
+                        <button type="button" class="btn btn-secondary" id="open-json-studio-btn" title="Open in advanced JSON Studio editor">
+                            <svg class="icon icon-16" aria-hidden="true" focusable="false">
+                                <use href="#icon-open-external"></use>
+                            </svg>
+                            <span class="btn-label">JSON Studio</span>
+                        </button>
+                        <button type="button" class="btn btn-secondary btn-sm" data-action="format-json">Format</button>
+                        <button type="button" class="btn btn-secondary btn-sm" data-action="minify-json">Minify</button>
+                        <button type="button" class="btn btn-ghost btn-sm" id="editor-save-template" title="Save current mapping as template">
+                            <svg class="icon icon-16" aria-hidden="true" focusable="false"><use href="#icon-star"></use></svg>
+                            <span class="btn-label">Save as Template</span>
+                        </button>
+                        <button type="button" class="btn btn-primary" id="update-mapping-btn" onclick="updateMapping()">
+                            <span class="btn-label">Update Mapping</span>
+                            <span class="btn-spinner loading-spinner" aria-hidden="true"></span>
+                        </button>
                     </div>
                 </div>
 
-                <div class="form-row">
-                    <div class="form-group">
-                        <label class="form-label">Required Scenario State</label>
-                        <input type="text" class="form-input" id="edit-required-scenario-state" placeholder="State required to match">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">New Scenario State</label>
-                        <input type="text" class="form-input" id="edit-new-scenario-state" placeholder="State after match">
-                    </div>
-                </div>
-            </form>
-            </div>
-            
             <!-- JSON Editor Container -->
             <div id="json-editor-container" class="json-editor-wrapper">
                 <textarea id="json-editor" class="json-editor" rows="1" placeholder="{
@@ -934,6 +914,49 @@
     }
   }
 }"></textarea>
+            </div>
+        </div>
+    </div>
+
+    <!-- TEMPLATE GALLERY -->
+    <div class="modal hidden" id="template-gallery-modal">
+        <div class="modal-content modal-content--wide">
+            <button class="modal-close" type="button" onclick="hideModal('template-gallery-modal')" aria-label="Close template gallery">
+                <svg class="icon icon-16" aria-hidden="true" focusable="false">
+                    <use href="#icon-x-circle"></use>
+                </svg>
+                <span class="sr-only">Close</span>
+            </button>
+            <div class="modal-header">
+                <h3 id="template-gallery-title">WireMock templates</h3>
+            </div>
+            <div class="modal-body">
+                <div class="template-wizard-shell" id="template-gallery-shell"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal hidden" id="template-preview-modal">
+        <div class="modal-content modal-content--wide">
+            <button class="modal-close" type="button" onclick="hideModal('template-preview-modal')" aria-label="Close template preview">
+                <svg class="icon icon-16" aria-hidden="true" focusable="false">
+                    <use href="#icon-x-circle"></use>
+                </svg>
+                <span class="sr-only">Close</span>
+            </button>
+            <div class="modal-header">
+                <h3 id="template-preview-title">Template preview</h3>
+            </div>
+            <div class="modal-body template-preview-body">
+                <p class="template-preview-description" id="template-preview-description"></p>
+                <div class="template-preview-meta" id="template-preview-meta"></div>
+                <pre class="template-preview-code" id="template-preview-code"></pre>
+                <div class="template-preview-actions" id="template-preview-actions">
+                    <button class="btn btn-primary btn-sm" type="button" data-template-action="apply">Use template</button>
+                    <button class="btn btn-secondary btn-sm" type="button" data-template-action="create-studio" style="display: none;">Create &amp; open JSON Studio</button>
+                    <button class="btn btn-secondary btn-sm" type="button" data-template-action="copy">Copy JSON</button>
+                    <button class="btn btn-secondary btn-ghost btn-sm" type="button" data-template-action="close">Close</button>
+                </div>
             </div>
         </div>
     </div>
@@ -1018,21 +1041,34 @@
     </div>
 
 <!-- JavaScript modules in loading order -->
+<script src="js/lib/logger.js"></script>
+<script src="editor/monaco-template-library.js"></script>
 <script src="js/vendor-js-yaml.min.js"></script>
 <script src="js/core.js"></script>
 <script src="js/managers.js"></script>
 <script src="js/demo-data.js"></script>
 <script src="js/features/state.js"></script>
 <script src="js/features/utils.js"></script>
+<script src="js/features/templates.js"></script>
+<script src="js/features/queryParser.js"></script>
 <script src="js/features/filters.js"></script>
+<script src="js/features/filter-presets.js"></script>
+
+<!-- New optimized cache architecture -->
+<script src="js/features/store.js"></script>
+<script src="js/features/sync-engine.js"></script>
+<script src="js/features/operations.js"></script>
+
+<!-- Legacy cache (for backward compatibility during transition) -->
 <script src="js/features/cache.js"></script>
 <script src="js/features/mappings.js"></script>
+<script src="js/features/pagination.js"></script>
+<script src="js/features/event-delegation.js"></script>
 <script src="js/features/requests.js"></script>
 <script src="js/features/scenarios.js"></script>
 <script src="js/features/recording.js"></script>
 <script src="js/features/management.js"></script>
 <script src="js/features/request-api.js"></script>
-<script src="js/features/near-misses.js"></script>
 <script src="js/features/wiremock-extras.js"></script>
 <script src="js/features/demo.js"></script>
 <script src="js/features.js"></script>

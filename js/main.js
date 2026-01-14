@@ -1,6 +1,6 @@
 'use strict';
 
-console.log('✅ All required modules loaded successfully');
+Logger.info('UI', '✅ All required modules loaded successfully');
 
 // === CENTRALIZED DEFAULT SETTINGS ===
 // This is the SINGLE SOURCE OF TRUTH for all default values
@@ -30,22 +30,27 @@ window.customHeaders = { ...(DEFAULT_SETTINGS.customHeaders || {}) };
 let autoConnectInitiated = false;
 
 function getStoredSettings() {
-    if (typeof window.readWiremockSettings === 'function') {
-        return window.readWiremockSettings();
+    // Try reading using the standard function first
+    const fromStandard = Utils.safeCall(window.readWiremockSettings);
+    if (fromStandard) {
+        return fromStandard;
     }
 
+    // Fallback to direct localStorage read
     try {
         const raw = localStorage.getItem('wiremock-settings');
         if (!raw) {
             return {};
         }
         const parsed = JSON.parse(raw);
-        if (typeof window.normalizeWiremockSettings === 'function') {
-            return window.normalizeWiremockSettings(parsed);
+        // Try normalizing if function exists
+        const normalized = Utils.safeCall(window.normalizeWiremockSettings, parsed);
+        if (normalized) {
+            return normalized;
         }
         return parsed && typeof parsed === 'object' ? parsed : {};
     } catch (error) {
-        console.warn('Failed to parse stored settings, falling back to defaults:', error);
+        Logger.warn('UI', 'Failed to parse stored settings, falling back to defaults:', error);
         return {};
     }
 }
@@ -98,7 +103,7 @@ function serializeCustomHeaders(settings) {
         try {
             return JSON.stringify(settings.customHeaders, null, 2);
         } catch (error) {
-            console.warn('Failed to serialize custom headers:', error);
+            Logger.warn('UI', 'Failed to serialize custom headers:', error);
         }
     }
     return '';
@@ -140,34 +145,45 @@ function hideOnboardingOverlay() {
 }
 
 function attemptAutoConnect(settings, options = {}) {
+    Logger.info('UI', '🔌 [attemptAutoConnect] Called with settings:', settings);
+    Logger.info('UI', '🔌 [attemptAutoConnect] Options:', options);
+    Logger.info('UI', '🔌 [attemptAutoConnect] shouldAutoConnect:', shouldAutoConnect(settings));
+    Logger.info('UI', '🔌 [attemptAutoConnect] autoConnectInitiated:', autoConnectInitiated);
+
     if (!shouldAutoConnect(settings)) {
+        Logger.info('UI', '⚠️ [attemptAutoConnect] Skipping - shouldAutoConnect returned false');
         return;
     }
 
     if (autoConnectInitiated && !options.force) {
+        Logger.info('UI', '⚠️ [attemptAutoConnect] Skipping - already initiated and not forced');
         return;
     }
 
     autoConnectInitiated = true;
+    Logger.info('UI', '✅ [attemptAutoConnect] Proceeding with autoconnect');
 
     const triggerConnection = () => {
         try {
+            Logger.info('UI', '🔌 [attemptAutoConnect] Triggering connection...');
             const result = typeof window.connectToWireMock === 'function' ? window.connectToWireMock() : null;
             if (result && typeof result.catch === 'function') {
                 result.catch((error) => {
-                    console.error('Auto-connect failed:', error);
+                    Logger.error('UI', '❌ Auto-connect failed:', error);
                     autoConnectInitiated = false;
                 });
             }
         } catch (error) {
-            console.error('Auto-connect encountered an error:', error);
+            Logger.error('UI', '❌ Auto-connect encountered an error:', error);
             autoConnectInitiated = false;
         }
     };
 
     if (options.immediate) {
+        Logger.info('UI', '🔌 [attemptAutoConnect] Immediate mode - connecting now');
         triggerConnection();
     } else {
+        Logger.info('UI', '🔌 [attemptAutoConnect] Delayed mode - connecting in 150ms');
         setTimeout(triggerConnection, 150);
     }
 }
@@ -183,14 +199,20 @@ function initializeOnboardingFlow() {
     const settings = getStoredSettings();
     const hasConfiguration = Boolean(settings.host && settings.port);
 
+    Logger.info('UI', '🔧 [initializeOnboardingFlow] Settings:', settings);
+    Logger.info('UI', '🔧 [initializeOnboardingFlow] Has configuration:', hasConfiguration);
+    Logger.info('UI', '🔧 [initializeOnboardingFlow] autoConnect setting:', settings.autoConnect);
+
     if (hostField) hostField.value = settings.host || DEFAULT_SETTINGS.host || '';
     if (portField) portField.value = settings.port || DEFAULT_SETTINGS.port || '';
     if (headersField) headersField.value = serializeCustomHeaders(settings);
     if (autoConnectField) autoConnectField.checked = settings.autoConnect !== false;
 
     if (!hasConfiguration) {
+        Logger.info('UI', '⚠️ [initializeOnboardingFlow] No configuration - showing onboarding overlay');
         showOnboardingOverlay();
     } else {
+        Logger.info('UI', '✅ [initializeOnboardingFlow] Configuration found - attempting autoconnect');
         attemptAutoConnect(settings);
     }
 
@@ -213,7 +235,7 @@ function initializeOnboardingFlow() {
             try {
                 customHeaderValues = parseCustomHeadersInput(headersField?.value ?? '');
             } catch (error) {
-                console.error('Failed to parse onboarding headers:', error);
+                Logger.error('UI', 'Failed to parse onboarding headers:', error);
                 if (typeof NotificationManager !== 'undefined') {
                     NotificationManager.error(error.message);
                 }
@@ -251,26 +273,14 @@ function initializeOnboardingFlow() {
 window.initializeOnboardingFlow = initializeOnboardingFlow;
 window.attemptAutoConnect = attemptAutoConnect;
 
-
 // === FUNCTIONS FOR EDITOR INTEGRATION ===
     
 window.editMapping = (mappingId) => {
-    console.log('🔧 Opening editor for mapping:', mappingId);
+    Logger.info('UI', '🔧 Opening editor for mapping:', mappingId);
 
     // Get current settings to pass to editor
     const currentSettings = getStoredSettings();
-
-    // Option 1: Pass ALL settings (current behavior)
     const settingsParam = encodeURIComponent(JSON.stringify(currentSettings));
-
-    // Option 2: Pass only specific settings (uncomment to use)
-    // const editorSettings = {
-    //     host: currentSettings.host,
-    //     port: currentSettings.port,
-    //     theme: currentSettings.theme
-    // };
-    // const settingsParam = encodeURIComponent(JSON.stringify(editorSettings));
-
     const editorUrl = `editor/json-editor.html?mappingId=${mappingId}&mode=edit&settings=${settingsParam}`;
     const editorWindow = window.open(
         editorUrl,
@@ -286,25 +296,21 @@ window.editMapping = (mappingId) => {
     NotificationManager.info(`Editor opened for mapping ${mappingId}`);
         
     // Track window closure to refresh counters
-    const checkClosed = window.LifecycleManager.setInterval(() => {
+    const checkClosed = window.LifecycleManager.setNamedInterval('editor-close-watch', () => {
         if (editorWindow.closed) {
             window.LifecycleManager.clearInterval(checkClosed);
-            console.log('🔄 Editor closed, updating counters only');
+            Logger.info('UI', '🔄 Editor closed, updating counters only');
             // Only update counters, don't refresh data to preserve optimistic updates
-            if (typeof window.updateMappingsCounter === 'function') {
-                window.updateMappingsCounter();
-            }
-            if (typeof window.updateRequestsCounter === 'function') {
-                window.updateRequestsCounter();
-            }
+            Utils.safeCall(window.updateMappingsCounter);
+            Utils.safeCall(window.updateRequestsCounter);
         }
     }, 1000);
 
     // Safety cleanup: clear interval after 5 minutes to prevent memory leaks
-    setTimeout(() => {
+    window.LifecycleManager.setTimeout(() => {
         if (!editorWindow.closed) {
             window.LifecycleManager.clearInterval(checkClosed);
-            console.log('🔄 Editor interval cleaned up after timeout');
+            Logger.info('UI', '🔄 Editor interval cleaned up after timeout');
         }
     }, 5 * 60 * 1000); // 5 minutes
 };
@@ -330,7 +336,7 @@ function computeSwaggerUiUrl(host, port) {
 
         return `${baseUrl.replace(/\/?$/, '')}/swagger-ui/`;
     } catch (error) {
-        console.warn('Failed to compute Swagger UI URL:', error);
+        Logger.warn('UI', 'Failed to compute Swagger UI URL:', error);
         return null;
     }
 }
@@ -381,7 +387,7 @@ window.saveSettings = () => {
         try {
             customHeadersResult = parseCustomHeadersInput(customHeadersInput?.value ?? '');
         } catch (parseError) {
-            console.error('Failed to parse custom headers:', parseError);
+            Logger.error('UI', 'Failed to parse custom headers:', parseError);
             if (typeof NotificationManager !== 'undefined') {
                 NotificationManager.error(parseError.message);
             }
@@ -417,8 +423,8 @@ window.saveSettings = () => {
 
         // Save to localStorage
         localStorage.setItem('wiremock-settings', JSON.stringify(settings));
-        console.log('🔧 [main.js] Settings saved to localStorage:', settings);
-        console.log('🔧 [main.js] Request timeout field value:', document.getElementById('request-timeout')?.value);
+        Logger.info('UI', '🔧 [main.js] Settings saved to localStorage:', settings);
+        Logger.info('UI', '🔧 [main.js] Request timeout field value:', document.getElementById('request-timeout')?.value);
 
         // Update global baseUrl immediately
         if (typeof window.normalizeWiremockBaseUrl === 'function') {
@@ -434,14 +440,14 @@ window.saveSettings = () => {
         broadcastSettingsUpdate(settings);
 
         NotificationManager.success('Settings saved successfully!');
-        console.log('💾 Settings saved:', settings);
+        Logger.info('UI', '💾 Settings saved:', settings);
 
         if (typeof window.updateSwaggerUILink === 'function') {
             window.updateSwaggerUILink(settings.host, settings.port);
         }
 
     } catch (error) {
-        console.error('Error saving settings:', error);
+        Logger.error('UI', 'Error saving settings:', error);
         NotificationManager.error('Failed to save settings');
     }
 };
@@ -449,17 +455,29 @@ window.saveSettings = () => {
 // Reset settings to defaults
 window.resetSettings = () => {
     if (!confirm('Reset all settings to defaults?')) return;
-    
+
     try {
+        // Cache element references
+        const elements = {
+            host: document.getElementById('default-host'),
+            port: document.getElementById('default-port'),
+            timeout: document.getElementById('request-timeout'),
+            cacheEnabled: document.getElementById('cache-enabled'),
+            autoRefresh: document.getElementById('auto-refresh-enabled'),
+            refreshInterval: document.getElementById('refresh-interval'),
+            customHeaders: document.getElementById('custom-headers'),
+            autoConnect: document.getElementById('auto-connect-enabled')
+        };
+
         // Update form fields
-        if (document.getElementById('default-host')) document.getElementById('default-host').value = DEFAULT_SETTINGS.host;
-        if (document.getElementById('default-port')) document.getElementById('default-port').value = DEFAULT_SETTINGS.port;
-        if (document.getElementById('request-timeout')) document.getElementById('request-timeout').value = DEFAULT_SETTINGS.requestTimeout;
-        if (document.getElementById('cache-enabled')) document.getElementById('cache-enabled').checked = DEFAULT_SETTINGS.cacheEnabled;
-        if (document.getElementById('auto-refresh-enabled')) document.getElementById('auto-refresh-enabled').checked = DEFAULT_SETTINGS.autoRefreshEnabled;
-        if (document.getElementById('refresh-interval')) document.getElementById('refresh-interval').value = DEFAULT_SETTINGS.refreshInterval;
-        if (document.getElementById('custom-headers')) document.getElementById('custom-headers').value = DEFAULT_SETTINGS.customHeadersRaw || '';
-        if (document.getElementById('auto-connect-enabled')) document.getElementById('auto-connect-enabled').checked = DEFAULT_SETTINGS.autoConnect;
+        if (elements.host) elements.host.value = DEFAULT_SETTINGS.host;
+        if (elements.port) elements.port.value = DEFAULT_SETTINGS.port;
+        if (elements.timeout) elements.timeout.value = DEFAULT_SETTINGS.requestTimeout;
+        if (elements.cacheEnabled) elements.cacheEnabled.checked = DEFAULT_SETTINGS.cacheEnabled;
+        if (elements.autoRefresh) elements.autoRefresh.checked = DEFAULT_SETTINGS.autoRefreshEnabled;
+        if (elements.refreshInterval) elements.refreshInterval.value = DEFAULT_SETTINGS.refreshInterval;
+        if (elements.customHeaders) elements.customHeaders.value = DEFAULT_SETTINGS.customHeadersRaw || '';
+        if (elements.autoConnect) elements.autoConnect.checked = DEFAULT_SETTINGS.autoConnect;
 
         // Save defaults
         localStorage.setItem('wiremock-settings', JSON.stringify(DEFAULT_SETTINGS));
@@ -478,10 +496,10 @@ window.resetSettings = () => {
         }
 
         NotificationManager.success('Settings reset to defaults!');
-        console.log('🔄 Settings reset to defaults');
+        Logger.info('UI', '🔄 Settings reset to defaults');
 
     } catch (error) {
-        console.error('Error resetting settings:', error);
+        Logger.error('UI', 'Error resetting settings:', error);
         NotificationManager.error('Failed to reset settings');
     }
 };
@@ -490,30 +508,47 @@ window.resetSettings = () => {
 window.loadSettings = () => {
     try {
         const settings = getStoredSettings();
-        console.log('🔧 [main.js] Loading settings from localStorage:', settings);
+        Logger.info('UI', '🔧 [main.js] Loading settings from localStorage:', settings);
+
+        // Cache element references
+        const elements = {
+            host: document.getElementById('default-host'),
+            port: document.getElementById('default-port'),
+            timeout: document.getElementById('request-timeout'),
+            cacheEnabled: document.getElementById('cache-enabled'),
+            autoRefresh: document.getElementById('auto-refresh-enabled'),
+            refreshInterval: document.getElementById('refresh-interval'),
+            cacheRebuildDelay: document.getElementById('cache-rebuild-delay'),
+            cacheValidationDelay: document.getElementById('cache-validation-delay'),
+            optimisticCacheAgeLimit: document.getElementById('optimistic-cache-age-limit'),
+            cacheCountDiffThreshold: document.getElementById('cache-count-diff-threshold'),
+            backgroundFetchDelay: document.getElementById('background-fetch-delay'),
+            customHeaders: document.getElementById('custom-headers'),
+            autoConnect: document.getElementById('auto-connect-enabled')
+        };
 
         // Load into settings form fields if they exist
-        if (document.getElementById('default-host')) document.getElementById('default-host').value = settings.host || DEFAULT_SETTINGS.host;
-        if (document.getElementById('default-port')) document.getElementById('default-port').value = settings.port || DEFAULT_SETTINGS.port;
-        if (document.getElementById('request-timeout')) document.getElementById('request-timeout').value = settings.requestTimeout || DEFAULT_SETTINGS.requestTimeout;
-        if (document.getElementById('cache-enabled')) document.getElementById('cache-enabled').checked = settings.cacheEnabled !== undefined ? settings.cacheEnabled : DEFAULT_SETTINGS.cacheEnabled;
-        if (document.getElementById('auto-refresh-enabled')) document.getElementById('auto-refresh-enabled').checked = settings.autoRefreshEnabled !== undefined ? settings.autoRefreshEnabled : DEFAULT_SETTINGS.autoRefreshEnabled;
-        if (document.getElementById('refresh-interval')) document.getElementById('refresh-interval').value = settings.refreshInterval || DEFAULT_SETTINGS.refreshInterval;
+        if (elements.host) elements.host.value = settings.host || DEFAULT_SETTINGS.host;
+        if (elements.port) elements.port.value = settings.port || DEFAULT_SETTINGS.port;
+        if (elements.timeout) elements.timeout.value = settings.requestTimeout || DEFAULT_SETTINGS.requestTimeout;
+        if (elements.cacheEnabled) elements.cacheEnabled.checked = settings.cacheEnabled !== undefined ? settings.cacheEnabled : DEFAULT_SETTINGS.cacheEnabled;
+        if (elements.autoRefresh) elements.autoRefresh.checked = settings.autoRefreshEnabled !== undefined ? settings.autoRefreshEnabled : DEFAULT_SETTINGS.autoRefreshEnabled;
+        if (elements.refreshInterval) elements.refreshInterval.value = settings.refreshInterval || DEFAULT_SETTINGS.refreshInterval;
         // Cache timing settings
-        if (document.getElementById('cache-rebuild-delay')) document.getElementById('cache-rebuild-delay').value = settings.cacheRebuildDelay || DEFAULT_SETTINGS.cacheRebuildDelay;
-        if (document.getElementById('cache-validation-delay')) document.getElementById('cache-validation-delay').value = settings.cacheValidationDelay || DEFAULT_SETTINGS.cacheValidationDelay;
-        if (document.getElementById('optimistic-cache-age-limit')) document.getElementById('optimistic-cache-age-limit').value = settings.optimisticCacheAgeLimit || DEFAULT_SETTINGS.optimisticCacheAgeLimit;
-        if (document.getElementById('cache-count-diff-threshold')) document.getElementById('cache-count-diff-threshold').value = settings.cacheCountDiffThreshold || DEFAULT_SETTINGS.cacheCountDiffThreshold;
-        if (document.getElementById('background-fetch-delay')) document.getElementById('background-fetch-delay').value = settings.backgroundFetchDelay || DEFAULT_SETTINGS.backgroundFetchDelay;
-        if (document.getElementById('custom-headers')) document.getElementById('custom-headers').value = serializeCustomHeaders(settings);
-        if (document.getElementById('auto-connect-enabled')) document.getElementById('auto-connect-enabled').checked = settings.autoConnect !== false;
+        if (elements.cacheRebuildDelay) elements.cacheRebuildDelay.value = settings.cacheRebuildDelay || DEFAULT_SETTINGS.cacheRebuildDelay;
+        if (elements.cacheValidationDelay) elements.cacheValidationDelay.value = settings.cacheValidationDelay || DEFAULT_SETTINGS.cacheValidationDelay;
+        if (elements.optimisticCacheAgeLimit) elements.optimisticCacheAgeLimit.value = settings.optimisticCacheAgeLimit || DEFAULT_SETTINGS.optimisticCacheAgeLimit;
+        if (elements.cacheCountDiffThreshold) elements.cacheCountDiffThreshold.value = settings.cacheCountDiffThreshold || DEFAULT_SETTINGS.cacheCountDiffThreshold;
+        if (elements.backgroundFetchDelay) elements.backgroundFetchDelay.value = settings.backgroundFetchDelay || DEFAULT_SETTINGS.backgroundFetchDelay;
+        if (elements.customHeaders) elements.customHeaders.value = serializeCustomHeaders(settings);
+        if (elements.autoConnect) elements.autoConnect.checked = settings.autoConnect !== false;
 
         // Update global auth header
         window.customHeaders = (settings.customHeaders && typeof settings.customHeaders === 'object' && !Array.isArray(settings.customHeaders))
             ? { ...settings.customHeaders }
             : { ...(DEFAULT_SETTINGS.customHeaders || {}) };
 
-        console.log('📋 Settings loaded into settings form');
+        Logger.info('UI', '📋 Settings loaded into settings form');
 
         if (typeof window.updateSwaggerUILink === 'function') {
             window.updateSwaggerUILink(settings.host, settings.port);
@@ -523,12 +558,12 @@ window.loadSettings = () => {
             try {
                 window.updateRecorderLink(settings.host, settings.port);
             } catch (linkError) {
-                console.warn('Failed to update recorder link:', linkError);
+                Logger.warn('UI', 'Failed to update recorder link:', linkError);
             }
         }
 
     } catch (error) {
-        console.error('Error loading settings:', error);
+        Logger.error('UI', 'Error loading settings:', error);
     }
 };
 
@@ -543,22 +578,22 @@ function broadcastSettingsUpdate(settings) {
         
         // Also try to directly message any child windows
         // Note: This won't work for windows opened from other tabs
-        console.log('📡 Broadcasting settings update to editor windows');
+        Logger.info('UI', '📡 Broadcasting settings update to editor windows');
         
     } catch (error) {
-        console.warn('Failed to broadcast settings update:', error);
+        Logger.warn('UI', 'Failed to broadcast settings update:', error);
     }
 }
 
 // Initialize default WireMock URL
 if (!window.wiremockBaseUrl) {
     window.wiremockBaseUrl = `http://${DEFAULT_SETTINGS.host}:${DEFAULT_SETTINGS.port}/__admin`;
-    console.log('🔧 [main.js] Initialized default WireMock URL:', window.wiremockBaseUrl);
+    Logger.info('UI', '🔧 [main.js] Initialized default WireMock URL:', window.wiremockBaseUrl);
 }
 
 // Apply default values to HTML form fields from centralized settings
 window.applyDefaultsToForm = () => {
-    console.log('🔧 [applyDefaultsToForm] Setting form defaults from DEFAULT_SETTINGS');
+    Logger.info('UI', '🔧 [applyDefaultsToForm] Setting form defaults from DEFAULT_SETTINGS');
     
     // Connection settings
     const hostInput = document.getElementById('default-host');
@@ -579,12 +614,23 @@ window.applyDefaultsToForm = () => {
     if (customHeadersInput && !customHeadersInput.value) customHeadersInput.value = DEFAULT_SETTINGS.customHeadersRaw || '';
     if (autoConnectInput) autoConnectInput.checked = DEFAULT_SETTINGS.autoConnect;
 
-    console.log('🔧 [applyDefaultsToForm] Form defaults applied');
+    Logger.info('UI', '🔧 [applyDefaultsToForm] Form defaults applied');
 };
 
 // Load settings when page loads
 document.addEventListener('DOMContentLoaded', async () => {
     await new Promise(resolve => requestAnimationFrame(resolve));
+
+    // Check if we're on the JSON Editor page - if so, skip main app initialization
+    const isEditorPage = window.location.pathname.includes('json-editor.html') ||
+                         window.location.search.includes('mappingId=') ||
+                         window.location.search.includes('mode=edit') ||
+                         window.location.search.includes('mode=create');
+
+    if (isEditorPage) {
+        Logger.info('UI', '📝 JSON Editor page detected - skipping main app initialization');
+        return; // Exit early, don't initialize main app logic
+    }
 
     if (typeof window.initializeSidebarPreference === 'function') {
         window.initializeSidebarPreference();
@@ -616,13 +662,72 @@ document.addEventListener('DOMContentLoaded', async () => {
     settingsPortInput?.addEventListener('change', updateSwaggerLinkFromInputs);
 
     // Ensure settings are loaded before any operations
-    console.log('🔧 [main.js] Page loaded, defaults applied, settings initialized, ready for user interaction');
+    Logger.info('UI', '🔧 [main.js] Page loaded, defaults applied, settings initialized, ready for user interaction');
 
     if (typeof window.initializeFilterTabs === 'function') {
         window.initializeFilterTabs();
     }
 
+    // Initialize mapping pagination controls once DOM is ready
+    if (typeof window.initMappingPagination === 'function') {
+        window.initMappingPagination();
+    }
+
+    // Restore ALL filters from URL first (for all tabs)
+    if (typeof window.FilterManager?.restoreFilters === 'function') {
+        // Restore mappings filters
+        window.FilterManager.restoreFilters('mappings');
+        if (typeof window.updateActiveFiltersDisplay === 'function') {
+            window.updateActiveFiltersDisplay();
+        }
+
+        // Restore requests filters
+        window.FilterManager.restoreFilters('requests');
+        if (typeof window.updateRequestActiveFiltersDisplay === 'function') {
+            window.updateRequestActiveFiltersDisplay();
+        }
+    }
+
+    // Load saved filters from localStorage
+    if (typeof window.loadAllSavedFilters === 'function') {
+        window.loadAllSavedFilters();
+    }
+
+    // Then restore active tab from URL
+    const urlTab = typeof window.getActiveTabFromURL === 'function' ? window.getActiveTabFromURL() : null;
+    const validTabs = ['mappings', 'requests', 'scenarios', 'import-export', 'recording', 'settings'];
+
+    if (urlTab && validTabs.includes(urlTab) && typeof window.showPage === 'function') {
+        Logger.info('UI', `🔗 Switching to tab from URL: ${urlTab}`);
+        // Call showPage directly - it will find and activate the button itself
+        window.showPage(urlTab, document.querySelector(`[onclick*="showPage('${urlTab}')"]`));
+    }
+
     initializeOnboardingFlow();
+});
+
+// Handle browser back/forward navigation
+window.addEventListener('popstate', () => {
+    Logger.info('UI', '⬅️ Browser navigation detected, syncing filters from URL');
+
+    if (typeof window.URLStateManager === 'undefined') {
+        return;
+    }
+
+    // Get current active tab to determine which filters to sync
+    const activeTab = window.TabManager?.getCurrentTab();
+
+    if (activeTab === 'mappings') {
+        window.URLStateManager.syncUIFromURL('mappings');
+        if (typeof window.FilterManager !== 'undefined') {
+            window.FilterManager.flushMappingFilters();
+        }
+    } else if (activeTab === 'requests') {
+        window.URLStateManager.syncUIFromURL('requests');
+        if (typeof window.FilterManager !== 'undefined') {
+            window.FilterManager.flushRequestFilters();
+        }
+    }
 });
 
 // Listen for settings changes from editor windows or other sources
@@ -630,7 +735,7 @@ window.addEventListener('storage', (e) => {
     if (e.key === 'wiremock-settings' && e.newValue) {
         try {
             const settings = JSON.parse(e.newValue);
-            console.log('🔧 [main.js] Settings updated from external source:', settings);
+            Logger.info('UI', '🔧 [main.js] Settings updated from external source:', settings);
 
             // Update main connection form fields
             const hostInput = document.getElementById('wiremock-host');
@@ -649,7 +754,7 @@ window.addEventListener('storage', (e) => {
                 } else {
                     window.wiremockBaseUrl = `http://${settings.host}:${settings.port}/__admin`;
                 }
-                console.log('🔧 [main.js] URL updated from settings change:', window.wiremockBaseUrl);
+                Logger.info('UI', '🔧 [main.js] URL updated from settings change:', window.wiremockBaseUrl);
             }
 
             if (typeof window.updateSwaggerUILink === 'function') {
@@ -662,7 +767,7 @@ window.addEventListener('storage', (e) => {
                 window.customHeaders = {};
             }
         } catch (error) {
-            console.error('🔧 [main.js] Error processing settings update:', error);
+            Logger.error('UI', '🔧 [main.js] Error processing settings update:', error);
         }
     }
 });
@@ -675,28 +780,29 @@ window.addEventListener('message', (event) => {
     }
 
     if (event.data && event.data.type === 'imock-cache-refresh') {
-        console.log('📨 [main.js] Received cache refresh request from:', event.data.source);
+        Logger.info('UI', '📨 [main.js] Received cache refresh request from:', event.data.source);
         if (typeof window.refreshImockCache === 'function') {
             window.refreshImockCache().catch(error => {
-                console.warn('Failed to refresh cache from message:', error);
+                Logger.warn('UI', 'Failed to refresh cache from message:', error);
             });
         }
     }
 
     if (event.data && event.data.type === 'imock-optimistic-mapping-update') {
-        console.log('🎯 [main.js] Received optimistic mapping update from:', event.data.source, event.data.mapping.id);
+        Logger.info('UI', '🎯 [main.js] Received optimistic mapping update from:', event.data.source, event.data.mapping.id);
         if (typeof window.applyOptimisticMappingUpdate === 'function') {
             window.applyOptimisticMappingUpdate(event.data.mapping);
-            // Also trigger UI refresh to show changes immediately
+// Also trigger UI refresh to show changes immediately
             if (typeof window.fetchAndRenderMappings === 'function') {
-                console.log('🎯 [main.js] Triggering UI refresh after optimistic update');
-                window.fetchAndRenderMappings(window.allMappings);
+                Logger.info('UI', '🎯 [main.js] Triggering UI refresh after optimistic update');
+                const mappingsToRender = window.MappingsStore.getAll();
+                window.fetchAndRenderMappings(mappingsToRender);
             }
         }
     }
 
     if (event.data && event.data.type === 'imock-optimistic-cache-update') {
-        console.log('🧩 [main.js] Received optimistic cache update from:', event.data.source, event.data.operation, event.data.mapping?.id);
+        Logger.info('UI', '🧩 [main.js] Received optimistic cache update from:', event.data.source, event.data.operation, event.data.mapping?.id);
         if (typeof window.updateOptimisticCache === 'function') {
             window.updateOptimisticCache(event.data.mapping, event.data.operation);
         }
@@ -706,10 +812,10 @@ window.addEventListener('message', (event) => {
 // Listen for localStorage-based cache refresh triggers (cross-tab communication)
 window.addEventListener('storage', (e) => {
     if (e.key === 'imock-cache-refresh-trigger' && e.newValue) {
-        console.log('💾 [main.js] Received localStorage cache refresh trigger');
+        Logger.info('UI', '💾 [main.js] Received localStorage cache refresh trigger');
         if (typeof window.refreshImockCache === 'function') {
             window.refreshImockCache().catch(error => {
-                console.warn('Failed to refresh cache from localStorage trigger:', error);
+                Logger.warn('UI', 'Failed to refresh cache from localStorage trigger:', error);
             });
         }
     }
@@ -718,13 +824,14 @@ window.addEventListener('storage', (e) => {
     if (e.key === 'imock-optimistic-update' && e.newValue) {
         try {
             const data = JSON.parse(e.newValue);
-            console.log('🎯 [main.js] Received localStorage optimistic update from:', data.source, 'for mapping:', data.mapping?.id);
+            Logger.info('UI', '🎯 [main.js] Received localStorage optimistic update from:', data.source, 'for mapping:', data.mapping?.id);
             if (data.mapping && typeof window.applyOptimisticMappingUpdate === 'function') {
                 window.applyOptimisticMappingUpdate(data.mapping);
-                // Trigger UI refresh
-                if (typeof window.fetchAndRenderMappings === 'function' && window.allMappings) {
-                    console.log('🎯 [main.js] Triggering UI refresh after localStorage optimistic update');
-                    window.fetchAndRenderMappings(window.allMappings);
+// Trigger UI refresh
+                if (typeof window.fetchAndRenderMappings === 'function') {
+                    Logger.info('UI', '🎯 [main.js] Triggering UI refresh after localStorage optimistic update');
+                    const mappingsToRender = window.MappingsStore.getAll();
+                    window.fetchAndRenderMappings(mappingsToRender);
                 }
                 // Update counter if available
                 if (typeof window.updateMappingsCounter === 'function') {
@@ -732,7 +839,7 @@ window.addEventListener('storage', (e) => {
                 }
             }
         } catch (error) {
-            console.warn('Failed to process optimistic update from localStorage:', error);
+            Logger.warn('UI', 'Failed to process optimistic update from localStorage:', error);
         }
     }
 });
@@ -741,34 +848,42 @@ window.addEventListener('storage', (e) => {
 if (typeof BroadcastChannel !== 'undefined') {
     try {
         const cacheRefreshChannel = new BroadcastChannel('imock-cache-refresh');
+        const optimisticUpdateChannel = new BroadcastChannel('imock-optimistic-updates');
+
         cacheRefreshChannel.addEventListener('message', (event) => {
             if (event.data && event.data.type === 'cache-refresh') {
-                console.log('📡 [main.js] Received BroadcastChannel cache refresh from:', event.data.source);
+                Logger.info('UI', '📡 [main.js] Received BroadcastChannel cache refresh from:', event.data.source);
                 if (typeof window.refreshImockCache === 'function') {
                     window.refreshImockCache().catch(error => {
-                        console.warn('Failed to refresh cache from BroadcastChannel:', error);
+                        Logger.warn('UI', 'Failed to refresh cache from BroadcastChannel:', error);
                     });
                 }
             }
         });
 
         // Listen for optimistic mapping updates via BroadcastChannel
-        const optimisticUpdateChannel = new BroadcastChannel('imock-optimistic-updates');
         optimisticUpdateChannel.addEventListener('message', (event) => {
             if (event.data && event.data.type === 'optimistic-mapping-update') {
-                console.log('🎯 [main.js] Received BroadcastChannel optimistic update from:', event.data.source, event.data.mapping.id);
+                Logger.info('UI', '🎯 [main.js] Received BroadcastChannel optimistic update from:', event.data.source, event.data.mapping.id);
                 if (typeof window.applyOptimisticMappingUpdate === 'function') {
                     window.applyOptimisticMappingUpdate(event.data.mapping);
-                    // Also trigger UI refresh to show changes immediately
+// Also trigger UI refresh to show changes immediately
                     if (typeof window.fetchAndRenderMappings === 'function') {
-                        console.log('🎯 [main.js] Triggering UI refresh after BroadcastChannel optimistic update');
-                        window.fetchAndRenderMappings(window.allMappings);
+                        Logger.info('UI', '🎯 [main.js] Triggering UI refresh after BroadcastChannel optimistic update');
+                        const mappingsToRender = window.MappingsStore.getAll();
+                        window.fetchAndRenderMappings(mappingsToRender);
                     }
                 }
             }
         });
+
+        // Cleanup BroadcastChannels on page unload
+        window.addEventListener('beforeunload', () => {
+            cacheRefreshChannel.close();
+            optimisticUpdateChannel.close();
+        });
     } catch (error) {
-        console.warn('BroadcastChannel setup failed:', error);
+        Logger.warn('UI', 'BroadcastChannel setup failed:', error);
     }
 }
 
@@ -777,7 +892,7 @@ function loadConnectionSettings() {
     try {
         const settings = getStoredSettings();
 
-        console.log('🔧 [loadConnectionSettings] Loading settings:', settings);
+        Logger.info('UI', '🔧 [loadConnectionSettings] Loading settings:', settings);
 
         // Update main connection form - ONLY set values in form fields
         const hostInput = document.getElementById('wiremock-host');
@@ -785,19 +900,19 @@ function loadConnectionSettings() {
 
         if (hostInput && settings.host) {
             hostInput.value = settings.host;
-            console.log('🔧 [loadConnectionSettings] Set host input:', settings.host);
+            Logger.info('UI', '🔧 [loadConnectionSettings] Set host input:', settings.host);
         }
         if (portInput && settings.port) {
             portInput.value = settings.port;
-            console.log('🔧 [loadConnectionSettings] Set port input:', settings.port);
+            Logger.info('UI', '🔧 [loadConnectionSettings] Set port input:', settings.port);
         }
 
         // DON'T set window.wiremockBaseUrl here - let connectToWireMock() handle it
         // This prevents overriding user-entered values in the form
-        console.log('🔧 [loadConnectionSettings] Form fields updated, URL will be set by connectToWireMock()');
+        Logger.info('UI', '🔧 [loadConnectionSettings] Form fields updated, URL will be set by connectToWireMock()');
 
     } catch (error) {
-        console.error('Error loading connection settings:', error);
-        console.log('🔧 [loadConnectionSettings] Error loading settings, form fields may remain empty');
+        Logger.error('UI', 'Error loading connection settings:', error);
+        Logger.info('UI', '🔧 [loadConnectionSettings] Error loading settings, form fields may remain empty');
     }
 }

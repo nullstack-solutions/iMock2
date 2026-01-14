@@ -62,7 +62,6 @@
             }
         };
 
-
         // --- COMPACT UTILITIES (trimmed from ~80 to 20 lines) ---
 
         // === MISSING FUNCTIONS FOR HTML COMPATIBILITY ===
@@ -84,7 +83,7 @@
                     } else {
                         window.wiremockBaseUrl = `http://${host}:${port}/__admin`;
                     }
-                    console.log('🔧 [checkHealth] Updated WireMock URL from form:', window.wiremockBaseUrl);
+                    Logger.info('FEATURES', 'Updated WireMock URL from form:', window.wiremockBaseUrl);
                 }
 
                 await checkHealthAndStartUptime();
@@ -218,7 +217,7 @@
             const actionContainer = document.getElementById(SELECTORS.IMPORT.ACTIONS);
 
             if (!fileInput || !fileDisplay) {
-                console.warn('Import file elements not found.');
+                Logger.warn('FEATURES', 'Import file elements not found.');
                 return;
             }
 
@@ -248,7 +247,7 @@
 
                 let normalizedHost = baseHost;
                 if (!/^https?:\/\//i.test(normalizedHost)) {
-                    normalizedHost = padHostWithProtocol(normalizedHost);
+                    normalizedHost = `http://${normalizedHost}`;
                 }
 
                 const url = new URL(normalizedHost);
@@ -261,16 +260,9 @@
                 recorderLink.textContent = url.toString();
                 recorderLink.removeAttribute('title');
             } catch (error) {
-                console.warn('Failed to update recorder link:', error);
+                Logger.warn('FEATURES', 'Failed to update recorder link:', error);
             }
         };
-
-        function padHostWithProtocol(value) {
-            const trimmed = value.trim();
-            if (!trimmed) return 'http://localhost';
-            if (/^https?:\/\//i.test(trimmed)) return trimmed;
-            return `http://${trimmed}`;
-        }
 
         function setStatusMessage(elementId, type, message) {
             const el = document.getElementById(elementId);
@@ -316,16 +308,6 @@
 
             button.classList.toggle('is-loading', isLoading);
             button.disabled = isLoading;
-        }
-
-        function serializeMappingsToYaml(data) {
-            if (window.jsyaml?.dump) {
-                return window.jsyaml.dump(data, { noRefs: true });
-            }
-            if (typeof convertJSONToYAML === 'function') {
-                return convertJSONToYAML(data);
-            }
-            throw new Error('YAML serializer is not available.');
         }
 
         function resolveImportMode(overrideMode = null) {
@@ -460,14 +442,22 @@
                     window.updateFileDisplay();
                 }
 
+                // Rebuild cache and refresh UI after import
+                // This follows the same pattern as forceRefreshCache for consistency
                 try {
-                    await window.refreshMappings();
+                    // Rebuild the cache from server to include newly imported mappings
+                    if (typeof window.refreshImockCache === 'function') {
+                        await window.refreshImockCache();
+                    }
+                    
+                    // Then refresh the UI with fresh data (bypass cache to ensure consistency)
+                    await fetchAndRenderMappings(null, { useCache: false });
                 } catch (refreshError) {
-                    console.warn('Failed to refresh mappings after import:', refreshError);
+                    Logger.warn('FEATURES', 'Failed to refresh mappings after import:', refreshError);
                 }
                 setStatusMessage(SELECTORS.IMPORT.RESULT, 'success', `Imported ${payload.mappings.length} mapping(s) using mode ${mode}.`);
             } catch (error) {
-                console.error('Import failed:', error);
+                Logger.error('FEATURES', 'Import failed:', error);
                 setStatusMessage(SELECTORS.IMPORT.RESULT, 'error', error.message || 'Import failed.');
                 NotificationManager.error(`Import failed: ${error.message}`);
                 throw error;
@@ -476,13 +466,7 @@
             }
         }
 
-        window.executeImportFromUi = async () => {
-            try {
-                await executeImport();
-            } catch (_) {
-                // error handling performed inside executeImport
-            }
-        };
+        window.executeImport = executeImport;
 
         window.exportMappings = async () => {
             const formatSelect = document.getElementById(SELECTORS.EXPORT.FORMAT);
@@ -496,7 +480,10 @@
                 const baseName = `wiremock-mappings-${timestamp}`;
 
                 if (format === 'yaml') {
-                    const yamlContent = serializeMappingsToYaml({ mappings });
+                    if (!window.jsyaml?.dump) {
+                        throw new Error('YAML serializer is not available.');
+                    }
+                    const yamlContent = window.jsyaml.dump({ mappings }, { noRefs: true });
                     downloadFile(`${baseName}.yaml`, yamlContent.endsWith('\n') ? yamlContent : `${yamlContent}\n`, 'text/yaml');
                 } else {
                     const jsonContent = JSON.stringify({ mappings }, null, 2);
@@ -506,7 +493,7 @@
                 setStatusMessage(SELECTORS.EXPORT.RESULT, 'success', `Exported ${mappings.length} mapping(s) as ${format.toUpperCase()}.`);
                 NotificationManager.success(`Exported ${mappings.length} mapping(s).`);
             } catch (error) {
-                console.error('Export mappings failed:', error);
+                Logger.error('FEATURES', 'Export mappings failed:', error);
                 setStatusMessage(SELECTORS.EXPORT.RESULT, 'error', error.message || 'Failed to export mappings.');
                 NotificationManager.error(`Failed to export mappings: ${error.message}`);
             }
@@ -524,7 +511,10 @@
                 const baseName = `wiremock-requests-${timestamp}`;
 
                 if (format === 'yaml') {
-                    const yamlContent = serializeMappingsToYaml({ requests });
+                    if (!window.jsyaml?.dump) {
+                        throw new Error('YAML serializer is not available.');
+                    }
+                    const yamlContent = window.jsyaml.dump({ requests }, { noRefs: true });
                     downloadFile(`${baseName}.yaml`, yamlContent.endsWith('\n') ? yamlContent : `${yamlContent}\n`, 'text/yaml');
                 } else {
                     const jsonContent = JSON.stringify({ requests }, null, 2);
@@ -534,7 +524,7 @@
                 setStatusMessage(SELECTORS.EXPORT.RESULT, 'success', `Exported ${requests.length} request(s) as ${format.toUpperCase()}.`);
                 NotificationManager.success(`Exported ${requests.length} request(s).`);
             } catch (error) {
-                console.error('Export requests failed:', error);
+                Logger.error('FEATURES', 'Export requests failed:', error);
                 setStatusMessage(SELECTORS.EXPORT.RESULT, 'error', error.message || 'Failed to export request log.');
                 NotificationManager.error(`Failed to export request log: ${error.message}`);
             }
@@ -577,8 +567,8 @@
                 if (attempts >= 200) {
                     global.clearInterval(intervalId);
                     intervalId = null;
-                    if (typeof console !== 'undefined' && typeof console.error === 'function' && !initialized) {
-                        console.error('features.js could not find FeaturesState after waiting for 10 seconds.');
+                    if (!initialized) {
+                        Logger.error('FEATURES', 'features.js could not find FeaturesState after waiting for 10 seconds.');
                     }
                 }
             }, 50);
