@@ -647,7 +647,17 @@ const filteredMappings = Array.isArray(incoming) ? incoming.filter(m => !isImock
 
         loadingState.classList.add('hidden');
         
-        const currentMappings = window.MappingsStore ? window.MappingsStore.getAll() : (Array.isArray(mappingsToRender) ? mappingsToRender : []);
+        // Check if filters are active and should be applied BEFORE rendering
+        const filterQuery = document.getElementById(SELECTORS.MAPPING_FILTERS.QUERY)?.value?.trim() || '';
+        let currentMappings = window.MappingsStore ? window.MappingsStore.getAll() : (Array.isArray(mappingsToRender) ? mappingsToRender : []);
+        
+        // Apply filters immediately if a filter query exists (e.g., from URL on page load)
+        if (filterQuery && window.QueryParser && typeof window.QueryParser.filterMappingsByQuery === 'function') {
+            Logger.debug('UI', 'Applying filters before render:', filterQuery);
+            currentMappings = window.QueryParser.filterMappingsByQuery(currentMappings, filterQuery);
+            // Store filtered result for other components that might need it
+            window._filteredMappings = currentMappings;
+        }
         
         if (currentMappings.length === 0) {
             emptyState.classList.remove('hidden');
@@ -663,8 +673,8 @@ const filteredMappings = Array.isArray(incoming) ? incoming.filter(m => !isImock
         // Invalidate cache before re-rendering to ensure fresh DOM references
         window.invalidateElementCache(SELECTORS.LISTS.MAPPINGS);
 
-        // Sort mappings
-        const mappingsToSort = window.MappingsStore ? window.MappingsStore.getAll() : currentMappings;
+        // Sort mappings (use already filtered mappings if filters were applied above)
+        const mappingsToSort = currentMappings;
         const sortedMappings = [...mappingsToSort].sort((a, b) => {
             const priorityA = a.priority || 1;
             const priorityB = b.priority || 1;
@@ -720,27 +730,23 @@ const filteredMappings = Array.isArray(incoming) ? incoming.filter(m => !isImock
                 });
             }
 
-            // Batch updates to counter, source indicator, and filters
+            // Batch updates to counter and source indicator
             const batchUpdate = () => {
                 updateMappingsCounter();
                 if (renderSource) {
                     updateDataSourceIndicator(renderSource);
                 }
 
-                // Reapply mapping filters if any are active, preserving user's view
-                try {
-                    const filterQuery = document.getElementById(SELECTORS.MAPPING_FILTERS.QUERY)?.value?.trim() || '';
-                    if (filterQuery && typeof FilterManager !== 'undefined' && FilterManager.applyMappingFilters) {
-                        FilterManager.applyMappingFilters();
-                        if (typeof FilterManager.flushMappingFilters === 'function') {
-                            FilterManager.flushMappingFilters();
-                        }
-                        Logger.debug('UI', 'Mapping filters re-applied after refresh');
-                    }
-                } catch {}
-
                 // Reset willChange after update
                 container.style.willChange = 'auto';
+                
+                // Update active filters display to show chips (if filters are active)
+                try {
+                    const filterQuery = document.getElementById(SELECTORS.MAPPING_FILTERS.QUERY)?.value?.trim() || '';
+                    if (filterQuery && typeof window.updateActiveFiltersDisplay === 'function') {
+                        window.updateActiveFiltersDisplay();
+                    }
+                } catch {}
             };
             
             // Use requestAnimationFrame if available (browser), otherwise execute immediately (tests)
