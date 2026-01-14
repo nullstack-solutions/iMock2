@@ -127,6 +127,7 @@ function createRequestsTestContext() {
         'js/core.js',
         'js/managers.js',
         'js/demo-data.js',
+        'js/features/store.js',
         'js/features/state.js',
         'js/features/utils.js',
         'js/features/filters.js',
@@ -284,11 +285,14 @@ runTest('computeRequestTabTotals distinguishes matched requests', () => {
 runTest('refreshRequestTabSnapshot updates totals', () => {
     const { context } = createRequestsTestContext();
 
-    context.originalRequests = [
-        { wasMatched: true },
-        { wasMatched: false },
-        { wasMatched: true },
+    const testRequests = [
+        { id: 'req-1', wasMatched: true },
+        { id: 'req-2', wasMatched: false },
+        { id: 'req-3', wasMatched: true },
     ];
+    
+    // Initialize MappingsStore with test data
+    context.MappingsStore.setRequests(testRequests);
 
     context.__requestCountsCalled = false;
     context.updateRequestTabCounts = () => { context.__requestCountsCalled = true; };

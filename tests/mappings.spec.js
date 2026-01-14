@@ -127,6 +127,7 @@ function createMappingsTestContext() {
         'js/core.js',
         'js/managers.js',
         'js/demo-data.js',
+        'js/features/store.js',
         'js/features/state.js',
         'js/features/utils.js',
         'js/features/filters.js',
@@ -158,9 +159,8 @@ runTest('getMappingById returns cached mapping when available', async () => {
         response: { status: 200 },
     };
 
-    // Add to cache
-    context.allMappings = [testMapping];
-    context.mappingIndex = new Map([['test-id-123', testMapping]]);
+    // Add to MappingsStore
+    context.MappingsStore.setFromServer([testMapping]);
 
     const result = await context.getMappingById('test-id-123');
 
@@ -285,11 +285,14 @@ runTest('fetchAndRenderMappings renders provided mappings', async () => {
     const result = await context.fetchAndRenderMappings(testMappings);
 
     assert.strictEqual(result, true, 'Should return true');
+    
+    // Check if mappings were processed - either in innerHTML or in MappingsStore
+    const mappingsInStore = context.MappingsStore.getAll();
     assert.ok(mappingsListElement.innerHTML.includes('map-1') ||
-              context.allMappings.some(m => m.id === 'map-1'),
+              mappingsInStore.some(m => m.id === 'map-1'),
               'Should process mapping 1');
     assert.ok(mappingsListElement.innerHTML.includes('map-2') ||
-              context.allMappings.some(m => m.id === 'map-2'),
+              mappingsInStore.some(m => m.id === 'map-2'),
               'Should process mapping 2');
 });
 
