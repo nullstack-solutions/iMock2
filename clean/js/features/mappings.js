@@ -655,9 +655,10 @@ const filteredMappings = Array.isArray(incoming) ? incoming.filter(m => !isImock
         if (filterQuery && window.QueryParser && typeof window.QueryParser.filterMappingsByQuery === 'function') {
             Logger.debug('UI', 'Applying filters before render:', filterQuery);
             currentMappings = window.QueryParser.filterMappingsByQuery(currentMappings, filterQuery);
-            // Store filtered result for other components that might need it
-            window._filteredMappings = currentMappings;
         }
+        // Always sync window._filteredMappings to ensure allMappings getter returns correct state
+        // This prevents stale filtered data from persisting when filters are cleared
+        window._filteredMappings = currentMappings;
         
         if (currentMappings.length === 0) {
             emptyState.classList.remove('hidden');
