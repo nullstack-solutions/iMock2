@@ -66,6 +66,15 @@ window.connectToWireMock = async () => {
 
     Logger.api('Connecting with:', { host, port });
 
+    // Show connecting state in UI
+    const statusDot = document.getElementById(SELECTORS.CONNECTION.STATUS_DOT);
+    const statusText = document.getElementById(SELECTORS.CONNECTION.STATUS_TEXT);
+    const loadingState = document.getElementById(SELECTORS.LOADING.MAPPINGS);
+
+    if (statusDot) statusDot.className = 'status-dot connecting';
+    if (statusText) statusText.textContent = 'Connecting...';
+    if (loadingState) loadingState.classList.remove('hidden');
+
     // Update base URL
     if (!window.wiremockBaseUrl || hostInput) {
         if (typeof window.normalizeWiremockBaseUrl === 'function') {
@@ -88,8 +97,6 @@ window.connectToWireMock = async () => {
         Logger.info('API', 'Online mode - proceeding with data loading');
 
         // Update UI
-        const statusDot = document.getElementById(SELECTORS.CONNECTION.STATUS_DOT);
-        const statusText = document.getElementById(SELECTORS.CONNECTION.STATUS_TEXT);
         const setupDiv = document.getElementById(SELECTORS.CONNECTION.SETUP);
         const addButton = document.getElementById(SELECTORS.BUTTONS.ADD_MAPPING);
 
@@ -128,10 +135,9 @@ window.connectToWireMock = async () => {
 
         stopUptime();
 
-        const statusDot = document.getElementById(SELECTORS.CONNECTION.STATUS_DOT);
-        const statusText = document.getElementById(SELECTORS.CONNECTION.STATUS_TEXT);
         if (statusDot) statusDot.className = 'status-dot disconnected';
         if (statusText) statusText.textContent = 'Offline';
+        if (loadingState) loadingState.classList.add('hidden');
 
         NotificationManager.warning('WireMock server is offline. Retrying connection in background...');
 
