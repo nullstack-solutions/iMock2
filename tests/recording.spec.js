@@ -2,6 +2,7 @@ const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const { createLoggerStub } = require('./helpers/stubs');
 
 function createNotificationStub() {
     return {
@@ -18,6 +19,7 @@ function createNotificationStub() {
     };
 }
 
+
 function loadRecordingModule(overrides = {}) {
     const recordingsList = { innerHTML: '<li>existing</li>' };
 
@@ -26,6 +28,7 @@ function loadRecordingModule(overrides = {}) {
         setTimeout,
         clearTimeout,
         NotificationManager: createNotificationStub(),
+        Logger: createLoggerStub(),
         ENDPOINTS: {
             REQUESTS: '/requests',
             RECORDINGS_START: '/recordings/start',

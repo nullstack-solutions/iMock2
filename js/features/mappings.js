@@ -28,9 +28,19 @@ const UIComponents = {
     // Base card component replacing renderMappingCard and renderRequestCard
     createCard: (type, data, actions = []) => {
         const { id, method, url, status, name, time, extras = {}, expanded = false } = data;
+
+        // Map handler names to data-action attributes
+        const handlerToAction = {
+            'editMapping': 'edit-external',
+            'openEditModal': 'edit-mapping',
+            'deleteMapping': 'delete-mapping',
+            'duplicateMapping': 'duplicate-mapping',
+            'viewRequestDetails': 'view-request'
+        };
+
         return `
             <div class="${type}-card${expanded ? ' is-expanded' : ''}" data-id="${Utils.escapeHtml(id)}">
-                <div class="${type}-header" onclick="window.toggleDetails('${Utils.escapeHtml(id)}', '${type}')">
+                <div class="${type}-header" data-action="toggle-details">
                     <div class="${type}-info">
                         <div class="${type}-top-line">
                             <span class="method-badge ${method.toLowerCase()}">
@@ -45,15 +55,18 @@ const UIComponents = {
                             ${extras.badges || ''}
                         </div>
                     </div>
-                    <div class="${type}-actions" onclick="event.stopPropagation()">
-                        ${actions.map(action => `
+                    <div class="${type}-actions">
+                        ${actions.map(action => {
+                            const dataAction = handlerToAction[action.handler] || action.handler;
+                            return `
                             <button class="btn btn-sm btn-${action.class}"
-                                    onclick="${action.handler}('${Utils.escapeHtml(id)}')"
+                                    data-action="${dataAction}"
+                                    data-${type}-id="${Utils.escapeHtml(id)}"
                                     title="${Utils.escapeHtml(action.title)}">
                                 ${action.icon ? Icons.render(action.icon, { className: 'action-icon' }) : ''}
                                 <span class="sr-only">${Utils.escapeHtml(action.title)}</span>
                             </button>
-                        `).join('')}
+                        `}).join('')}
                     </div>
                 </div>
                 <div class="${type}-preview" id="preview-${Utils.escapeHtml(id)}" style="display: ${expanded ? 'block' : 'none'};">
@@ -101,7 +114,7 @@ const UIComponents = {
                         return `<div class="preview-value">
                             <strong>${key}:</strong>
                             <pre>${preview}</pre>
-                            <button class="btn btn-secondary btn-small" onclick="toggleFullContent('${fullId}')" data-json="${Utils.escapeHtml(JSON.stringify(value))}" style="margin-top: 0.5rem; font-size: 0.8rem;">
+                            <button class="btn btn-secondary btn-small" data-action="show-full-content" data-target-id="${fullId}" data-json="${Utils.escapeHtml(JSON.stringify(value))}" style="margin-top: 0.5rem; font-size: 0.8rem;">
                                 Show Full Content
                             </button>
                             <div id="${fullId}" style="display: none;"></div>
@@ -121,14 +134,14 @@ const UIComponents = {
                                 return `<div class="preview-value">
                                     <strong>${key}:</strong>
                                     <pre>${preview}</pre>
-                                    <button class="btn btn-secondary btn-small" onclick="toggleFullContent('${fullId}')" data-json="${Utils.escapeHtml(JSON.stringify(parsedJson))}" style="margin-top: 0.5rem; font-size: 0.8rem;">
+                                    <button class="btn btn-secondary btn-small" data-action="show-full-content" data-target-id="${fullId}" data-json="${Utils.escapeHtml(JSON.stringify(parsedJson))}" style="margin-top: 0.5rem; font-size: 0.8rem;">
                                         Show Full Content
                                     </button>
                                     <div id="${fullId}" style="display: none;"></div>
                                 </div>`;
                             }
                             return `<div class="preview-value"><strong>${key}:</strong><pre>${Utils.formatJson(parsedJson)}</pre></div>`;
-                        } catch (e) {
+                        } catch {
                             // If JSON parsing fails, fall back to original string rendering
                         }
                     }
@@ -204,10 +217,7 @@ window.toggleFullContent = UIComponents.toggleFullContent;
 window.toggleDetails = UIComponents.toggleDetails;
 
 function getOptimisticShadowTtl() {
-    const ttl = Number(window.cacheManager?.optimisticTTL);
-    if (Number.isFinite(ttl) && ttl > 0) {
-        return Math.max(ttl, 45000);
-    }
+    // Use DEFAULT_SETTINGS for TTL configuration
     const fallback = Number(window.DEFAULT_SETTINGS?.optimisticCacheAgeLimit);
     if (Number.isFinite(fallback) && fallback > 0) {
         return Math.max(fallback, 45000);
@@ -220,14 +230,10 @@ function cloneMappingForOptimisticShadow(mapping) {
         return null;
     }
     try {
-        if (typeof structuredClone === 'function') {
-            return structuredClone(mapping);
-        }
-    } catch {}
-    try {
-        return JSON.parse(JSON.stringify(mapping));
-    } catch {}
-    return { ...mapping };
+        return typeof structuredClone === 'function' ? structuredClone(mapping) : JSON.parse(JSON.stringify(mapping));
+    } catch {
+        return { ...mapping };
+    }
 }
 
 function rememberOptimisticShadowMapping(mapping, operation) {
@@ -446,10 +452,20 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
     const loadingState = document.getElementById(SELECTORS.LOADING.MAPPINGS);
 
     if (!container || !emptyState || !loadingState) {
-        console.error('Required DOM elements not found for mappings rendering');
+        Logger.error('UI', 'Required DOM elements not found for mappings rendering');
         return false;
     }
 
+    // Prevent race conditions during sync operations and render operations
+    if (window.MappingsStore?.metadata?.isSyncing || window.MappingsStore?.metadata?.isRendering) {
+        Logger.debug('UI', 'Sync or render in progress, skipping render to avoid race condition');
+        return true; // Return true to indicate it's OK to skip
+    }
+
+    // Set render lock to prevent concurrent renders
+    if (window.MappingsStore?.metadata) {
+        window.MappingsStore.metadata.isRendering = true;
+    }
     let renderSource = null;
 
     try {
@@ -463,78 +479,87 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
             if (options && options.useCache) {
                 const cached = await loadImockCacheBestOf3();
                 if (cached && cached.data && Array.isArray(cached.data.mappings)) {
-                    // Cache hit - use cached data for quick UI, but always fetch fresh data for complete info
-                    console.log('🧩 [CACHE] Cache hit - using cached data for quick start, fetching fresh data');
+                    // Cache hit - use cached data for quick UI
+                    Logger.cache('Cache hit - using cached data for quick start');
                     dataSource = 'cache';
 
-                    // Start async fresh fetch for complete data (only if no optimistic updates in progress)
-                    (async () => {
-                        try {
-                            // Wait a bit for any optimistic updates to complete
-                            await new Promise(resolve => setTimeout(resolve, 200));
+                    // Extract timestamp from cache metadata - fallback to finding the most recent mapping timestamp
+                    const cacheTimestamp = typeof cached.data.timestamp === 'number'
+                        ? cached.data.timestamp
+                        : (cached.data.mappings || []).reduce((maxTs, m) => {
+                            const ts = m?.metadata?.imock?.timestamp;
+                            return (typeof ts === 'number' && ts > maxTs) ? ts : maxTs;
+                        }, 0);
+                    const cacheAge = Date.now() - cacheTimestamp;
+                    
+                    // Only validate in background if cache is older than 30 seconds
+                    if (cacheAge > 30000) {
+                        // Start async fresh fetch for silent validation (no UI re-render)
+                        (async () => {
+                            try {
+                                // Wait a bit for any optimistic updates to complete. Delay is configurable
+                                // via `window.optimisticUpdateDelayMs` to balance responsiveness vs. stability.
+                                const delayMs = (typeof window !== 'undefined' && typeof window.optimisticUpdateDelayMs === 'number')
+                                    ? window.optimisticUpdateDelayMs
+                                    : 500;
+                                await new Promise(resolve => setTimeout(resolve, delayMs));
 
-                            const freshData = await fetchMappingsFromServer({ force: true });
-                            if (freshData && freshData.mappings) {
-                                const serverMappings = freshData.mappings.filter(x => !isImockCacheMapping(x));
+                                const freshData = await fetchMappingsFromServer({ force: true });
+                                if (freshData && freshData.mappings) {
+                                    const serverMappings = freshData.mappings.filter(x => !isImockCacheMapping(x));
+                                    const cachedMappings = (cached.data.mappings || []).filter(x => !isImockCacheMapping(x));
 
-                                // Create a map of current optimistic mappings for preservation
-                                const currentIds = new Set(window.allMappings.map(m => m.id || m.uuid));
-                                const serverIds = new Set(serverMappings.map(m => m.id || m.uuid));
+                                    // Simple count-based comparison for efficiency
+                                    const hasCountMismatch = cachedMappings.length !== serverMappings.length;
 
-                                // Merge strategy: combine server data with optimistic state
-                                // 1. Start with all server mappings (authoritative source)
-                                // 2. Update existing ones with full server data
-                                // 3. Keep optimistic creations that aren't on server yet
-                                // 4. Remove optimistic deletions
+                                    // Only update cache manager if there are differences to avoid unnecessary operations
+                                    if (hasCountMismatch) {
+                                        if (window.MappingsStore) {
+                                            window.MappingsStore.setFromServer(serverMappings);
+                                        }
+                                        refreshMappingTabSnapshot();
+                                        syncCacheWithMappings(serverMappings);
+                                        rebuildMappingIndex(serverMappings);
 
-                                const mergedMappings = [];
-
-                                // Add all server mappings first (they have full data)
-                                serverMappings.forEach(serverMapping => {
-                                    const serverId = serverMapping.id || serverMapping.uuid;
-
-                                    // Check if this server mapping was optimistically deleted
-                                    const optimisticItem = window.cacheManager.optimisticQueue.find(x => x.id === serverId);
-                                    const isOptimisticallyDeleted = optimisticItem && optimisticItem.op === 'delete';
-
-                                    if (!isOptimisticallyDeleted) {
-                                        mergedMappings.push(serverMapping);
+                                        // Show notification for count mismatches
+                                        if (typeof NotificationManager !== 'undefined') {
+                                            const diff = serverMappings.length - cachedMappings.length;
+                                            if (diff > 0) {
+                                                NotificationManager.info(
+                                                    `${diff} new mapping${diff === 1 ? '' : 's'} from server`,
+                                                    3000
+                                                );
+                                            } else if (diff < 0) {
+                                                NotificationManager.info(
+                                                    `${Math.abs(diff)} mapping${Math.abs(diff) === 1 ? '' : 's'} removed on server`,
+                                                    3000
+                                                );
+                                            }
+                                            Logger.cache('Cache updated with server data:', { cachedCount: cachedMappings.length, serverCount: serverMappings.length });
+                                        }
+                                    } else {
+                                        Logger.debug('CACHE', 'No changes detected, skipping cache update');
                                     }
-                                });
-
-                                // Add optimistic creations (mappings that exist locally but not on server)
-                                window.allMappings.forEach(currentMapping => {
-                                    const currentId = currentMapping.id || currentMapping.uuid;
-
-                                    // If this mapping doesn't exist on server, it's an optimistic creation
-                                    const existsOnServer = serverIds.has(currentId);
-                                    if (!existsOnServer) {
-                                        mergedMappings.push(currentMapping);
-                                    }
-                                });
-
-                                // Update with merged data
-                                window.allMappings = mergedMappings;
-                                window.originalMappings = mergedMappings;
-                                refreshMappingTabSnapshot();
-                                syncCacheWithMappings(window.originalMappings);
-                                rebuildMappingIndex(window.originalMappings);
-
-                                // Re-render UI with merged complete data
-                                fetchAndRenderMappings(window.allMappings, { source: 'direct' });
+                                }
+                            } catch (e) {
+                                Logger.warn('CACHE', 'Background cache validation failed:', e);
+                                // Silent failure for background validation - don't interrupt user
                             }
-                        } catch (e) {
-                            console.warn('🧩 [CACHE] Failed to load fresh data:', e);
-                        }
-                    })();
+                        })();
+                    }
 
-                    // Use cached slim data for immediate UI (will be replaced by fresh data)
+                    // Use cached slim data for immediate UI (fresh data synced in background silently)
                     data = cached.data;
                 } else {
+                    // Cache miss - notify user and load from server
+                    Logger.cache('Cache miss - loading from server');
+                    if (typeof NotificationManager !== 'undefined') {
+                        NotificationManager.info('Loading mappings from server...', 2000);
+                    }
                     data = await fetchMappingsFromServer({ force: true });
                     dataSource = 'direct';
                     // regenerate cache asynchronously
-                    try { console.log('🧩 [CACHE] Async regenerate after cache miss'); regenerateImockCache(); } catch {}
+                    try { Logger.cache('Async regenerate after cache miss'); regenerateImockCache(); } catch {}
                 }
             } else {
                 data = await fetchMappingsFromServer({ force: true });
@@ -545,35 +570,37 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                 if (dataSource === 'demo') {
                     markDemoModeActive('mappings-fallback');
                 }
-                try { delete data.__source; } catch (_) {}
+                try { delete data.__source; } catch {}
             }
 
             // If we fetched a full admin list, strip service cache mapping from UI
             let incoming = data.mappings || [];
 
             // Server data is now authoritative - optimistic updates are handled through UI updates only
-            if (window.cacheManager.optimisticQueue.length > 0) {
-                console.log('🎯 [OPTIMISTIC] Applying optimistic updates to incoming data:', window.cacheManager.optimisticQueue.length, 'updates');
+            const pendingOps = window.MappingsStore?.pending ? Array.from(window.MappingsStore.pending.values()) : [];
+            if (pendingOps.length > 0) {
+                Logger.debug('OPTIMISTIC', 'Applying optimistic updates to incoming data:', pendingOps.length, 'updates');
 
                 incoming = incoming.map(serverMapping => {
-                    const optimisticItem = window.cacheManager.optimisticQueue.find(x => x.id === (serverMapping.id || serverMapping.uuid));
+                    const serverId = serverMapping.id || serverMapping.uuid;
+                    const optimisticItem = window.MappingsStore?.pending ? window.MappingsStore.pending.get(serverId) : null;
                     if (optimisticItem) {
-                        if (optimisticItem.op === 'delete') {
-                            console.log('🎯 [OPTIMISTIC] Removing deleted mapping from results:', serverMapping.id);
+                        if (optimisticItem.type === 'delete') {
+                            Logger.debug('OPTIMISTIC', 'Removing deleted mapping from results:', serverMapping.id);
                             return null; // Mark for removal
                         }
                         // Use optimistic version
-                        console.log('🎯 [OPTIMISTIC] Using optimistic version for:', serverMapping.id);
-                        return optimisticItem.payload;
+                        Logger.debug('OPTIMISTIC', 'Using optimistic version for:', serverMapping.id);
+                        return optimisticItem.optimisticMapping;
                     }
                     return serverMapping;
                 }).filter(m => m !== null); // Remove deleted mappings
 
                 // Add any new optimistic mappings that weren't on server
-                window.cacheManager.optimisticQueue.forEach(item => {
-                    if (item.op !== 'delete' && !incoming.some(m => (m.id || m.uuid) === item.id)) {
-                        console.log('🎯 [OPTIMISTIC] Adding new optimistic mapping:', item.id);
-                        incoming.unshift(item.payload);
+                pendingOps.forEach(item => {
+                    if (item.type !== 'delete' && !incoming.some(m => (m.id || m.uuid) === item.id)) {
+                        Logger.debug('OPTIMISTIC', 'Adding new optimistic mapping:', item.id);
+                        incoming.unshift(item.optimisticMapping);
                     }
                 });
             }
@@ -585,24 +612,33 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
                 if (window.pendingDeletedIds && window.pendingDeletedIds.size > 0) {
                     const before = incoming.length;
                     incoming = incoming.filter(m => !window.pendingDeletedIds.has(m.id || m.uuid));
-                    if (before !== incoming.length) console.log('🧩 [CACHE] filtered pending-deleted from render:', before - incoming.length);
+                    if (before !== incoming.length) Logger.cache('filtered pending-deleted from render:', before - incoming.length);
                 }
             } catch {}
-            window.originalMappings = Array.isArray(incoming) ? incoming.filter(m => !isImockCacheMapping(m)) : [];
+const filteredMappings = Array.isArray(incoming) ? incoming.filter(m => !isImockCacheMapping(m)) : [];
+            
+            // Update MappingsStore
+            if (window.MappingsStore) {
+                window.MappingsStore.setFromServer(filteredMappings);
+            }
+            
             refreshMappingTabSnapshot();
-            syncCacheWithMappings(window.originalMappings);
-            window.allMappings = window.originalMappings;
-            rebuildMappingIndex(window.originalMappings);
-            pruneOptimisticShadowMappings(window.originalMappings);
+            syncCacheWithMappings(filteredMappings);
+            rebuildMappingIndex(filteredMappings);
+            pruneOptimisticShadowMappings(filteredMappings);
             // Update data source indicator in UI
             renderSource = dataSource;
-        } else {
+} else {
             const sourceOverride = typeof options?.source === 'string' ? options.source : null;
-            window.allMappings = Array.isArray(mappingsToRender) ? [...mappingsToRender] : [];
-            window.originalMappings = [...window.allMappings];
+            const mappingsArray = Array.isArray(mappingsToRender) ? [...mappingsToRender] : [];
+            
+            if (window.MappingsStore) {
+                window.MappingsStore.setFromServer(mappingsArray);
+            }
+            
             refreshMappingTabSnapshot();
-            rebuildMappingIndex(window.originalMappings);
-            pruneOptimisticShadowMappings(window.originalMappings);
+            rebuildMappingIndex(mappingsArray);
+            pruneOptimisticShadowMappings(mappingsArray);
             renderSource = sourceOverride;
             if (renderSource === 'demo') {
                 markDemoModeActive('manual-mappings');
@@ -611,70 +647,282 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
 
         loadingState.classList.add('hidden');
         
-        if (window.allMappings.length === 0) {
+        // Check if filters are active and should be applied BEFORE rendering
+        const filterQuery = document.getElementById(SELECTORS.MAPPING_FILTERS.QUERY)?.value?.trim() || '';
+        let currentMappings = window.MappingsStore ? window.MappingsStore.getAll() : (Array.isArray(mappingsToRender) ? mappingsToRender : []);
+        
+        // Apply filters immediately if a filter query exists (e.g., from URL on page load)
+        if (filterQuery && window.QueryParser && typeof window.QueryParser.filterMappingsByQuery === 'function') {
+            Logger.debug('UI', 'Applying filters before render:', filterQuery);
+            currentMappings = window.QueryParser.filterMappingsByQuery(currentMappings, filterQuery);
+        }
+        // Always sync window._filteredMappings to ensure allMappings getter returns correct state
+        // This prevents stale filtered data from persisting when filters are cleared
+        window._filteredMappings = currentMappings;
+        
+        if (currentMappings.length === 0) {
             emptyState.classList.remove('hidden');
             container.style.display = 'none';
             updateMappingsCounter();
             return true;
         }
         
+        // Batch DOM operations using document fragment to reduce layout thrashing
         emptyState.classList.add('hidden');
         container.style.display = 'block';
-        
+
         // Invalidate cache before re-rendering to ensure fresh DOM references
         window.invalidateElementCache(SELECTORS.LISTS.MAPPINGS);
 
-        // Sort mappings
-        const sortedMappings = [...window.allMappings].sort((a, b) => {
+        // Sort mappings (use already filtered mappings if filters were applied above)
+        const mappingsToSort = currentMappings;
+        const sortedMappings = [...mappingsToSort].sort((a, b) => {
             const priorityA = a.priority || 1;
             const priorityB = b.priority || 1;
             if (priorityA !== priorityB) return priorityA - priorityB;
-            
+
             const methodOrder = { 'GET': 1, 'POST': 2, 'PUT': 3, 'PATCH': 4, 'DELETE': 5 };
             const methodA = methodOrder[a.request?.method] || 999;
             const methodB = methodOrder[b.request?.method] || 999;
             if (methodA !== methodB) return methodA - methodB;
-            
+
             const urlA = a.request?.url || a.request?.urlPattern || a.request?.urlPath || '';
             const urlB = b.request?.url || b.request?.urlPattern || b.request?.urlPath || '';
             return urlA.localeCompare(urlB);
         });
         const logSource = renderSource || 'previous';
-        console.log(`📦 Mappings render from: ${logSource} — ${sortedMappings.length} items`);
-        renderList(container, sortedMappings, {
+        Logger.info('UI', `Mappings render from: ${logSource} — ${sortedMappings.length} items`);
+
+        // Batch UI updates to reduce DOM manipulation overhead
+        try {
+            // Temporarily disable transitions for smoother updates
+            container.style.willChange = 'contents';
+
+            // Update pagination state
+            if (window.PaginationManager) {
+                window.PaginationManager.updateState(sortedMappings.length);
+
+                // Get items for current page
+                const pageItems = window.PaginationManager.getCurrentPageItems(sortedMappings);
+                Logger.debug('UI', `Rendering page ${window.PaginationManager.currentPage}/${window.PaginationManager.totalPages} (${pageItems.length} items)`);
+
+                // Render only current page items
+                renderList(container, pageItems, {
+                    renderItem: renderMappingMarkup,
+                    getKey: getMappingRenderKey,
+                    getSignature: getMappingRenderSignature,
+                    onItemChanged: handleMappingItemChanged,
+                    onItemRemoved: handleMappingItemRemoved
+                });
+
+                // Render pagination controls
+                const paginationContainer = document.getElementById('mappings-pagination');
+                if (paginationContainer) {
+                    paginationContainer.innerHTML = window.PaginationManager.renderControls();
+                }
+            } else {
+                // Fallback: render all items if pagination not available
+                renderList(container, sortedMappings, {
+                    renderItem: renderMappingMarkup,
+                    getKey: getMappingRenderKey,
+                    getSignature: getMappingRenderSignature,
+                    onItemChanged: handleMappingItemChanged,
+                    onItemRemoved: handleMappingItemRemoved
+                });
+            }
+
+            // Batch updates to counter and source indicator
+            const batchUpdate = () => {
+                updateMappingsCounter();
+                if (renderSource) {
+                    updateDataSourceIndicator(renderSource);
+                }
+
+                // Reset willChange after update
+                container.style.willChange = 'auto';
+                
+                // Update active filters display to show chips (if filters are active)
+                try {
+                    const filterQuery = document.getElementById(SELECTORS.MAPPING_FILTERS.QUERY)?.value?.trim() || '';
+                    if (filterQuery && typeof window.updateActiveFiltersDisplay === 'function') {
+                        window.updateActiveFiltersDisplay();
+                    }
+                } catch {}
+            };
+            
+            // Use requestAnimationFrame if available (browser), otherwise execute immediately (tests)
+            if (typeof requestAnimationFrame === 'function') {
+                requestAnimationFrame(batchUpdate);
+            } else {
+                batchUpdate();
+            }
+
+        } catch (domError) {
+            Logger.error('UI', 'DOM batch update failed:', domError);
+            // Fallback to regular updates if batch operation fails
+            if (window.PaginationManager) {
+                window.PaginationManager.updateState(sortedMappings.length);
+                const pageItems = window.PaginationManager.getCurrentPageItems(sortedMappings);
+                renderList(container, pageItems, {
+                    renderItem: renderMappingMarkup,
+                    getKey: getMappingRenderKey,
+                    getSignature: getMappingRenderSignature,
+                    onItemChanged: handleMappingItemChanged,
+                    onItemRemoved: handleMappingItemRemoved
+                });
+                const paginationContainer = document.getElementById('mappings-pagination');
+                if (paginationContainer) {
+                    paginationContainer.innerHTML = window.PaginationManager.renderControls();
+                }
+            } else {
+                renderList(container, sortedMappings, {
+                    renderItem: renderMappingMarkup,
+                    getKey: getMappingRenderKey,
+                    getSignature: getMappingRenderSignature,
+                    onItemChanged: handleMappingItemChanged,
+                    onItemRemoved: handleMappingItemRemoved
+                });
+            }
+
+            updateMappingsCounter();
+            if (renderSource) {
+                updateDataSourceIndicator(renderSource);
+            }
+        }
+
+        return true;
+    } catch (error) {
+        Logger.error('UI', 'Error in fetchAndRenderMappings:', error);
+        
+        // Provide specific error messages based on error type
+        let errorMessage = 'Failed to load mappings';
+        if (error.status === 401 || (error.message && error.message.includes('401'))) {
+            errorMessage = 'Authorization error: Please check your credentials';
+        } else if (error.status === 403 || (error.message && error.message.includes('403'))) {
+            errorMessage = 'Access forbidden: Check your permissions';
+        } else if (error.status === 404 || (error.message && error.message.includes('404'))) {
+            errorMessage = 'Server endpoint not found';
+        } else if (error.message && error.message.includes('timeout')) {
+            errorMessage = 'Request timeout: Server not responding';
+        } else if (error.message) {
+            errorMessage = `Failed to load mappings: ${error.message}`;
+        }
+        
+        NotificationManager.error(errorMessage);
+        loadingState.classList.add('hidden');
+        emptyState.classList.remove('hidden');
+        container.style.display = 'none';
+        return false;
+    } finally {
+        // Release render lock
+        if (window.MappingsStore?.metadata) {
+            window.MappingsStore.metadata.isRendering = false;
+        }
+    }
+};
+
+// Normalize cache-driven refreshes onto the new MappingsStore pipeline
+// Used by legacy callers (state.js, wiremock-extras.js) after optimistic/cache updates
+window.refreshMappingsFromCache = async (sourceOverride = 'cache') => {
+    try {
+        if (!window.MappingsStore) {
+            Logger.warn('CACHE', 'MappingsStore not available');
+            return false;
+        }
+        
+        const mappings = window.MappingsStore.getAll();
+        const normalized = mappings.filter(mapping => !isImockCacheMapping(mapping));
+
+        window.MappingsStore.setFromServer(normalized);
+
+        if (typeof refreshMappingTabSnapshot === 'function') {
+            refreshMappingTabSnapshot();
+        }
+        if (typeof rebuildMappingIndex === 'function') {
+            rebuildMappingIndex(normalized);
+        }
+        if (typeof pruneOptimisticShadowMappings === 'function') {
+            pruneOptimisticShadowMappings(normalized);
+        }
+        if (typeof updateDataSourceIndicator === 'function') {
+            updateDataSourceIndicator(sourceOverride || 'cache');
+        }
+
+        const mappingsToRender = window.MappingsStore ? window.MappingsStore.getAll() : [];
+        return await fetchAndRenderMappings(mappingsToRender, { source: sourceOverride || 'cache' });
+    } catch (error) {
+        Logger.warn('CACHE', 'refreshMappingsFromCache failed:', error);
+        return false;
+    }
+};
+
+// Initialize pagination
+window.initMappingPagination = function() {
+    if (!window.PaginationManager) {
+        Logger.warn('UI', 'PaginationManager not available');
+        return;
+    }
+
+    // Initialize pagination with container selector
+    window.PaginationManager.init('#mappings-pagination', 20);
+
+    // Attach event listeners for page changes
+    window.PaginationManager.attachListeners((newPage) => {
+        Logger.debug('UI', `Page changed to: ${newPage}`);
+
+        // Re-render mappings with new page
+        const container = document.getElementById(SELECTORS.LISTS.MAPPINGS);
+        const currentMappings = window.MappingsStore ? window.MappingsStore.getAll() : [];
+        if (!container || !Array.isArray(currentMappings)) {
+            Logger.warn('UI', 'Cannot render page: container or data not available');
+            return;
+        }
+
+        // Sort mappings (same logic as fetchAndRenderMappings)
+        const sortedMappings = [...currentMappings].sort((a, b) => {
+            const priorityA = a.priority || 1;
+            const priorityB = b.priority || 1;
+            if (priorityA !== priorityB) return priorityA - priorityB;
+
+            const methodOrder = { 'GET': 1, 'POST': 2, 'PUT': 3, 'PATCH': 4, 'DELETE': 5 };
+            const methodA = methodOrder[a.request?.method] || 999;
+            const methodB = methodOrder[b.request?.method] || 999;
+            if (methodA !== methodB) return methodA - methodB;
+
+            const urlA = a.request?.url || a.request?.urlPattern || a.request?.urlPath || '';
+            const urlB = b.request?.url || b.request?.urlPattern || b.request?.urlPath || '';
+            return urlA.localeCompare(urlB);
+        });
+
+        // Get items for new page
+        const pageItems = window.PaginationManager.getCurrentPageItems(sortedMappings);
+
+        // Invalidate cache before re-rendering
+        window.invalidateElementCache(SELECTORS.LISTS.MAPPINGS);
+
+        // Render page items
+        renderList(container, pageItems, {
             renderItem: renderMappingMarkup,
             getKey: getMappingRenderKey,
             getSignature: getMappingRenderSignature,
             onItemChanged: handleMappingItemChanged,
             onItemRemoved: handleMappingItemRemoved
         });
-        updateMappingsCounter();
-        if (renderSource) {
-            updateDataSourceIndicator(renderSource);
-        }
-        // Reapply mapping filters if any are active, preserving user's view
-        try {
-            const hasFilters = (document.getElementById(SELECTORS.MAPPING_FILTERS.METHOD)?.value || '')
-                || (document.getElementById(SELECTORS.MAPPING_FILTERS.URL)?.value || '')
-                || (document.getElementById(SELECTORS.MAPPING_FILTERS.STATUS)?.value || '');
-            if (hasFilters && typeof FilterManager !== 'undefined' && FilterManager.applyMappingFilters) {
-                FilterManager.applyMappingFilters();
-                if (typeof FilterManager.flushMappingFilters === 'function') {
-                    FilterManager.flushMappingFilters();
-                }
-                console.log('[FILTERS] Mapping filters re-applied after refresh');
-            }
-        } catch {}
 
-        return true;
-    } catch (error) {
-        console.error('Error in fetchAndRenderMappings:', error);
-        NotificationManager.error(`Failed to load mappings: ${error.message}`);
-        loadingState.classList.add('hidden');
-        emptyState.classList.remove('hidden');
-        container.style.display = 'none';
-        return false;
-    }
+        // Update pagination controls
+        const paginationContainer = document.getElementById('mappings-pagination');
+        if (paginationContainer) {
+            paginationContainer.innerHTML = window.PaginationManager.renderControls();
+        }
+
+        // Scroll to top of mappings list
+        const mappingsPage = document.getElementById('mappings-page');
+        if (mappingsPage) {
+            mappingsPage.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    });
+
+    Logger.info('UI', 'Mapping pagination initialized');
 };
 
 // Function to get a specific mapping by ID
@@ -684,50 +932,51 @@ window.getMappingById = async (mappingId) => {
             throw new Error('Mapping ID is required');
         }
 
-        console.log(`📥 [getMappingById] Fetching mapping with ID: ${mappingId}`);
-        console.log(`📥 [getMappingById] Current wiremockBaseUrl:`, window.wiremockBaseUrl);
-        console.log(`📥 [getMappingById] window.allMappings available:`, Array.isArray(window.allMappings));
-        console.log(`📥 [getMappingById] Cache size:`, window.allMappings?.length || 0);
+        Logger.debug('CACHE', `Fetching mapping with ID: ${mappingId}`);
+        Logger.debug('CACHE', 'Current wiremockBaseUrl:', window.wiremockBaseUrl);
+        const currentMappings = window.MappingsStore ? window.MappingsStore.getAll() : [];
+        Logger.debug('CACHE', 'MappingsStore available:', !!window.MappingsStore);
+        Logger.debug('CACHE', 'Cache size:', currentMappings?.length || 0);
 
-        // Try to get from cache first
-        let cachedMapping = null;
-        if (window.mappingIndex instanceof Map) {
-            cachedMapping = window.mappingIndex.get(mappingId) || null;
-        }
+        // Try to get from MappingsStore first
+        let cachedMapping = window.MappingsStore ? window.MappingsStore.get(mappingId) : null;
+        
+        // Fallback to searching in currentMappings array
         if (!cachedMapping) {
-            cachedMapping = window.allMappings?.find(m => m.id === mappingId) || null;
+            cachedMapping = currentMappings.find(m => m.id === mappingId || m.uuid === mappingId) || null;
         }
+        
         if (cachedMapping) {
-            console.log(`📦 [getMappingById] Found mapping in cache: ${mappingId}`, cachedMapping);
+            Logger.cache(`Found mapping in cache: ${mappingId}`, cachedMapping);
             return cachedMapping;
         } else {
-            console.log(`📦 [getMappingById] Mapping not found in cache, will fetch from API`);
+            Logger.cache('Mapping not found in cache, will fetch from API');
         }
 
         // Fetch from WireMock API
-        console.log(`📡 [getMappingById] Making API call to: /mappings/${mappingId}`);
+        Logger.api(`Making API call to: /mappings/${mappingId}`);
         const response = await apiFetch(`/mappings/${mappingId}`);
-        console.log(`📡 [getMappingById] Raw API response:`, response);
+        Logger.api('Raw API response:', response);
 
         // Handle both wrapped and unwrapped responses
         const mapping = response && typeof response === 'object' && response.mapping
             ? response.mapping
             : response;
 
-        console.log(`📡 [getMappingById] Processed mapping:`, mapping);
+        Logger.debug('CACHE', 'Processed mapping:', mapping);
 
         if (!mapping || typeof mapping !== 'object') {
-            console.log(`❌ [getMappingById] API returned invalid data for mapping ${mappingId}`);
+            Logger.error('CACHE', `API returned invalid data for mapping ${mappingId}`);
             throw new Error(`Mapping with ID ${mappingId} not found or invalid response`);
         }
 
-        console.log(`✅ [getMappingById] Successfully fetched mapping: ${mappingId}`, mapping);
+        Logger.info('CACHE', `Successfully fetched mapping: ${mappingId}`, mapping);
         addMappingToIndex(mapping);
         return mapping;
 
     } catch (error) {
-        console.error(`❌ [getMappingById] Error fetching mapping ${mappingId}:`, error);
-        console.error(`❌ [getMappingById] Error details:`, {
+        Logger.error('CACHE', `Error fetching mapping ${mappingId}:`, error);
+        Logger.error('CACHE', 'Error details:', {
             message: error.message,
             status: error.status,
             statusText: error.statusText,
@@ -737,49 +986,84 @@ window.getMappingById = async (mappingId) => {
     }
 };
 
+window.duplicateMapping = async (identifier) => {
+    const mappingId = (identifier ?? '').toString().trim();
+
+    if (!mappingId) {
+        NotificationManager.error('Invalid mapping identifier');
+        return;
+    }
+
+    if (!window.TemplateManager?.createMappingsFromPayloads) {
+        NotificationManager.error('Mapping duplication is not available');
+        return;
+    }
+
+    try {
+        const mapping = await window.getMappingById(mappingId);
+        if (!mapping) {
+            throw new Error('Mapping not found');
+        }
+
+        await window.TemplateManager.createMappingsFromPayloads([mapping], {
+            openMode: 'inline',
+            source: 'duplicate',
+            successMessageFactory: (count) => `Duplicated ${count} mapping${count === 1 ? '' : 's'}`
+        });
+    } catch (error) {
+        Logger.error('OPTIMISTIC', 'Failed to duplicate mapping:', error);
+        NotificationManager.error(`Failed to duplicate mapping: ${error.message}`);
+    }
+};
+
 // Updated applyOptimisticMappingUpdate helper
 window.applyOptimisticMappingUpdate = (mappingLike) => {
     try {
         if (!mappingLike) {
-            console.warn('🎯 [OPTIMISTIC] No mapping data provided');
+            Logger.warn('OPTIMISTIC', 'No mapping data provided');
             return;
         }
 
         const mapping = mappingLike.mapping || mappingLike;
         const mappingId = mapping?.id || mapping?.uuid;
         if (!mapping || !mappingId) {
-            console.warn('🎯 [OPTIMISTIC] Invalid mapping data - missing id:', mapping);
+            Logger.warn('OPTIMISTIC', 'Invalid mapping data - missing id:', mapping);
             return;
         }
 
         // Ignore synthetic cache service mappings
         if (isImockCacheMapping(mapping)) {
-            console.log('🎯 [OPTIMISTIC] Skipping cache mapping update');
+            Logger.debug('OPTIMISTIC', 'Skipping cache mapping update');
             return;
         }
 
-        const cacheAvailable = window.cacheManager && window.cacheManager.cache instanceof Map;
-        const optimisticOperation = cacheAvailable && window.cacheManager.cache.has(mappingId) ? 'update' : 'create';
+        const storeAvailable = window.MappingsStore && window.MappingsStore.items instanceof Map;
+        const optimisticOperation = storeAvailable && window.MappingsStore.items.has(mappingId) ? 'update' : 'create';
 
         rememberOptimisticShadowMapping(mapping, optimisticOperation);
 
-        // Use updateOptimisticCache if available, otherwise fallback to legacy/manual logic
+        // Use updateOptimisticCache if available, otherwise fallback to MappingsStore
         if (typeof updateOptimisticCache === 'function') {
             updateOptimisticCache(mapping, optimisticOperation, { queueMode: 'add' });
         } else {
-            // Fallback to legacy direct mutation if the new helper is unavailable
-            if (cacheAvailable) {
-                if (typeof window.cacheManager?.addOptimisticUpdate === 'function') {
-                    try {
-                        window.cacheManager.addOptimisticUpdate(mapping, optimisticOperation);
-                    } catch (queueError) {
-                        console.warn('🎯 [OPTIMISTIC] Failed to enqueue optimistic update:', queueError);
-                    }
+            // Use new MappingsStore architecture
+            if (storeAvailable) {
+                // Add to pending operations for optimistic UI
+                try {
+                    window.MappingsStore.addPending({
+                        id: mappingId,
+                        type: optimisticOperation,
+                        payload: mapping,
+                        optimisticMapping: mapping
+                    });
+                } catch (queueError) {
+                    Logger.warn('OPTIMISTIC', 'Failed to enqueue optimistic update:', queueError);
                 }
-                seedCacheFromGlobals(window.cacheManager.cache);
+
+                // Update store directly for immediate UI response
                 const incoming = cloneMappingForCache(mapping);
                 if (!incoming) {
-                    console.warn('🎯 [OPTIMISTIC] Failed to clone mapping for cache:', mappingId);
+                    Logger.warn('OPTIMISTIC', 'Failed to clone mapping for store:', mappingId);
                 } else {
                     if (!incoming.id && mappingId) {
                         incoming.id = mappingId;
@@ -788,29 +1072,48 @@ window.applyOptimisticMappingUpdate = (mappingLike) => {
                         incoming.uuid = mapping.uuid || mappingId;
                     }
 
-                    if (window.cacheManager.cache.has(mappingId)) {
-                        const merged = mergeMappingData(window.cacheManager.cache.get(mappingId), incoming);
-                        window.cacheManager.cache.set(mappingId, merged);
+                    if (window.MappingsStore.items.has(mappingId)) {
+                        const merged = mergeMappingData(window.MappingsStore.items.get(mappingId), incoming);
+                        window.MappingsStore.items.set(mappingId, merged);
                     } else {
-                        window.cacheManager.cache.set(mappingId, incoming);
+                        window.MappingsStore.items.set(mappingId, incoming);
+                    }
+
+                    // Update indexes
+                    if (typeof window.MappingsStore.rebuildIndexes === 'function') {
+                        window.MappingsStore.rebuildIndexes();
                     }
                 }
             }
 
             window.cacheLastUpdate = Date.now();
+
+            // Ensure background sync doesn't override optimistic updates by temporarily setting a flag
+            if (!window.MappingsStore.metadata.isOptimisticUpdate) {
+                window.MappingsStore.metadata.isOptimisticUpdate = true;
+                setTimeout(() => {
+                    window.MappingsStore.metadata.isOptimisticUpdate = false;
+                }, 1000); // Clear flag after 1 second
+            }
+
             refreshMappingsFromCache();
         }
 
-        console.log('🎯 [OPTIMISTIC] Applied update for mapping:', mappingId);
+        Logger.debug('OPTIMISTIC', 'Applied update for mapping:', mappingId);
 
     } catch (e) {
-        console.warn('🎯 [OPTIMISTIC] Update failed:', e);
+        Logger.warn('OPTIMISTIC', 'Update failed:', e);
     }
 };
 
 // Refresh mappings in background and then re-render without jank
 window.backgroundRefreshMappings = async (useCache = false) => {
     try {
+        if (!window.MappingsStore) {
+            Logger.warn('CACHE', 'MappingsStore not available for background refresh');
+            return;
+        }
+        
         let data;
         let source = 'direct';
         if (useCache) {
@@ -842,39 +1145,48 @@ window.backgroundRefreshMappings = async (useCache = false) => {
                     return !window.pendingDeletedIds.has(mappingId);
                 });
                 if (before !== incoming.length) {
-                    console.log('🧩 [CACHE] background refresh filtered pending-deleted mappings:', before - incoming.length);
+                    Logger.cache('background refresh filtered pending-deleted mappings:', before - incoming.length);
                 }
             }
         } catch (pendingError) {
-            console.warn('🧩 [CACHE] Failed to filter pending deletions during background refresh:', pendingError);
+        Logger.warn('CACHE', 'Failed to filter pending deletions during background refresh:', pendingError);
         }
-        window.originalMappings = Array.isArray(incoming) ? incoming.filter(m => !isImockCacheMapping(m)) : [];
+const filteredMappings = Array.isArray(incoming) ? incoming.filter(m => !isImockCacheMapping(m)) : [];
+        
+        // Update MappingsStore
+        if (window.MappingsStore) {
+            window.MappingsStore.setFromServer(filteredMappings);
+        }
+        
         refreshMappingTabSnapshot();
-        syncCacheWithMappings(window.originalMappings);
-        window.allMappings = window.originalMappings;
-        rebuildMappingIndex(window.originalMappings);
-        pruneOptimisticShadowMappings(window.originalMappings);
+        syncCacheWithMappings(filteredMappings);
+        rebuildMappingIndex(filteredMappings);
+        pruneOptimisticShadowMappings(filteredMappings);
         updateDataSourceIndicator(source);
-        // re-render without loading state
-        fetchAndRenderMappings(window.allMappings);
+        // re-render without loading state using batched DOM operations
+        setTimeout(() => {
+            const mappingsToRender = window.MappingsStore ? window.MappingsStore.getAll() : [];
+            fetchAndRenderMappings(mappingsToRender);
+        }, 0); // Use setTimeout to batch the render operation
     } catch (e) {
-        console.warn('Background refresh failed:', e);
+        Logger.warn('CACHE', 'Background refresh failed:', e);
     }
 };
 
-// Compact mapping renderer through UIComponents (shortened from ~67 to 15 lines)
+// Compact mapping renderer through UIComponents with lazy preview loading
 window.renderMappingCard = function(mapping) {
     if (!mapping || !mapping.id) {
-        console.warn('Invalid mapping data:', mapping);
+        Logger.warn('CACHE', 'Invalid mapping data:', mapping);
         return '';
     }
-    
+
     const actions = [
+        { class: 'secondary', handler: 'duplicateMapping', title: 'Duplicate', icon: 'clipboard' },
         { class: 'secondary', handler: 'editMapping', title: 'Edit in Editor', icon: 'open-external' },
         { class: 'primary', handler: 'openEditModal', title: 'Edit', icon: 'pencil' },
         { class: 'danger', handler: 'deleteMapping', title: 'Delete', icon: 'trash' }
     ];
-    
+
     const normalizedId = String(mapping.id || mapping.uuid || '');
     const isExpanded = window.mappingPreviewState instanceof Set && window.mappingPreviewState.has(normalizedId);
 
@@ -886,30 +1198,33 @@ window.renderMappingCard = function(mapping) {
         name: mapping.name || mapping.metadata?.name || `Mapping ${mapping.id.substring(0, 8)}`,
         expanded: isExpanded,
         extras: {
-            preview: UIComponents.createPreviewSection(`${Icons.render('request-in', { className: 'icon-inline' })} Request`, {
-                'Method': mapping.request?.method || 'GET',
-                'URL': mapping.request?.url || mapping.request?.urlPattern || mapping.request?.urlPath || mapping.request?.urlPathPattern,
-                'Headers': mapping.request?.headers,
-                'Body': mapping.request?.bodyPatterns || mapping.request?.body,
-                'Query Parameters': mapping.request?.queryParameters
-            }) + UIComponents.createPreviewSection(`${Icons.render('response-out', { className: 'icon-inline' })} Response`, {
-                'Status': mapping.response?.status,
-                'Headers': mapping.response?.headers,
-                'Body': mapping.response?.jsonBody || mapping.response?.body,
-                'Delay': mapping.response?.fixedDelayMilliseconds ? `${mapping.response.fixedDelayMilliseconds}ms` : null
-            }) + UIComponents.createPreviewSection(`${Icons.render('info', { className: 'icon-inline' })} Overview`, {
-                'ID': mapping.id || mapping.uuid,
-                'Name': mapping.name || mapping.metadata?.name,
-                'Priority': mapping.priority,
-                'Persistent': mapping.persistent,
-                'Scenario': mapping.scenarioName,
-                'Required State': mapping.requiredScenarioState,
-                'New State': mapping.newScenarioState,
-            'Created': (window.showMetaTimestamps !== false && mapping.metadata?.created) ? new Date(mapping.metadata.created).toLocaleString() : null,
-            'Edited': (window.showMetaTimestamps !== false && mapping.metadata?.edited) ? new Date(mapping.metadata.edited).toLocaleString() : null,
-            'Source': mapping.metadata?.source ? `Edited from ${mapping.metadata.source}` : null,
-            })
-            ,
+            // Lazy loading: Only generate preview HTML if card is already expanded (from state restoration)
+            // Otherwise, event delegation will load it on first expand
+            preview: isExpanded ? (
+                UIComponents.createPreviewSection(`${Icons.render('request-in', { className: 'icon-inline' })} Request`, {
+                    'Method': mapping.request?.method || 'GET',
+                    'URL': mapping.request?.url || mapping.request?.urlPattern || mapping.request?.urlPath || mapping.request?.urlPathPattern,
+                    'Headers': mapping.request?.headers,
+                    'Body': mapping.request?.bodyPatterns || mapping.request?.body,
+                    'Query Parameters': mapping.request?.queryParameters
+                }) + UIComponents.createPreviewSection(`${Icons.render('response-out', { className: 'icon-inline' })} Response`, {
+                    'Status': mapping.response?.status,
+                    'Headers': mapping.response?.headers,
+                    'Body': mapping.response?.jsonBody || mapping.response?.body,
+                    'Delay': mapping.response?.fixedDelayMilliseconds ? `${mapping.response.fixedDelayMilliseconds}ms` : null
+                }) + UIComponents.createPreviewSection(`${Icons.render('info', { className: 'icon-inline' })} Overview`, {
+                    'ID': mapping.id || mapping.uuid,
+                    'Name': mapping.name || mapping.metadata?.name,
+                    'Priority': mapping.priority,
+                    'Persistent': mapping.persistent,
+                    'Scenario': mapping.scenarioName,
+                    'Required State': mapping.requiredScenarioState,
+                    'New State': mapping.newScenarioState,
+                    'Created': (window.showMetaTimestamps !== false && mapping.metadata?.created) ? new Date(mapping.metadata.created).toLocaleString() : null,
+                    'Edited': (window.showMetaTimestamps !== false && mapping.metadata?.edited) ? new Date(mapping.metadata.edited).toLocaleString() : null,
+                    'Source': mapping.metadata?.source ? `Edited from ${mapping.metadata.source}` : null,
+                })
+            ) : '', // Empty preview for collapsed cards - will be lazy loaded
             badges: [
                 (mapping.id || mapping.uuid) ? `<span class="badge badge-secondary" title="Mapping ID">${Utils.escapeHtml(((mapping.id || mapping.uuid).length > 12 ? (mapping.id || mapping.uuid).slice(0,8) + '…' + (mapping.id || mapping.uuid).slice(-4) : (mapping.id || mapping.uuid)))}</span>` : '',
                 (typeof mapping.priority === 'number') ? `<span class="badge badge-secondary" title="Priority">P${mapping.priority}</span>` : '',
@@ -920,7 +1235,7 @@ window.renderMappingCard = function(mapping) {
             ].filter(Boolean).join(' ')
         }
     };
-    
+
     return UIComponents.createCard('mapping', data, actions);
 }
 
@@ -928,30 +1243,10 @@ window.renderMappingCard = function(mapping) {
 window.updateMappingsCounter = function() {
     const counter = document.getElementById(SELECTORS.COUNTERS.MAPPINGS);
     if (counter) {
-        counter.textContent = Array.isArray(window.allMappings) ? window.allMappings.length : 0;
+        const currentMappings = window.MappingsStore ? window.MappingsStore.getAll() : [];
+        counter.textContent = Array.isArray(currentMappings) ? currentMappings.length : 0;
     }
-    updateMappingTabCounts();
 };
-
-function updateMappingTabCounts() {
-    const counts = window.mappingTabTotals || computeMappingTabTotals(window.originalMappings);
-
-    const mappingCountTargets = {
-        all: document.getElementById('mapping-tab-all'),
-        get: document.getElementById('mapping-tab-get'),
-        post: document.getElementById('mapping-tab-post'),
-        put: document.getElementById('mapping-tab-put'),
-        patch: document.getElementById('mapping-tab-patch'),
-        delete: document.getElementById('mapping-tab-delete')
-    };
-
-    Object.entries(mappingCountTargets).forEach(([key, element]) => {
-        if (element) {
-            element.textContent = counts?.[key] ?? 0;
-        }
-    });
-}
-
 // Update the data-source indicator (cache/remote/direct)
 function updateDataSourceIndicator(source) {
     const el = document.getElementById('data-source-indicator');
@@ -1060,8 +1355,6 @@ function handleMappingItemRemoved(id) {
 window.toggleMappingDetails = (mappingId) => UIComponents.toggleDetails(mappingId, 'mapping');
 window.toggleRequestDetails = (requestId) => UIComponents.toggleDetails(requestId, 'request');
 
-
 window.UIComponents = UIComponents;
-window.updateMappingTabCounts = updateMappingTabCounts;
 window.updateDataSourceIndicator = updateDataSourceIndicator;
 window.updateRequestsSourceIndicator = updateRequestsSourceIndicator;

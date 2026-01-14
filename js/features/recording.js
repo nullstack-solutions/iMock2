@@ -36,7 +36,7 @@ window.startRecording = async (config = {}) => {
         if (indicator) indicator.style.display = 'block';
         
     } catch (error) {
-        console.error('Start recording error:', error);
+        Logger.error('RECORDING', 'Start recording error:', error);
         NotificationManager.error(`Failed to start recording: ${error.message}`);
     }
 };
@@ -58,12 +58,13 @@ window.stopRecording = async () => {
         const count = response.mappings ? response.mappings.length : 0;
         NotificationManager.success(`Recording stopped! Captured ${count} mappings`);
         
-        // Refresh the mappings list
-            await fetchAndRenderMappings();
+// Refresh the mappings list
+            const mappingsToRender = window.MappingsStore.getAll();
+            await fetchAndRenderMappings(mappingsToRender);
 
         return response.mappings || [];
     } catch (error) {
-        console.error('Stop recording error:', error);
+        Logger.error('RECORDING', 'Stop recording error:', error);
         NotificationManager.error(`Failed to stop recording: ${error.message}`);
         return [];
     }
@@ -75,7 +76,7 @@ window.getRecordingStatus = async () => {
         const response = await apiFetch(ENDPOINTS.RECORDINGS_STATUS);
         return response.status || 'Unknown';
     } catch (error) {
-        console.error('Recording status error:', error);
+        Logger.error('RECORDING', 'Recording status error:', error);
         return 'Unknown';
     }
 };
@@ -94,7 +95,7 @@ window.takeRecordingSnapshot = async (config = {}) => {
 
         return response.mappings || [];
     } catch (error) {
-        console.error('Recording snapshot error:', error);
+        Logger.error('RECORDING', 'Recording snapshot error:', error);
         NotificationManager.error(`Snapshot failed: ${error.message}`);
         return [];
     }
@@ -118,7 +119,7 @@ window.clearRecordings = async () => {
 
         NotificationManager.success('Recording log cleared.');
     } catch (error) {
-        console.error('Clear recordings error:', error);
+        Logger.error('RECORDING', 'Clear recordings error:', error);
         NotificationManager.error(`Failed to clear recordings: ${error.message}`);
     }
 };
