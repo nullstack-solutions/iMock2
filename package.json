@@ -1,7 +1,7 @@
 {
-  "name": "imock2",
-  "version": "1.0.0",
-  "description": "WireMock UI - Modern web interface for WireMock mock server",
+  "name": "iMock",
+  "version": "2.27.0",
+  "description": "iMock - Modern web interface for WireMock mock server",
   "private": true,
   "engines": {
     "node": "20.x"
