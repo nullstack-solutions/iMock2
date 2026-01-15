@@ -271,8 +271,22 @@ test.describe('iMock2 Client Startup', () => {
     // Load the page
     await page.goto(indexPath);
 
-    // Wait for autoconnect and data loading
-    await page.waitForTimeout(4000);
+    // Wait for autoconnect and data loading to complete by observing app state
+    await page.waitForFunction(() => {
+      const mappingsStore = window.MappingsStore;
+      const allMappings = window.allMappings;
+
+      if (!mappingsStore || !allMappings) {
+        return false;
+      }
+
+      const hasItems = mappingsStore.items && mappingsStore.items.size > 0;
+      const metadata = mappingsStore.metadata || {};
+      const notSyncing = metadata.isSyncing === false;
+      const notRendering = metadata.isRendering === false;
+
+      return hasItems && notSyncing && notRendering;
+    }, { timeout: 10000 });
 
     console.log('Network requests to __admin:', JSON.stringify(networkRequests, null, 2));
 
@@ -365,8 +379,14 @@ test.describe('iMock2 Client Startup', () => {
     // Load the page
     await page.goto(indexPath);
 
-    // Wait for autoconnect and cache loading
-    await page.waitForTimeout(4000);
+    // Wait for autoconnect and cache loading to complete based on UI state
+    await page.waitForFunction(() => {
+      const container = document.getElementById('mappings-list');
+      const mappingCards = container?.querySelectorAll('.mapping-card') || [];
+      const storeItemsCount = window.MappingsStore ? window.MappingsStore.items.size : 0;
+
+      return storeItemsCount === 2 && mappingCards.length === 2;
+    }, { timeout: 10000 });
 
     // Check if mappings are visible
     const uiState = await page.evaluate(() => {

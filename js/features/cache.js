@@ -121,10 +121,6 @@ window.connectToWireMock = async () => {
         // Load data using new SyncEngine (cache first, then full sync)
         window.SyncEngine.stop();
         await window.SyncEngine.coldStart();
-        
-        // Ensure loading state is hidden after sync completes
-        // This is a defensive measure in case fetchAndRenderMappings didn't run
-        if (loadingState) loadingState.classList.add('hidden');
 
         // Start background sync timers
         window.SyncEngine.start();

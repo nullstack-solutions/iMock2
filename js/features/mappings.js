@@ -457,7 +457,9 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
     }
 
     // Prevent race conditions during sync operations and render operations
-    if (window.MappingsStore?.metadata?.isSyncing || window.MappingsStore?.metadata?.isRendering) {
+    // The skipSyncCheck option allows sync operations to render during their own sync cycle
+    const skipSyncCheck = options?.skipSyncCheck === true;
+    if (!skipSyncCheck && (window.MappingsStore?.metadata?.isSyncing || window.MappingsStore?.metadata?.isRendering)) {
         Logger.debug('UI', 'Sync or render in progress, skipping render to avoid race condition');
         return true; // Return true to indicate it's OK to skip
     }

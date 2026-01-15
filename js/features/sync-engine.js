@@ -216,14 +216,10 @@ window.SyncEngine = {
         version: serverVersion,
       });
 
-      // Clear syncing flag BEFORE rendering to allow UI update
-      // This prevents the race condition where fetchAndRenderMappings
-      // would skip rendering because isSyncing is still true
-      window.MappingsStore.metadata.isSyncing = false;
-
-      // Update UI
+      // Update UI - use skipSyncCheck to render during sync operation
+      // The isSyncing flag remains true to prevent external concurrent syncs
       if (typeof window.fetchAndRenderMappings === 'function') {
-        window.fetchAndRenderMappings(window.MappingsStore.getAll(), { source: 'direct' });
+        window.fetchAndRenderMappings(window.MappingsStore.getAll(), { source: 'direct', skipSyncCheck: true });
       }
 
       // Update indicator
