@@ -164,6 +164,10 @@
             <div class="status-indicator">
                 <div class="status-dot" id="status-dot"></div>
                 <span id="status-text">Disconnected</span>
+                <span id="sync-indicator" class="data-syncing-indicator" title="Background sync in progress">
+                    <span class="syncing-spinner"></span>
+                    <span>Syncing</span>
+                </span>
                 <span id="health-indicator" style="display: none; margin-left: 10px; font-size: 0.9em;"></span>
             </div>
             <button class="theme-toggle" onclick="if(typeof toggleTheme === 'function') toggleTheme()">
@@ -403,7 +407,10 @@
                     </div>
                 </div>
                 
-                <div id="mappings-loading" class="loading hidden">Loading mappings...</div>
+                <div id="mappings-loading" class="loading-state hidden">
+                    <div class="loading-spinner"></div>
+                    <p class="loading-text">Loading mappings<span class="loading-dots"></span></p>
+                </div>
                 <div id="mappings-list-container">
                     <div id="mappings-empty" class="empty-state hidden">
                         <h3>No mappings found</h3>
@@ -548,7 +555,10 @@
                     </div>
                 </div>
                 
-                <div id="requests-loading" class="loading hidden">Loading requests...</div>
+                <div id="requests-loading" class="loading-state hidden">
+                    <div class="loading-spinner"></div>
+                    <p class="loading-text">Loading requests<span class="loading-dots"></span></p>
+                </div>
                 <div id="requests-list-container">
                     <div id="requests-empty" class="empty-state hidden">
                         <h3>No requests logged</h3>
@@ -626,7 +636,10 @@
                     </div>
                 </div>
                 
-                <div id="scenarios-loading" class="loading hidden">Loading scenarios...</div>
+                <div id="scenarios-loading" class="loading-state hidden">
+                    <div class="loading-spinner"></div>
+                    <p class="loading-text">Loading scenarios<span class="loading-dots"></span></p>
+                </div>
                 <div id="scenarios-list-container">
                     <div id="scenarios-empty" class="empty-state hidden">
                         <h3>No scenarios found</h3>
