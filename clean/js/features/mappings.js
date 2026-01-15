@@ -666,6 +666,9 @@ const filteredMappings = Array.isArray(incoming) ? incoming.filter(m => !isImock
             emptyState.classList.remove('hidden');
             container.style.display = 'none';
             updateMappingsCounter();
+            if (renderSource) {
+                updateDataSourceIndicator(renderSource);
+            }
             return true;
         }
         
@@ -1262,6 +1265,10 @@ function updateDataSourceIndicator(source) {
             break;
         case 'cache_rebuilding':
             text = 'Source: cache (rebuilding…)';
+            cls = 'badge badge-success';
+            break;
+        case 'synced':
+            text = 'Source: synced';
             cls = 'badge badge-success';
             break;
         case 'demo':
