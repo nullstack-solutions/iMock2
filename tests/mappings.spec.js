@@ -362,6 +362,58 @@ runTest('addMappingToIndex adds mapping to index', () => {
     assert.strictEqual(context.mappingIndex.get('index-test-123').name, 'Index Test');
 });
 
+// Test 11: updateDataSourceIndicator handles 'synced' source correctly
+runTest('updateDataSourceIndicator handles synced source', () => {
+    const { context } = createMappingsTestContext();
+
+    // Create a mock indicator element
+    let indicatorText = '';
+    let indicatorClass = '';
+    context.document.getElementById = (id) => {
+        if (id === 'data-source-indicator') {
+            return {
+                get textContent() { return indicatorText; },
+                set textContent(v) { indicatorText = v; },
+                get className() { return indicatorClass; },
+                set className(v) { indicatorClass = v; }
+            };
+        }
+        return null;
+    };
+
+    // Call with 'synced' source
+    context.updateDataSourceIndicator('synced');
+
+    assert.strictEqual(indicatorText, 'Source: synced', 'Should display "Source: synced"');
+    assert.ok(indicatorClass.includes('badge-success'), 'Should have success badge class');
+});
+
+// Test 12: updateDataSourceIndicator handles 'cache' source correctly
+runTest('updateDataSourceIndicator handles cache source', () => {
+    const { context } = createMappingsTestContext();
+
+    // Create a mock indicator element
+    let indicatorText = '';
+    let indicatorClass = '';
+    context.document.getElementById = (id) => {
+        if (id === 'data-source-indicator') {
+            return {
+                get textContent() { return indicatorText; },
+                set textContent(v) { indicatorText = v; },
+                get className() { return indicatorClass; },
+                set className(v) { indicatorClass = v; }
+            };
+        }
+        return null;
+    };
+
+    // Call with 'cache' source
+    context.updateDataSourceIndicator('cache');
+
+    assert.strictEqual(indicatorText, 'Source: cache', 'Should display "Source: cache"');
+    assert.ok(indicatorClass.includes('badge-success'), 'Should have success badge class');
+});
+
 // Run all tests
 (async () => {
     let passed = 0;
