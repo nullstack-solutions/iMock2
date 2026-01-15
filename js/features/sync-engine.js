@@ -182,6 +182,11 @@ window.SyncEngine = {
     this.isFullSyncing = true;
     Logger.info('SYNC', `Starting full sync (background: ${background})`);
 
+    // Show sync indicator for background syncs
+    if (background) {
+      this._showSyncIndicator();
+    }
+
     window.MappingsStore.metadata.isSyncing = true;
     window.MappingsStore.metadata.syncStartTime = Date.now();
     const startTime = Date.now();
@@ -237,6 +242,7 @@ window.SyncEngine = {
       this.isFullSyncing = false;
       window.MappingsStore.metadata.isSyncing = false;
       window.MappingsStore.metadata.syncStartTime = null;
+      this._hideSyncIndicator();
     }
   },
 
@@ -595,6 +601,26 @@ window.SyncEngine = {
         setTimeout(() => reject(new Error('Request timeout')), timeout)
       ),
     ]);
+  },
+
+  /**
+   * Show sync indicator in UI
+   */
+  _showSyncIndicator() {
+    const indicator = document.getElementById('sync-indicator');
+    if (indicator) {
+      indicator.classList.add('is-active');
+    }
+  },
+
+  /**
+   * Hide sync indicator in UI
+   */
+  _hideSyncIndicator() {
+    const indicator = document.getElementById('sync-indicator');
+    if (indicator) {
+      indicator.classList.remove('is-active');
+    }
   },
 };
 
