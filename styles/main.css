@@ -637,7 +637,7 @@ body.onboarding-active .container {
     align-items: center;
     gap: var(--space-2);
     padding: var(--space-1) var(--space-2);
-    border-radius: var(--radius-full);
+    border-radius: 9999px;
     background: var(--bg-tertiary);
     font-size: var(--font-size-xs);
     color: var(--text-secondary);
