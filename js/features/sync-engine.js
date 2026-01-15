@@ -216,9 +216,10 @@ window.SyncEngine = {
         version: serverVersion,
       });
 
-      // Update UI
+      // Update UI - use skipSyncCheck to render during sync operation
+      // The isSyncing flag remains true to prevent external concurrent syncs
       if (typeof window.fetchAndRenderMappings === 'function') {
-        window.fetchAndRenderMappings(window.MappingsStore.getAll(), { source: 'direct' });
+        window.fetchAndRenderMappings(window.MappingsStore.getAll(), { source: 'direct', skipSyncCheck: true });
       }
 
       // Update indicator

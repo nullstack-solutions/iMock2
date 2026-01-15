@@ -76,12 +76,20 @@ test.describe('iMock2 Client Startup', () => {
       });
     });
 
-    // Mock health check
+    // Mock health check endpoints - both root and /health
     await page.route('**/__admin/', (route) => {
       route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({ version: '3.9.1' })
+      });
+    });
+
+    await page.route('**/__admin/health', (route) => {
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ status: 'healthy', healthy: true })
       });
     });
 
@@ -236,5 +244,175 @@ test.describe('iMock2 Client Startup', () => {
 
     // Should have loaded mock mappings (or at least initialized arrays)
     expect(mappingsLoaded.allMappingsCount).toBeGreaterThanOrEqual(0);
+  });
+
+  test('should autoconnect with cached config and display mappings', async ({ page }) => {
+    const indexPath = 'file://' + path.resolve(__dirname, '..', '..', 'index.html');
+
+    // Track network requests
+    const networkRequests = [];
+    page.on('request', request => {
+      if (request.url().includes('__admin')) {
+        networkRequests.push({ method: request.method(), url: request.url() });
+      }
+    });
+
+    // Pre-set localStorage with saved connection settings (simulating a returning user)
+    await page.addInitScript(() => {
+      const savedSettings = {
+        host: 'localhost',
+        port: '8080',
+        autoConnect: true,
+        cacheEnabled: true
+      };
+      localStorage.setItem('wiremock-settings', JSON.stringify(savedSettings));
+    });
+
+    // Load the page
+    await page.goto(indexPath);
+
+    // Wait for autoconnect and data loading to complete by observing app state
+    await page.waitForFunction(() => {
+      const mappingsStore = window.MappingsStore;
+      const allMappings = window.allMappings;
+
+      if (!mappingsStore || !allMappings) {
+        return false;
+      }
+
+      const hasItems = mappingsStore.items && mappingsStore.items.size > 0;
+      const metadata = mappingsStore.metadata || {};
+      const notSyncing = metadata.isSyncing === false;
+      const notRendering = metadata.isRendering === false;
+
+      return hasItems && notSyncing && notRendering;
+    }, { timeout: 10000 });
+
+    console.log('Network requests to __admin:', JSON.stringify(networkRequests, null, 2));
+
+    // Check if mappings are loaded in MappingsStore
+    const storeState = await page.evaluate(() => {
+      return {
+        storeItemsCount: window.MappingsStore ? window.MappingsStore.items.size : 0,
+        allMappingsCount: window.allMappings ? window.allMappings.length : 0,
+        isSyncing: window.MappingsStore?.metadata?.isSyncing || false,
+        isRendering: window.MappingsStore?.metadata?.isRendering || false,
+        wiremockBaseUrl: window.wiremockBaseUrl || 'not set'
+      };
+    });
+
+    console.log('Store state after autoconnect:', storeState);
+
+    // Verify mappings are loaded in store
+    expect(storeState.storeItemsCount).toBe(2);
+    expect(storeState.allMappingsCount).toBe(2);
+    expect(storeState.isSyncing).toBe(false);
+    expect(storeState.isRendering).toBe(false);
+
+    // Check UI state - mappings should be visible
+    const uiState = await page.evaluate(() => {
+      const loadingState = document.getElementById('mappings-loading');
+      const emptyState = document.getElementById('mappings-empty');
+      const container = document.getElementById('mappings-list');
+      const mappingCards = container?.querySelectorAll('.mapping-card') || [];
+      const filterQuery = document.getElementById('filter-query');
+
+      return {
+        loadingHidden: loadingState?.classList.contains('hidden') ?? false,
+        emptyStateHidden: emptyState?.classList.contains('hidden') ?? true,
+        containerVisible: container?.style.display !== 'none',
+        mappingCardsCount: mappingCards.length,
+        filterQueryValue: filterQuery?.value || ''
+      };
+    });
+
+    console.log('UI state after autoconnect:', uiState);
+
+    // Verify UI state - loading should be hidden, mappings should be visible
+    expect(uiState.loadingHidden).toBe(true);
+    expect(uiState.emptyStateHidden).toBe(true);
+    expect(uiState.containerVisible).toBe(true);
+    expect(uiState.mappingCardsCount).toBe(2);
+  });
+
+  test('should display mappings after cache loading with empty filter', async ({ page }) => {
+    const indexPath = 'file://' + path.resolve(__dirname, '..', '..', 'index.html');
+
+    // Create cache data that will be returned
+    const cacheData = {
+      timestamp: Date.now(),
+      version: '1.0',
+      items: mockMappings,
+      count: mockMappings.length
+    };
+
+    // Pre-set localStorage with saved settings and empty filter
+    await page.addInitScript(() => {
+      const savedSettings = {
+        host: 'localhost',
+        port: '8080',
+        autoConnect: true,
+        cacheEnabled: true
+      };
+      localStorage.setItem('wiremock-settings', JSON.stringify(savedSettings));
+      // Clear any saved filter state
+      localStorage.removeItem('imock-filters-mappings');
+    });
+
+    // Mock the cache mapping endpoint to return cache data
+    await page.route('**/__admin/mappings/00000000-0000-0000-0000-00000000cace', (route) => {
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: '00000000-0000-0000-0000-00000000cace',
+          priority: 1000,
+          request: { method: 'GET', url: '/__imock/cache/v2' },
+          response: {
+            status: 200,
+            jsonBody: cacheData
+          }
+        })
+      });
+    });
+
+    // Load the page
+    await page.goto(indexPath);
+
+    // Wait for autoconnect and cache loading to complete based on UI state
+    await page.waitForFunction(() => {
+      const container = document.getElementById('mappings-list');
+      const mappingCards = container?.querySelectorAll('.mapping-card') || [];
+      const storeItemsCount = window.MappingsStore ? window.MappingsStore.items.size : 0;
+
+      return storeItemsCount === 2 && mappingCards.length === 2;
+    }, { timeout: 10000 });
+
+    // Check if mappings are visible
+    const uiState = await page.evaluate(() => {
+      const loadingState = document.getElementById('mappings-loading');
+      const emptyState = document.getElementById('mappings-empty');
+      const container = document.getElementById('mappings-list');
+      const mappingCards = container?.querySelectorAll('.mapping-card') || [];
+      const filterQuery = document.getElementById('filter-query');
+
+      return {
+        loadingHidden: loadingState?.classList.contains('hidden') ?? false,
+        emptyStateHidden: emptyState?.classList.contains('hidden') ?? true,
+        containerVisible: container?.style.display !== 'none',
+        mappingCardsCount: mappingCards.length,
+        filterQueryValue: filterQuery?.value || '',
+        storeItemsCount: window.MappingsStore ? window.MappingsStore.items.size : 0
+      };
+    });
+
+    console.log('UI state after cache load:', uiState);
+
+    // Verify mappings are visible without needing to clear filters
+    expect(uiState.loadingHidden).toBe(true);
+    expect(uiState.emptyStateHidden).toBe(true);
+    expect(uiState.containerVisible).toBe(true);
+    expect(uiState.mappingCardsCount).toBe(2);
+    expect(uiState.filterQueryValue).toBe('');
   });
 });
