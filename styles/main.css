@@ -627,7 +627,7 @@ body.onboarding-active .container {
 
 /* Status indicator connecting state */
 .status-dot.connecting {
-    background-color: var(--warning-500);
+    background-color: var(--warning);
     animation: pulse 1.5s ease-in-out infinite;
 }
 
