@@ -2140,7 +2140,8 @@ class MonacoInitializer {
                 wordWrap: 'on',
                 formatOnPaste: true,
                 formatOnType: true,
-                folding: true
+                folding: true,
+                foldingMaximumRegions: 100000
             });
 
             this.editors.set('main', window.editor);
