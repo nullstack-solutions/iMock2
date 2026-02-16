@@ -139,6 +139,11 @@ window.SyncEngine = {
           window.fetchAndRenderMappings(window.MappingsStore.getAll(), { source: 'cache' });
         }
 
+        // Re-apply mapping filters now that the store has cached data
+        if (window.FilterManager && typeof window.FilterManager.applyMappingFilters === 'function') {
+          window.FilterManager.applyMappingFilters();
+        }
+
         // Update indicator
         if (typeof window.updateDataSourceIndicator === 'function') {
           window.updateDataSourceIndicator('cache');
@@ -220,6 +225,13 @@ window.SyncEngine = {
       // The isSyncing flag remains true to prevent external concurrent syncs
       if (typeof window.fetchAndRenderMappings === 'function') {
         window.fetchAndRenderMappings(window.MappingsStore.getAll(), { source: 'direct', skipSyncCheck: true });
+      }
+
+      // Re-apply mapping filters now that the store has data.
+      // This fixes a race condition where the debounced filter fires before
+      // the store is populated, rendering an empty state that never updates.
+      if (window.FilterManager && typeof window.FilterManager.applyMappingFilters === 'function') {
+        window.FilterManager.applyMappingFilters();
       }
 
       // Update indicator
