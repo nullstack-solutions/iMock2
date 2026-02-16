@@ -17,6 +17,11 @@ const sandbox = {
   clearTimeout,
   setInterval,
   clearInterval,
+  document: {
+    getElementById: () => ({
+      classList: { add() {}, remove() {} },
+    }),
+  },
 };
 
 sandbox.window = sandbox;
@@ -43,11 +48,17 @@ sandbox.MappingsStore = {
   items: new Map(),
   applyChanges: () => [],
   getAll: () => [],
+  setFromServer: () => {},
 };
 
 sandbox.NotificationManager = {
   info: () => {},
   warning: () => {},
+};
+
+let filterApplyCalls = 0;
+sandbox.FilterManager = {
+  applyMappingFilters: () => { filterApplyCalls += 1; },
 };
 
 sandbox.fetchAndRenderMappings = () => {};
@@ -109,6 +120,30 @@ runTest('incrementalSync prevents overlapping executions', async () => {
   assert.strictEqual(fetchCalls, 0, 'lightweight incremental sync should not make server calls');
 });
 
+runTest('fullSync re-applies mapping filters after store is populated', async () => {
+  filterApplyCalls = 0;
+  fetchCalls = 0;
+  sandbox.MappingsStore.metadata.isSyncing = false;
+  sandbox.MappingsStore.metadata.isOptimisticUpdate = false;
+  context.SyncEngine.isFullSyncing = false;
+
+  // Replace fetchMappingsFromServer with an immediately resolving stub
+  sandbox.fetchMappingsFromServer = () => {
+    fetchCalls += 1;
+    return Promise.resolve({ mappings: [{ id: 'test-1', request: { method: 'GET', url: '/test' } }] });
+  };
+
+  await context.SyncEngine.fullSync({ background: true });
+
+  assert.strictEqual(filterApplyCalls, 1, 'FilterManager.applyMappingFilters should be called exactly once after fullSync');
+
+  // Restore original mock
+  sandbox.fetchMappingsFromServer = () => {
+    fetchCalls += 1;
+    return new Promise(resolve => { resolveFetch = resolve; });
+  };
+});
+
 (async () => {
   for (const { name, fn } of tests) {
     try {
@@ -120,4 +155,6 @@ runTest('incrementalSync prevents overlapping executions', async () => {
       process.exit(1);
     }
   }
+  // Exit explicitly to clear any pending timers from _fetchWithTimeout in fullSync tests
+  process.exit(0);
 })();
