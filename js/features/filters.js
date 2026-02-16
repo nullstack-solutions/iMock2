@@ -660,48 +660,52 @@ window.loadAllSavedFilters = () => {
 
 // === EVENT DELEGATION FOR FILTER CHIPS ===
 // Replaces inline onclick handlers to prevent XSS and support CSP
-document.addEventListener('click', (e) => {
-    // Handle delete-saved-filter first (nested inside apply-saved-filter button)
-    const deleteBtn = e.target.closest('[data-action="delete-saved-filter"]');
-    if (deleteBtn) {
-        e.stopPropagation();
-        const tab = deleteBtn.dataset.filterTab;
-        const name = deleteBtn.dataset.filterName;
-        if (tab && name) {
-            window.deleteSavedFilter(tab, name);
+if (!window._filterChipDelegationInitialized) {
+    window._filterChipDelegationInitialized = true;
+    document.addEventListener('click', (e) => {
+        // Handle delete-saved-filter first (nested inside apply-saved-filter button,
+        // so it must be matched before the parent to prevent both actions firing)
+        const deleteBtn = e.target.closest('[data-action="delete-saved-filter"]');
+        if (deleteBtn) {
+            e.stopPropagation();
+            const tab = deleteBtn.dataset.filterTab;
+            const name = deleteBtn.dataset.filterName;
+            if (tab && name) {
+                window.deleteSavedFilter(tab, name);
+            }
+            return;
         }
-        return;
-    }
 
-    // Handle apply-saved-filter
-    const applyBtn = e.target.closest('[data-action="apply-saved-filter"]');
-    if (applyBtn) {
-        const tab = applyBtn.dataset.filterTab;
-        const name = applyBtn.dataset.filterName;
-        if (tab && name) {
-            window.applySavedFilter(tab, name);
+        // Handle apply-saved-filter
+        const applyBtn = e.target.closest('[data-action="apply-saved-filter"]');
+        if (applyBtn) {
+            const tab = applyBtn.dataset.filterTab;
+            const name = applyBtn.dataset.filterName;
+            if (tab && name) {
+                window.applySavedFilter(tab, name);
+            }
+            return;
         }
-        return;
-    }
 
-    // Handle remove-active-filter (mapping filter chips)
-    const removeBtn = e.target.closest('[data-action="remove-active-filter"]');
-    if (removeBtn) {
-        const key = removeBtn.dataset.filterKey;
-        if (key) {
-            window.removeActiveFilter(key);
+        // Handle remove-active-filter (mapping filter chips)
+        const removeBtn = e.target.closest('[data-action="remove-active-filter"]');
+        if (removeBtn) {
+            const key = removeBtn.dataset.filterKey;
+            if (key) {
+                window.removeActiveFilter(key);
+            }
+            return;
         }
-        return;
-    }
 
-    // Handle remove-request-active-filter (request filter chips)
-    const removeReqBtn = e.target.closest('[data-action="remove-request-active-filter"]');
-    if (removeReqBtn) {
-        const key = removeReqBtn.dataset.filterKey;
-        if (key) {
-            window.removeRequestActiveFilter(key);
+        // Handle remove-request-active-filter (request filter chips)
+        const removeReqBtn = e.target.closest('[data-action="remove-request-active-filter"]');
+        if (removeReqBtn) {
+            const key = removeReqBtn.dataset.filterKey;
+            if (key) {
+                window.removeRequestActiveFilter(key);
+            }
+            return;
         }
-        return;
-    }
-});
+    });
+}
 
