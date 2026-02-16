@@ -135,7 +135,7 @@ runTest('fullSync re-applies mapping filters after store is populated', async ()
 
   await context.SyncEngine.fullSync({ background: true });
 
-  assert.ok(filterApplyCalls >= 1, 'FilterManager.applyMappingFilters should be called after fullSync');
+  assert.strictEqual(filterApplyCalls, 1, 'FilterManager.applyMappingFilters should be called exactly once after fullSync');
 
   // Restore original mock
   sandbox.fetchMappingsFromServer = () => {
