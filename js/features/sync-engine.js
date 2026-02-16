@@ -140,7 +140,7 @@ window.SyncEngine = {
         }
 
         // Re-apply mapping filters now that the store has cached data
-        if (typeof window.FilterManager?.applyMappingFilters === 'function') {
+        if (window.FilterManager && typeof window.FilterManager.applyMappingFilters === 'function') {
           window.FilterManager.applyMappingFilters();
         }
 
@@ -229,7 +229,7 @@ window.SyncEngine = {
       // Re-apply mapping filters now that the store has data.
       // This fixes a race condition where the debounced filter fires before
       // the store is populated, rendering an empty state that never updates.
-      if (typeof window.FilterManager?.applyMappingFilters === 'function') {
+      if (window.FilterManager && typeof window.FilterManager.applyMappingFilters === 'function') {
         window.FilterManager.applyMappingFilters();
       }
 

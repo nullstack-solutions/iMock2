@@ -129,7 +129,7 @@ window.updateActiveFiltersDisplay = () => {
                     data-action="remove-active-filter"
                     data-filter-key="${Utils.escapeHtml(key)}"
                     title="Click to remove">
-                ${chipText}
+                ${Utils.escapeHtml(chipText)}
                 <span class="filter-chip-remove" aria-hidden="true">×</span>
             </button>
         `);
@@ -416,7 +416,7 @@ window.updateRequestActiveFiltersDisplay = () => {
             chipText = `${key}: ${value}`;
         }
 
-        chips.push(`<button type="button" class="filter-chip filter-chip-active" data-action="remove-request-active-filter" data-filter-key="${Utils.escapeHtml(key)}" title="Remove filter">${chipText} ×</button>`);
+        chips.push(`<button type="button" class="filter-chip filter-chip-active" data-action="remove-request-active-filter" data-filter-key="${Utils.escapeHtml(key)}" title="Remove filter">${Utils.escapeHtml(chipText)} ×</button>`);
     }
 
     container.innerHTML = chips.join('');
@@ -659,10 +659,12 @@ window.loadAllSavedFilters = () => {
 };
 
 // === EVENT DELEGATION FOR FILTER CHIPS ===
-// Replaces inline onclick handlers to prevent XSS and support CSP
+// Scoped to specific filter containers to avoid overhead on every document click.
+// Replaces inline onclick handlers to prevent XSS and support CSP.
 if (!window._filterChipDelegationInitialized) {
     window._filterChipDelegationInitialized = true;
-    document.addEventListener('click', (e) => {
+
+    function handleFilterChipClick(e) {
         // Handle delete-saved-filter first (nested inside apply-saved-filter button,
         // so it must be matched before the parent to prevent both actions firing)
         const deleteBtn = e.target.closest('[data-action="delete-saved-filter"]');
@@ -706,6 +708,18 @@ if (!window._filterChipDelegationInitialized) {
             }
             return;
         }
+    }
+
+    // Attach to each filter chip container instead of document
+    const containerIds = [
+        'active-filters-list',
+        'req-active-filters',
+        'saved-filters-list',
+        'req-saved-filters-list',
+    ];
+    containerIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('click', handleFilterChipClick);
     });
 }
 
