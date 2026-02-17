@@ -124,6 +124,7 @@ function createMappingsTestContext() {
     const context = vm.createContext(sandbox);
 
     const scripts = [
+        'js/constants.js',
         'js/core.js',
         'js/managers.js',
         'js/demo-data.js',
