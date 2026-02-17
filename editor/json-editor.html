@@ -421,8 +421,12 @@
     <script src="../js/features.js"></script>
     <script src="../js/main.js"></script>
 
-    <!-- Monaco Enhanced (our main editor) -->
-    <script src="monaco-enhanced.js"></script>
+    <!-- Monaco editor split modules -->
+    <script src="yaml-utils.js"></script>
+    <script src="editor-history.js"></script>
+    <script src="editor-templates.js"></script>
+    <script src="monaco-initializer.js"></script>
+    <script src="monaco-bootstrap.js"></script>
 
     <script>
         const editorUrlParams = new URLSearchParams(window.location.search);
