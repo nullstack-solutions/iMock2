@@ -40,7 +40,7 @@ jobs:
           publish_branch: gh-pages
           publish_dir: ./_deploy
           destination_dir: .
-          keep_files: false
+          keep_files: true
           enable_jekyll: false
 
       - name: Deploy TEST to gh-pages/test
