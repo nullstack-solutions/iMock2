@@ -6,6 +6,8 @@ const path = require('path');
 
 const specs = [
     'business-logic.spec.js',
+    'query-parser.spec.js',
+    'operations.spec.js',
     'cache-workflow.spec.js',
     'requests.spec.js',
     'scenarios.spec.js',
