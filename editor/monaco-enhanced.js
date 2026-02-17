@@ -3031,6 +3031,8 @@ async formatJSON() {
                 enableSplitViewResizing: true,
                 renderOverviewRuler: true,
                 diffCodeLens: true,
+                folding: true,
+                foldingMaximumRegions: 100000,
                 scrollbar: {
                     verticalScrollbarSize: 8,
                     horizontalScrollbarSize: 8,

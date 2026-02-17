@@ -435,6 +435,15 @@ runTest('fetchAndRenderMappings sets aria-hidden on mappings empty state when li
     assert.strictEqual(emptyStateElement.getAttribute('aria-hidden'), 'true');
 });
 
+runTest('fetchAndRenderMappings sets aria-hidden on mappings empty state when list is empty', async () => {
+    const { context, emptyStateElement } = createMappingsTestContext();
+    context.__apiResponse = { mappings: [] };
+
+    await context.fetchAndRenderMappings();
+
+    assert.strictEqual(emptyStateElement.getAttribute('aria-hidden'), 'false');
+});
+
 runTest('restoreFilters syncs mappings_filter from URL into filter input', () => {
     const { context } = createMappingsTestContext();
     context.location.search = '?mappings_filter=WEB+DO';
