@@ -527,7 +527,10 @@ function executeMappingFilters() {
     if (!Array.isArray(allMappingsFromStore) || allMappingsFromStore.length === 0) {
         const emptyState = document.getElementById(SELECTORS.EMPTY.MAPPINGS);
         const container = document.getElementById(SELECTORS.LISTS.MAPPINGS);
-        if (emptyState) emptyState.classList.remove('hidden');
+        if (emptyState) {
+            emptyState.classList.remove('hidden');
+            emptyState.setAttribute('aria-hidden', 'false');
+        }
         if (container) container.style.display = 'none';
         if (typeof updateMappingsCounter === 'function') {
             updateMappingsCounter();
@@ -606,10 +609,16 @@ function executeMappingFilters() {
     }
 
     if (sortedMappings.length === 0) {
-        if (emptyState) emptyState.classList.remove('hidden');
+        if (emptyState) {
+            emptyState.classList.remove('hidden');
+            emptyState.setAttribute('aria-hidden', 'false');
+        }
         container.style.display = 'none';
     } else {
-        if (emptyState) emptyState.classList.add('hidden');
+        if (emptyState) {
+            emptyState.classList.add('hidden');
+            emptyState.setAttribute('aria-hidden', 'true');
+        }
         container.style.display = 'block';
     }
 
