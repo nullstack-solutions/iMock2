@@ -435,7 +435,7 @@ runTest('fetchAndRenderMappings sets aria-hidden on mappings empty state when li
     assert.strictEqual(emptyStateElement.getAttribute('aria-hidden'), 'true');
 });
 
-runTest('fetchAndRenderMappings sets aria-hidden on mappings empty state when list is empty', async () => {
+runTest('fetchAndRenderMappings sets aria-hidden to false on mappings empty state when list is empty', async () => {
     const { context, emptyStateElement } = createMappingsTestContext();
     context.__apiResponse = { mappings: [] };
 
