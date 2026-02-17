@@ -14,6 +14,7 @@ function createMappingsTestContext() {
         performance: { now: () => 0 },
         AbortController,
         Element: class Element {},
+        URLSearchParams,
     };
 
     sandbox.Logger = createLoggerStub(sandbox.console);
@@ -21,6 +22,7 @@ function createMappingsTestContext() {
     // Mock DOM elements
     const domElementStub = () => ({
         style: {},
+        attributes: {},
         classList: {
             add() {},
             remove() {},
@@ -38,14 +40,19 @@ function createMappingsTestContext() {
         dataset: {},
         addEventListener() {},
         removeEventListener() {},
-        setAttribute() {},
-        getAttribute() { return null; },
+        setAttribute(name, value) { this.attributes[name] = String(value); },
+        getAttribute(name) {
+            return Object.prototype.hasOwnProperty.call(this.attributes, name)
+                ? this.attributes[name]
+                : null;
+        },
         _classes: new Set(),
     });
 
     const mappingsListElement = domElementStub();
     const emptyStateElement = domElementStub();
     const loadingStateElement = domElementStub();
+    const genericElements = Object.create(null);
 
     sandbox.document = {
         getElementById(id) {
@@ -53,7 +60,10 @@ function createMappingsTestContext() {
             if (id === 'mappings-empty') return emptyStateElement;
             if (id === 'mappings-loading') return loadingStateElement;
             if (id === 'mappings-counter') return domElementStub();
-            return domElementStub();
+            if (!genericElements[id]) {
+                genericElements[id] = domElementStub();
+            }
+            return genericElements[id];
         },
         querySelectorAll: () => [],
         addEventListener() {},
@@ -63,7 +73,7 @@ function createMappingsTestContext() {
     };
 
     sandbox.window = sandbox;
-    sandbox.location = { origin: 'http://localhost' };
+    sandbox.location = { origin: 'http://localhost', search: '' };
     sandbox.matchMedia = () => ({ matches: false, addListener() {}, removeListener() {} });
     sandbox.navigator = { clipboard: { writeText: async () => {} } };
     sandbox.addEventListener = () => {};
@@ -360,6 +370,89 @@ runTest('addMappingToIndex adds mapping to index', () => {
 
     assert.ok(context.mappingIndex.has('index-test-123'), 'Should add to index');
     assert.strictEqual(context.mappingIndex.get('index-test-123').name, 'Index Test');
+});
+
+// Test 11: updateDataSourceIndicator handles 'synced' source correctly
+runTest('updateDataSourceIndicator handles synced source', () => {
+    const { context } = createMappingsTestContext();
+
+    // Create a mock indicator element
+    let indicatorText = '';
+    let indicatorClass = '';
+    context.document.getElementById = (id) => {
+        if (id === 'data-source-indicator') {
+            return {
+                get textContent() { return indicatorText; },
+                set textContent(v) { indicatorText = v; },
+                get className() { return indicatorClass; },
+                set className(v) { indicatorClass = v; }
+            };
+        }
+        return null;
+    };
+
+    // Call with 'synced' source
+    context.updateDataSourceIndicator('synced');
+
+    assert.strictEqual(indicatorText, 'Source: synced', 'Should display "Source: synced"');
+    assert.ok(indicatorClass.includes('badge-success'), 'Should have success badge class');
+});
+
+// Test 12: updateDataSourceIndicator handles 'cache' source correctly
+runTest('updateDataSourceIndicator handles cache source', () => {
+    const { context } = createMappingsTestContext();
+
+    // Create a mock indicator element
+    let indicatorText = '';
+    let indicatorClass = '';
+    context.document.getElementById = (id) => {
+        if (id === 'data-source-indicator') {
+            return {
+                get textContent() { return indicatorText; },
+                set textContent(v) { indicatorText = v; },
+                get className() { return indicatorClass; },
+                set className(v) { indicatorClass = v; }
+            };
+        }
+        return null;
+    };
+
+    // Call with 'cache' source
+    context.updateDataSourceIndicator('cache');
+
+    assert.strictEqual(indicatorText, 'Source: cache', 'Should display "Source: cache"');
+    assert.ok(indicatorClass.includes('badge-success'), 'Should have success badge class');
+});
+
+runTest('fetchAndRenderMappings sets aria-hidden on mappings empty state when list has items', async () => {
+    const { context, emptyStateElement } = createMappingsTestContext();
+    context.__apiResponse = {
+        mappings: [{ id: 'map-1', request: { method: 'GET', url: '/ok' }, response: { status: 200 } }]
+    };
+
+    await context.fetchAndRenderMappings();
+
+    assert.strictEqual(emptyStateElement.getAttribute('aria-hidden'), 'true');
+});
+
+runTest('fetchAndRenderMappings sets aria-hidden to false on mappings empty state when list is empty', async () => {
+    const { context, emptyStateElement } = createMappingsTestContext();
+    context.__apiResponse = { mappings: [] };
+
+    await context.fetchAndRenderMappings();
+
+    assert.strictEqual(emptyStateElement.getAttribute('aria-hidden'), 'false');
+});
+
+runTest('restoreFilters syncs mappings_filter from URL into filter input', () => {
+    const { context } = createMappingsTestContext();
+    context.location.search = '?mappings_filter=WEB+DO';
+
+    const restored = context.FilterManager.restoreFilters('mappings');
+    const queryInput = context.document.getElementById('filter-query');
+
+    assert.strictEqual(restored.query, 'WEB DO');
+    assert.strictEqual(queryInput.value, 'WEB DO');
 });
 
 // Run all tests

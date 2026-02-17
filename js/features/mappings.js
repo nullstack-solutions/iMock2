@@ -457,7 +457,9 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
     }
 
     // Prevent race conditions during sync operations and render operations
-    if (window.MappingsStore?.metadata?.isSyncing || window.MappingsStore?.metadata?.isRendering) {
+    // The skipSyncCheck option allows sync operations to render during their own sync cycle
+    const skipSyncCheck = options?.skipSyncCheck === true;
+    if (!skipSyncCheck && (window.MappingsStore?.metadata?.isSyncing || window.MappingsStore?.metadata?.isRendering)) {
         Logger.debug('UI', 'Sync or render in progress, skipping render to avoid race condition');
         return true; // Return true to indicate it's OK to skip
     }
@@ -473,6 +475,7 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
             loadingState.classList.remove('hidden');
             container.style.display = 'none';
             emptyState.classList.add('hidden');
+            emptyState.setAttribute('aria-hidden', 'true');
             
             let data;
             let dataSource = 'direct';
@@ -662,13 +665,18 @@ const filteredMappings = Array.isArray(incoming) ? incoming.filter(m => !isImock
         
         if (currentMappings.length === 0) {
             emptyState.classList.remove('hidden');
+            emptyState.setAttribute('aria-hidden', 'false');
             container.style.display = 'none';
             updateMappingsCounter();
+            if (renderSource) {
+                updateDataSourceIndicator(renderSource);
+            }
             return true;
         }
         
         // Batch DOM operations using document fragment to reduce layout thrashing
         emptyState.classList.add('hidden');
+        emptyState.setAttribute('aria-hidden', 'true');
         container.style.display = 'block';
 
         // Invalidate cache before re-rendering to ensure fresh DOM references
@@ -1260,6 +1268,10 @@ function updateDataSourceIndicator(source) {
             break;
         case 'cache_rebuilding':
             text = 'Source: cache (rebuilding…)';
+            cls = 'badge badge-success';
+            break;
+        case 'synced':
+            text = 'Source: synced';
             cls = 'badge badge-success';
             break;
         case 'demo':
