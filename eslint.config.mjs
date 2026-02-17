@@ -17,6 +17,7 @@ export default [
       'coverage/**',
       'editor/json-worker.js',
       'eslint-report.json',
+      'js/vendor-*.js',
     ],
   },
   {
