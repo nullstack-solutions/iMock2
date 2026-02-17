@@ -138,6 +138,7 @@ function createScenariosTestContext() {
         'js/demo-data.js',
         'js/features/state.js',
         'js/features/utils.js',
+        'js/features/scenario-model.js',
         'js/features/scenarios.js',
     ];
 

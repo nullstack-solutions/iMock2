@@ -340,10 +340,10 @@ function applyOptimisticShadowMappings(incoming) {
             let shouldUseOptimistic = false;
             let shouldRetainEntry = true;
 
-            if (typeof getMappingRenderSignature === 'function') {
+            if (typeof window.getMappingRenderSignature === 'function') {
                 try {
-                    const liveSignature = getMappingRenderSignature(merged[index]);
-                    const optimisticSignature = getMappingRenderSignature(entry.mapping);
+                    const liveSignature = window.getMappingRenderSignature(merged[index]);
+                    const optimisticSignature = window.getMappingRenderSignature(entry.mapping);
                     if (liveSignature === optimisticSignature) {
                         window.optimisticShadowMappings.delete(normalizedId);
                         continue;
@@ -425,9 +425,9 @@ function pruneOptimisticShadowMappings(currentList) {
             continue;
         }
         try {
-            if (typeof getMappingRenderSignature === 'function' && entry.mapping) {
-                const liveSignature = getMappingRenderSignature(live);
-                const optimisticSignature = getMappingRenderSignature(entry.mapping);
+            if (typeof window.getMappingRenderSignature === 'function' && entry.mapping) {
+                const liveSignature = window.getMappingRenderSignature(live);
+                const optimisticSignature = window.getMappingRenderSignature(entry.mapping);
                 if (liveSignature === optimisticSignature) {
                     window.optimisticShadowMappings.delete(id);
                     continue;
@@ -459,8 +459,16 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
     // Prevent race conditions during sync operations and render operations
     // The skipSyncCheck option allows sync operations to render during their own sync cycle
     const skipSyncCheck = options?.skipSyncCheck === true;
-    if (!skipSyncCheck && (window.MappingsStore?.metadata?.isSyncing || window.MappingsStore?.metadata?.isRendering)) {
-        Logger.debug('UI', 'Sync or render in progress, skipping render to avoid race condition');
+    if (!skipSyncCheck && window.MappingsStore?.metadata?.isRendering) {
+        window.MappingsStore.metadata.pendingRenderRequest = {
+            mappingsToRender: Array.isArray(mappingsToRender) ? [...mappingsToRender] : null,
+            options: { ...(options || {}), skipSyncCheck: true, _queuedRender: true }
+        };
+        Logger.debug('UI', 'Render in progress, queued next render to avoid lost updates');
+        return true;
+    }
+    if (!skipSyncCheck && window.MappingsStore?.metadata?.isSyncing) {
+        Logger.debug('UI', 'Sync in progress, skipping render to avoid race condition');
         return true; // Return true to indicate it's OK to skip
     }
 
@@ -684,20 +692,9 @@ const filteredMappings = Array.isArray(incoming) ? incoming.filter(m => !isImock
 
         // Sort mappings (use already filtered mappings if filters were applied above)
         const mappingsToSort = currentMappings;
-        const sortedMappings = [...mappingsToSort].sort((a, b) => {
-            const priorityA = a.priority || 1;
-            const priorityB = b.priority || 1;
-            if (priorityA !== priorityB) return priorityA - priorityB;
-
-            const methodOrder = { 'GET': 1, 'POST': 2, 'PUT': 3, 'PATCH': 4, 'DELETE': 5 };
-            const methodA = methodOrder[a.request?.method] || 999;
-            const methodB = methodOrder[b.request?.method] || 999;
-            if (methodA !== methodB) return methodA - methodB;
-
-            const urlA = a.request?.url || a.request?.urlPattern || a.request?.urlPath || '';
-            const urlB = b.request?.url || b.request?.urlPattern || b.request?.urlPath || '';
-            return urlA.localeCompare(urlB);
-        });
+        const sortedMappings = typeof window.sortMappingsForDisplay === 'function'
+            ? window.sortMappingsForDisplay(mappingsToSort)
+            : [...mappingsToSort];
         const logSource = renderSource || 'previous';
         Logger.info('UI', `Mappings render from: ${logSource} — ${sortedMappings.length} items`);
 
@@ -706,34 +703,35 @@ const filteredMappings = Array.isArray(incoming) ? incoming.filter(m => !isImock
             // Temporarily disable transitions for smoother updates
             container.style.willChange = 'contents';
 
-            // Update pagination state
             if (window.PaginationManager) {
-                window.PaginationManager.updateState(sortedMappings.length);
+                Logger.debug('UI', `Rendering page ${window.PaginationManager.currentPage}/${window.PaginationManager.totalPages}`);
+            }
 
-                // Get items for current page
-                const pageItems = window.PaginationManager.getCurrentPageItems(sortedMappings);
-                Logger.debug('UI', `Rendering page ${window.PaginationManager.currentPage}/${window.PaginationManager.totalPages} (${pageItems.length} items)`);
-
-                // Render only current page items
-                renderList(container, pageItems, {
-                    renderItem: renderMappingMarkup,
-                    getKey: getMappingRenderKey,
-                    getSignature: getMappingRenderSignature,
+            if (typeof window.renderMappingsCollection === 'function') {
+                window.renderMappingsCollection(container, sortedMappings, {
+                    preSorted: true,
                     onItemChanged: handleMappingItemChanged,
                     onItemRemoved: handleMappingItemRemoved
                 });
-
-                // Render pagination controls
+            } else if (window.PaginationManager) {
+                window.PaginationManager.updateState(sortedMappings.length);
+                const pageItems = window.PaginationManager.getCurrentPageItems(sortedMappings);
+                renderList(container, pageItems, {
+                    renderItem: window.renderMappingMarkup,
+                    getKey: window.getMappingRenderKey,
+                    getSignature: window.getMappingRenderSignature,
+                    onItemChanged: handleMappingItemChanged,
+                    onItemRemoved: handleMappingItemRemoved
+                });
                 const paginationContainer = document.getElementById('mappings-pagination');
                 if (paginationContainer) {
                     paginationContainer.innerHTML = window.PaginationManager.renderControls();
                 }
             } else {
-                // Fallback: render all items if pagination not available
                 renderList(container, sortedMappings, {
-                    renderItem: renderMappingMarkup,
-                    getKey: getMappingRenderKey,
-                    getSignature: getMappingRenderSignature,
+                    renderItem: window.renderMappingMarkup,
+                    getKey: window.getMappingRenderKey,
+                    getSignature: window.getMappingRenderSignature,
                     onItemChanged: handleMappingItemChanged,
                     onItemRemoved: handleMappingItemRemoved
                 });
@@ -768,13 +766,19 @@ const filteredMappings = Array.isArray(incoming) ? incoming.filter(m => !isImock
         } catch (domError) {
             Logger.error('UI', 'DOM batch update failed:', domError);
             // Fallback to regular updates if batch operation fails
-            if (window.PaginationManager) {
+            if (typeof window.renderMappingsCollection === 'function') {
+                window.renderMappingsCollection(container, sortedMappings, {
+                    preSorted: true,
+                    onItemChanged: handleMappingItemChanged,
+                    onItemRemoved: handleMappingItemRemoved
+                });
+            } else if (window.PaginationManager) {
                 window.PaginationManager.updateState(sortedMappings.length);
                 const pageItems = window.PaginationManager.getCurrentPageItems(sortedMappings);
                 renderList(container, pageItems, {
-                    renderItem: renderMappingMarkup,
-                    getKey: getMappingRenderKey,
-                    getSignature: getMappingRenderSignature,
+                    renderItem: window.renderMappingMarkup,
+                    getKey: window.getMappingRenderKey,
+                    getSignature: window.getMappingRenderSignature,
                     onItemChanged: handleMappingItemChanged,
                     onItemRemoved: handleMappingItemRemoved
                 });
@@ -784,9 +788,9 @@ const filteredMappings = Array.isArray(incoming) ? incoming.filter(m => !isImock
                 }
             } else {
                 renderList(container, sortedMappings, {
-                    renderItem: renderMappingMarkup,
-                    getKey: getMappingRenderKey,
-                    getSignature: getMappingRenderSignature,
+                    renderItem: window.renderMappingMarkup,
+                    getKey: window.getMappingRenderKey,
+                    getSignature: window.getMappingRenderSignature,
                     onItemChanged: handleMappingItemChanged,
                     onItemRemoved: handleMappingItemRemoved
                 });
@@ -825,6 +829,23 @@ const filteredMappings = Array.isArray(incoming) ? incoming.filter(m => !isImock
         // Release render lock
         if (window.MappingsStore?.metadata) {
             window.MappingsStore.metadata.isRendering = false;
+            const pending = window.MappingsStore.metadata.pendingRenderRequest;
+            if (pending && !options?._queuedRender) {
+                window.MappingsStore.metadata.pendingRenderRequest = null;
+                const runQueuedRender = () => {
+                    window.fetchAndRenderMappings(pending.mappingsToRender, pending.options);
+                };
+                if (typeof requestAnimationFrame === 'function') {
+                    requestAnimationFrame(runQueuedRender);
+                } else {
+                    setTimeout(runQueuedRender, 0);
+                }
+            } else if (window.MappingsStore.metadata.pendingFilterRender) {
+                window.MappingsStore.metadata.pendingFilterRender = false;
+                if (window.FilterManager && typeof window.FilterManager.applyMappingFilters === 'function') {
+                    window.FilterManager.applyMappingFilters();
+                }
+            }
         }
     }
 };
@@ -887,20 +908,9 @@ window.initMappingPagination = function() {
         }
 
         // Sort mappings (same logic as fetchAndRenderMappings)
-        const sortedMappings = [...currentMappings].sort((a, b) => {
-            const priorityA = a.priority || 1;
-            const priorityB = b.priority || 1;
-            if (priorityA !== priorityB) return priorityA - priorityB;
-
-            const methodOrder = { 'GET': 1, 'POST': 2, 'PUT': 3, 'PATCH': 4, 'DELETE': 5 };
-            const methodA = methodOrder[a.request?.method] || 999;
-            const methodB = methodOrder[b.request?.method] || 999;
-            if (methodA !== methodB) return methodA - methodB;
-
-            const urlA = a.request?.url || a.request?.urlPattern || a.request?.urlPath || '';
-            const urlB = b.request?.url || b.request?.urlPattern || b.request?.urlPath || '';
-            return urlA.localeCompare(urlB);
-        });
+        const sortedMappings = typeof window.sortMappingsForDisplay === 'function'
+            ? window.sortMappingsForDisplay(currentMappings)
+            : [...currentMappings];
 
         // Get items for new page
         const pageItems = window.PaginationManager.getCurrentPageItems(sortedMappings);
@@ -910,9 +920,9 @@ window.initMappingPagination = function() {
 
         // Render page items
         renderList(container, pageItems, {
-            renderItem: renderMappingMarkup,
-            getKey: getMappingRenderKey,
-            getSignature: getMappingRenderSignature,
+            renderItem: window.renderMappingMarkup,
+            getKey: window.getMappingRenderKey,
+            getSignature: window.getMappingRenderSignature,
             onItemChanged: handleMappingItemChanged,
             onItemRemoved: handleMappingItemRemoved
         });
