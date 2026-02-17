@@ -272,6 +272,7 @@ function initializeOnboardingFlow() {
 
 window.initializeOnboardingFlow = initializeOnboardingFlow;
 window.attemptAutoConnect = attemptAutoConnect;
+window.hideOnboardingOverlay = hideOnboardingOverlay;
 
 // === FUNCTIONS FOR EDITOR INTEGRATION ===
     
