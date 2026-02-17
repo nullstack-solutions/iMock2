@@ -135,12 +135,7 @@ function refreshRequestTabSnapshot() {
                 window._lastMappingsFetchTime = Date.now();
                 return result;
             } catch (error) {
-                if (window.DemoData?.isAvailable?.() && window.DemoData?.getMappingsPayload) {
-                    Logger.warn('STATE', 'Falling back to demo mappings because the WireMock API request failed.', error);
-                    window.demoModeLastError = error;
-                    markDemoModeActive('mappings-fallback');
-                    return window.DemoData.getMappingsPayload();
-                }
+                window.demoModeLastError = error;
                 throw error;
             } finally {
                 if (mappingsFetchPromise === requestPromise) {

@@ -154,39 +154,6 @@ async function getCacheByFixedId() {
     return null;
 }
 
-async function getCacheByMetadata() {
-    try {
-        // WireMock 3 expects JSONPath on metadata
-        const tryBodies = [
-            { matchesJsonPath: "$[?(@.metadata.imock.type == 'cache')]" },
-            { matchesJsonPath: { expression: "$[?(@.metadata.imock.type == 'cache')]" } },
-        ];
-        Logger.cache('Trying metadata lookup (JSONPath)...');
-        for (const body of tryBodies) {
-            try {
-                const res = await apiFetch(ENDPOINTS.MAPPINGS_FIND_BY_METADATA, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body),
-                });
-                const list = res?.mappings || res?.items || [];
-                const found = list.find(isImockCacheMapping);
-                if (found) { Logger.cache('Metadata hit'); return found; }
-            } catch (bodyError) {
-                // Log if it's an auth error, otherwise try next body shape
-                if (bodyError.status === 401 || (bodyError.message && bodyError.message.includes('401'))) {
-                    Logger.warn('CACHE', 'Authorization error loading cache by metadata - check credentials');
-                }
-                // Continue to try next body shape
-            }
-        }
-        Logger.cache('Metadata miss');
-    } catch (error) {
-        Logger.debug('CACHE', 'Error loading cache by metadata:', error.message);
-    }
-    return null;
-}
-
 async function upsertImockCacheMapping(slim) {
     Logger.cache('Upsert cache mapping start');
     // Simple hash for cache validation
@@ -287,21 +254,14 @@ async function refreshImockCache() {
 window.refreshImockCache = refreshImockCache;
 
 async function loadImockCacheBestOf3() {
-    // Preferred order: fixed ID, then find-by-metadata (JSONPath), else none
-    Logger.cache('loadImockCacheBestOf3 start');
+    Logger.cache('loadImockCacheBestOf3 start (fixed-id only)');
     
     const b = await getCacheByFixedId();
     if (b && b.response?.jsonBody) { 
         Logger.cache('Using cache: fixed id'); 
         return { source: 'cache', data: b.response.jsonBody }; 
     }
-    
-    const c = await getCacheByMetadata();
-    if (c && c.response?.jsonBody) { 
-        Logger.cache('Using cache: metadata'); 
-        return { source: 'cache', data: c.response.jsonBody }; 
-    }
-    
+
     Logger.cache('No cache found - will load from server');
     return null;
 }
