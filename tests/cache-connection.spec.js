@@ -57,15 +57,15 @@ async function run() {
     sandbox.startHealthCheck = () => {};
     sandbox.stopUptime = () => {};
 
-    let hideOnboardingCalls = 0;
-    let restoreCalls = 0;
-    let applyCalls = 0;
-    let flushCalls = 0;
-    sandbox.hideOnboardingOverlay = () => { hideOnboardingCalls += 1; };
+    let hideOnboardingCallCount = 0;
+    let restoreFiltersCallCount = 0;
+    let applyFiltersCallCount = 0;
+    let flushFiltersCallCount = 0;
+    sandbox.hideOnboardingOverlay = () => { hideOnboardingCallCount += 1; };
     sandbox.FilterManager = {
-        restoreFilters() { restoreCalls += 1; return { query: 'WEB DO' }; },
-        applyMappingFilters() { applyCalls += 1; },
-        flushMappingFilters() { flushCalls += 1; }
+        restoreFilters() { restoreFiltersCallCount += 1; return { query: 'WEB DO' }; },
+        applyMappingFilters() { applyFiltersCallCount += 1; },
+        flushMappingFilters() { flushFiltersCallCount += 1; }
     };
 
     const context = vm.createContext(sandbox);
@@ -74,10 +74,10 @@ async function run() {
 
     await context.connectToWireMock();
 
-    assert.strictEqual(hideOnboardingCalls, 1, 'should hide onboarding after successful connection');
-    assert.strictEqual(restoreCalls, 1, 'should restore mappings filter after successful connection');
-    assert.strictEqual(applyCalls, 1, 'should re-apply mappings filter when query exists');
-    assert.strictEqual(flushCalls, 1, 'should flush mapping filter debounce after re-applying');
+    assert.strictEqual(hideOnboardingCallCount, 1, 'should hide onboarding after successful connection');
+    assert.strictEqual(restoreFiltersCallCount, 1, 'should restore mappings filter after successful connection');
+    assert.strictEqual(applyFiltersCallCount, 1, 'should re-apply mappings filter when query exists');
+    assert.strictEqual(flushFiltersCallCount, 1, 'should flush mapping filter debounce after re-applying');
 }
 
 run()
