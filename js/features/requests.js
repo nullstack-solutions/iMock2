@@ -29,13 +29,8 @@ window.fetchAndRenderRequests = async (requestsToRender = null, options = {}) =>
                 if (isMissingRequests || isEmptyJson) {
                     Logger.warn('REQUESTS', 'Requests endpoint returned no payload; treating as empty list.', error);
                     data = { requests: [], __source: 'empty' };
-                } else
-                if (window.DemoData?.isAvailable?.() && window.DemoData?.getRequestsPayload) {
-                    Logger.warn('REQUESTS', 'Falling back to demo requests because the WireMock API request failed.', error);
-                    window.demoModeLastError = error;
-                    markDemoModeActive('requests-fallback');
-                    data = window.DemoData.getRequestsPayload();
                 } else {
+                    window.demoModeLastError = error;
                     throw error;
                 }
             }

@@ -50,6 +50,7 @@ window.SyncEngine = {
   lastCacheHash: null,
   isIncrementalSyncing: false,
   isFullSyncing: false,
+  useServiceCache: true,
 
   /**
    * Initialize sync engine
@@ -87,11 +88,13 @@ window.SyncEngine = {
       this.config.fullSyncInterval
     );
 
-    // Cache rebuild every 30 seconds (if changed)
-    this.timers.cacheRebuild = window.LifecycleManager.setInterval(
-      () => this.rebuildServiceCache(),
-      this.config.cacheRebuildInterval
-    );
+    if (this.useServiceCache) {
+      // Cache rebuild every 30 seconds (if changed)
+      this.timers.cacheRebuild = window.LifecycleManager.setInterval(
+        () => this.rebuildServiceCache(),
+        this.config.cacheRebuildInterval
+      );
+    }
 
     Logger.info('SYNC', 'Sync timers started');
   },
@@ -114,8 +117,10 @@ window.SyncEngine = {
   /**
    * Initial load - try cache first, then full sync
    */
-  async coldStart() {
-    Logger.info('SYNC', 'Cold start - loading from cache or server');
+  async coldStart(options = {}) {
+    const useCache = options.useCache === true;
+    this.useServiceCache = useCache;
+    Logger.info('SYNC', `Cold start - loading from ${useCache ? 'cache or server' : 'server only'}`);
 
     // Show loading state
     if (typeof window.showLoadingState === 'function') {
@@ -123,33 +128,35 @@ window.SyncEngine = {
     }
 
     try {
-      // Try to load from Service Cache first (fast)
-      const cached = await this.loadFromServiceCache();
+      if (useCache) {
+        // Try to load from Service Cache first (fast)
+        const cached = await this.loadFromServiceCache();
 
-      if (cached && cached.items && cached.items.length > 0) {
-        Logger.info('SYNC', `Loaded ${cached.items.length} mappings from cache`);
+        if (cached && cached.items && cached.items.length > 0) {
+          Logger.info('SYNC', `Loaded ${cached.items.length} mappings from cache`);
 
-        // Load cached data into store
-        window.MappingsStore.setFromServer(cached.items, {
-          version: cached.version,
-        });
+          // Load cached data into store
+          window.MappingsStore.setFromServer(cached.items, {
+            version: cached.version,
+          });
 
-        // Render UI immediately
-        if (typeof window.fetchAndRenderMappings === 'function') {
-          window.fetchAndRenderMappings(window.MappingsStore.getAll(), { source: 'cache' });
+          // Render UI immediately
+          if (typeof window.fetchAndRenderMappings === 'function') {
+            window.fetchAndRenderMappings(window.MappingsStore.getAll(), { source: 'cache' });
+          }
+
+          // Re-apply mapping filters now that the store has cached data
+          if (window.FilterManager && typeof window.FilterManager.applyMappingFilters === 'function') {
+            window.FilterManager.applyMappingFilters();
+          }
+
+          // Update indicator
+          if (typeof window.updateDataSourceIndicator === 'function') {
+            window.updateDataSourceIndicator('cache');
+          }
+
+          Logger.info('SYNC', 'Initial UI rendered from cache');
         }
-
-        // Re-apply mapping filters now that the store has cached data
-        if (window.FilterManager && typeof window.FilterManager.applyMappingFilters === 'function') {
-          window.FilterManager.applyMappingFilters();
-        }
-
-        // Update indicator
-        if (typeof window.updateDataSourceIndicator === 'function') {
-          window.updateDataSourceIndicator('cache');
-        }
-
-        Logger.info('SYNC', 'Initial UI rendered from cache');
       }
 
       // Full sync in background to get latest data
@@ -317,6 +324,10 @@ window.SyncEngine = {
    * Load from Service Cache (special mapping in WireMock)
    */
   async loadFromServiceCache() {
+    if (!this.useServiceCache) {
+      return null;
+    }
+
     try {
       Logger.debug('SYNC', 'Attempting to load from Service Cache');
 
@@ -370,6 +381,10 @@ window.SyncEngine = {
    * Rebuild Service Cache (save current state)
    */
   async rebuildServiceCache() {
+    if (!this.useServiceCache) {
+      return;
+    }
+
     // Only rebuild if no pending operations and no optimistic updates in progress
     if (window.MappingsStore.pending.size > 0 || window.MappingsStore.metadata.isOptimisticUpdate) {
       Logger.debug('SYNC', 'Skipping cache rebuild - pending operations or optimistic updates exist');

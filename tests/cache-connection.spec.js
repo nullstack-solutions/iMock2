@@ -52,7 +52,12 @@ async function run() {
     sandbox.LifecycleManager = { setNamedInterval: () => 0, clearInterval() {} };
     sandbox.updateUptime = () => {};
     sandbox.applyHealthUI = () => {};
-    sandbox.SyncEngine = { stop() {}, coldStart: async () => {}, start() {} };
+    let coldStartArgs = null;
+    sandbox.SyncEngine = {
+        stop() {},
+        coldStart: async (args) => { coldStartArgs = args; },
+        start() {}
+    };
     sandbox.loadScenarios = async () => {};
     sandbox.startHealthCheck = () => {};
     sandbox.stopUptime = () => {};
@@ -78,6 +83,8 @@ async function run() {
     assert.strictEqual(restoreFiltersCallCount, 1, 'should restore mappings filter after successful connection');
     assert.strictEqual(applyFiltersCallCount, 1, 'should re-apply mappings filter when query exists');
     assert.strictEqual(flushFiltersCallCount, 1, 'should flush mapping filter debounce after re-applying');
+    assert.ok(coldStartArgs && typeof coldStartArgs === 'object', 'should pass coldStart options object');
+    assert.strictEqual(coldStartArgs.useCache, true, 'should pass cache mode explicitly to SyncEngine.coldStart');
 }
 
 run()
