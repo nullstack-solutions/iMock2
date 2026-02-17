@@ -18,7 +18,7 @@ function executeMappingFilters() {
         const container = document.getElementById(SELECTORS.LISTS.MAPPINGS);
         if (emptyState) {
             emptyState.classList.remove('hidden');
-            emptyState.setAttribute('aria-hidden', 'false');
+            emptyState.removeAttribute('aria-hidden');
         }
         if (container) container.style.display = 'none';
         if (typeof updateMappingsCounter === 'function') {
@@ -100,7 +100,7 @@ function executeMappingFilters() {
     if (sortedMappings.length === 0) {
         if (emptyState) {
             emptyState.classList.remove('hidden');
-            emptyState.setAttribute('aria-hidden', 'false');
+            emptyState.removeAttribute('aria-hidden');
         }
         container.style.display = 'none';
     } else {
