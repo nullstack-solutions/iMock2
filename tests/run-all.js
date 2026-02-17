@@ -13,6 +13,8 @@ const specs = [
     'scenarios.spec.js',
     'recording.spec.js',
     'mappings.spec.js',
+    'cache-connection.spec.js',
+    'editor-monaco.spec.js',
     'sync-engine.spec.js',
     'templates.spec.js'
 ];
