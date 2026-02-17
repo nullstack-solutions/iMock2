@@ -116,6 +116,64 @@
     window.addEventListener('beforeunload', () => manager.clearAll());
 })();
 
+(function initialiseAppEvents() {
+    if (window.AppEvents && typeof window.AppEvents.emit === 'function') {
+        return;
+    }
+
+    const handlersByEvent = new Map();
+
+    const addHandler = (eventName, handler) => {
+        if (!handlersByEvent.has(eventName)) {
+            handlersByEvent.set(eventName, new Set());
+        }
+        handlersByEvent.get(eventName).add(handler);
+    };
+
+    const removeHandler = (eventName, handler) => {
+        const handlers = handlersByEvent.get(eventName);
+        if (!handlers) return;
+        handlers.delete(handler);
+        if (handlers.size === 0) {
+            handlersByEvent.delete(eventName);
+        }
+    };
+
+    window.AppEvents = {
+        on(eventName, handler) {
+            if (!eventName || typeof handler !== 'function') {
+                return () => {};
+            }
+            addHandler(eventName, handler);
+            return () => removeHandler(eventName, handler);
+        },
+        off(eventName, handler) {
+            if (!eventName || typeof handler !== 'function') {
+                return;
+            }
+            removeHandler(eventName, handler);
+        },
+        emit(eventName, detail = {}) {
+            const handlers = handlersByEvent.get(eventName);
+            if (!handlers || handlers.size === 0) {
+                return false;
+            }
+            const payload = { type: eventName, detail };
+            [...handlers].forEach(handler => {
+                try {
+                    handler(payload);
+                } catch (error) {
+                    Logger.warn('CORE', `AppEvents handler failed for "${eventName}":`, error);
+                }
+            });
+            return true;
+        },
+        listenerCount(eventName) {
+            return handlersByEvent.get(eventName)?.size || 0;
+        }
+    };
+})();
+
 window.debounce = function debounce(fn, wait = 150, options = {}) {
     let timeoutId;
     let lastArgs;
@@ -421,8 +479,11 @@ window.apiFetch = async (endpoint, options = {}) => {
 
         try {
             if (endpoint === window.ENDPOINTS?.HEALTH || endpoint === window.ENDPOINTS?.MAPPINGS) {
-                window.lastWiremockSuccess = Date.now();
-                Utils.safeCall(window.updateLastSuccessUI);
+                const timestamp = Date.now();
+                window.lastWiremockSuccess = timestamp;
+                if (window.AppEvents && typeof window.AppEvents.emit === 'function') {
+                    window.AppEvents.emit('wiremock:success', { endpoint, method, timestamp });
+                }
             }
         } catch (_) {}
         return responseData;

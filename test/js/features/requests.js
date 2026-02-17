@@ -79,9 +79,9 @@ window.fetchAndRenderRequests = async (requestsToRender = null, options = {}) =>
         window.invalidateElementCache(SELECTORS.LISTS.REQUESTS);
 
         renderList(container, window.allRequests, {
-            renderItem: renderRequestMarkup,
-            getKey: getRequestRenderKey,
-            getSignature: getRequestRenderSignature
+            renderItem: window.renderRequestMarkup,
+            getKey: window.getRequestRenderKey,
+            getSignature: window.getRequestRenderSignature
         });
         updateRequestsCounter();
         // Source indicator + log, mirroring mappings

@@ -30,87 +30,31 @@ window.customHeaders = { ...(DEFAULT_SETTINGS.customHeaders || {}) };
 let autoConnectInitiated = false;
 
 function getStoredSettings() {
-    // Try reading using the standard function first
-    const fromStandard = Utils.safeCall(window.readWiremockSettings);
-    if (fromStandard) {
-        return fromStandard;
+    if (window.SettingsStore && typeof window.SettingsStore.getStoredSettings === 'function') {
+        return window.SettingsStore.getStoredSettings();
     }
-
-    // Fallback to direct localStorage read
-    try {
-        const raw = localStorage.getItem('wiremock-settings');
-        if (!raw) {
-            return {};
-        }
-        const parsed = JSON.parse(raw);
-        // Try normalizing if function exists
-        const normalized = Utils.safeCall(window.normalizeWiremockSettings, parsed);
-        if (normalized) {
-            return normalized;
-        }
-        return parsed && typeof parsed === 'object' ? parsed : {};
-    } catch (error) {
-        Logger.warn('UI', 'Failed to parse stored settings, falling back to defaults:', error);
-        return {};
-    }
+    return {};
 }
 
 function parseCustomHeadersInput(rawValue) {
-    const trimmed = (rawValue || '').trim();
-    if (!trimmed) {
-        return { headers: {}, raw: '' };
+    if (window.SettingsStore && typeof window.SettingsStore.parseCustomHeadersInput === 'function') {
+        return window.SettingsStore.parseCustomHeadersInput(rawValue);
     }
-
-    try {
-        const parsed = JSON.parse(trimmed);
-        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-            throw new Error('Custom headers must be a JSON object.');
-        }
-        return { headers: parsed, raw: trimmed };
-    } catch (jsonError) {
-        const lines = trimmed.split(/\n+/);
-        const headers = {};
-        let valid = true;
-
-        for (const line of lines) {
-            if (!line.trim()) continue;
-            const separatorIndex = line.indexOf(':');
-            if (separatorIndex === -1) {
-                valid = false;
-                break;
-            }
-            const key = line.slice(0, separatorIndex).trim();
-            const value = line.slice(separatorIndex + 1).trim();
-            if (!key) {
-                valid = false;
-                break;
-            }
-            headers[key] = value;
-        }
-
-        if (valid && Object.keys(headers).length > 0) {
-            return { headers, raw: trimmed };
-        }
-
-        throw new Error('Custom headers must be valid JSON or "Key: Value" pairs.');
-    }
+    return { headers: {}, raw: '' };
 }
 
 function serializeCustomHeaders(settings) {
-    if (!settings) return '';
-    if (settings.customHeadersRaw) return settings.customHeadersRaw;
-    if (settings.customHeaders && typeof settings.customHeaders === 'object' && !Array.isArray(settings.customHeaders)) {
-        try {
-            return JSON.stringify(settings.customHeaders, null, 2);
-        } catch (error) {
-            Logger.warn('UI', 'Failed to serialize custom headers:', error);
-        }
+    if (window.SettingsStore && typeof window.SettingsStore.serializeCustomHeaders === 'function') {
+        return window.SettingsStore.serializeCustomHeaders(settings);
     }
     return '';
 }
 
 function shouldAutoConnect(settings) {
-    return Boolean(settings && settings.host && settings.port && settings.autoConnect !== false);
+    if (window.SettingsStore && typeof window.SettingsStore.shouldAutoConnect === 'function') {
+        return window.SettingsStore.shouldAutoConnect(settings);
+    }
+    return false;
 }
 
 function showOnboardingOverlay() {

@@ -122,10 +122,7 @@ window.SyncEngine = {
     this.useServiceCache = useCache;
     Logger.info('SYNC', `Cold start - loading from ${useCache ? 'cache or server' : 'server only'}`);
 
-    // Show loading state
-    if (typeof window.showLoadingState === 'function') {
-      window.showLoadingState();
-    }
+    this._showLoadingState();
 
     try {
       if (useCache) {
@@ -141,19 +138,9 @@ window.SyncEngine = {
           });
 
           // Render UI immediately
-          if (typeof window.fetchAndRenderMappings === 'function') {
-            window.fetchAndRenderMappings(window.MappingsStore.getAll(), { source: 'cache' });
-          }
-
-          // Re-apply mapping filters now that the store has cached data
-          if (window.FilterManager && typeof window.FilterManager.applyMappingFilters === 'function') {
-            window.FilterManager.applyMappingFilters();
-          }
-
-          // Update indicator
-          if (typeof window.updateDataSourceIndicator === 'function') {
-            window.updateDataSourceIndicator('cache');
-          }
+          this._renderMappings('cache');
+          this._applyMappingFilters();
+          this._updateDataSourceIndicator('cache');
 
           Logger.info('SYNC', 'Initial UI rendered from cache');
         }
@@ -230,21 +217,15 @@ window.SyncEngine = {
 
       // Update UI - use skipSyncCheck to render during sync operation
       // The isSyncing flag remains true to prevent external concurrent syncs
-      if (typeof window.fetchAndRenderMappings === 'function') {
-        window.fetchAndRenderMappings(window.MappingsStore.getAll(), { source: 'direct', skipSyncCheck: true });
-      }
+      this._renderMappings('direct', { skipSyncCheck: true });
 
       // Re-apply mapping filters now that the store has data.
       // This fixes a race condition where the debounced filter fires before
       // the store is populated, rendering an empty state that never updates.
-      if (window.FilterManager && typeof window.FilterManager.applyMappingFilters === 'function') {
-        window.FilterManager.applyMappingFilters();
-      }
+      this._applyMappingFilters();
 
       // Update indicator
-      if (typeof window.updateDataSourceIndicator === 'function') {
-        window.updateDataSourceIndicator('synced');
-      }
+      this._updateDataSourceIndicator('synced');
 
       const duration = Date.now() - startTime;
       window.MappingsStore.stats.lastSyncDuration = duration;
@@ -483,6 +464,66 @@ window.SyncEngine = {
 
   // === PRIVATE METHODS ===
 
+  _emit(eventName, detail = {}) {
+    if (window.AppEvents && typeof window.AppEvents.emit === 'function') {
+      return window.AppEvents.emit(eventName, detail);
+    }
+    return false;
+  },
+
+  _showLoadingState() {
+    if (this._emit('sync:loading', {})) {
+      return;
+    }
+    if (typeof window.showLoadingState === 'function') {
+      window.showLoadingState();
+    }
+  },
+
+  _renderMappings(source, options = {}) {
+    const eventDetail = {
+      source: source || 'direct',
+      skipSyncCheck: options.skipSyncCheck === true,
+      mappings: window.MappingsStore?.getAll?.() || [],
+    };
+    if (this._emit('sync:render-mappings', eventDetail)) {
+      return;
+    }
+    if (typeof window.fetchAndRenderMappings === 'function') {
+      window.fetchAndRenderMappings(eventDetail.mappings, {
+        source: eventDetail.source,
+        skipSyncCheck: eventDetail.skipSyncCheck,
+      });
+    }
+  },
+
+  _applyMappingFilters() {
+    if (this._emit('sync:apply-mapping-filters', {})) {
+      return;
+    }
+    if (window.FilterManager && typeof window.FilterManager.applyMappingFilters === 'function') {
+      window.FilterManager.applyMappingFilters();
+    }
+  },
+
+  _updateDataSourceIndicator(source) {
+    if (this._emit('sync:data-source', { source })) {
+      return;
+    }
+    if (typeof window.updateDataSourceIndicator === 'function') {
+      window.updateDataSourceIndicator(source);
+    }
+  },
+
+  _notifyWarning(message, context = {}) {
+    if (this._emit('sync:notify', { level: 'warning', message, ...context })) {
+      return;
+    }
+    if (window.NotificationManager && typeof window.NotificationManager.warning === 'function') {
+      window.NotificationManager.warning(message);
+    }
+  },
+
   _detectChanges(serverMappings) {
     const serverIds = new Set(serverMappings.map(m => m.id || m.uuid));
     const localIds = new Set(window.MappingsStore.items.keys());
@@ -539,10 +580,12 @@ window.SyncEngine = {
         // Server deleted - always wins
         Logger.warn('SYNC', `Conflict: mapping ${conflict.id} was deleted on server`);
 
-        if (window.NotificationManager && typeof window.NotificationManager.warning === 'function') {
-          const name = conflict.local?.name || conflict.id;
-          window.NotificationManager.warning(`Mapping "${name}" was deleted by another user`);
-        }
+        const name = conflict.local?.name || conflict.id;
+        this._notifyWarning(`Mapping "${name}" was deleted by another user`, {
+          type: 'delete',
+          mappingId: conflict.id,
+          conflict,
+        });
 
         // Remove pending operation
         window.MappingsStore.pending.delete(conflict.id);
@@ -556,10 +599,12 @@ window.SyncEngine = {
           // Server is newer - apply server version
           Logger.warn('SYNC', `Conflict: server version is newer for ${conflict.id}`);
 
-          if (window.NotificationManager && typeof window.NotificationManager.warning === 'function') {
-            const name = conflict.server?.name || conflict.id;
-            window.NotificationManager.warning(`Your changes to "${name}" were overwritten by another user`);
-          }
+          const name = conflict.server?.name || conflict.id;
+          this._notifyWarning(`Your changes to "${name}" were overwritten by another user`, {
+            type: 'update',
+            mappingId: conflict.id,
+            conflict,
+          });
 
           // Rollback pending
           window.MappingsStore.rollbackPending(conflict.id, conflict.server);
@@ -635,6 +680,9 @@ window.SyncEngine = {
    * Show sync indicator in UI
    */
   _showSyncIndicator() {
+    if (this._emit('sync:indicator', { active: true })) {
+      return;
+    }
     const indicator = document.getElementById('sync-indicator');
     if (indicator) {
       indicator.classList.add('is-active');
@@ -645,6 +693,9 @@ window.SyncEngine = {
    * Hide sync indicator in UI
    */
   _hideSyncIndicator() {
+    if (this._emit('sync:indicator', { active: false })) {
+      return;
+    }
     const indicator = document.getElementById('sync-indicator');
     if (indicator) {
       indicator.classList.remove('is-active');

@@ -51,45 +51,35 @@ function executeMappingFilters() {
         return;
     }
 
-    const sortedMappings = [...filteredMappings].sort((a, b) => {
-        const priorityA = a?.priority ?? 1;
-        const priorityB = b?.priority ?? 1;
-        if (priorityA !== priorityB) return priorityA - priorityB;
+    if (window.MappingsStore?.metadata?.isRendering) {
+        window.MappingsStore.metadata.pendingFilterRender = true;
+        return;
+    }
 
-        const methodOrder = { 'GET': 1, 'POST': 2, 'PUT': 3, 'PATCH': 4, 'DELETE': 5 };
-        const methodA = methodOrder[a?.request?.method] || 999;
-        const methodB = methodOrder[b?.request?.method] || 999;
-        if (methodA !== methodB) return methodA - methodB;
-
-        const urlA = a?.request?.url || a?.request?.urlPattern || a?.request?.urlPath || '';
-        const urlB = b?.request?.url || b?.request?.urlPattern || b?.request?.urlPath || '';
-        return urlA.localeCompare(urlB);
-    });
+    const sortedMappings = typeof window.sortMappingsForDisplay === 'function'
+        ? window.sortMappingsForDisplay(filteredMappings)
+        : [...filteredMappings];
 
     // Update pagination state and render only current page
-    if (window.PaginationManager) {
+    if (typeof window.renderMappingsCollection === 'function') {
+        window.renderMappingsCollection(container, sortedMappings, { preSorted: true });
+    } else if (window.PaginationManager) {
         window.PaginationManager.updateState(sortedMappings.length);
-
-        // Get items for current page
         const pageItems = window.PaginationManager.getCurrentPageItems(sortedMappings);
-
         renderList(container, pageItems, {
-            renderItem: renderMappingMarkup,
-            getKey: getMappingRenderKey,
-            getSignature: getMappingRenderSignature
+            renderItem: window.renderMappingMarkup,
+            getKey: window.getMappingRenderKey,
+            getSignature: window.getMappingRenderSignature
         });
-
-        // Render pagination controls
         const paginationContainer = document.getElementById('mappings-pagination');
         if (paginationContainer) {
             paginationContainer.innerHTML = window.PaginationManager.renderControls();
         }
     } else {
-        // Fallback: render all items if pagination not available
         renderList(container, sortedMappings, {
-            renderItem: renderMappingMarkup,
-            getKey: getMappingRenderKey,
-            getSignature: getMappingRenderSignature
+            renderItem: window.renderMappingMarkup,
+            getKey: window.getMappingRenderKey,
+            getSignature: window.getMappingRenderSignature
         });
     }
 
@@ -185,9 +175,9 @@ function executeRequestFilters() {
     }
 
     renderList(container, window.allRequests, {
-        renderItem: renderRequestMarkup,
-        getKey: getRequestRenderKey,
-        getSignature: getRequestRenderSignature
+        renderItem: window.renderRequestMarkup,
+        getKey: window.getRequestRenderKey,
+        getSignature: window.getRequestRenderSignature
     });
 
     if (loadingState) {
@@ -207,70 +197,6 @@ function executeRequestFilters() {
     }
 
     Logger.debug('MANAGERS', `Filtered requests: ${window.allRequests.length} items`);
-}
-
-function getRenderKey(item, ...keys) {
-    if (!item || typeof item !== 'object') return '';
-    for (const key of keys) {
-        const value = key.includes('.') ? key.split('.').reduce((obj, k) => obj?.[k], item) : item[key];
-        if (value != null) return String(value);
-    }
-    return '';
-}
-
-function getMappingRenderKey(mapping) {
-    return getRenderKey(mapping, 'id', 'uuid', 'stubId');
-}
-
-function getMappingRenderSignature(mapping) {
-    if (!mapping || typeof mapping !== 'object') return '';
-    const request = mapping.request || {};
-    const response = mapping.response || {};
-    const metadata = mapping.metadata || {};
-    const stringifyForSignature = (value) => {
-        if (value == null) return '';
-        try {
-            const str = typeof value === 'string' ? value : JSON.stringify(value);
-            return str.length > 300 ? `${str.slice(0, 300)}…` : str;
-        } catch { return ''; }
-    };
-    return [
-        request.method || '',
-        request.url || request.urlPattern || request.urlPath || request.urlPathPattern || '',
-        response.status || '',
-        response.fixedDelayMilliseconds || '',
-        mapping.name || metadata.name || '',
-        mapping.priority ?? '',
-        mapping.scenarioName || '',
-        metadata.edited || metadata.created || '',
-        metadata.source || '',
-        stringifyForSignature(request.headers),
-        stringifyForSignature(request.bodyPatterns || request.body || ''),
-        stringifyForSignature(request.queryParameters),
-        stringifyForSignature(response.headers),
-        stringifyForSignature(response.jsonBody !== undefined ? response.jsonBody : response.body || ''),
-        stringifyForSignature(metadata.additionalMetadata || metadata.tags || metadata.description || '')
-    ].join('|');
-}
-
-function renderMappingMarkup(mapping) {
-    return typeof window.renderMappingCard === 'function' ? window.renderMappingCard(mapping) : '';
-}
-
-function getRequestRenderKey(request) {
-    return getRenderKey(request, 'id', 'requestId', 'mappingUuid', 'request.id', 'request.loggedDate', 'loggedDate');
-}
-
-function getRequestRenderSignature(request) {
-    if (!request || typeof request !== 'object') return '';
-    const req = request.request || {}, res = request.responseDefinition || {};
-    return [req.method || '', req.url || req.urlPath || '', req.loggedDate || request.loggedDate || '',
-            request.wasMatched === false ? 'unmatched' : 'matched', res.status ?? '',
-            (res.body || res.jsonBody || '').length, (req.body || '').length].join('|');
-}
-
-function renderRequestMarkup(request) {
-    return typeof window.renderRequestCard === 'function' ? window.renderRequestCard(request) : '';
 }
 
 window.FilterManager._applyMappingFilters = window.debounce(executeMappingFilters, 180);
