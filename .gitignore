@@ -17,6 +17,7 @@ build/
 
 # Node/Yarn/NPM
 node_modules/
+.npm-cache/
 yarn.lock
 pnpm-lock.yaml
 

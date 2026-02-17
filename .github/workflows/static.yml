@@ -13,11 +13,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci || npm install
+
+      - name: Build bundles
+        run: npm run build
+
       - name: Prepare deployment files
         run: |
           mkdir -p _deploy
           shopt -s extglob nullglob
-          cp -r *.html *.ico *.json editor styles js apps packages _deploy/ 2>/dev/null || true
+          cp -r *.html *.ico *.json editor styles js dist apps packages _deploy/ 2>/dev/null || true
           rm -rf _deploy/.git* _deploy/.github
 
       - name: Deploy PROD to gh-pages root
