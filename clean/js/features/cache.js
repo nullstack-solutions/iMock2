@@ -127,6 +127,20 @@ window.connectToWireMock = async () => {
 
         await loadScenarios();
 
+        if (typeof window.hideOnboardingOverlay === 'function') {
+            window.hideOnboardingOverlay();
+        }
+
+        if (typeof window.FilterManager?.restoreFilters === 'function') {
+            const restoredMappingsFilter = window.FilterManager.restoreFilters('mappings');
+            if (restoredMappingsFilter?.query && typeof window.FilterManager.applyMappingFilters === 'function') {
+                window.FilterManager.applyMappingFilters();
+                if (typeof window.FilterManager.flushMappingFilters === 'function') {
+                    window.FilterManager.flushMappingFilters();
+                }
+            }
+        }
+
         NotificationManager.success('Connected to WireMock successfully!');
 
     } catch (error) {

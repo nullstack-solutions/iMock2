@@ -475,6 +475,7 @@ window.fetchAndRenderMappings = async (mappingsToRender = null, options = {}) =>
             loadingState.classList.remove('hidden');
             container.style.display = 'none';
             emptyState.classList.add('hidden');
+            emptyState.setAttribute('aria-hidden', 'true');
             
             let data;
             let dataSource = 'direct';
@@ -664,6 +665,7 @@ const filteredMappings = Array.isArray(incoming) ? incoming.filter(m => !isImock
         
         if (currentMappings.length === 0) {
             emptyState.classList.remove('hidden');
+            emptyState.setAttribute('aria-hidden', 'false');
             container.style.display = 'none';
             updateMappingsCounter();
             if (renderSource) {
@@ -674,6 +676,7 @@ const filteredMappings = Array.isArray(incoming) ? incoming.filter(m => !isImock
         
         // Batch DOM operations using document fragment to reduce layout thrashing
         emptyState.classList.add('hidden');
+        emptyState.setAttribute('aria-hidden', 'true');
         container.style.display = 'block';
 
         // Invalidate cache before re-rendering to ensure fresh DOM references

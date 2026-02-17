@@ -2140,7 +2140,8 @@ class MonacoInitializer {
                 wordWrap: 'on',
                 formatOnPaste: true,
                 formatOnType: true,
-                folding: true
+                folding: true,
+                foldingMaximumRegions: 100000
             });
 
             this.editors.set('main', window.editor);
@@ -3030,6 +3031,8 @@ async formatJSON() {
                 enableSplitViewResizing: true,
                 renderOverviewRuler: true,
                 diffCodeLens: true,
+                folding: true,
+                foldingMaximumRegions: 100000,
                 scrollbar: {
                     verticalScrollbarSize: 8,
                     horizontalScrollbarSize: 8,
