@@ -139,6 +139,7 @@ function createRequestsTestContext() {
         'js/features/cache.js',
         'js/features/demo.js',
         'js/features/wiremock-extras.js',
+        'js/features/mappings-render.js',
         'js/features/mappings.js',
         'js/features/requests.js',
     ];

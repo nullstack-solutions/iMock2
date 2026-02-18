@@ -147,6 +147,7 @@ function createMappingsTestContext() {
         'js/features/render-helpers.js',
         'js/features/filters.js',
         'js/features/cache.js',
+        'js/features/mappings-render.js',
         'js/features/wiremock-extras.js',
         'js/features/mappings.js',
     ];
