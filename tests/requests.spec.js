@@ -126,6 +126,7 @@ function createRequestsTestContext() {
     const scripts = [
         'js/constants.js',
         'js/core.js',
+        'js/features/wiremock-settings.js',
         'js/managers.js',
         'js/filter-state-manager.js',
         'js/filter-presets-manager.js',
