@@ -95,6 +95,8 @@ function createTemplatesTestContext() {
     const context = vm.createContext(sandbox);
     const scripts = [
         'editor/monaco-template-library.js',
+        'js/features/template-repo.js',
+        'js/features/template-actions.js',
         'js/features/templates.js',
     ];
 

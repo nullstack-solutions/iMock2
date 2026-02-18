@@ -127,6 +127,8 @@ function createRequestsTestContext() {
         'js/constants.js',
         'js/core.js',
         'js/managers.js',
+        'js/filter-state-manager.js',
+        'js/filter-presets-manager.js',
         'js/demo-data.js',
         'js/features/store.js',
         'js/features/state.js',
