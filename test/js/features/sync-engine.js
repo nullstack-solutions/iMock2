@@ -472,12 +472,7 @@ window.SyncEngine = {
   },
 
   _showLoadingState() {
-    if (this._emit('sync:loading', {})) {
-      return;
-    }
-    if (typeof window.showLoadingState === 'function') {
-      window.showLoadingState();
-    }
+    this._emit('sync:loading', {});
   },
 
   _renderMappings(source, options = {}) {
@@ -486,42 +481,19 @@ window.SyncEngine = {
       skipSyncCheck: options.skipSyncCheck === true,
       mappings: window.MappingsStore?.getAll?.() || [],
     };
-    if (this._emit('sync:render-mappings', eventDetail)) {
-      return;
-    }
-    if (typeof window.fetchAndRenderMappings === 'function') {
-      window.fetchAndRenderMappings(eventDetail.mappings, {
-        source: eventDetail.source,
-        skipSyncCheck: eventDetail.skipSyncCheck,
-      });
-    }
+    this._emit('sync:render-mappings', eventDetail);
   },
 
   _applyMappingFilters() {
-    if (this._emit('sync:apply-mapping-filters', {})) {
-      return;
-    }
-    if (window.FilterManager && typeof window.FilterManager.applyMappingFilters === 'function') {
-      window.FilterManager.applyMappingFilters();
-    }
+    this._emit('sync:apply-mapping-filters', {});
   },
 
   _updateDataSourceIndicator(source) {
-    if (this._emit('sync:data-source', { source })) {
-      return;
-    }
-    if (typeof window.updateDataSourceIndicator === 'function') {
-      window.updateDataSourceIndicator(source);
-    }
+    this._emit('sync:data-source', { source });
   },
 
   _notifyWarning(message, context = {}) {
-    if (this._emit('sync:notify', { level: 'warning', message, ...context })) {
-      return;
-    }
-    if (window.NotificationManager && typeof window.NotificationManager.warning === 'function') {
-      window.NotificationManager.warning(message);
-    }
+    this._emit('sync:notify', { level: 'warning', message, ...context });
   },
 
   _detectChanges(serverMappings) {
@@ -680,26 +652,14 @@ window.SyncEngine = {
    * Show sync indicator in UI
    */
   _showSyncIndicator() {
-    if (this._emit('sync:indicator', { active: true })) {
-      return;
-    }
-    const indicator = document.getElementById('sync-indicator');
-    if (indicator) {
-      indicator.classList.add('is-active');
-    }
+    this._emit('sync:indicator', { active: true });
   },
 
   /**
    * Hide sync indicator in UI
    */
   _hideSyncIndicator() {
-    if (this._emit('sync:indicator', { active: false })) {
-      return;
-    }
-    const indicator = document.getElementById('sync-indicator');
-    if (indicator) {
-      indicator.classList.remove('is-active');
-    }
+    this._emit('sync:indicator', { active: false });
   },
 };
 
