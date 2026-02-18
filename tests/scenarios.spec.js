@@ -132,12 +132,18 @@ function createScenariosTestContext() {
     const context = vm.createContext(sandbox);
 
     const scripts = [
+        'js/constants.js',
         'js/core.js',
+        'js/features/wiremock-settings.js',
         'js/managers.js',
+        'js/filter-state-manager.js',
+        'js/filter-presets-manager.js',
         'js/demo-data.js',
         'js/features/state.js',
         'js/features/utils.js',
+        'js/features/scenario-model.js',
         'js/features/scenarios.js',
+        'js/features/scenario-render.js',
     ];
 
     for (const script of scripts) {

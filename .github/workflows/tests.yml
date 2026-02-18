@@ -23,8 +23,22 @@ jobs:
       - name: Install dependencies
         run: npm ci || npm install
 
+      - name: Build bundles
+        run: npm run build
+
       - name: Run tests
         run: npm test
+
+      - name: Run ESLint report
+        run: npm run lint:report
+        continue-on-error: true
+
+      - name: Upload ESLint report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eslint-report
+          path: eslint-report.json
 
       - name: Test summary
         if: always()

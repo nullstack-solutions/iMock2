@@ -50,6 +50,7 @@ window.SyncEngine = {
   lastCacheHash: null,
   isIncrementalSyncing: false,
   isFullSyncing: false,
+  useServiceCache: true,
 
   /**
    * Initialize sync engine
@@ -87,11 +88,13 @@ window.SyncEngine = {
       this.config.fullSyncInterval
     );
 
-    // Cache rebuild every 30 seconds (if changed)
-    this.timers.cacheRebuild = window.LifecycleManager.setInterval(
-      () => this.rebuildServiceCache(),
-      this.config.cacheRebuildInterval
-    );
+    if (this.useServiceCache) {
+      // Cache rebuild every 30 seconds (if changed)
+      this.timers.cacheRebuild = window.LifecycleManager.setInterval(
+        () => this.rebuildServiceCache(),
+        this.config.cacheRebuildInterval
+      );
+    }
 
     Logger.info('SYNC', 'Sync timers started');
   },
@@ -114,42 +117,33 @@ window.SyncEngine = {
   /**
    * Initial load - try cache first, then full sync
    */
-  async coldStart() {
-    Logger.info('SYNC', 'Cold start - loading from cache or server');
+  async coldStart(options = {}) {
+    const useCache = options.useCache === true;
+    this.useServiceCache = useCache;
+    Logger.info('SYNC', `Cold start - loading from ${useCache ? 'cache or server' : 'server only'}`);
 
-    // Show loading state
-    if (typeof window.showLoadingState === 'function') {
-      window.showLoadingState();
-    }
+    this._showLoadingState();
 
     try {
-      // Try to load from Service Cache first (fast)
-      const cached = await this.loadFromServiceCache();
+      if (useCache) {
+        // Try to load from Service Cache first (fast)
+        const cached = await this.loadFromServiceCache();
 
-      if (cached && cached.items && cached.items.length > 0) {
-        Logger.info('SYNC', `Loaded ${cached.items.length} mappings from cache`);
+        if (cached && cached.items && cached.items.length > 0) {
+          Logger.info('SYNC', `Loaded ${cached.items.length} mappings from cache`);
 
-        // Load cached data into store
-        window.MappingsStore.setFromServer(cached.items, {
-          version: cached.version,
-        });
+          // Load cached data into store
+          window.MappingsStore.setFromServer(cached.items, {
+            version: cached.version,
+          });
 
-        // Render UI immediately
-        if (typeof window.fetchAndRenderMappings === 'function') {
-          window.fetchAndRenderMappings(window.MappingsStore.getAll(), { source: 'cache' });
+          // Render UI immediately
+          this._renderMappings('cache');
+          this._applyMappingFilters();
+          this._updateDataSourceIndicator('cache');
+
+          Logger.info('SYNC', 'Initial UI rendered from cache');
         }
-
-        // Re-apply mapping filters now that the store has cached data
-        if (window.FilterManager && typeof window.FilterManager.applyMappingFilters === 'function') {
-          window.FilterManager.applyMappingFilters();
-        }
-
-        // Update indicator
-        if (typeof window.updateDataSourceIndicator === 'function') {
-          window.updateDataSourceIndicator('cache');
-        }
-
-        Logger.info('SYNC', 'Initial UI rendered from cache');
       }
 
       // Full sync in background to get latest data
@@ -223,21 +217,15 @@ window.SyncEngine = {
 
       // Update UI - use skipSyncCheck to render during sync operation
       // The isSyncing flag remains true to prevent external concurrent syncs
-      if (typeof window.fetchAndRenderMappings === 'function') {
-        window.fetchAndRenderMappings(window.MappingsStore.getAll(), { source: 'direct', skipSyncCheck: true });
-      }
+      this._renderMappings('direct', { skipSyncCheck: true });
 
       // Re-apply mapping filters now that the store has data.
       // This fixes a race condition where the debounced filter fires before
       // the store is populated, rendering an empty state that never updates.
-      if (window.FilterManager && typeof window.FilterManager.applyMappingFilters === 'function') {
-        window.FilterManager.applyMappingFilters();
-      }
+      this._applyMappingFilters();
 
       // Update indicator
-      if (typeof window.updateDataSourceIndicator === 'function') {
-        window.updateDataSourceIndicator('synced');
-      }
+      this._updateDataSourceIndicator('synced');
 
       const duration = Date.now() - startTime;
       window.MappingsStore.stats.lastSyncDuration = duration;
@@ -317,6 +305,10 @@ window.SyncEngine = {
    * Load from Service Cache (special mapping in WireMock)
    */
   async loadFromServiceCache() {
+    if (!this.useServiceCache) {
+      return null;
+    }
+
     try {
       Logger.debug('SYNC', 'Attempting to load from Service Cache');
 
@@ -370,6 +362,10 @@ window.SyncEngine = {
    * Rebuild Service Cache (save current state)
    */
   async rebuildServiceCache() {
+    if (!this.useServiceCache) {
+      return;
+    }
+
     // Only rebuild if no pending operations and no optimistic updates in progress
     if (window.MappingsStore.pending.size > 0 || window.MappingsStore.metadata.isOptimisticUpdate) {
       Logger.debug('SYNC', 'Skipping cache rebuild - pending operations or optimistic updates exist');
@@ -468,6 +464,38 @@ window.SyncEngine = {
 
   // === PRIVATE METHODS ===
 
+  _emit(eventName, detail = {}) {
+    if (window.AppEvents && typeof window.AppEvents.emit === 'function') {
+      return window.AppEvents.emit(eventName, detail);
+    }
+    return false;
+  },
+
+  _showLoadingState() {
+    this._emit('sync:loading', {});
+  },
+
+  _renderMappings(source, options = {}) {
+    const eventDetail = {
+      source: source || 'direct',
+      skipSyncCheck: options.skipSyncCheck === true,
+      mappings: window.MappingsStore?.getAll?.() || [],
+    };
+    this._emit('sync:render-mappings', eventDetail);
+  },
+
+  _applyMappingFilters() {
+    this._emit('sync:apply-mapping-filters', {});
+  },
+
+  _updateDataSourceIndicator(source) {
+    this._emit('sync:data-source', { source });
+  },
+
+  _notifyWarning(message, context = {}) {
+    this._emit('sync:notify', { level: 'warning', message, ...context });
+  },
+
   _detectChanges(serverMappings) {
     const serverIds = new Set(serverMappings.map(m => m.id || m.uuid));
     const localIds = new Set(window.MappingsStore.items.keys());
@@ -524,10 +552,12 @@ window.SyncEngine = {
         // Server deleted - always wins
         Logger.warn('SYNC', `Conflict: mapping ${conflict.id} was deleted on server`);
 
-        if (window.NotificationManager && typeof window.NotificationManager.warning === 'function') {
-          const name = conflict.local?.name || conflict.id;
-          window.NotificationManager.warning(`Mapping "${name}" was deleted by another user`);
-        }
+        const name = conflict.local?.name || conflict.id;
+        this._notifyWarning(`Mapping "${name}" was deleted by another user`, {
+          type: 'delete',
+          mappingId: conflict.id,
+          conflict,
+        });
 
         // Remove pending operation
         window.MappingsStore.pending.delete(conflict.id);
@@ -541,10 +571,12 @@ window.SyncEngine = {
           // Server is newer - apply server version
           Logger.warn('SYNC', `Conflict: server version is newer for ${conflict.id}`);
 
-          if (window.NotificationManager && typeof window.NotificationManager.warning === 'function') {
-            const name = conflict.server?.name || conflict.id;
-            window.NotificationManager.warning(`Your changes to "${name}" were overwritten by another user`);
-          }
+          const name = conflict.server?.name || conflict.id;
+          this._notifyWarning(`Your changes to "${name}" were overwritten by another user`, {
+            type: 'update',
+            mappingId: conflict.id,
+            conflict,
+          });
 
           // Rollback pending
           window.MappingsStore.rollbackPending(conflict.id, conflict.server);
@@ -620,20 +652,14 @@ window.SyncEngine = {
    * Show sync indicator in UI
    */
   _showSyncIndicator() {
-    const indicator = document.getElementById('sync-indicator');
-    if (indicator) {
-      indicator.classList.add('is-active');
-    }
+    this._emit('sync:indicator', { active: true });
   },
 
   /**
    * Hide sync indicator in UI
    */
   _hideSyncIndicator() {
-    const indicator = document.getElementById('sync-indicator');
-    if (indicator) {
-      indicator.classList.remove('is-active');
-    }
+    this._emit('sync:indicator', { active: false });
   },
 };
 

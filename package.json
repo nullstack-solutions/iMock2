@@ -7,9 +7,14 @@
     "node": "20.x"
   },
   "scripts": {
-    "start": "npx serve -l 53771",
+    "build": "node scripts/build.js",
+    "build:dev": "node scripts/build.js --dev",
+    "dev": "node scripts/build.js --watch",
+    "start": "node scripts/build.js --dev && npx serve -l 53771",
     "test": "node tests/run-all.js",
-    "coverage": "rm -rf coverage && NODE_V8_COVERAGE=coverage node tests/run-all.js && npx --yes c8 report --reporter=text-summary --temp-directory=coverage"
+    "coverage": "rm -rf coverage && NODE_V8_COVERAGE=coverage node tests/run-all.js && npx --yes c8 report --reporter=text-summary --temp-directory=coverage",
+    "lint": "eslint .",
+    "lint:report": "eslint . --format json --output-file eslint-report.json"
   },
   "keywords": [
     "wiremock",
@@ -20,7 +25,10 @@
   "author": "",
   "license": "MIT",
   "devDependencies": {
+    "@eslint/js": "^9.39.1",
     "@playwright/test": "^1.57.0",
-    "eslint": "^9.39.1"
+    "esbuild": "^0.27.3",
+    "eslint": "^9.39.1",
+    "globals": "^16.5.0"
   }
 }

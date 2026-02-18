@@ -380,48 +380,8 @@
         <div class="loading-spinner" role="status" aria-live="polite"></div>
     </div>
     
-    <!-- Performance Optimization Scripts -->
-    <script src="performance-optimizations.js"></script>
-
-    <!-- Logger - must be loaded first -->
-    <script src="../js/lib/logger.js"></script>
-
-    <!-- Monaco Editor Lazy Loader (Phase 1 Optimization) -->
-    <!-- Monaco will be loaded only when editor is actually opened -->
-    <script src="monaco-loader.js"></script>
-
-    <!-- Template Library & Helpers -->
-    <script src="monaco-template-library.js"></script>
-
-    <!-- WireMock URL initialization - moved to initializeFromURL -->
-
-    <!-- WireMock Integration -->
-    <script src="../js/vendor-js-yaml.min.js"></script>
-    <script src="../js/core.js"></script>
-    <script src="../js/managers.js"></script>
-    <script src="../js/demo-data.js"></script>
-    <script src="../js/features/state.js"></script>
-    <script src="../js/features/utils.js"></script>
-    <script src="../js/features/templates.js"></script>
-    <script src="../js/features/filters.js"></script>
-    <script src="../js/features/cache.js"></script>
-    <script src="../js/core/lifecycle.js"></script>
-    <script src="../js/features/store.js"></script>
-    <script src="../js/features/sync-engine.js"></script>
-    <script src="../js/features/operations.js"></script>
-    <script src="../js/features/mappings.js"></script>
-    <script src="../js/features/requests.js"></script>
-    <script src="../js/features/scenarios.js"></script>
-    <script src="../js/features/recording.js"></script>
-    <script src="../js/features/management.js"></script>
-    <script src="../js/features/request-api.js"></script>
-    <script src="../js/features/wiremock-extras.js"></script>
-    <script src="../js/features/demo.js"></script>
-    <script src="../js/features.js"></script>
-    <script src="../js/main.js"></script>
-
-    <!-- Monaco Enhanced (our main editor) -->
-    <script src="monaco-enhanced.js"></script>
+    <!-- JavaScript bundle -->
+    <script src="../dist/editor.js"></script>
 
     <script>
         const editorUrlParams = new URLSearchParams(window.location.search);

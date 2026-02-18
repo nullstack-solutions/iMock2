@@ -19,13 +19,42 @@ const sandbox = {
   clearInterval,
   document: {
     getElementById: () => ({
-      classList: { add() {}, remove() {} },
+      classList: { add() {}, remove() {}, toggle() {} },
     }),
   },
 };
 
 sandbox.window = sandbox;
 sandbox.Logger = createLoggerStub({ log: () => {}, info: () => {}, warn: () => {}, error: () => {} });
+sandbox.showLoadingState = () => {};
+sandbox.updateDataSourceIndicator = () => {};
+
+const appEventHandlers = new Map();
+sandbox.AppEvents = {
+  on(eventName, handler) {
+    if (!appEventHandlers.has(eventName)) {
+      appEventHandlers.set(eventName, new Set());
+    }
+    appEventHandlers.get(eventName).add(handler);
+    return () => {
+      const handlers = appEventHandlers.get(eventName);
+      if (!handlers) return;
+      handlers.delete(handler);
+      if (handlers.size === 0) {
+        appEventHandlers.delete(eventName);
+      }
+    };
+  },
+  emit(eventName, detail = {}) {
+    const handlers = appEventHandlers.get(eventName);
+    if (!handlers || handlers.size === 0) {
+      return false;
+    }
+    const payload = { type: eventName, detail };
+    handlers.forEach(handler => handler(payload));
+    return true;
+  },
+};
 sandbox.LifecycleManager = {
   setInterval(fn, delay) {
     const id = `interval-${intervals.length + 1}`;
@@ -70,6 +99,8 @@ sandbox.fetchMappingsFromServer = () => {
 const context = vm.createContext(sandbox);
 const syncEngineCode = fs.readFileSync(path.join(__dirname, '..', 'js', 'features', 'sync-engine.js'), 'utf8');
 vm.runInContext(syncEngineCode, context, { filename: 'js/features/sync-engine.js' });
+const syncBridgeCode = fs.readFileSync(path.join(__dirname, '..', 'js', 'features', 'sync-engine-ui-bridge.js'), 'utf8');
+vm.runInContext(syncBridgeCode, context, { filename: 'js/features/sync-engine-ui-bridge.js' });
 
 const tests = [];
 const runTest = (name, fn) => tests.push({ name, fn });

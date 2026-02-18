@@ -124,16 +124,22 @@ function createRequestsTestContext() {
     const context = vm.createContext(sandbox);
 
     const scripts = [
+        'js/constants.js',
         'js/core.js',
+        'js/features/wiremock-settings.js',
         'js/managers.js',
+        'js/filter-state-manager.js',
+        'js/filter-presets-manager.js',
         'js/demo-data.js',
         'js/features/store.js',
         'js/features/state.js',
         'js/features/utils.js',
+        'js/features/render-helpers.js',
         'js/features/filters.js',
         'js/features/cache.js',
         'js/features/demo.js',
         'js/features/wiremock-extras.js',
+        'js/features/mappings-render.js',
         'js/features/mappings.js',
         'js/features/requests.js',
     ];
@@ -304,29 +310,17 @@ runTest('refreshRequestTabSnapshot updates totals', () => {
     assert.ok(context.__requestCountsCalled, 'Should update request counts');
 });
 
-// Test 9: Demo mode fallback for requests
-runTest('fetchAndRenderRequests falls back to demo mode on API error', async () => {
+// Test 9: Requests should not auto-fallback to demo mode
+runTest('fetchAndRenderRequests returns false on API error without enabling demo mode', async () => {
     const { context } = createRequestsTestContext();
 
     // Simulate API error
     context.__apiError = new Error('Network error');
 
-    // Setup demo data
-    context.DemoData = {
-        isAvailable: () => true,
-        getRequestsPayload: () => ({
-            requests: [
-                { id: 'demo-req-1', request: { method: 'GET', url: '/demo' }, response: { status: 200 } }
-            ],
-            __source: 'demo'
-        })
-    };
-
     const result = await context.fetchAndRenderRequests();
 
-    assert.strictEqual(result, true, 'Should succeed with demo data');
-    assert.ok(context.allRequests.length > 0, 'Should load demo requests');
-    assert.strictEqual(context.isDemoMode, true, 'Should activate demo mode');
+    assert.strictEqual(result, false, 'Should return false when requests API fails');
+    assert.strictEqual(context.isDemoMode, false, 'Should not auto-enable demo mode');
 });
 
 // Test 10: Filtering requests by method

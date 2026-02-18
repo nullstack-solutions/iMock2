@@ -1,5 +1,207 @@
 'use strict';
 
+function executeMappingFilters() {
+    const queryInput = document.getElementById('filter-query');
+    const query = queryInput?.value?.trim() || '';
+
+    // Save query to filter state
+    window.FilterManager.saveFilterState('mappings', { query });
+
+    // Update URL with filter query for sharing
+    updateURLFilterParams(query, 'mappings');
+
+    // Get all mappings from MappingsStore (window.originalMappings is a getter to MappingsStore)
+    const allMappingsFromStore = window.originalMappings;
+
+    if (!Array.isArray(allMappingsFromStore) || allMappingsFromStore.length === 0) {
+        const emptyState = document.getElementById(SELECTORS.EMPTY.MAPPINGS);
+        const container = document.getElementById(SELECTORS.LISTS.MAPPINGS);
+        if (emptyState) {
+            emptyState.classList.remove('hidden');
+            emptyState.removeAttribute('aria-hidden');
+        }
+        if (container) container.style.display = 'none';
+        if (typeof updateMappingsCounter === 'function') {
+            updateMappingsCounter();
+        }
+        return;
+    }
+
+    // Use new query parser for filtering
+    let filteredMappings;
+    if (query) {
+        if (window.QueryParser && typeof window.QueryParser.filterMappingsByQuery === 'function') {
+            filteredMappings = window.QueryParser.filterMappingsByQuery(allMappingsFromStore, query);
+        } else {
+            Logger.warn('MANAGERS', '[Mapping Filter] QueryParser or filterMappingsByQuery is not available. Showing all mappings.');
+            filteredMappings = allMappingsFromStore;
+        }
+    } else {
+        filteredMappings = allMappingsFromStore;
+    }
+
+    // Store filtered result in a separate variable (don't assign to window.allMappings - it's a getter to MappingsStore!)
+    window._filteredMappings = filteredMappings;
+
+    const container = document.getElementById(SELECTORS.LISTS.MAPPINGS);
+    const emptyState = document.getElementById(SELECTORS.EMPTY.MAPPINGS);
+    const loadingState = document.getElementById(SELECTORS.LOADING.MAPPINGS);
+
+    if (!container) {
+        return;
+    }
+
+    if (window.MappingsStore?.metadata?.isRendering) {
+        window.MappingsStore.metadata.pendingFilterRender = true;
+        return;
+    }
+
+    const sortedMappings = typeof window.sortMappingsForDisplay === 'function'
+        ? window.sortMappingsForDisplay(filteredMappings)
+        : [...filteredMappings];
+
+    // Update pagination state and render only current page
+    if (typeof window.renderMappingsCollection === 'function') {
+        window.renderMappingsCollection(container, sortedMappings, { preSorted: true });
+    } else if (window.PaginationManager) {
+        window.PaginationManager.updateState(sortedMappings.length);
+        const pageItems = window.PaginationManager.getCurrentPageItems(sortedMappings);
+        renderList(container, pageItems, {
+            renderItem: window.renderMappingMarkup,
+            getKey: window.getMappingRenderKey,
+            getSignature: window.getMappingRenderSignature
+        });
+        const paginationContainer = document.getElementById('mappings-pagination');
+        if (paginationContainer) {
+            paginationContainer.innerHTML = window.PaginationManager.renderControls();
+        }
+    } else {
+        renderList(container, sortedMappings, {
+            renderItem: window.renderMappingMarkup,
+            getKey: window.getMappingRenderKey,
+            getSignature: window.getMappingRenderSignature
+        });
+    }
+
+    if (loadingState) {
+        loadingState.classList.add('hidden');
+    }
+
+    if (sortedMappings.length === 0) {
+        if (emptyState) {
+            emptyState.classList.remove('hidden');
+            emptyState.removeAttribute('aria-hidden');
+        }
+        container.style.display = 'none';
+    } else {
+        if (emptyState) {
+            emptyState.classList.add('hidden');
+            emptyState.setAttribute('aria-hidden', 'true');
+        }
+        container.style.display = 'block';
+    }
+
+    if (typeof updateMappingsCounter === 'function') {
+        updateMappingsCounter();
+    }
+}
+
+function executeRequestFilters() {
+    // Get query-based filter
+    const queryInput = document.getElementById('req-filter-query');
+    const query = queryInput?.value?.trim() || '';
+
+    // Get time range filters
+    const fromInput = document.getElementById('req-filter-from');
+    const toInput = document.getElementById('req-filter-to');
+    const from = fromInput?.value || '';
+    const to = toInput?.value || '';
+
+    // Save filters to localStorage and URL
+    window.FilterManager.saveFilterState('requests', { query, from, to });
+    updateURLFilterParams(query, 'requests');
+
+    if (!Array.isArray(window.originalRequests) || window.originalRequests.length === 0) {
+        window.allRequests = [];
+        const emptyState = document.getElementById(SELECTORS.EMPTY.REQUESTS);
+        const container = document.getElementById(SELECTORS.LISTS.REQUESTS);
+        if (emptyState) emptyState.classList.remove('hidden');
+        if (container) container.style.display = 'none';
+        if (typeof updateRequestsCounter === 'function') {
+            updateRequestsCounter();
+        }
+        return;
+    }
+
+    // Step 1: Apply query-based filters
+    let filteredRequests = query && window.QueryParser
+        ? window.QueryParser.filterRequestsByQuery(window.originalRequests, query)
+        : window.originalRequests;
+
+    // Step 2: Apply time range filters
+    const fromTime = from ? new Date(from).getTime() : null;
+    const toTime = to ? new Date(to).getTime() : null;
+
+    if (fromTime !== null || toTime !== null) {
+        filteredRequests = filteredRequests.filter(request => {
+            if (!request) return false;
+
+            const requestTime = new Date(request.request?.loggedDate || request.loggedDate).getTime();
+
+            if (fromTime !== null && Number.isFinite(fromTime)) {
+                if (!Number.isFinite(requestTime) || requestTime < fromTime) {
+                    return false;
+                }
+            }
+
+            if (toTime !== null && Number.isFinite(toTime)) {
+                if (!Number.isFinite(requestTime) || requestTime > toTime) {
+                    return false;
+                }
+            }
+
+            return true;
+        });
+    }
+
+    window.allRequests = filteredRequests;
+
+    const container = document.getElementById(SELECTORS.LISTS.REQUESTS);
+    const emptyState = document.getElementById(SELECTORS.EMPTY.REQUESTS);
+    const loadingState = document.getElementById(SELECTORS.LOADING.REQUESTS);
+
+    if (!container) {
+        return;
+    }
+
+    renderList(container, window.allRequests, {
+        renderItem: window.renderRequestMarkup,
+        getKey: window.getRequestRenderKey,
+        getSignature: window.getRequestRenderSignature
+    });
+
+    if (loadingState) {
+        loadingState.classList.add('hidden');
+    }
+
+    if (window.allRequests.length === 0) {
+        if (emptyState) emptyState.classList.remove('hidden');
+        container.style.display = 'none';
+    } else {
+        if (emptyState) emptyState.classList.add('hidden');
+        container.style.display = 'block';
+    }
+
+    if (typeof updateRequestsCounter === 'function') {
+        updateRequestsCounter();
+    }
+
+    Logger.debug('MANAGERS', `Filtered requests: ${window.allRequests.length} items`);
+}
+
+window.FilterManager._applyMappingFilters = window.debounce(executeMappingFilters, 180);
+window.FilterManager._applyRequestFilters = window.debounce(executeRequestFilters, 180);
+
 // --- UNIVERSAL FILTER MANAGER (eliminate ~90 lines of duplication) ---
 
 // Compact filtering helpers via FilterManager

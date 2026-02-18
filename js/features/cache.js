@@ -27,7 +27,8 @@ function isCacheEnabled() {
     try {
         const checkbox = document.getElementById('cache-enabled');
         const settings = (typeof window.readWiremockSettings === 'function') ? window.readWiremockSettings() : {};
-        return (settings.cacheEnabled !== false) && (checkbox ? checkbox.checked : true);
+        const checkboxEnabled = checkbox && typeof checkbox.checked === 'boolean' ? checkbox.checked : true;
+        return (settings.cacheEnabled !== false) && checkboxEnabled;
     } catch (error) {
         Logger.warn(
             'CACHE',
@@ -117,10 +118,12 @@ window.connectToWireMock = async () => {
 
         // === NEW OPTIMIZED ARCHITECTURE ===
         Logger.info('API', 'Using new optimized sync engine');
+        const useCache = isCacheEnabled();
+        Logger.info('CACHE', `Service cache is ${useCache ? 'enabled' : 'disabled'} for this session`);
 
         // Load data using new SyncEngine (cache first, then full sync)
         window.SyncEngine.stop();
-        await window.SyncEngine.coldStart();
+        await window.SyncEngine.coldStart({ useCache });
 
         // Start background sync timers
         window.SyncEngine.start();

@@ -134,14 +134,20 @@ function createMappingsTestContext() {
     const context = vm.createContext(sandbox);
 
     const scripts = [
+        'js/constants.js',
         'js/core.js',
+        'js/features/wiremock-settings.js',
         'js/managers.js',
+        'js/filter-state-manager.js',
+        'js/filter-presets-manager.js',
         'js/demo-data.js',
         'js/features/store.js',
         'js/features/state.js',
         'js/features/utils.js',
+        'js/features/render-helpers.js',
         'js/features/filters.js',
         'js/features/cache.js',
+        'js/features/mappings-render.js',
         'js/features/wiremock-extras.js',
         'js/features/mappings.js',
     ];
