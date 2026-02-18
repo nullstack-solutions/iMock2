@@ -326,7 +326,7 @@ window.debounce = function debounce(fn, wait = 150, options = {}) {
     };
 })();
 
-const ensureCustomHeaderObject = (value) => {
+const fallbackEnsureCustomHeaderObject = (value) => {
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
         return {};
     }
@@ -341,71 +341,17 @@ const ensureCustomHeaderObject = (value) => {
     }, {});
 };
 
-const migrateLegacySettings = (rawSettings) => {
-    if (!rawSettings || typeof rawSettings !== 'object' || Array.isArray(rawSettings)) {
-        return {};
-    }
-
-    const normalized = { ...rawSettings };
-    const customHeaders = ensureCustomHeaderObject(normalized.customHeaders);
-
-    if (typeof normalized.authHeader === 'string' && normalized.authHeader.trim()) {
-        const authValue = normalized.authHeader.trim();
-        if (!Object.prototype.hasOwnProperty.call(customHeaders, 'Authorization')) {
-            customHeaders.Authorization = authValue;
-        }
-        delete normalized.authHeader;
-        if (!normalized.customHeadersRaw || typeof normalized.customHeadersRaw !== 'string' || !normalized.customHeadersRaw.trim()) {
-            try {
-                normalized.customHeadersRaw = JSON.stringify(customHeaders, null, 2);
-            } catch (error) {
-                Logger.warn('API', 'Failed to serialize migrated custom headers:', error);
-                normalized.customHeadersRaw = '';
-            }
-        }
-    }
-
-    normalized.customHeaders = customHeaders;
-
-    if (typeof normalized.customHeadersRaw !== 'string') {
-        normalized.customHeadersRaw = '';
-    }
-
-    normalized.autoConnect = normalized.autoConnect !== false;
-    return normalized;
-};
-
-window.normalizeWiremockSettings = (settings) => migrateLegacySettings(settings);
-
-window.readWiremockSettings = () => {
-    try {
-        const raw = localStorage.getItem('wiremock-settings');
-        if (!raw) {
-            return {};
-        }
-        const parsed = JSON.parse(raw);
-        return migrateLegacySettings(parsed);
-    } catch (error) {
-        Logger.warn('UI', 'Failed to read stored settings, returning empty object:', error);
-        return {};
-    }
-};
-
-// Helper to build the documented scenario state endpoint
-window.buildScenarioStateEndpoint = (scenarioName) => {
-    const rawName = typeof scenarioName === 'string' ? scenarioName : '';
-    if (!rawName.trim()) {
-        return '';
-    }
-
-    return `${ENDPOINTS.SCENARIOS}/${encodeURIComponent(rawName)}/state`;
-};
+const resolveCustomHeaderNormalizer = () => (
+    typeof window.ensureCustomHeaderObject === 'function'
+        ? window.ensureCustomHeaderObject
+        : fallbackEnsureCustomHeaderObject
+);
 
 // --- GLOBAL STATE ---
 let wiremockBaseUrl = '';
 // Use centralized default if available, fallback to hardcoded value
 let requestTimeout = window.DEFAULT_SETTINGS?.requestTimeout ? parseInt(window.DEFAULT_SETTINGS.requestTimeout) : 69000;
-window.customHeaders = ensureCustomHeaderObject(window.DEFAULT_SETTINGS?.customHeaders || {});
+window.customHeaders = resolveCustomHeaderNormalizer()(window.DEFAULT_SETTINGS?.customHeaders || {});
 window.startTime = null; // Make globally accessible for uptime tracking
 window.uptimeInterval = null; // Make globally accessible for uptime tracking
 let autoRefreshInterval = null;
@@ -416,23 +362,6 @@ window.allScenarios = [];
 window.isRecording = false;
 window.recordedCount = 0;
 
-window.normalizeWiremockBaseUrl = (hostInput, portInput) => {
-    let rawHost = (hostInput || '').trim() || 'localhost';
-    let port = (portInput || '').trim();
-    let scheme = 'http', hostname = '';
-    try {
-        const url = new URL(rawHost.includes('://') ? rawHost : `http://${rawHost}`);
-        scheme = url.protocol.replace(':', '') || 'http';
-        hostname = url.hostname;
-        port ||= url.port;
-    } catch (e) {
-        const m = rawHost.match(/^([^:/]+)(?::(\d+))?$/);
-        hostname = m ? m[1] : rawHost;
-        port ||= m?.[2];
-    }
-    return `${scheme}://${hostname || 'localhost'}:${port || (scheme === 'https' ? '443' : '8080')}/__admin`;
-};
-
 // --- API CLIENT WITH TIMEOUT SUPPORT ---
 window.apiFetch = async (endpoint, options = {}) => {
     const controller = new AbortController();
@@ -441,10 +370,11 @@ window.apiFetch = async (endpoint, options = {}) => {
     const timeoutId = setTimeout(() => controller.abort(), currentTimeout);
     const fullUrl = `${window.wiremockBaseUrl}${endpoint}`;
     const method = options.method || 'GET';
+    const normalizeHeaders = resolveCustomHeaderNormalizer();
     
     const headers = { 
         'Content-Type': 'application/json', 
-        ...ensureCustomHeaderObject(timeoutSettings.customHeaders || window.customHeaders), 
+        ...normalizeHeaders(timeoutSettings.customHeaders || window.customHeaders), 
         ...options.headers,
     };
 
