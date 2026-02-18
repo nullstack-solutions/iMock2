@@ -143,6 +143,7 @@ function createScenariosTestContext() {
         'js/features/utils.js',
         'js/features/scenario-model.js',
         'js/features/scenarios.js',
+        'js/features/scenario-render.js',
     ];
 
     for (const script of scripts) {
